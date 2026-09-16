@@ -23,7 +23,8 @@ python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirem
 每步取 `list[0].result_json`（可先用 `extract_record` 子命令提取）。
 
 ### 步骤2：合成结构化汇总（原代码节点501s）
-从五类结果提取关键字段：套餐名称/套餐档位（需求）、product_id/offer_id/save_result、audit_summary、risk_list、场景数/用例数统计、orderId/offerInstId。
+从五类结果提取关键字段：套餐名称/套餐档位（需求）、product_id/offer_id/save_result、audit_summary、risk_list、场景数/用例数统计、orderId/offerInstId；
+- **V4.0 融合组**：plan_json 为组结构时，额外提取组结构成员清单（plan_json member_offers 角色 + 环节1 出参 group 成员 offer_id），供看板"自动测试"行与报告基础信息引用（逐字引用，禁止推理）。
 
 ### 步骤3：生成上线审批建议（原 LLM 节点501g，按以下模板输出，只基于输入数据，不得新增结论）
 ```
@@ -36,7 +37,7 @@ python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirem
 | 需求完整性 | ✅ |
 | 配置规格稽核 | ✅ |
 | 资费校准 | ✅ |
-| 自动测试（三大验证：受理/计费/客服） | ✅ |
+| 自动测试（三大验证：受理/计费/客服{{融合品追加："+成员组合验证"}}） | ✅ |
 
 **风险检查：** {{逐字引用：配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}
 
@@ -45,6 +46,7 @@ python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirem
 **AI审批建议：{{全部通过→"建议上线"；任一环节未通过→"暂缓上线"}}。**
 ```
 - 看板各检查项与四类自查结果一一对应：需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试（三大验证）=test 通过且受理子集通过（orderId/offerInstId 非空 + 受理场景通过）；
+- **V4.0 融合组**：自动测试检查项结论须引用含成员组合验证结果（出参 offer_group_check 全员 ✅ 才算通过；任一成员 ❌ → 本检查项 ❌ 并附成员定位）；报告归档口径不变（正式版 9 章节模板"基础信息"项含融合成员构成，逐字引用组结构，出参无组结构时省略）；
 - **自动测试检查项须与正式版报告整体上线结论一致**（✅ 建议上线 / ⚠️ 评估风险后上线 / ❌ 禁止上线；任一 P0 ❌ 时本程序早已被环节4 中断拦截，不应走到本步骤）；
 - 任一检查项未通过 → 该行 ❌ 并附原因（引用出参原文），AI审批建议固定"暂缓上线"；
 - 禁止补 ✅ 凑数、禁止虚构风险结论。

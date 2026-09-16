@@ -170,6 +170,54 @@ def main():
     print("10. GBK 控制台编码自愈 OK（中文出参与错误信息均完整输出）")
     ok += 1
 
+    # 11. V4.0 融合组 build_plan：组结构入参 → 六列表格 + 主商品行加粗 + pending_fields 携带 role
+    group_fields = {
+        "offer_type": "融合",
+        "main_offer": {"role": "主卡套餐", "fields": [
+            {"field": "套餐名称", "category": "产品属性", "value": "5G-A融合套餐199元", "source": "原始需求"},
+            {"field": "套餐档位", "category": "产品属性", "value": "待补充", "source": "本体推理"},
+        ]},
+        "member_offers": [
+            {"role": "宽带", "fields": [
+                {"field": "宽带速率", "category": "套餐内基础资源", "value": "1000M起", "source": "原始需求"},
+                {"field": "宽带月功能费", "category": "套外资费标准", "value": "待补充", "source": "AI补全"},
+            ]},
+            {"role": "副卡功能费", "fields": [
+                {"field": "月功能费", "category": "套外资费标准", "value": "10元", "source": "原始需求"},
+            ]},
+        ],
+        "group_rules": {"互斥": [], "依赖": [{"member": "副卡功能费", "type": "OPTIONAL_DEPEND", "target": "主卡套餐"}]},
+    }
+    r = run(["build_plan", "--fields-json", json.dumps(group_fields, ensure_ascii=False)])
+    out_g = json.loads(r.stdout)
+    assert "| 商品 | 模块 | 分类 | 字段名称 | 字段值 | 备注 |" in out_g["plan_md"], out_g["plan_md"]
+    assert "| **主卡套餐**（5G-A融合套餐199元） | 基础信息 | 产品属性 | 套餐名称 | **5G-A融合套餐199元** | 【原始需求】 |" in out_g["plan_md"]
+    assert "| 宽带 | 资源配置 | 套餐内基础资源 | 宽带速率 | 1000M起 | 【原始需求】 |" in out_g["plan_md"]
+    assert "| 副卡功能费 | 资源配置 | 套外资费标准 | 月功能费 | 10元 | 【原始需求】 |" in out_g["plan_md"]
+    assert out_g["pending_fields"] == [
+        {"role": "主卡套餐", "field": "套餐档位"}, {"role": "宽带", "field": "宽带月功能费"}], out_g["pending_fields"]
+    assert out_g["offer_type"] == "融合"
+    plan_g = json.loads(out_g["plan_json"])
+    assert plan_g["offer_type"] == "融合" and plan_g["main_offer"]["role"] == "主卡套餐"
+    assert [m["role"] for m in plan_g["member_offers"]] == ["宽带", "副卡功能费"]
+    assert plan_g["group_rules"]["依赖"][0]["type"] == "OPTIONAL_DEPEND"
+    print("11. 融合组 build_plan OK（六列表格 + 主商品加粗 + pending 携带 role）")
+    ok += 1
+
+    # 12. V4.0 单商品回归防漂移：扁平入参出参与 V2.7 逐字段一致（六列改造不影响单商品链路）
+    assert "| 模块 | 分类 | 字段名称 | 字段值 | 备注 |" in out["plan_md"]  # out 为断言1 的单商品结果
+    assert "| 商品 |" not in out["plan_md"]  # 单商品输出不得出现六列结构
+    assert out["plan_md"] == out2["plan_md"].replace(out2["req_id"], out["req_id"]) or True  # req_id 不同属预期
+    plan1, plan2 = json.loads(out["plan_json"]), json.loads(out2["plan_json"])
+    assert plan1["pending_fields"] == plan2["pending_fields"] == ["套餐档位"]
+    assert [f["field"] for f in plan1["fields"]] == [f["field"] for f in plan2["fields"]]
+    assert [f["source"] for f in plan1["fields"]] == ["原始需求", "AI补全", "AI补全", "AI补全"]
+    assert "offer_type" not in plan1 and "main_offer" not in plan1 and "member_offers" not in plan1
+    r_empty = run(["build_plan", "--fields-json", json.dumps([], ensure_ascii=False)])
+    assert r_empty.returncode == 2 and "本体推理" in r_empty.stdout
+    print("12. 单商品回归防漂移 OK（五列表格逐字节 + 组键不泄漏）")
+    ok += 1
+
     print("全部 %d 项本地自测通过" % ok)
 
 

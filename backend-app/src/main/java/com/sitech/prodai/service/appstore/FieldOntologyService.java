@@ -9,8 +9,10 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -465,6 +467,156 @@ public class FieldOntologyService {
         Map<String, Object> body = ok();
         body.put("fields", list);
         return body;
+    }
+
+    /**
+     * V2.0 接口五：融合组级校验 group_check（技能包 cpcp_api.py ontology_reason 组结构分支第二动作）。
+     * 入参（cpcp_api.py 组结构分支报文）：{action:"group_check", offer_type, group_rules,
+     * main_offer:{role, fields}, member_offers:[{role, fields}]}（fields 可为推理后 fields_json 串或数组）；
+     * 出参：{code, msg, group_violations:[{item, level, desc, suggest}]}——格式与 violations 同构。
+     * 校验口径（POC 规则引擎，确定性输出）：
+     * ① 成员角色封闭枚举：主卡套餐/宽带/天翼高清/副卡功能费/权益包/其他，越界 → error；
+     * ② 组级互斥：同角色成员重复出现（如两个权益包）→ error；
+     * ③ 依赖核对：group_rules.依赖 中 type=OPTIONAL_DEPEND 的成员出现在 member_offers
+     *    时为可选依赖（通过，留 warning 提示确认办理口径）；
+     * ④ 成员价格跨成员照搬检测：两成员同名价格字段值完全一致且非"待补充/省内自定" → warning（人工核对）。
+     */
+    public Map<String, Object> groupCheck(Map<String, Object> req) {
+        Set<String> MEMBER_ROLES = Set.of("主卡套餐", "宽带", "天翼高清", "副卡功能费", "权益包", "其他");
+        List<Map<String, Object>> violations = new ArrayList<>();
+        List<Map<String, Object>> members = castMemberOffers(req.get("member_offers"));
+        // ① 成员角色封闭枚举
+        for (Map<String, Object> m : members) {
+            String role = str(m.get("role"));
+            if (!MEMBER_ROLES.contains(role)) {
+                Map<String, Object> v = new LinkedHashMap<>();
+                v.put("item", "group:" + role);
+                v.put("level", "error");
+                v.put("desc", "成员角色\"" + role + "\"不在封闭枚举内（主卡套餐/宽带/天翼高清/副卡功能费/权益包/其他）");
+                v.put("suggest", "修正成员角色命名，成员构成以 offer_group 下发为准");
+                violations.add(v);
+            }
+        }
+        // ② 组级互斥：同角色重复
+        Set<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> m : members) {
+            String role = str(m.get("role"));
+            if (!seen.add(role)) {
+                Map<String, Object> v = new LinkedHashMap<>();
+                v.put("item", "group:" + role);
+                v.put("level", "error");
+                v.put("desc", "融合组内成员\"" + role + "\"重复出现，违反组级互斥约束");
+                v.put("suggest", "移除重复成员，同角色成员仅保留一个");
+                violations.add(v);
+            }
+        }
+        // ③ 依赖核对：OPTIONAL_DEPEND 成员出现时提示确认（warning，不阻断）
+        Object rulesObj = req.get("group_rules");
+        if (rulesObj instanceof Map<?, ?> rules) {
+            Object deps = ((Map<?, ?>) rules).get("依赖");
+            if (deps instanceof List<?> depList) {
+                Set<String> configRoles = new LinkedHashSet<>();
+                for (Map<String, Object> m : members) {
+                    configRoles.add(str(m.get("role")));
+                }
+                for (Object dep : depList) {
+                    if (dep instanceof Map<?, ?> depMap
+                            && "OPTIONAL_DEPEND".equals(String.valueOf(depMap.get("type")))) {
+                        String member = String.valueOf(depMap.get("member"));
+                        if (configRoles.contains(member)) {
+                            Map<String, Object> v = new LinkedHashMap<>();
+                            v.put("item", "group:" + member);
+                            v.put("level", "warning");
+                            v.put("desc", "成员\"" + member + "\"与主卡套餐为可选依赖关系（OPTIONAL_DEPEND），已按成员内配置加载");
+                            v.put("suggest", "按省内配置口径确认是否同步开通");
+                            violations.add(v);
+                        }
+                    }
+                }
+            }
+        }
+        // ④ 跨成员价格照搬检测（warning）
+        Map<String, String> mainPrices = priceValuesOf(req.get("main_offer"));
+        Map<String, Map<String, String>> memberPrices = new LinkedHashMap<>();
+        for (Map<String, Object> m : members) {
+            memberPrices.put(str(m.get("role")), priceValuesOf(m));
+        }
+        for (Map.Entry<String, String> e : mainPrices.entrySet()) {
+            for (Map.Entry<String, Map<String, String>> me : memberPrices.entrySet()) {
+                String mv = me.getValue().get(e.getKey());
+                if (mv != null && mv.equals(e.getValue())
+                        && !"待补充".equals(mv) && !"省内自定".equals(mv) && !mv.isBlank()) {
+                    Map<String, Object> v = new LinkedHashMap<>();
+                    v.put("item", "group:" + me.getKey());
+                    v.put("level", "warning");
+                    v.put("desc", "成员\"" + me.getKey() + "\"的价格字段\"" + e.getKey() + "\"与主卡套餐值相同（" + mv
+                            + "），疑似跨成员照搬");
+                    v.put("suggest", "核对成员价格（主套餐档位与各成员月功能费互相独立）");
+                    violations.add(v);
+                }
+            }
+        }
+        Map<String, Object> body = ok();
+        body.put("group_violations", violations);
+        return body;
+    }
+
+    /** member_offers 入参解析：fields 可为推理后 fields_json 串（先 reason 回传）或数组，取 field/value 对 */
+    private List<Map<String, Object>> castMemberOffers(Object value) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> e : map.entrySet()) {
+                        m.put(String.valueOf(e.getKey()), e.getValue());
+                    }
+                    result.add(m);
+                }
+            }
+        }
+        return result;
+    }
+
+    /** 单个成员（或主商品）的价格字段值提取：fields_json 串或 fields 数组 → field->value（价格类字段） */
+    private Map<String, String> priceValuesOf(Object memberObj) {
+        Map<String, String> prices = new LinkedHashMap<>();
+        if (!(memberObj instanceof Map<?, ?> map)) {
+            return prices;
+        }
+        Object fieldsObj = ((Map<?, ?>) map).get("fields");
+        List<Map<String, Object>> fields = new ArrayList<>();
+        if (fieldsObj instanceof String s) {
+            try {
+                JsonNode node = MAPPER.readTree(s);
+                if (node.isArray()) {
+                    for (JsonNode n : node) {
+                        Map<String, Object> f = new LinkedHashMap<>();
+                        f.put("field", n.path("field").asText(""));
+                        f.put("value", n.path("value").asText(""));
+                        fields.add(f);
+                    }
+                }
+            } catch (Exception ignore) {
+                return prices;
+            }
+        } else if (fieldsObj instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> f) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("field", String.valueOf(f.get("field")));
+                    m.put("value", String.valueOf(f.get("value")));
+                    fields.add(m);
+                }
+            }
+        }
+        for (Map<String, Object> f : fields) {
+            String field = str(f.get("field"));
+            if (field.contains("功能费") || "套餐档位".equals(field)) {
+                prices.put(field, str(f.get("value")));
+            }
+        }
+        return prices;
     }
 
     /* ---------------- 推理核心 ---------------- */

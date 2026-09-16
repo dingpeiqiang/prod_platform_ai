@@ -46,6 +46,7 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 
 ### 前置检查
 - `product_id`（必填）：销售品 ID（存量 9 位 ID 或配置落地返回的 `P+req_id` 形态产品 ID）；
+- **V4.0 融合组**：product_id 可传主 offer_id（组维度指标）或成员 offer_id（成员维度），前置检查不强制区分（以出参为准，出参 offer_name 即所查对象）；
 - **会话上下文取参**：会话中执行主干环节1 返回的 product_id 可直接使用；会话内从未出现过且用户未提供时 → 不发起调用，先追问："请提供要查询的销售品ID。"（禁止凭空编造）；
 - `date_range`（选填，默认最近1天，如 `2026-09-11~2026-09-12`）；
 - `metric`（选填，默认 all；枚举 order/error/fee/all）。

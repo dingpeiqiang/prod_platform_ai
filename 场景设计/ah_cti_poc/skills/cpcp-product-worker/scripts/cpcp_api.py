@@ -52,12 +52,53 @@ CATEGORY_MODULE = {
     "订购与生效": "业务规则", "变更/退订/拆机": "业务规则", "计费/支付/风控": "业务规则",
 }
 
+# V4.0 融合组：成员角色封闭枚举（与 seed_offer_groups.json member_role_enum 一致）
+MEMBER_ROLES = {"主卡套餐", "宽带", "天翼高清", "副卡功能费", "权益包", "其他"}
+GROUP_ROLE_KEY = "member_role"  # 组结构入参中成员角色键（成员 fields 数组各元素可携带）
+
 # 来源标注两态归一：原始需求 / AI补全（兼容历史 AI推理/本体推理 标注）
 SOURCE_LABEL = {"原始需求": "原始需求", "AI推理": "AI补全", "本体推理": "AI补全", "AI补全": "AI补全"}
+
+# V4.0 融合组结构键（fields_json 组结构入参形态：{offer_type, main_offer, member_offers, group_rules?}）
+GROUP_KEYS = {"offer_type", "main_offer", "member_offers"}
 
 
 def _module_of(category):
     return CATEGORY_MODULE.get(category, category)
+
+
+def _is_group_input(fields):
+    """V4.0 融合组结构识别：dict 含 offer_type/main_offer/member_offers 任一组键即组结构；
+    其余形态（扁平 fields 数组）= 单商品，行为保持 V2.7 逐字节不变。"""
+    return isinstance(fields, dict) and bool(GROUP_KEYS & set(fields.keys()))
+
+
+def _normalize_group(g):
+    """组结构入参归一：main_offer/member_offers 各成员 fields 数组做来源两态归一，
+    成员角色缺省补 GROUP_ROLE_KEY（main_offer 缺省=主卡套餐），非法角色按"其他"兜底。"""
+    main = g.get("main_offer") if isinstance(g.get("main_offer"), dict) else {}
+    members_in = g.get("member_offers") if isinstance(g.get("member_offers"), list) else []
+    main_out = {"role": main.get("role") or "主卡套餐", "fields": main.get("fields") or []}
+    members_out = []
+    for m in members_in:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role") or m.get(GROUP_ROLE_KEY) or "其他"
+        if role not in MEMBER_ROLES:
+            role = "其他"
+        members_out.append({"role": role, "fields": m.get("fields") or []})
+    return {"offer_type": g.get("offer_type") or "融合", "main_offer": main_out,
+            "member_offers": members_out, "group_rules": g.get("group_rules") or {}}
+
+
+def _pending_of_group(g):
+    """组结构待补充判定：逐成员独立，pending_fields 每项携带 role 定位（方案 §3.2）。"""
+    pending = []
+    for part in [g["main_offer"]] + g["member_offers"]:
+        for f in part["fields"]:
+            if isinstance(f, dict) and f.get("value") == "待补充":
+                pending.append({"role": part["role"], "field": f.get("field", "")})
+    return pending
 
 
 def _now(fmt="%Y%m%d%H%M%S"):
@@ -133,18 +174,8 @@ def cmd_spec_audit(args):
     print(json.dumps(out, ensure_ascii=False))
 
 
-def cmd_ontology_reason(args):
-    fields_raw = _read_arg(args, "fields_json", "_json_file")
-    if not fields_raw:
-        _err("PARAM_MISSING", "缺少待推理字段数组 fields_json")
-    try:
-        fields = json.loads(fields_raw)
-    except json.JSONDecodeError:
-        _err("PARSE_ERROR", "fields_json 不是合法 JSON，请检查内容或改用 --fields-json-file")
-    if isinstance(fields, dict):
-        fields = fields.get("fields", [])
-    if not isinstance(fields, list) or not fields:
-        _err("PARAM_MISSING", "待推理字段数组为空，请先完成需求要素提取（18 字段）")
+def _reason_flat(fields):
+    """单商品字段数组推理（复用现有引擎调用 + remark_excluded 剔除），返回 (data, reason_fields)。"""
     out = _http("POST", "/api/v1/appstore/ontology/fields",
                 {"action": "reason", "fields": fields})
     data = _unwrap(out)
@@ -170,6 +201,49 @@ def cmd_ontology_reason(args):
     if len(cleaned) != len(reason_fields):
         data["fields_json"] = json.dumps(cleaned, ensure_ascii=False)
         data["remark_excluded_fields"] = [f.get("field") for f in reason_fields if f not in cleaned]
+    return out, data
+
+
+def cmd_ontology_reason(args):
+    fields_raw = _read_arg(args, "fields_json", "_json_file")
+    if not fields_raw:
+        _err("PARAM_MISSING", "缺少待推理字段数组 fields_json")
+    try:
+        fields = json.loads(fields_raw)
+    except json.JSONDecodeError:
+        _err("PARSE_ERROR", "fields_json 不是合法 JSON，请检查内容或改用 --fields-json-file")
+    # V4.0 融合组结构：逐成员推理（成员内复用单商品逻辑）+ 组级校验（action=group_check），
+    # 出参新增 group_violations[]；单商品扁平入参行为不变。
+    if isinstance(fields, dict) and GROUP_KEYS & set(fields.keys()):
+        g = _normalize_group(fields)
+        out_main, data_main = _reason_flat(g["main_offer"]["fields"])
+        member_results = []
+        for m in g["member_offers"]:
+            out_m, data_m = _reason_flat(m["fields"])
+            member_results.append({"role": m["role"], "out": out_m, "data": data_m})
+        violations = []
+        if g["member_offers"]:
+            gv = _http("POST", "/api/v1/appstore/ontology/fields",
+                       {"action": "group_check", "offer_type": g["offer_type"],
+                        "main_offer": {"role": g["main_offer"]["role"], "fields": data_main.get("fields_json")},
+                        "member_offers": [{"role": m["role"], "fields": m["data"].get("fields_json")}
+                                          for m in member_results],
+                        "group_rules": g["group_rules"]})
+            gv_data = _unwrap(gv)
+            if isinstance(gv_data, dict) and isinstance(gv_data.get("group_violations"), list):
+                violations = gv_data["group_violations"]
+        group_out = {"main_offer": data_main,
+                     "member_offers": [{"role": m["role"], "reason": m["out"]} for m in member_results]}
+        if violations:
+            group_out["group_violations"] = violations
+        print(json.dumps({"resultCode": "0", "resultMsg": "success（融合组逐成员推理）",
+                          "offer_type": g["offer_type"], "group": group_out}, ensure_ascii=False))
+        return
+    if isinstance(fields, dict):
+        fields = fields.get("fields", [])
+    if not isinstance(fields, list) or not fields:
+        _err("PARAM_MISSING", "待推理字段数组为空，请先完成需求要素提取（18 字段）")
+    out, data = _reason_flat(fields)
     print(json.dumps(out, ensure_ascii=False))
 
 
@@ -561,7 +635,10 @@ def cmd_extract_record(args):
 
 
 def cmd_build_plan(args):
-    """等价原 wf_sub_01 拆分代码节点 004a：req_id 系统生成 + plan_json/plan_md/pending_fields 组装（V3.0 五列表格）。"""
+    """等价原 wf_sub_01 拆分代码节点 004a：req_id 系统生成 + plan_json/plan_md/pending_fields 组装。
+    V3.0 单商品：五列表格（模块/分类/字段名称/字段值/备注）。
+    V4.0 融合组：组结构入参 → 六列表格（商品/模块/...）+ 主商品行加粗 + pending_fields 携带 role；
+    扁平 fields 数组入参行为保持 V2.7 逐字节不变（向后兼容铁律）。"""
     fields_raw = _read_arg(args, "fields_json", "_json_file")
     if not fields_raw:
         _err("PARAM_MISSING", "缺少推理后字段数组 fields_json")
@@ -569,6 +646,55 @@ def cmd_build_plan(args):
         fields = json.loads(fields_raw)
     except json.JSONDecodeError:
         _err("PARSE_ERROR", "fields_json 不是合法 JSON，请检查内容或改用 --fields-json-file")
+
+    # ---- V4.0 融合组结构分支 ----
+    if _is_group_input(fields):
+        g = _normalize_group(fields)
+        for part in [g["main_offer"]] + g["member_offers"]:
+            for f in part["fields"]:
+                if isinstance(f, dict) and f.get("source") in SOURCE_LABEL:
+                    f["source"] = SOURCE_LABEL[f["source"]]
+        req_id = PLAN_PREFIX + _now() + "%03d" % random.randint(0, 999)
+        pending = _pending_of_group(g)
+        plan_json = {"req_id": req_id, "offer_type": g["offer_type"],
+                     "main_offer": g["main_offer"], "member_offers": g["member_offers"],
+                     "group_rules": g["group_rules"], "pending_fields": pending}
+
+        lines = ["| 商品 | 模块 | 分类 | 字段名称 | 字段值 | 备注 |",
+                 "| :--- | :--- | :--- | :--- | :--- | :--- |"]
+        # 主商品块（角色加粗 + 商品名加粗，模块/分类跨行合并仅块内生效）
+        parts = [("main", g["main_offer"])] + [("member", m) for m in g["member_offers"]]
+        for kind, part in parts:
+            is_main = kind == "main"
+            role_cell = ("**%s**" % part["role"]) if is_main else part["role"]
+            main_label = ""
+            if is_main:
+                name = next((f.get("value", "") for f in part["fields"]
+                             if isinstance(f, dict) and f.get("field") in ("产品名称", "套餐名称", "销售品名称") and f.get("value")), "")
+                main_label = "（%s）" % name if name else ""
+            last_module = last_cat = None
+            block_started = False
+            for f in part["fields"]:
+                if not isinstance(f, dict):
+                    continue
+                category = f.get("category", "")
+                module = _module_of(category)
+                module_cell = module if module != last_module else ""
+                cat_cell = category if category != last_cat else ""
+                last_module, last_cat = module, category
+                commodity_cell = "%s%s" % (role_cell, main_label) if not block_started else ""
+                block_started = True
+                value_cell = "**%s**" % f.get("value", "") if is_main else f.get("value", "")
+                lines.append("| %s | %s | %s | %s | %s | 【%s】 |" % (
+                    commodity_cell, module_cell, cat_cell, f.get("field", ""),
+                    value_cell, f.get("source", "")))
+        plan_md = "\n".join(lines)
+        print(json.dumps({"req_id": req_id, "offer_type": g["offer_type"],
+                          "plan_json": json.dumps(plan_json, ensure_ascii=False),
+                          "plan_md": plan_md, "pending_fields": pending}, ensure_ascii=False))
+        return
+
+    # ---- V3.0 单商品分支（行为保持 V2.7 逐字节） ----
     if isinstance(fields, dict):
         fields = fields.get("fields", [])
     if not isinstance(fields, list) or not fields:

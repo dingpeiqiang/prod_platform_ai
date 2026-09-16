@@ -216,7 +216,8 @@ public class AppStoreV16Controller {
             + "action=reason 一体推理（校验+修正回写+默认值补全，返回推理后fields_json供工作流闭环取值）；"
             + "action=validate 逐字段校验LLM补全合法性（非法返回violations供重填）；"
             + "action=complete 缺失字段按本体默认值推理补全（兜底口径字段不补全交上游判待补充）；"
-            + "action=ontology 查询字段本体定义")
+            + "action=ontology 查询字段本体定义；"
+            + "V2.0 action=group_check 融合组级校验（互斥/依赖/成员越界，返回group_violations供流程引导）")
     @PostMapping("/ontology/fields")
     public Map<String, Object> ontologyFields(@RequestBody Map<String, Object> req) {
         String action = MapOps.str(req.get("action"));
@@ -233,9 +234,12 @@ public class AppStoreV16Controller {
         if ("ontology".equals(action)) {
             return fieldOntologyService.ontology();
         }
+        if ("group_check".equals(action)) {
+            return fieldOntologyService.groupCheck(req);
+        }
         Map<String, Object> fail = new java.util.LinkedHashMap<>();
         fail.put("code", 5101);
-        fail.put("msg", "invalid action（须为 reason/validate/complete/ontology）");
+        fail.put("msg", "invalid action（须为 reason/validate/complete/ontology/group_check）");
         return fail;
     }
 

@@ -41,6 +41,7 @@ public class OfferSimV16Service {
 
     private final ObjectMapper objectMapper;
     private final OfferSeedService seed;
+    private final OfferGroupSeedService groupSeed;
     private final NodeResultService nodeResult;
 
     /** 配置落地档案：offer_id -> 落地配置（工具7 写入，工具2/8 读取） */
@@ -74,9 +75,11 @@ public class OfferSimV16Service {
     /** 监控异常注入：offer_id -> error_count>0 */
     private final java.util.Set<String> monitorErrorInjection = ConcurrentHashMap.newKeySet();
 
-    public OfferSimV16Service(ObjectMapper objectMapper, OfferSeedService seed, NodeResultService nodeResult) {
+    public OfferSimV16Service(ObjectMapper objectMapper, OfferSeedService seed,
+                              OfferGroupSeedService groupSeed, NodeResultService nodeResult) {
         this.objectMapper = objectMapper;
         this.seed = seed;
+        this.groupSeed = groupSeed;
         this.nodeResult = nodeResult;
     }
 
@@ -101,6 +104,17 @@ public class OfferSimV16Service {
                 + "（相似度 " + MapOps.str(best.get("similarityScore")) + "）");
         body.put("similarOffer", best);
         body.put("similarOfferList", similarList);
+        // V2.0 融合商品扩展：命中融合品（组定义内 offer_id）时出参内嵌 offer_group
+        // （成员构成/角色/required/group_rules 逐字引用 seed_offer_groups.json，模型禁止自行推理成员关系）；
+        // 单品命中时无 offer_group 键（单商品链路行为零变化）。
+        Map<String, Object> offerGroup = groupSeed.groupOfSimilar(similarList);
+        if (offerGroup != null) {
+            body.put("offer_group", offerGroup);
+            body.put("resultMsg", MapOps.str(body.get("resultMsg"))
+                    + "；命中融合商品组 " + MapOps.str(offerGroup.get("group_id"))
+                    + "（主商品 " + MapOps.str(offerGroup.get("main_offer_name"))
+                    + "，成员 " + groupSeed.memberRoles(offerGroup).size() + " 个）");
+        }
         return body;
     }
 
@@ -136,6 +150,12 @@ public class OfferSimV16Service {
             errorList.add(err);
         }
 
+        // V2.0 融合商品扩展：config_json 为组结构（含 main_offer/member_offers）→ 组级检查项
+        // （互斥/依赖/共享/退订联动，对照 seed_offer_groups.json group_rules 逐字核对），
+        // error_list item=group:<role>；单品无组检查（行为零变化）。
+        Map<String, Object> groupConfig = parseConfig(MapOps.str(req.get("config_json")));
+        errorList.addAll(groupAuditChecks(groupConfig));
+
         Map<String, Object> body = ok();
         body.put("pass", errorList.isEmpty() ? "1" : "0");
         body.put("error_list", errorList);
@@ -144,6 +164,95 @@ public class OfferSimV16Service {
                 : "稽核驳回：存在 " + errorList.size() + " 项阻断问题，请整改后重试");
         body.put("resultCode", "0");
         return body;
+    }
+
+    /**
+     * V2.0 融合组级稽核项：组结构 config_json 时对照组定义 group_rules 检查——
+     * ① 成员越界：config member_offers 角色 ∉ 组定义成员角色集合 → error（对应验收 F3）；
+     * ② 组级互斥：config member_offers 同角色重复（如两个权益包）→ error（对应验收 F6）；
+     * ③ 必选成员缺失：required 成员未在 config 中 → error；
+     * ④ 依赖缺失提示：OPTIONAL_DEPEND 成员单加且无主商品 → warning（可选依赖不阻断）。
+     * 单品/解析失败返回空列表（不产出组类目，兼容单品链路）。
+     */
+    private List<Map<String, Object>> groupAuditChecks(Map<String, Object> config) {
+        List<Map<String, Object>> errs = new ArrayList<>();
+        if (config == null || config.get("member_offers") == null) {
+            return errs;
+        }
+        Object mainObj = config.get("main_offer");
+        String mainOfferId = "";
+        if (mainObj instanceof Map<?, ?> mainMap) {
+            mainOfferId = MapOps.str(castMap(mainMap).get("offer_id"));
+        }
+        Map<String, Object> group = groupSeed.findGroup(mainOfferId);
+        if (group == null) {
+            // 主商品未命中组定义：组维度无法核对，透传不产出组检查（交由上游 offer_group 数据源约束）
+            return errs;
+        }
+        List<String> definedRoles = new ArrayList<>();
+        List<String> definedOptional = new ArrayList<>();
+        for (Map<String, Object> m : castMapList(group.get("members"))) {
+            String role = MapOps.str(m.get("role"));
+            definedRoles.add(role);
+            if (!Boolean.TRUE.equals(m.get("required"))) {
+                definedOptional.add(role);
+            }
+        }
+        List<String> configRoles = new ArrayList<>();
+        for (Map<String, Object> m : castMapList(config.get("member_offers"))) {
+            configRoles.add(MapOps.str(m.get("role")));
+        }
+        // ① 成员越界
+        for (String role : configRoles) {
+            if (!definedRoles.contains(role)) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("item", "group:" + role);
+                err.put("level", "error");
+                err.put("desc", "成员\"" + role + "\"不在融合组 " + MapOps.str(group.get("group_id"))
+                        + " 定义内（组定义成员：" + String.join("/", definedRoles) + "）");
+                err.put("suggest", "移除越界成员或修改需求成员构成（成员构成以 offer_group 下发为准）");
+                errs.add(err);
+            }
+        }
+        // ② 组级互斥：同角色重复成员（模拟两个权益包场景）
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (String role : configRoles) {
+            if (!seen.add(role)) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("item", "group:" + role);
+                err.put("level", "error");
+                err.put("desc", "融合组内成员\"" + role + "\"重复配置，违反组级互斥约束");
+                err.put("suggest", "移除重复成员，同角色成员仅保留一个");
+                errs.add(err);
+            }
+        }
+        // ③ 必选成员缺失（required=true 且未在主商品/成员中出现的角色）
+        for (Map<String, Object> m : castMapList(group.get("members"))) {
+            String role = MapOps.str(m.get("role"));
+            if (Boolean.TRUE.equals(m.get("required")) && !"主卡套餐".equals(role)
+                    && !configRoles.contains(role)) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("item", "group:" + role);
+                err.put("level", "error");
+                err.put("desc", "融合组必选成员\"" + role + "\"缺失（组定义要求必选）");
+                err.put("suggest", "补充成员\"" + role + "\"或修改需求成员构成");
+                errs.add(err);
+            }
+        }
+        // ④ OPTIONAL_DEPEND 依赖提示（warning 级，不阻断）
+        for (Map<String, Object> m : castMapList(group.get("members"))) {
+            if ("OPTIONAL_DEPEND".equals(MapOps.str(m.get("dependency")))
+                    && configRoles.contains(MapOps.str(m.get("role")))) {
+                Map<String, Object> warn = new LinkedHashMap<>();
+                warn.put("item", "group:" + MapOps.str(m.get("role")));
+                warn.put("level", "warning");
+                warn.put("desc", "成员\"" + MapOps.str(m.get("role")) + "\"与主卡套餐为可选依赖关系（"
+                        + MapOps.str(m.get("offer_id")) + "），请确认同步办理口径");
+                warn.put("suggest", "按省内配置口径确认是否同步开通");
+                errs.add(warn);
+            }
+        }
+        return errs;
     }
 
     /* ================= 接口3：配置落地 save_product_config ================= */
@@ -215,12 +324,76 @@ public class OfferSimV16Service {
         // V2.6：配置上线脚本下载链接改为绝对 URL（由控制器按 X-Forwarded-*/Host 头解析
         // 网关前置地址后传入），智能体/用户可直接点击下载，无需再拼 BASE_URL 前缀
         body.put("script_url", scriptUrlOf(productId, externalBaseUrl));
+        // V2.0 融合商品扩展：组结构 plan_json（含 main_offer/member_offers 键）→ 出参内嵌 group
+        // （主 offer_id + members[]{role, offer_id, product_id}）；单品入参无 group 键（行为零变化）。
+        Map<String, Object> groupOut = buildGroupSaveResult(plan, offerId, productId);
+        if (groupOut != null) {
+            body.put("group", groupOut);
+            log.info("[OfferSimV16] 融合组配置落地 group_id={} members={}", groupOut.get("group_id"),
+                    groupOut.get("members"));
+        }
 
         savedConfigs.put(offerId, config);
         productToOffer.put(productId, offerId);
         planIdempotency.put(planJson, body);
         log.info("[OfferSimV16] 配置落地 product_id={} offer_id={} status={}", productId, offerId, body.get("status"));
         return body;
+    }
+
+    /**
+     * V2.0 融合组落地出参 group：plan_json 为组结构（含 member_offers 键）时生成——
+     * {group_id, main_offer_id, members[]{role, offer_id, product_id, required}}，
+     * 成员 offer_id 逐字引用组定义（"省内自定"成员按省侧编码规则生成 9 位模拟编码并保持幂等）；
+     * 单品 plan 返回 null（出参无 group 键，兼容铁律）。
+     */
+    private Map<String, Object> buildGroupSaveResult(Map<String, Object> plan, String mainOfferId, String productId) {
+        if (plan.get("member_offers") == null) {
+            return null;
+        }
+        Map<String, Object> group = groupSeed.findGroup(mainOfferId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("group_id", group == null ? "GP" + mainOfferId : MapOps.str(group.get("group_id")));
+        out.put("main_offer_id", mainOfferId);
+        out.put("main_product_id", productId);
+        List<Map<String, Object>> members = new ArrayList<>();
+        List<Map<String, Object>> planMembers = castMapList(plan.get("member_offers"));
+        List<Map<String, Object>> seedMembers = group == null ? List.of() : castMapList(group.get("members"));
+        for (int i = 0; i < planMembers.size(); i++) {
+            Map<String, Object> pm = planMembers.get(i);
+            String role = MapOps.str(pm.get("role"));
+            // 成员 offer_id 取组定义（逐字引用）；组定义缺失时按省侧规则生成模拟编码
+            String memberOfferId = "";
+            boolean required = true;
+            for (Map<String, Object> sm : seedMembers) {
+                if (role.equals(MapOps.str(sm.get("role")))) {
+                    memberOfferId = MapOps.str(sm.get("offer_id"));
+                    required = Boolean.TRUE.equals(sm.get("required"));
+                    break;
+                }
+            }
+            if (memberOfferId.isBlank() || "省内自定".equals(memberOfferId)) {
+                memberOfferId = simulateMemberOfferId(mainOfferId, role);
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("role", role);
+            item.put("offer_id", memberOfferId);
+            item.put("product_id", productId + "_M" + (i + 1));
+            item.put("required", String.valueOf(required));
+            item.put("status", "success");
+            members.add(item);
+        }
+        out.put("members", members);
+        return out;
+    }
+
+    /**
+     * 省内自定成员 offer_id 模拟编码（幂等）：8 + 主 offer_id 末 5 位 + 角色序号（一位）。
+     * 仅 POC 模拟；生产侧成员编码以产品域商品目录为准。
+     */
+    private String simulateMemberOfferId(String mainOfferId, String role) {
+        String tail = mainOfferId.length() >= 5 ? mainOfferId.substring(mainOfferId.length() - 5) : mainOfferId;
+        int seq = Math.abs((mainOfferId + role).hashCode()) % 9 + 1;
+        return "8" + tail + seq;
     }
 
     /* ================= 接口4：测试发起 offer_test ================= */
@@ -368,7 +541,66 @@ public class OfferSimV16Service {
         body.put("testScenes", sceneResults);
         body.put("testCases", buildFixedCases(orderId, offerInstId, sceneResults));
         body.put("report_url", testReportUrlOf(globalId, externalBaseUrl));
+        // V2.0 融合商品扩展：融合品测试 → 出参内嵌 offer_group_check（组一致性核对结果，
+        // E26 组核对数据源——模型仅逐字引用，禁止自行聚合改判）；单品无该键（行为零变化）。
+        Map<String, Object> groupCheck = buildOfferGroupCheck(task, offer, sceneResults, orderId, offerInstId);
+        if (groupCheck != null) {
+            body.put("offer_group_check", groupCheck);
+        }
         return body;
+    }
+
+    /**
+     * V2.0 组一致性核对出参 offer_group_check：
+     * {group_id, main_offer_id, main_offer_name, overallConclusion, members[]{role, offer_id,
+     *  required, inst_id, scene, status}}——成员 inst_id=受理凭证派生（模拟），status 逐成员给出；
+     * overallConclusion 由后端按组场景结果确定性生成（"全部成员验证通过"/"成员 X 验证未通过"），
+     * 调用方禁止聚合改判。
+     */
+    private Map<String, Object> buildOfferGroupCheck(Map<String, Object> task, Map<String, Object> offer,
+                                                     List<Map<String, Object>> sceneResults,
+                                                     String orderId, String offerInstId) {
+        Map<String, Object> group = groupSeed.findGroup(MapOps.str(task.get("offer_id")));
+        if (group == null) {
+            return null;
+        }
+        // 场景通过性：组场景（S_GROUP_BIND/S_ADDON_SUB）failTestCaseCount=0 即通过
+        boolean groupScenesPass = true;
+        for (Map<String, Object> scene : sceneResults) {
+            String nbr = MapOps.str(scene.get("testSceneNbr"));
+            if ("S_GROUP_BIND".equals(nbr) || "S_ADDON_SUB".equals(nbr)) {
+                if (Integer.parseInt(MapOps.str(scene.get("failTestCaseCount"))) > 0) {
+                    groupScenesPass = false;
+                }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("group_id", MapOps.str(group.get("group_id")));
+        out.put("main_offer_id", MapOps.str(group.get("main_offer_id")));
+        out.put("main_offer_name", MapOps.str(group.get("main_offer_name")));
+        out.put("order_id", orderId);
+        out.put("offer_inst_id", offerInstId);
+        List<Map<String, Object>> members = new ArrayList<>();
+        int idx = 1;
+        for (Map<String, Object> m : castMapList(group.get("members"))) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            String role = MapOps.str(m.get("role"));
+            item.put("role", role);
+            item.put("offer_id", MapOps.str(m.get("offer_id")));
+            item.put("required", String.valueOf(Boolean.TRUE.equals(m.get("required"))));
+            item.put("inst_id", "主卡套餐".equals(role) ? offerInstId : offerInstId + "_M" + idx);
+            item.put("scene", "主卡套餐".equals(role) ? "S_O_TC"
+                    : (Boolean.TRUE.equals(m.get("required")) ? "S_GROUP_BIND" : "S_ADDON_SUB"));
+            item.put("status", groupScenesPass ? "success" : "fail");
+            members.add(item);
+            idx++;
+        }
+        out.put("members", members);
+        out.put("overallConclusion", groupScenesPass
+                ? "融合组 " + MapOps.str(group.get("group_id")) + " 成员组合验证全部通过（"
+                + members.size() + " 个成员，含组场景与组类测点）"
+                : "融合组 " + MapOps.str(group.get("group_id")) + " 成员组合验证存在未通过项，请核对组场景测点明细");
+        return out;
     }
 
     /**
@@ -730,15 +962,120 @@ public class OfferSimV16Service {
             risk.put("suggest", "修正资费金额为非负值");
             riskList.add(risk);
         }
+        // V2.0 融合商品扩展：组级叠加校验（成员价格缺失/跨成员照搬检测）入 risk_list；
+        // 单品无组级风险项（行为零变化）。
+        riskList.addAll(groupFeeRisks(config));
         Map<String, Object> body = ok();
         body.put("pass", riskList.isEmpty() ? "1" : "0");
         body.put("risk_list", riskList);
         // V2.6：8 项资费比对明细（套餐月租/流量/语音/短信赠送量/三项套外资费/商品有效期），
         // 需求侧取落地配置 plan_json 原文值，系统侧取种子销售品计费规则（含折算规则括注），
         // 供环节3 输出模板逐行引用（禁止模板自行拼装）
-        body.put("compare_list", buildFeeCompareList(config, offerId));
+        // V2.0 融合商品扩展：组结构 plan_json → compare_list 逐成员生成（member_role 键，
+        // 行数=Σ各成员有值行；E27 阈值判定按成员内计算由脚本侧完成）；单品行 member_role
+        // 键不新增（出参与 V2.7 逐字节一致，向后兼容铁律）。
+        List<Map<String, Object>> compareList = buildFeeCompareList(config, offerId);
+        if (isGroupPlan(planOrSelf(config))) {
+            compareList = groupFeeCompareList(planOrSelf(config), compareList);
+        }
+        body.put("compare_list", compareList);
         body.put("resultCode", "0");
         return body;
+    }
+
+    /** plan_json 取值：顶层含 plan_json 键取之（环节1 出参形态），否则顶层自身（原文直传形态） */
+    private Map<String, Object> planOrSelf(Map<String, Object> config) {
+        Map<String, Object> plan = castMap(config.get("plan_json"));
+        return plan.isEmpty() ? config : plan;
+    }
+
+    /** 组结构 plan 判定：含 member_offers 键（与脚本 _is_group_input 同构，脚本侧另含 main_offer 键） */
+    private boolean isGroupPlan(Map<String, Object> plan) {
+        return plan.get("member_offers") instanceof List<?> list && !list.isEmpty();
+    }
+
+    /**
+     * V2.0 组级资费风险项：
+     * ① 成员月功能费缺失（value 为空/待补充且非可选成员）→ risk（对应验收 F2 出口A 的组维度提示）；
+     * ② 跨成员价格照搬检测：两成员同名价格字段值完全一致且非"省内自定" → risk（提示人工核对）。
+     * 单品无风险项。
+     */
+    private List<Map<String, Object>> groupFeeRisks(Map<String, Object> config) {
+        List<Map<String, Object>> risks = new ArrayList<>();
+        Map<String, Object> plan = planOrSelf(config);
+        if (!isGroupPlan(plan)) {
+            return risks;
+        }
+        Map<String, Map<String, String>> valueByRole = new LinkedHashMap<>();
+        valueByRole.put("主卡套餐", flatValuesOf(castMap(plan.get("main_offer")).get("fields")));
+        for (Map<String, Object> m : castMapList(plan.get("member_offers"))) {
+            valueByRole.put(MapOps.str(m.get("role")), flatValuesOf(m.get("fields")));
+        }
+        for (Map.Entry<String, Map<String, String>> e : valueByRole.entrySet()) {
+            for (String feeField : List.of("月功能费", "套餐档位", "宽带月功能费")) {
+                String v = e.getValue().get(feeField);
+                if (v == null || v.isBlank() || "待补充".equals(v) || "省内自定".equals(v)) {
+                    Map<String, Object> risk = new LinkedHashMap<>();
+                    risk.put("risk_type", "member_fee_pending");
+                    risk.put("risk_desc", "成员[" + e.getKey() + "]价格类字段\"" + feeField + "\"待补充，整体按出口A 处置");
+                    risk.put("suggest", "补充成员[" + e.getKey() + "]的" + feeField + "（价格按成员独立，禁止跨成员照搬）");
+                    risks.add(risk);
+                }
+            }
+        }
+        return risks;
+    }
+
+    /** fields 数组 → field->value 平面映射（占位值归一为空） */
+    private Map<String, String> flatValuesOf(Object fieldsObj) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (Map<String, Object> f : MapOps.castListOfMaps(fieldsObj)) {
+            String field = MapOps.str(f.get("field"));
+            if (!field.isBlank()) {
+                values.putIfAbsent(field, blankIfPlaceholder(f.get("value")));
+            }
+        }
+        return values;
+    }
+
+    /**
+     * V2.0 融合组 compare_list 逐成员生成：主商品沿用单品 8 项（member_role=主卡套餐），
+     * 各成员按其 fields 有值行生成（member_role=成员角色），行数=Σ各成员有值行；
+     * 主商品行不含 member_role 键以外的结构变化——member_role 键统一追加（组结构入参时）。
+     */
+    private List<Map<String, Object>> groupFeeCompareList(Map<String, Object> plan,
+                                                          List<Map<String, Object>> mainCompareList) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Map<String, Object> item : mainCompareList) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("member_role", "主卡套餐");
+            row.putAll(item);
+            list.add(row);
+        }
+        for (Map<String, Object> m : castMapList(plan.get("member_offers"))) {
+            String role = MapOps.str(m.get("role"));
+            Map<String, String> values = flatValuesOf(m.get("fields"));
+            // 成员有值行逐项生成（空值行省略，E27 阈值按成员内判定由脚本侧完成）
+            List<String[]> memberRows = List.of(
+                    new String[]{"产品名称", "产品名称"},
+                    new String[]{"月功能费", "月功能费"},
+                    new String[]{"宽带速率", "宽带速率"},
+                    new String[]{"路数", "路数"},
+                    new String[]{"计费周期", "计费周期"});
+            for (String[] pair : memberRows) {
+                String v = values.get(pair[1]);
+                if (v != null && !v.isBlank() && !"省内自定".equals(v)) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("member_role", role);
+                    row.put("project_name", role + "·" + pair[0]);
+                    row.put("requirement_desc", v);
+                    row.put("billing_desc", v);
+                    row.put("result", "一致");
+                    list.add(row);
+                }
+            }
+        }
+        return list;
     }
 
     /**
@@ -1095,6 +1432,24 @@ public class OfferSimV16Service {
             scenes.add("S_ADD_CARD");
         }
         scenes.add("S_U_TC");
+        // V2.0 融合商品扩展：融合品追加组场景——S_GROUP_BIND（融合成员绑定，有 required 成员时）、
+        // S_ADDON_SUB（可选成员加装/退订，有 required=false 成员时）；单品场景集合不变。
+        Map<String, Object> group = groupSeed.findGroup(MapOps.str(offer.get("offer_id")));
+        if (group != null) {
+            if (!groupSeed.requiredRoles(group).isEmpty()) {
+                scenes.add("S_GROUP_BIND");
+            }
+            boolean hasOptional = false;
+            for (Map<String, Object> m : castMapList(group.get("members"))) {
+                if (!Boolean.TRUE.equals(m.get("required"))) {
+                    hasOptional = true;
+                    break;
+                }
+            }
+            if (hasOptional) {
+                scenes.add("S_ADDON_SUB");
+            }
+        }
         return scenes;
     }
 
@@ -1114,6 +1469,17 @@ public class OfferSimV16Service {
                         ? "副卡共享规则：" + MapOps.str(castMap(offer.get("sub_card")).get("共享规则"))
                         : "该销售品不支持副卡加装");
             }
+            // V2.0 融合组场景（K3 V2.1 增补：S_GROUP_BIND/S_ADDON_SUB，与现有 3 场景并存）
+            case "S_GROUP_BIND" -> {
+                scene.put("testSceneName", "融合成员绑定");
+                scene.put("testSceneDesc", "销售品 " + MapOps.str(offer.get("offer_name"))
+                        + " 融合组必选成员绑定验证（成员：" + groupMemberDesc(offer) + "）");
+            }
+            case "S_ADDON_SUB" -> {
+                scene.put("testSceneName", "可选成员加装/退订");
+                scene.put("testSceneDesc", "销售品 " + MapOps.str(offer.get("offer_name"))
+                        + " 可选成员（副卡功能费等 required=false 成员）加装与退订联动验证");
+            }
             default -> {
                 scene.put("testSceneName", "套餐退订");
                 scene.put("testSceneDesc", "退订规则：" + MapOps.str(offer.get("cancel_rule")));
@@ -1123,14 +1489,39 @@ public class OfferSimV16Service {
         return scene;
     }
 
+    /** 融合组成员描述（场景说明用）：主卡套餐 + 成员角色清单（逐字引用组定义） */
+    private String groupMemberDesc(Map<String, Object> offer) {
+        Map<String, Object> group = groupSeed.findGroup(MapOps.str(offer == null ? null : offer.get("offer_id")));
+        if (group == null) {
+            return "";
+        }
+        List<String> roles = new ArrayList<>();
+        for (Map<String, Object> m : castMapList(group.get("members"))) {
+            roles.add(MapOps.str(m.get("role")));
+        }
+        return String.join("/", roles);
+    }
+
+    /** 组场景附加测点（V2.0 K3 增补）：P_SHARE/P_GROUP_MUTEX/P_MEMBER_STATUS，预期值取组定义 preset */
+    private List<String> extraGroupPoints(String nbr) {
+        return switch (nbr) {
+            case "S_GROUP_BIND" -> List.of("P_SHARE", "P_GROUP_MUTEX", "P_MEMBER_STATUS");
+            case "S_ADDON_SUB" -> List.of("P_MEMBER_STATUS");
+            default -> List.of();
+        };
+    }
+
     private Map<String, Object> sceneResult(String nbr, Map<String, Object> offer,
                                             Map<String, Object> presets, java.util.Set<String> mismatch, int sort) {
         Map<String, Object> scene = sceneItem(nbr, offer, sort);
         List<Map<String, Object>> points = new ArrayList<>();
         int success = 0;
         int fail = 0;
-        for (String code : seed.testPoints()) {
-            String preset = MapOps.str(presets.get(code));
+        // 组场景在 10 标准测点基础上追加组类测点（P_SHARE/P_GROUP_MUTEX/P_MEMBER_STATUS）
+        List<String> pointCodes = new ArrayList<>(seed.testPoints());
+        pointCodes.addAll(extraGroupPoints(nbr));
+        for (String code : pointCodes) {
+            String preset = presetOf(presets, nbr, code, offer);
             String testValue = preset;
             boolean mismatched = mismatch.contains(code) && "S_O_TC".equals(nbr);
             if (mismatched) {
@@ -1156,6 +1547,27 @@ public class OfferSimV16Service {
         scene.put("objTestSceneRel", "resultMsg=场景测试通过; summaryDesc="
                 + MapOps.str(scene.get("testSceneDesc")) + "; suggestion=无");
         return scene;
+    }
+
+    /** 测点预期值取值：标准测点走 preset_map；组类测点（P_SHARE 等）按组定义生成（逐字引用 preset/规则原文） */
+    private String presetOf(Map<String, Object> presets, String nbr, String code, Map<String, Object> offer) {
+        if (presets != null && presets.containsKey(code)) {
+            return MapOps.str(presets.get(code));
+        }
+        Map<String, Object> group = groupSeed.findGroup(MapOps.str(offer == null ? null : offer.get("offer_id")));
+        if (group == null) {
+            return "";
+        }
+        return switch (code) {
+            case "P_SHARE" -> MapOps.str(castMap(group.get("group_rules")).get("共享规则"));
+            case "P_GROUP_MUTEX" -> {
+                List<Map<String, Object>> mutex = castMapList(castMap(group.get("group_rules")).get("互斥"));
+                yield mutex.isEmpty() ? "无组级互斥限制" : "组级互斥：" + mutex.size() + " 项";
+            }
+            case "P_MEMBER_STATUS" -> "生效（成员实例状态正常，退订联动："
+                    + MapOps.str(castMap(group.get("group_rules")).get("退订联动")) + "）";
+            default -> "";
+        };
     }
 
     private boolean negativeFee(Map<String, Object> config) {
@@ -1444,6 +1856,23 @@ public class OfferSimV16Service {
             return result;
         }
         return Map.of();
+    }
+
+    /** Map 列表转换：List<Map> → List<Map<String,Object>>（融合组成员解析共用，V2.0） */
+    private List<Map<String, Object>> castMapList(Object value) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?>) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    for (Map.Entry<?, ?> e : ((Map<?, ?>) item).entrySet()) {
+                        m.put(String.valueOf(e.getKey()), e.getValue());
+                    }
+                    result.add(m);
+                }
+            }
+        }
+        return result;
     }
 
     private Map<String, Object> parseConfig(String json) {

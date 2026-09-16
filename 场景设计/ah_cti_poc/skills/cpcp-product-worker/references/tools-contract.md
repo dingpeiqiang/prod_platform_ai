@@ -8,6 +8,7 @@
 - 错误码：`PARAM_MISSING`（必填缺失）/ `HTTP_<状态码>` / `NET_ERROR` / `TIMEOUT` / `PARSE_ERROR`；
 - 模拟结果兼容性：存量种子数据=18 个销售品（5G-A 系列 10 个 + 权益随心选系列 8 个），存量品任一套餐输入均返回与该销售品资费规则一致的结构化结果；**新增产品链路（方案A）：落地时生成全新 offer_id 并按 plan_json 构造独立销售品档案，后续稽核/测试/校准按该档案返回，不再复用存量销售品编码或被种子数据覆盖**；测试预期值 presetValue：存量品取 preset_map，新增品按落地档案自动生成；未收录销售品不返回伪造数据；
 - **种子数据匹配边界（E26 依据）**：出参 offerName/offerId 与被测配置不一致仍须在环节4 按被测一致性预校验核对（见 flow-B 环节4 / exception-matrix E26）；
+- **V4.0 融合组兼容约定（可缺席回退）**：融合组扩展字段（`offer_group`/`group`/`member_role`/`offer_group_check`/`group_violations`）在单商品链路**全部缺席**，缺席时行为与历史版本一致；融合组成员构成唯一数据源=`similar_offer` 出参 `offer_group`（seed_offer_groups.json 为 POC 抽取来源），模型禁止自行推理成员关系（SKILL.md 纪律9）；
 - **大报文传参约定**：>1KB 的 JSON 一律走 `--xxx-file` 会话工件（SKILL.md 纪律8 / flow-B 术语速查），禁止命令行内联。
 
 ## 工具1 相似度分析 `similar_offer`
@@ -16,12 +17,13 @@
 - 出参：`resultCode`(0/1)、`resultMsg`、`similarOffer`(object，仅相似度最高 1 个，未命中为空对象)
   - `similarOfferId` / `similarOfferName` / `similarityScore`(0~1) / `similarityDesc`
   - `offerInfo`：完整产品配置信息（与需求要素同构：fields 3 模块/9 分类 24 字段数组 + similarOfferId/similarOfferName/series/sub_type 溯源键），后端 toFields24 转换
+  - **`offer_group`（V4.0 新增，命中融合品时）**：组结构下发（group_id/main_offer_id/members[]{role,offer_id,required,dependency?,preset?}/group_rules{共享规则/互斥/依赖/退订联动}），成员构成唯一数据源（模型禁止增删成员）；单品命中时无本键
 - 错误处理：resultCode=1 时走"无相似产品"分支（E1：**中断询问用户**，回复【继续】降级补全/【修改需求】重提，禁止自动降级）
 
 ## 工具2 实时规格稽核 `spec_audit`
 - POST `/api/v1/appstore/audit/realtime`
 - 入参：`offer_id`(必填,"缺少销售品ID，请先完成配置落地")、`config_json`(必填,"缺少落地配置JSON，请先完成配置落地"；**=环节1 配置原文 plan_json，经 --config-json-file 引用会话工件传入**)、`audit_scene`(选填,spec/fee/all,默认all)
-- 出参：`pass`(1/0)、`error_list[]`(item/level=error|warning/desc/suggest)、`audit_summary`、`resultCode`(0/1/NET_ERROR/TIMEOUT)
+- 出参：`pass`(1/0)、`error_list[]`(item/level=error|warning/desc/suggest；**V4.0 融合组：组级检查项 item 形如 `group:<role>`**)、`audit_summary`、`resultCode`(0/1/NET_ERROR/TIMEOUT)
 - 超时 60s；传输层重试脚本内置（共 3 次尝试）；pass=0 → E8 中断；超时/网络耗尽 → E7/E29（保留请求报文供人工重放）
 
 ## 工具3 测试发起 `offer_test`
@@ -33,7 +35,7 @@
 ## 工具4 查询测试场景 `test_scenes`
 - POST `/api/v1/appstore/test/offer/scenes`
 - 入参：`globalId`(必填,"缺少测试流水号，请先发起测试")
-- 出参：`resultCode`、`testScenes[]`(testSceneId/testSceneName/testSceneNbr=S_O_TC|S_ADD_CARD|S_U_TC/testSceneDesc/sort)
+- 出参：`resultCode`、`testScenes[]`(testSceneId/testSceneName/testSceneNbr=S_O_TC|S_ADD_CARD|S_U_TC|**S_GROUP_BIND|S_ADDON_SUB**(V4.0 融合组)/testSceneDesc/sort)
 - testScenes=[] → E11 终止："该销售品未匹配到测试场景，请检查销售品配置"
 
 ## 工具5 查询测试进度 `test_progress`
@@ -49,6 +51,7 @@
   - `offerName` 同时用作**被测一致性预校验（E26）**依据：与环节1 出参 offer_id 对应的被测配置套餐名称核对，不一致 → 主干中断（见 flow-B 环节4）；
   - `testScenes[]`：testSceneNbr/Name/Desc、testCaseCount、successTestCaseCount、failTestCaseCount、testCasePointResults[](testPointNbr/presetValue/testValue/resultCode=0一致|1不一致/resultMsg)、objTestSceneRel(resultMsg/summaryDesc/suggestion)
   - **`testCases[]`（V2.9 新增）**：31 条固定用例逐条结论（caseId/caseName/level/result），后端按 K3 规范第4章判定依据确定性生成，是 `map_fixed_cases` 的首选数据源（脚本存在该出参时原样透出，不再本地映射）；result 取值 ✅/❌/本销售品未覆盖
+  - **`offer_group_check`（V4.0 新增，融合品时）**：组一致性结果（main_offer_id/members[]{role,offer_id,inst_id?,状态}），环节4"成员组合验证"小节与 E26 组核对唯一数据源；单品时无本键
 - orderId/offerInstId 为空 → 报告标注"未获取到受理凭证，需人工核实"（E14，不中断）
 - **报告归档（V2.7）**：测试完成查询结果时后端按出参原文归档正式版报告 Markdown（完整 9 章节结构，对齐 K3测试_销售品自动化测试报告模板_V2.0.md：12 项基础信息 + 三大验证 31 条固定用例 ACC-001~012/BILL-001~010/CUST-001~009 + P0/P1/P2 分级 + 缺陷清单/风险汇总/整改建议 + 三选一整体上线结论），同 globalId 覆盖刷新；对话输出须附 report_url 下载图标行
 
@@ -62,7 +65,7 @@
 ## 工具7 配置落地 `save_product_config`
 - POST `/api/v1/appstore/product/config/save`
 - 入参：`req_id`(必填,"缺少执行方案key，请先完成需求分析并确认执行方案")、`plan_json`(必填,存储取回的 JSON 原文原样透传)、`operator`(选填)、`confirmed`(兼容字段，后端仅记录不校验)
-- 出参：`product_id`、`offer_id`（**本次配置落地生成/分配的销售品 ID，V2.8 起必须在环节1 输出中显性回显**（flow-B 环节1"offer_id 显性回显纪律"），并作为环节2/环节4 `--offer-id` 与程序C 汇总的唯一入参来源，禁止省略回显或语义转述）、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.6 起为**绝对 URL**，后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`，此时脚本层拼接 BASE_URL 前缀)
+- 出参：`product_id`、`offer_id`（**本次配置落地生成/分配的销售品 ID，V2.8 起必须在环节1 输出中显性回显**（flow-B 环节1"offer_id 显性回显纪律"），并作为环节2/环节4 `--offer-id` 与程序C 汇总的唯一入参来源，禁止省略回显或语义转述）、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.6 起为**绝对 URL**，后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`，此时脚本层拼接 BASE_URL 前缀)、**`group`（V4.0 新增，组结构 plan_json 时）**：主 offer_id + members[]{role,offer_id,product_id}，环节1"融合成员"回显行唯一数据源；单商品时无本键
 - 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等（重放时按本次请求头重写 script_url，保证链接始终可用）；确认门禁已移除（V2.2）；落地成功时同步生成 CRM/billing 落库 SQL 脚本（模拟）
 - **附带下载路由**：GET `/api/v1/appstore/product/config/script?product_id=Pxxx` → text/plain（附件名 launch_Pxxx.sql），返回后端生成的两段式 SQL（/*run@crm*/ 定价信息段 + /*run@billing*/ 优惠/累计段）；product_id 未落地返回 404
 
@@ -76,8 +79,8 @@
 ## 工具8 计费规则校验 `billing_verify`
 - POST `/api/v1/appstore/billing/rules/verify`
 - 入参：`config_json`(必填，**=环节1 配置原文 plan_json，经 --config-json-file 引用会话工件传入**)、`check_scene`(选填,fee/overlay/superposition/all,默认all)
-- 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)、`compare_list[]`(V2.6 新增，8 项资费比对明细：project_name=套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期、requirement_desc=需求侧值（取落地配置 plan_json 字段原文）、billing_desc=系统侧值（含折算括注如"29元（首月按天折算）"、"长期有效（自动续展）"）、result=一致/不一致)
-- 60s；传输层重试脚本内置（共 3 次尝试）；pass=0 → E9 资费驳回分支；环节3 比对表逐行引用 compare_list（禁止模板自行拼装）；desc 系统性为空 → E27（见 exception-matrix）
+- 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)、`compare_list[]`(V2.6 新增，8 项资费比对明细：project_name=套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期、requirement_desc=需求侧值（取落地配置 plan_json 字段原文）、billing_desc=系统侧值（含折算括注如"29元（首月按天折算）"、"长期有效（自动续展）"）、result=一致/不一致；**V4.0 融合组：逐成员生成，每项新增 `member_role` 键**（主卡套餐/宽带/天翼高清/副卡功能费/权益包/其他），单商品时缺省）
+- 60s；传输层重试脚本内置（共 3 次尝试）；pass=0 → E9 资费驳回分支；环节3 比对表逐行引用 compare_list（禁止模板自行拼装）；desc 系统性为空 → E27（见 exception-matrix，V4.0 融合组阈值逐成员内计算）
 
 ## 工具9 上线审批推送 `submit_approval`
 - POST `/api/v1/appstore/approval/submit`
@@ -103,8 +106,9 @@
 - 查无审批单 → E21："未找到该销售品的审批单，请确认是否已发起审批"
 
 ## 工具14 字段本体推理 `ontology_reason`
-- POST `/api/v1/appstore/ontology/fields`（action=reason 一体推理）
+- POST `/api/v1/appstore/ontology/fields`（action=reason 一体推理；**V4.0 新增 action=group_check 组级校验**）
 - 入参：`action`=reason、`fields`(24 项字段数组 JSON（3 模块/9 分类，字段名逐字对照 ontology-fields.md 注册表）；**V2.9 起字段项可附 `remark` 键**=用户语义澄清原话，如"11月1日生效=商品发布时间，非生效方式字段")
+  - **V4.0 融合组入参**：`fields` 传组结构 `{offer_type, main_offer:{role,fields}, member_offers:[{role,fields}], group_rules}` 时脚本自动逐成员 reason + 组级 group_check，出参新增 `group.group_violations[]`（item/level/desc/suggest，处置规则同 violations）；单商品扁平入参行为不变
 - 出参：推理后 `fields_json`（含修正回写与默认值补全，source 改标"本体推理"，build_plan 归一显示为【AI补全】）、`fixed[]`(修正明细，defaulted=0 时为 fixed 动作结构)、`violations[]`；**V2.9 新增**：字段带排他性备注（含"非/不属于/不是…时间/字段/口径/方式/语义/范畴"）时引擎跳过该字段校验（fixed 记 `action=remark_excluded`，不生成 violation），且脚本自动从 fields_json 剔除该字段并在出参 `remark_excluded_fields` 列出字段名——被剔除值不进入执行方案
 - 修正能力（按 V3.0 24 字段注册表）：枚举归一（月付/包月→后付费）、渠道同义词映射（营业厅/门店/实体→实体渠道；APP/网厅/线上/电子→电子渠道；直销/客户经理/政企→直销渠道）、套餐档位金额归一（"312元/月"→"312元"）、资源缺单位补全（60G→60GB）、套餐名称去首尾空白（口语名保留，不强制 K1 模板）
 - 默认值补全（按注册表）：套餐属性→主资费、计费周期→自然月、套餐有效期→长期有效、到期处理方式→自动续订、适用用户→新老用户均可订购、销售渠道→三者全选、三类资源→无、是否允许办理副卡→允许、套外资费三项→无、新入网生效方式→立即生效、老用户生效方式→次月1日生效、过渡期资费规则→按日（当月实际天数）计扣、套餐变更范围→可变更至中国电信其他在售套餐、变更生效方式→次月1号生效、退订规则→允许退订次月生效、付费方式→后付费、支付方式→账单支付、流量结转规则→结转、断网授权→套外流量使用至600元时暂停上网、套餐编码→系统待生成；**仅套餐档位维持"待补充"**
