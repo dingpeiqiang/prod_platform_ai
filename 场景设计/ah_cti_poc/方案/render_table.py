@@ -25,6 +25,7 @@ import sys
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")  # 技术字段不出现在业务表格
+SYSTEM_GEN_KEYS = ("orderNo",)  # 系统自动生成字段（智能配置环节生成），不计入待补充
 
 INDENT_UNIT = "　"  # 全角空格缩进
 
@@ -37,12 +38,15 @@ OVERVIEW_PATHS = (
 
 
 def has_business_value(sub_schema, sub_data):
-    """容器是否含业务值（含子容器递归）；纯未填写段不渲染。"""
-    if isinstance(sub_data, dict) and sub_data:
-        return True
-    for sub in sub_schema.get("properties", {}).values():
-        if sub.get("type") == "object" and has_business_value(sub, {}):
-            return True
+    """容器是否含业务值（递归到叶子）；纯空容器（全叶子为空/无值）不渲染。
+
+    注：空容器中 x-required 子字段的缺失已由 collect() 计入【待补充字段】，
+    正文不需要为它们渲染空分组标题。"""
+    if isinstance(sub_data, dict):
+        for v in sub_data.values():
+            if v not in ("", None, [], {}):
+                return True
+        return False
     return False
 
 
@@ -79,7 +83,7 @@ def collect(schema, data, pending):
                 if key in SKIP_KEYS or not isinstance(obj_data, dict):
                     continue
                 if key not in obj_data or obj_data[key] in ("", None):
-                    if sub.get("x-required"):
+                    if sub.get("x-required") and key not in SYSTEM_GEN_KEYS:
                         pending.append((INDENT_UNIT * depth) + label)
                     continue
                 val = fmt_value(obj_data[key])
@@ -95,7 +99,7 @@ def collect(schema, data, pending):
     top = {"title": "", "sub": "", "rows": []}
     sections.append(top)
     walk(schema, data, 0, "", top)
-    return [s for s in sections if s["rows"] or s["title"]]
+    return [s for s in sections if s["rows"]]
 
 
 def get_path(data, dotted):

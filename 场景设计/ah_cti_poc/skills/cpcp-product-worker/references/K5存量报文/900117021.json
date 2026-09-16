@@ -22,8 +22,8 @@
   },
   "releaseInfo": {
    "chnClassLimit": "实体渠道、电子渠道、直销渠道",
-   "groupId": "",
-   "groupIdMessage": ""
+   "groupId": "全省",
+   "groupIdMessage": "22个地市"
   },
   "optionalInfo": {
    "printContent": {
@@ -84,7 +84,7 @@
     "unit": "GB",
     "sid": "",
     "periodUnit": "月（自然）",
-    "period": "",
+    "period": 1,
     "adjust": "账务连带",
     "carryFlag": "否",
     "remindFlag": "提醒"
