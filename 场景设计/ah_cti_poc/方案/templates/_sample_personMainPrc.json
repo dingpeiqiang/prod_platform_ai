@@ -1,0 +1,35 @@
+{
+ "personMainPrc": {
+  "baseInfo": {
+   "prodPrcName": "测试资费",
+   "effRuleId": "1001",
+   "expRuleId": "1023",
+   "effDate": "20230907",
+   "expDate": "20991231",
+   "prodId": "APAP00001",
+   "prodPrcId": "ACAG00001",
+   "orderNo": "20230823197104"
+  },
+  "releaseInfo": {
+   "chnClassLimit": "A7",
+   "groupId": "10001",
+   "groupIdMessage": "2,3"
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": "40元/月",
+    "containResource": "6元/月，包含优酷视频彩铃订阅包会员，订购后立即生效，按月自动续订",
+    "chargeStandard": "0.29元/MB",
+    "limitCondition": "四川省范围内使用（立即生效，7天内有效）",
+    "otherEquity": "订购有效期内，享受和教育智慧家校权益"
+   },
+   "prcSmsCfg": {
+    "opType": "0",
+    "sysNoteNow": "立即成功短信内容",
+    "sysNoteNext": "预约成功短信内容",
+    "sysNoteCancle": "退订短信内容",
+    "sysNoteErke": "前台二确短信内容"
+   }
+  }
+ }
+}

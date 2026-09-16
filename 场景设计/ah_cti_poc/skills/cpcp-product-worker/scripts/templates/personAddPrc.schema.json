@@ -1,0 +1,1041 @@
+{
+ "type": "object",
+ "properties": {
+  "baseInfo": {
+   "type": "object",
+   "properties": {
+    "prodPrcName": {
+     "type": "string",
+     "x-label": "资费名称",
+     "x-element": "文本框",
+     "description": "按资费表字符长度限制",
+     "x-hint": "按资费表字符长度限制",
+     "x-required": true
+    },
+    "effRuleId": {
+     "type": "string",
+     "x-label": "订购生效方式",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "立即生效、预约生效"
+     ],
+     "x-required": true
+    },
+    "cancelRuleId": {
+     "type": "string",
+     "x-label": "退订生效方式",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "立即生效、预约生效"
+     ],
+     "x-required": true
+    },
+    "prcEffCycle": {
+     "type": "string",
+     "x-label": "资费有效周期",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "长期有效、相对时间、绝对时间"
+     ],
+     "x-required": true
+    },
+    "prcEffType": {
+     "type": "string",
+     "x-label": "资费有效期类型",
+     "x-element": "下拉框",
+     "description": "“资费有效周期”选择相对时间展示",
+     "enum": [
+      "月、天、小时"
+     ],
+     "x-required": true
+    },
+    "prcEffNum": {
+     "type": "number",
+     "x-label": "资费有效期值",
+     "x-element": "文本框",
+     "description": "“资费有效周期”选择相对时间展示，校验正整数",
+     "x-required": true
+    },
+    "prcEffDate": {
+     "type": "string",
+     "x-label": "资费有效期",
+     "x-element": "文本框",
+     "description": "1、“资费有效周期”选择绝对时间展示\n2、右侧有时间选择组件，选择后按yyyymmdd带入文本框",
+     "x-required": true
+    },
+    "effDate": {
+     "type": "string",
+     "x-label": "销售开始日期",
+     "x-element": "文本框",
+     "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
+     "x-hint": "默认当前时间",
+     "x-required": true
+    },
+    "expDate": {
+     "type": "string",
+     "x-label": "销售终止日期",
+     "x-element": "文本框",
+     "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
+     "x-hint": "默认20991231",
+     "x-required": true
+    },
+    "effNum": {
+     "type": "number",
+     "x-label": "允许重复订购数量",
+     "x-element": "文本框",
+     "description": "校验1-99之间正整数",
+     "x-required": true
+    },
+    "planFlag": {
+     "type": "string",
+     "x-label": "是否5G资费",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "否、是"
+     ],
+     "x-required": true
+    },
+    "f_5G速率5GUser": {
+     "type": "string",
+     "x-label": "5G速率（5GUser）",
+     "x-element": "下拉框",
+     "description": "\"是否5G资费\"选择是展示",
+     "enum": [
+      "500M、1G、2G"
+     ],
+     "x-required": true
+    },
+    "unifiedQryCancle": {
+     "type": "string",
+     "x-label": "0000统一查询退订",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "否、是"
+     ],
+     "x-required": true
+    },
+    "reFeeFlag": {
+     "type": "string",
+     "x-label": "重复订购重复收费",
+     "x-element": "下拉框",
+     "description": "",
+     "enum": [
+      "否、是"
+     ],
+     "x-required": true
+    },
+    "prodId": {
+     "type": "string",
+     "x-label": "产品代码",
+     "x-element": "文本框",
+     "description": "页面隐藏元素",
+     "x-required": true
+    },
+    "pricingId": {
+     "type": "string",
+     "x-label": "拆分代码",
+     "x-element": "text",
+     "description": "",
+     "x-scene": "查询请求和返回必填字段"
+    },
+    "prodPrcId": {
+     "type": "string",
+     "x-label": "资费代码",
+     "x-element": "文本框",
+     "description": "页面隐藏元素",
+     "x-required": true
+    },
+    "orderNo": {
+     "type": "string",
+     "x-label": "工单编号",
+     "x-element": "下拉搜索框",
+     "description": "调用需求管理平台接口查询工单编号，支持模糊搜索",
+     "x-required": true
+    }
+   },
+   "x-label": "基础信息",
+   "required": [
+    "orderNo",
+    "prodPrcName",
+    "effRuleId",
+    "cancelRuleId",
+    "prcEffCycle",
+    "prcEffType",
+    "prcEffNum",
+    "prcEffDate",
+    "effDate",
+    "expDate",
+    "effNum",
+    "planFlag",
+    "f_5G速率5GUser",
+    "unifiedQryCancle",
+    "reFeeFlag",
+    "prodId",
+    "prodPrcId"
+   ]
+  },
+  "releaseInfo": {
+   "type": "object",
+   "properties": {
+    "chnClassLimit": {
+     "type": "string",
+     "x-label": "发布渠道",
+     "x-element": "多选框",
+     "description": "营业前台（含电子渠道、电子渠道不可同时选择",
+     "x-required": true
+    },
+    "groupId": {
+     "type": "string",
+     "x-label": "发布地市",
+     "x-element": "单选框",
+     "description": "选择非全省时下方展示22个地市多选框，勾选后实时展示已勾选数量",
+     "enum": [
+      "全省、非全省"
+     ],
+     "x-required": true,
+     "x-show-when": "选择非全省时下方展示22个地市多选框，勾选后实时展示已勾选数量"
+    },
+    "groupIdMessage": {
+     "type": "string",
+     "x-label": "发布地市明细",
+     "x-element": "多选框",
+     "description": "选择非全省时展示",
+     "enum": [
+      "22个地市"
+     ],
+     "x-required": true,
+     "x-show-when": "选择非全省时展示"
+    }
+   },
+   "x-label": "发布信息",
+   "required": [
+    "chnClassLimit",
+    "groupId",
+    "groupIdMessage"
+   ]
+  },
+  "optionalInfo": {
+   "type": "object",
+   "properties": {
+    "printContent": {
+     "type": "object",
+     "properties": {
+      "prcMonthFee": {
+       "type": "number",
+       "x-label": "套餐月费",
+       "x-element": "文本框",
+       "description": "按数据模型限制输入字符长度"
+      },
+      "containResource": {
+       "type": "string",
+       "x-label": "包含资源",
+       "x-element": "文本框",
+       "description": ""
+      },
+      "chargeStandard": {
+       "type": "string",
+       "x-label": "超套收费标准",
+       "x-element": "文本框",
+       "description": ""
+      },
+      "limitCondition": {
+       "type": "string",
+       "x-label": "限定条件",
+       "x-element": "文本框",
+       "description": ""
+      },
+      "otherEquity": {
+       "type": "string",
+       "x-label": "其他权益",
+       "x-element": "文本框",
+       "description": ""
+      }
+     },
+     "x-label": "免填单"
+    },
+    "prcSmsCfg": {
+     "type": "object",
+     "properties": {
+      "opType": {
+       "type": "string",
+       "x-label": "短信内容",
+       "x-element": "多选框",
+       "description": "可选配置勾选“短信提醒”才展示",
+       "x-required": true,
+       "x-show-when": "可选配置勾选“短信提醒”才展示"
+      },
+      "sysNoteNow": {
+       "type": "string",
+       "x-label": "成功短信（立即）",
+       "x-element": "文本框",
+       "description": "勾选“成功短信”才展示，根据数据模型限制长度",
+       "x-show-when": "勾选“成功短信”才展示，根据数据模型限制长度"
+      },
+      "sysNoteNext": {
+       "type": "string",
+       "x-label": "成功短信（预约）",
+       "x-element": "文本框",
+       "description": "勾选“成功短信”才展示，根据数据模型限制长度",
+       "x-show-when": "勾选“成功短信”才展示，根据数据模型限制长度"
+      },
+      "sysNoteCancle": {
+       "type": "string",
+       "x-label": "退订短信",
+       "x-element": "文本框",
+       "description": "勾选“退订短信”才展示，根据数据模型限制长度",
+       "x-show-when": "勾选“退订短信”才展示，根据数据模型限制长度"
+      },
+      "sysNoteExpire": {
+       "type": "string",
+       "x-label": "到期短信",
+       "x-element": "文本框",
+       "description": "勾选“到期短信”才展示，根据数据模型限制长度",
+       "x-show-when": "勾选“到期短信”才展示，根据数据模型限制长度"
+      },
+      "sysNoteErke": {
+       "type": "string",
+       "x-label": "前台二确短信",
+       "x-element": "文本框",
+       "description": "勾选“前台二确短信”才展示，根据数据模型限制长度",
+       "x-show-when": "勾选“前台二确短信”才展示，根据数据模型限制长度"
+      }
+     },
+     "x-label": "短信提醒",
+     "required": [
+      "opType"
+     ]
+    },
+    "acctMonth": {
+     "type": "object",
+     "properties": {
+      "calcMode": {
+       "type": "string",
+       "x-label": "收费方式",
+       "x-element": "下拉框",
+       "description": "首月全额收取，次月按月收取\n首月按天折算一次性收，次月按月收取\n按天收\n按次收\n首月免费,次月按月收取\n首月区分上下半月，次月按月收取\n多月收取（间隔N月收一次）\n",
+       "enum": [
+        "首月全额收取，次月按月收取",
+        "首月按天折算一次性收，次月按月收取",
+        "按天收",
+        "按次收",
+        "首月免费,次月按月收取",
+        "首月区分上下半月，次月按月收取",
+        "多月收取（间隔N月收一次）"
+       ],
+       "x-required": true
+      },
+      "fixCircle": {
+       "type": "number",
+       "x-label": "收费间隔月数",
+       "x-element": "正整数",
+       "description": "当收取方式为多月收取时显示",
+       "x-show-when": "当收取方式为多月收取时显示"
+      },
+      "fixFee": {
+       "type": "number",
+       "x-label": "套餐固定费（元）",
+       "x-element": "文本框",
+       "description": "提示：小数点后2位。并校验最多2位小数的数字",
+       "x-required": true
+      },
+      "acctItem": {
+       "type": "string",
+       "x-label": "收费科目",
+       "x-element": "可模糊检索下拉框",
+       "description": "根据科目名称和科目代码查找一个科目",
+       "x-required": true
+      },
+      "isSplitRate": {
+       "type": "number",
+       "x-label": "税率",
+       "x-element": "下拉框",
+       "description": "0 表示使用默认税率\n1 表示拆分税率",
+       "enum": [
+        "使用默认税率",
+        "拆分税率"
+       ],
+       "x-required": true
+      },
+      "splitRate9": {
+       "type": "number",
+       "x-label": "税率9%占比（语音）",
+       "x-element": "text",
+       "description": "0-1之间的4位小数",
+       "enum": [
+        "并验证4位小数"
+       ],
+       "x-required": true
+      },
+      "splitRate6": {
+       "type": "number",
+       "x-label": "税率6%占比（数据）",
+       "x-element": "文本框",
+       "description": "0-1之间的4位小数",
+       "enum": [
+        "（语音）的值"
+       ],
+       "x-required": true
+      },
+      "fixValidity": {
+       "type": "string",
+       "x-label": "月租有效期",
+       "x-element": "下拉框",
+       "description": "长期有效 0\n订购后，前N个月收费 1\n订购N个月后开始收费 2\n",
+       "enum": [
+        "长期有效",
+        "长期有效 0",
+        "订购后，前N个月收费 1",
+        "订购N个月后开始收费 2"
+       ],
+       "x-required": true
+      },
+      "fixValidityVAlue": {
+       "type": "number",
+       "x-label": "月租有效期值",
+       "x-element": "text",
+       "description": "正整数",
+       "x-show-when": "在月租有效期不是长期有效时显示"
+      }
+     },
+     "x-label": "月租",
+     "required": [
+      "calcMode",
+      "fixFee",
+      "acctItem",
+      "isSplitRate",
+      "splitRate9",
+      "splitRate6",
+      "fixValidity"
+     ]
+    },
+    "acctFav": {
+     "type": "object",
+     "properties": {
+      "favCondition": {
+       "type": "string",
+       "x-label": "优惠条件",
+       "x-element": "下拉框",
+       "description": "无条件优惠（实时优惠）\n优惠月末生效\n仅入网首月优惠\n",
+       "enum": [
+        "无条件优惠（实时优惠）",
+        "优惠月末生效",
+        "仅入网首月优惠"
+       ],
+       "x-required": true
+      },
+      "favItemType": {
+       "type": "string",
+       "x-label": "优惠科目类型",
+       "x-element": "下拉框",
+       "description": "全科目(不包含特殊科目）\n指定科目",
+       "enum": [
+        "全科目(不包含特殊科目）"
+       ],
+       "x-required": true
+      },
+      "favGroup": {
+       "type": "string",
+       "x-label": "导入",
+       "x-element": "按钮",
+       "description": "科目类型为“指定科目”时候显示。支持按照excle格式导入科目列表，并验证科目在后台是否存在，不存在则报错提示某科目不存在。都存在则展示到优惠科目集合，并通过优惠科目集合的参数传入后台"
+      },
+      "favType": {
+       "type": "string",
+       "x-label": "优惠类型",
+       "x-element": "下拉框",
+       "description": "送费\n打折",
+       "enum": [
+        "送费",
+        "打折"
+       ],
+       "x-required": true
+      },
+      "favDiscount": {
+       "type": "number",
+       "x-label": "折扣",
+       "x-element": "数字框",
+       "description": "优惠类型为打折的时候显示；\n提示:请输入0-1之间的2位小数\n并验证是小于1的2位小时",
+       "enum": [
+        "并验证是小于1的2位小时"
+       ],
+       "x-required": true
+      },
+      "favFee": {
+       "type": "number",
+       "x-label": "优惠费用（元）",
+       "x-element": "数字框",
+       "description": "优惠类型为送费的时候显示；\n提示:请输入优惠费用（元）\n并验证优惠费用为数字，最多2位小数",
+       "enum": [
+        "并验证优惠费用为数字，最多2位小数"
+       ],
+       "x-required": true
+      },
+      "favValidity": {
+       "type": "string",
+       "x-label": "优惠有效期",
+       "x-element": "下拉框",
+       "description": "长期有效\n订购后，前N个月有效\n订购N个月后开始有效",
+       "enum": [
+        "长期有效",
+        "订购后，前N个月有效",
+        "订购N个月后开始有效"
+       ],
+       "x-required": true
+      },
+      "favValidityVAlue": {
+       "type": "number",
+       "x-label": "优惠有效期值",
+       "x-element": "文本框",
+       "description": "提示：对应优惠有效期N值\n在优惠有效期不是长期有效时显示，并验证为正整数\n",
+       "x-show-when": "在优惠有效期不是长期有效时显示，并验证为正整数"
+      },
+      "favDesc": {
+       "type": "string",
+       "x-label": "优惠说明",
+       "x-element": "文本框",
+       "description": ""
+      }
+     },
+     "x-label": "账务优惠",
+     "required": [
+      "favCondition",
+      "favItemType",
+      "favType",
+      "favDiscount",
+      "favFee",
+      "favValidity"
+     ]
+    },
+    "dlowFavFee": {
+     "type": "object",
+     "properties": {
+      "fav1Method": {
+       "type": "string",
+       "x-label": "保底方式",
+       "x-element": "下拉框",
+       "description": "实时报保底\n月末保底\n",
+       "enum": [
+        "实时报保底",
+        "月末保底"
+       ],
+       "x-required": true
+      },
+      "fav1Fee": {
+       "type": "number",
+       "x-label": "保底费用（元）",
+       "x-element": "数字框",
+       "description": "提示：最多保留两位小数，并验证",
+       "x-required": true
+      },
+      "fav1ItemType": {
+       "type": "string",
+       "x-label": "保底科目类型",
+       "x-element": "下拉框",
+       "description": "全科目(不包含特殊科目）\n指定科目\n",
+       "enum": [
+        "全科目(不包含特殊科目）"
+       ],
+       "x-required": true
+      },
+      "fav1Group": {
+       "type": "string",
+       "x-label": "导入",
+       "x-element": "按钮",
+       "description": "科目类型为“指定科目”时候显示。支持按照excle格式导入科目列表，并验证科目在后台是否存在，不存在则报错提示某科目不存在。都存在则展示到优惠科目集合，并通过优惠科目集合的参数传入后台"
+      },
+      "fav1Validity": {
+       "type": "string",
+       "x-label": "保底有效期",
+       "x-element": "下拉框",
+       "description": "长期有效\n订购后，前N个月有效\n订购N个月后开始有效",
+       "enum": [
+        "长期有效",
+        "订购后，前N个月有效",
+        "订购N个月后开始有效"
+       ],
+       "x-required": true
+      },
+      "fav1ValidityVAlue": {
+       "type": "number",
+       "x-label": "保底有效期值",
+       "x-element": "文本框",
+       "description": "提示：对应优惠有效期N值\n在优惠有效期不是长期有效时显示，并验证为正整数\n",
+       "x-show-when": "在优惠有效期不是长期有效时显示，并验证为正整数"
+      }
+     },
+     "x-label": "保底(dlowFavFee)",
+     "required": [
+      "fav1Method",
+      "fav1Fee",
+      "fav1ItemType",
+      "fav1Validity"
+     ]
+    },
+    "billGprsCfg": {
+     "type": "object",
+     "properties": {
+      "prodPrc": {
+       "type": "string",
+       "x-label": "拆分资费代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "billPrcId": {
+       "type": "string",
+       "x-label": "二批代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subBillPrcIds": {
+       "type": "string",
+       "x-label": "子记账资费",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "conditionCode": {
+       "type": "string",
+       "x-label": "附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subConditionCodes": {
+       "type": "string",
+       "x-label": "子附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "resourceType": {
+       "type": "string",
+       "x-label": "流量类型",
+       "x-element": "单选框",
+       "description": "1: 通用流量\n2: 内容定向流量",
+       "enum": [
+        "通用流量",
+        "内容定向流量"
+       ],
+       "x-required": true
+      },
+      "location": {
+       "type": "string",
+       "x-label": "地域范围",
+       "x-element": "下拉框",
+       "description": "1：国内流量\n2:   lac小区流量\n3：校园区域流量\n4：基站小区流量",
+       "enum": [
+        "国内流量",
+        "lac小区流量",
+        "校园区域流量",
+        "基站小区流量"
+       ],
+       "default": "国内流量",
+       "x-required": true
+      },
+      "locationCodes": {
+       "type": "string",
+       "x-label": "小区编码",
+       "x-element": "选择框",
+       "description": "该值给CRM配置使用,计费二批配置本身不使用：\n再地域范围为： lac小区流量，校园区域流量，基站小区流量时展示和需要选择。\nLAC小区流量： 待选列表为lac小区的列表\n基站小区流量：待选列表为基站小区列表\n校园区域流量：待选列表为校园小区列表\n\n该输入框鼠标单击时要弹窗，在弹窗中做小区编码列表选择\n弹出窗口做小区编码搜索，左边显示待选小区编码列表，搜索后需要添加的选中添加，已经选择的在右边框展示。\n(参考需求管理平台人员选择的弹窗操作方式)\n\n选择完成后点击确认按钮返回到小区编码选择框，在选择框中展示选择的小区编码列表。\n----需要crm侧单独维护小区编码列表",
+       "enum": [
+        "无默认值",
+        "----需要crm侧单独维护小区编码列表"
+       ],
+       "x-show-when": "再地域范围为： lac小区流量，校园区域流量，基站小区流量时展示和需要选择"
+      },
+      "theshold": {
+       "type": "number",
+       "x-label": "资源量",
+       "x-element": "文本框",
+       "description": "赠送流量展示；提示并校验为正整数数字，\n需要校验输入的数据，最大流量不能超过9536GB",
+       "x-required": true
+      },
+      "unit": {
+       "type": "string",
+       "x-label": "流量单位",
+       "x-element": "下拉框",
+       "description": "1:GB\n2:MB",
+       "enum": [
+        "GB",
+        "MB"
+       ],
+       "default": "GB",
+       "x-required": true
+      },
+      "sid": {
+       "type": "string",
+       "x-label": "定向流量编码",
+       "x-element": "选择框",
+       "description": "只有当流量类型选择： 内容定向流量时，展示该选择框;\n\n该输入框鼠标单击时要弹窗，在弹窗中做sid列表选择\n弹出窗口做sid搜索，左边显示待选sid列表，搜索后需要添加的选中添加，已经选择的在右边框展示。\n\n选择完成后点击确认按钮返回到SID编码选择框，在选择框中展示选择的SID列表。"
+      },
+      "periodUnit": {
+       "type": "string",
+       "x-label": "资源周期单位",
+       "x-element": "下拉框",
+       "description": "1：小时\n2：天\n3：月（自然）",
+       "enum": [
+        "月",
+        "小时",
+        "天",
+        "月（自然）"
+       ],
+       "default": "月",
+       "x-required": true
+      },
+      "period": {
+       "type": "string",
+       "x-label": "资源周期时长",
+       "x-element": "文本框",
+       "description": "资费周期时长，提示并校验为正整数数字\n结合资费周期单位计算资费周期：\n区分小时包，日包,月包，连月包。\n\n例如当资源周期单位为天，周期时长10表示10天.\n资源周期单位为月，资源周期时长为1，表示单月包\n资源周期单位为月，资源周期时长为3，表示连月3月包",
+       "x-required": true
+      },
+      "adjust": {
+       "type": "string",
+       "x-label": "首月资源赠送方式",
+       "x-element": "下拉框",
+       "description": "仅有周期为单月(资源周期单位3:月，资源周期时长1)\n时才展示，可选\n其他场景时不展示，后台传递默认参数1(全额赠送)\n\n账务月租收费方式连带：\n当账务部分首月选择月初收时,默认值：全额赠送流量\n当账务部分首月按天收时，默认值：赠送流量按天折算\n当账务部分首月区分上下半月，默认值：增量流量区分上下半月\n其他收费方式： 全额赠送流量",
+       "enum": [
+        "账务连带"
+       ],
+       "default": "账务连带",
+       "x-required": true,
+       "x-show-when": "时才展示，可选"
+      },
+      "carryFlag": {
+       "type": "string",
+       "x-label": "是否结转到次月",
+       "x-element": "单选框",
+       "description": "1： 是\n2： 否",
+       "enum": [
+        "否",
+        "是"
+       ],
+       "default": "否",
+       "x-required": true
+      },
+      "remindFlag": {
+       "type": "string",
+       "x-label": "流量提醒",
+       "x-element": "仅页面展示：流量提醒：按全省统一提醒规则执行",
+       "description": "1：提醒",
+       "enum": [
+        "提醒"
+       ],
+       "x-required": true
+      }
+     },
+     "x-label": "流量资源配置",
+     "required": [
+      "resourceType",
+      "location",
+      "theshold",
+      "unit",
+      "periodUnit",
+      "period",
+      "adjust",
+      "carryFlag",
+      "remindFlag"
+     ]
+    },
+    "billVoiceCfg": {
+     "type": "object",
+     "properties": {
+      "prodPrc": {
+       "type": "string",
+       "x-label": "拆分资费代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "billPrcId": {
+       "type": "string",
+       "x-label": "二批代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subBillPrcIds": {
+       "type": "string",
+       "x-label": "子记账资费",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "conditionCode": {
+       "type": "string",
+       "x-label": "附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subConditionCodes": {
+       "type": "string",
+       "x-label": "子附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "resourceType": {
+       "type": "string",
+       "x-label": "资源类型",
+       "x-element": "不显示",
+       "description": "3：国内主叫",
+       "enum": [
+        "国内主叫"
+       ],
+       "x-required": true
+      },
+      "theshold": {
+       "type": "number",
+       "x-label": "资源量",
+       "x-element": "文本框",
+       "description": "提示并校验为正整数数字。赠送单位：分钟",
+       "x-required": true
+      },
+      "adjust": {
+       "type": "string",
+       "x-label": "首月资源赠送方式",
+       "x-element": "下拉框",
+       "description": "页面展示中文，后台参数传输数字\n1：全额赠送分钟数,表示资源不折算\n2: 赠送分钟数区分上下半月，订购时间>15号，订购生效首月资源量折半;\n3：赠送分钟数按天折算,  订购生效首月资源量= 当月有效天数*(（赠送总量*12）/365)\n\n账务月租收费方式连带：\n当账务部分首月选择月收时,默认值：全额赠送分钟数\n当账务部分首月按天收时，默认值：赠送分钟数按天折算\n当账务部分首月区分上下半月，默认值：赠送分钟数区分上下半月",
+       "enum": [
+        "账务固费首月收费方式连带",
+        "全额赠送分钟数,表示资源不折算",
+        "赠送分钟数区分上下半月，订购时间>15号，订购生效首月资源量折半;",
+        "赠送分钟数按天折算,  订购生效首月资源量= 当月有效天数*(（赠送总量*12）/365)"
+       ],
+       "x-required": true
+      },
+      "outCharge": {
+       "type": "number",
+       "x-label": "套外计费费率",
+       "x-element": "文本框",
+       "description": "校验为正数，浮点数。费率单位：元/分钟",
+       "x-required": true
+      },
+      "remindFlag": {
+       "type": "string",
+       "x-label": "是否提醒",
+       "x-element": "下拉框",
+       "description": "0：否\n1：是（剩余10分钟,用完提醒)",
+       "enum": [
+        "否",
+        "是（剩余10分钟,用完提醒)"
+       ],
+       "default": "否",
+       "x-required": true
+      }
+     },
+     "x-label": "语音资源配置",
+     "required": [
+      "resourceType",
+      "theshold",
+      "adjust",
+      "outCharge",
+      "remindFlag"
+     ]
+    },
+    "billSmsCfg": {
+     "type": "object",
+     "properties": {
+      "prodPrc": {
+       "type": "string",
+       "x-label": "拆分资费代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "billPrcId": {
+       "type": "string",
+       "x-label": "二批代码",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subBillPrcIds": {
+       "type": "string",
+       "x-label": "子记账资费",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "conditionCode": {
+       "type": "string",
+       "x-label": "附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "subConditionCodes": {
+       "type": "string",
+       "x-label": "子附件条件ID",
+       "x-element": "text",
+       "description": "",
+       "x-scene": "查询返回字段"
+      },
+      "resourceType": {
+       "type": "string",
+       "x-label": "资源类型",
+       "x-element": "单选框",
+       "description": "4：短信\n5：彩信\n6：短信+彩信",
+       "enum": [
+        "短信",
+        "彩信",
+        "短信+彩信"
+       ],
+       "x-required": true
+      },
+      "theshold": {
+       "type": "number",
+       "x-label": "资源量",
+       "x-element": "文本框",
+       "description": "提示并校验为正整数数字。赠送单位：条",
+       "enum": [
+        "连带",
+        "0.1",
+        "0.5"
+       ],
+       "x-required": true
+      },
+      "adjust": {
+       "type": "string",
+       "x-label": "首月资源赠送方式",
+       "x-element": "下拉框",
+       "description": "1：全额赠送流量\n2:  赠送流量区分上下半月\n3：赠送流量按天折算",
+       "enum": [
+        "账务固费首月收费方式连带",
+        "全额赠送流量",
+        "赠送流量区分上下半月",
+        "赠送流量按天折算"
+       ],
+       "x-required": true
+      },
+      "outCharge": {
+       "type": "number",
+       "x-label": "套外计费费率",
+       "x-element": "文本框",
+       "description": "免费资源类型为：短信时， 0.1元/条\n免费资源类型为：彩信时， 0.5元/条\n免费资源类型为：短信+彩信时，0.1元/条",
+       "enum": [
+        "连带",
+        "0.1",
+        "0.5"
+       ],
+       "x-required": true
+      },
+      "remindFlag": {
+       "type": "string",
+       "x-label": "是否提醒",
+       "x-element": "下拉框",
+       "description": "0：否\n1：是（剩余10分钟,用完提醒)",
+       "enum": [
+        "否",
+        "是（剩余10分钟,用完提醒)"
+       ],
+       "default": "否",
+       "x-required": true
+      }
+     },
+     "x-label": "短信资源配置",
+     "required": [
+      "resourceType",
+      "theshold",
+      "adjust",
+      "outCharge",
+      "remindFlag"
+     ]
+    },
+    "SmsInstCfg": {
+     "type": "object",
+     "properties": {
+      "SvcName": {
+       "type": "string",
+       "x-label": "业务指令名称",
+       "x-element": "文本框",
+       "description": "业务指令名称",
+       "enum": [
+        "业务指令名称"
+       ]
+      },
+      "SmsInst": {
+       "type": "string",
+       "x-label": "短信指令内容",
+       "x-element": "文本框",
+       "description": "短信指令内容：由字母和数字组成"
+      },
+      "SmsContent": {
+       "type": "string",
+       "x-label": "二确提示短信内容",
+       "x-element": "文本框",
+       "description": "二确提示短信内容"
+      },
+      "SmsCity": {
+       "type": "string",
+       "x-label": "地市信息",
+       "x-element": "文本框",
+       "description": "地市信息，多地市以‘|’间隔\n甘孜洲 32\n成都市 11\n擎枝花市 14\n自贡市 13\n南充市 28\n达州市 16\n遂宁市 20\n广安市 18\n巴中市 19\n泸州市 17\n宜宾市 21\n内江市 22\n乐山市 24\n雅安市 26\n阿坝洲 31\n德阳市 27\n广元市 15\n眉山市 29\n资阳市 23\n绵阳市 12 \n凉山洲 33\n天府新区 35",
+       "enum": [
+        "地市信息，多地市以‘|’间隔",
+        "甘孜洲 32",
+        "成都市 11",
+        "擎枝花市 14",
+        "自贡市 13",
+        "南充市 28",
+        "达州市 16",
+        "遂宁市 20",
+        "广安市 18",
+        "巴中市 19",
+        "泸州市 17",
+        "宜宾市 21",
+        "内江市 22",
+        "乐山市 24",
+        "雅安市 26",
+        "阿坝洲 31",
+        "德阳市 27",
+        "广元市 15",
+        "眉山市 29",
+        "资阳市 23",
+        "绵阳市 12",
+        "凉山洲 33",
+        "天府新区 35"
+       ]
+      },
+      "AccessNO": {
+       "type": "string",
+       "x-label": "业务端口",
+       "x-element": "文本框",
+       "description": "业务端口，默认10086"
+      },
+      "ProdPrcType": {
+       "type": "string",
+       "x-label": "资费类型",
+       "x-element": "文本框",
+       "description": "资费类型",
+       "enum": [
+        "资费类型"
+       ]
+      },
+      "ProdPrcid": {
+       "type": "string",
+       "x-label": "资费ID",
+       "x-element": "文本框",
+       "description": "资费ID",
+       "enum": [
+        "资费ID"
+       ]
+      }
+     },
+     "x-label": "短信指令配置"
+    }
+   },
+   "x-label": "可选配置"
+  }
+ },
+ "x-template": "personAddPrc",
+ "x-label": "个人附加资费"
+}

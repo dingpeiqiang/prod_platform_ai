@@ -1,0 +1,288 @@
+{
+  "version": "V1.0",
+  "source": "方案/产品信息.txt",
+  "total": 18,
+  "dup_groups": [
+    {
+      "name_clean": "5G-A融合套餐199元",
+      "active": "900113046",
+      "dups": [
+        "900102306"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "offer_id": "900102306",
+      "name_orig": "5G-A融合套餐199元",
+      "name_clean": "5G-A融合套餐199元",
+      "product_type": "融合套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "199元",
+      "template": "familyBasePrc",
+      "desc_version": "6号文",
+      "members": [
+        "宽带",
+        "天翼高清",
+        "副卡功能费"
+      ],
+      "source_line": 10,
+      "status": "dup",
+      "duplicate_of": "900113046"
+    },
+    {
+      "offer_id": "900102307",
+      "name_orig": "5G-A融合套餐299元",
+      "name_clean": "5G-A融合套餐299元",
+      "product_type": "融合套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "299元",
+      "template": "familyBasePrc",
+      "desc_version": "6号文",
+      "members": [
+        "宽带",
+        "天翼高清",
+        "副卡功能费"
+      ],
+      "source_line": 4,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900102308",
+      "name_orig": "5G-A套餐199元",
+      "name_clean": "5G-A套餐199元",
+      "product_type": "单品套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "199元",
+      "template": "personMainPrc",
+      "desc_version": "6号文",
+      "members": [],
+      "source_line": 1,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900102310",
+      "name_orig": "5G-A套餐单品299元",
+      "name_clean": "5G-A套餐单品299元",
+      "product_type": "单品套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "299元",
+      "template": "personMainPrc",
+      "desc_version": "6号文",
+      "members": [],
+      "source_line": 7,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900102312",
+      "name_orig": "5G-A套餐单品399元",
+      "name_clean": "5G-A套餐单品399元",
+      "product_type": "单品套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "399元",
+      "template": "personMainPrc",
+      "desc_version": "6号文",
+      "members": [],
+      "source_line": 8,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900102313",
+      "name_orig": "5G-A融合套餐399元",
+      "name_clean": "5G-A融合套餐399元",
+      "product_type": "融合套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "399元",
+      "template": "familyBasePrc",
+      "desc_version": "6号文",
+      "members": [
+        "宽带",
+        "天翼高清",
+        "副卡功能费"
+      ],
+      "source_line": 5,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900113043",
+      "name_orig": "5G-A套餐单品239元",
+      "name_clean": "5G-A套餐单品239元",
+      "product_type": "单品套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "239元",
+      "template": "personMainPrc",
+      "desc_version": "22号文",
+      "members": [],
+      "source_line": 2,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900113044",
+      "name_orig": "5G-A融合套餐239元",
+      "name_clean": "5G-A融合套餐239元",
+      "product_type": "融合套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "239元",
+      "template": "familyBasePrc",
+      "desc_version": "22号文",
+      "members": [
+        "宽带",
+        "天翼高清",
+        "副卡功能费"
+      ],
+      "source_line": 6,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900113045",
+      "name_orig": "5G-A套餐单品199元",
+      "name_clean": "5G-A套餐单品199元",
+      "product_type": "单品套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "199元",
+      "template": "personMainPrc",
+      "desc_version": "22号文",
+      "members": [],
+      "source_line": 9,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900113046",
+      "name_orig": "5G-A融合套餐199元",
+      "name_clean": "5G-A融合套餐199元",
+      "product_type": "融合套餐",
+      "biz_series": "5G-A主套餐",
+      "tier": "199元",
+      "template": "familyBasePrc",
+      "desc_version": "22号文",
+      "members": [
+        "宽带",
+        "天翼高清",
+        "副卡功能费"
+      ],
+      "source_line": 3,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117020",
+      "name_orig": "19.9元权益随心选生活版",
+      "name_clean": "19.9元权益随心选生活版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "19.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 12,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117021",
+      "name_orig": "19.9元权益随心选出行版",
+      "name_clean": "19.9元权益随心选出行版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "19.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 18,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117022",
+      "name_orig": "19.9元权益随心选娱乐版",
+      "name_clean": "19.9元权益随心选娱乐版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "19.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 11,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117023",
+      "name_orig": "29.9元权益随心选生活版",
+      "name_clean": "29.9元权益随心选生活版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "29.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 15,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117024",
+      "name_orig": "19.9元权益随心选商超版",
+      "name_clean": "19.9元权益随心选商超版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "19.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 16,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117025",
+      "name_orig": "29.9元权益随心选商超版",
+      "name_clean": "29.9元权益随心选商超版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "29.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 17,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117026",
+      "name_orig": "29.9元权益随心选出行版",
+      "name_clean": "29.9元权益随心选出行版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "29.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 14,
+      "status": "active",
+      "duplicate_of": ""
+    },
+    {
+      "offer_id": "900117027",
+      "name_orig": "29.9元权益随心选娱乐版",
+      "name_clean": "29.9元权益随心选娱乐版",
+      "product_type": "权益包",
+      "biz_series": "权益随心选",
+      "tier": "29.9元",
+      "template": "personAddPrc",
+      "desc_version": "其他",
+      "members": [],
+      "source_line": 13,
+      "status": "active",
+      "duplicate_of": ""
+    }
+  ]
+}

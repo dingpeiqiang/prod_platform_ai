@@ -1,0 +1,65 @@
+{
+ "familyBasePrc": {
+  "baseInfo": {
+   "teamType": "全家福",
+   "ifFloorsPrc": "是",
+   "prodPrcName": "测试资费",
+   "effRuleId": "1001",
+   "expRuleId": "1023",
+   "prcEffCycle": "长期有效",
+   "prcEffType": "月",
+   "prcEffNum": "2",
+   "prcEffDate": "20230930",
+   "effDate": "20230907",
+   "expDate": "20991231",
+   "payFlag": "否",
+   "dateLimit": "36",
+   "powerCode": "18",
+   "familyCata": "家客中心目录",
+   "roleMax": "6",
+   "roleMin": "1",
+   "canAddFamilyPrc": "ACCZ02321,ACCZ02322",
+   "prodId": "APAP00001",
+   "prodPrcId": "ACAG00001",
+   "orderNo": "20230823197104"
+  },
+  "releaseInfo": {
+   "chnClassLimit": "A7",
+   "groupId": "10001",
+   "groupIdMessage": "2,3"
+  },
+  "phoneMbrInfo": {
+   "ifChangeBasePrc": "否",
+   "inProdPrcId": "ACAZ00001",
+   "outProdPrcId": "ACAZ00002",
+   "phoneMbrMax": "5",
+   "phoneMbrMin": "1",
+   "freeMbrCnt": "2",
+   "phoneMbrFee": "10"
+  },
+  "broadBandMbrInfo": {
+   "kdMbrMax": "3",
+   "kdMbrMin": "0",
+   "mainKd": "ACAZ02321,ACAZ03232",
+   "tvPrc": "ACAZ02321,ACAZ03232",
+   "sencondKdPrc": "ACAZ02321,ACAZ03232",
+   "thirdKdPrc": "ACAZ02321,ACAZ03232"
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": "40元/月",
+    "containResource": "6元/月，包含优酷视频彩铃订阅包会员，订购后立即生效，按月自动续订",
+    "chargeStandard": "0.29元/MB",
+    "limitCondition": "四川省范围内使用（立即生效，7天内有效）",
+    "otherEquity": "订购有效期内，享受和教育智慧家校权益"
+   },
+   "prcSmsCfg": {
+    "opType": "0",
+    "sysNoteNow": "立即成功短信内容",
+    "sysNoteNext": "预约成功短信内容",
+    "sysNoteCancle": "退订短信内容",
+    "sysNoteErke": "前台二确短信内容"
+   }
+  }
+ }
+}

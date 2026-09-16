@@ -18,6 +18,7 @@
   - `similarOfferId` / `similarOfferName` / `similarityScore`(0~1) / `similarityDesc`
   - `offerInfo`：完整产品配置信息（与需求要素同构：fields 3 模块/9 分类 24 字段数组 + similarOfferId/similarOfferName/series/sub_type 溯源键），后端 toFields24 转换
   - **`offer_group`（V4.0 新增，命中融合品时）**：组结构下发（group_id/main_offer_id/members[]{role,offer_id,required,dependency?,preset?}/group_rules{共享规则/互斥/依赖/退订联动}），成员构成唯一数据源（模型禁止增删成员）；单品命中时无本键
+  - **`offerTemplate`（V7.0 新增，评审结论#3，后端 POC 改造项）**：按 6 模板嵌套的相似品实例化报文（结构与 `scripts/templates/<templateId>.schema.json` 同构），模板轨第②步远端兜底源直接使用；**本键缺席时（后端改造未上线）禁止模型手工把 offerInfo 24 字段逆投影为嵌套报文**，按 flow-A 步骤② 降级口径处理
 - 错误处理：resultCode=1 时走"无相似产品"分支（E1：**中断询问用户**，回复【继续】降级补全/【修改需求】重提，禁止自动降级）
 
 ## 工具2 实时规格稽核 `spec_audit`
@@ -125,3 +126,65 @@
 - 入参：`req_id`(必填)、`node_name`(选填)、`latest_only`(默认 1)
 - 出参：`code`/`msg`/`total`/`list[]`（取 `list[0].result_json` 为结果原文）
 - total=0 → 按 E5 处理
+
+## 工具17 执行主干状态机 `run_pipeline`（V5.0 新增，本地脚本）
+- 本地代码节点（非平台接口）：`scripts/run_pipeline.py`，内部串行调用 save_product_config → spec_audit → billing_verify → offer_test/test_scenes/poll_test_progress/test_result → download_test_report，并完成工件落盘与 save_node_result 存储
+- 入参：`--req-id`(必填)、`--workdir`(必填，会话可写目录)、`--confirmed`(确认门禁，未传即 E3 拒绝)、`--resume`(续跑)、`--fail-node`(STAGE1_CONFIG~STAGE4_TEST)、`--operator`(选填)
+- 出参：`resultCode`(0/VALIDATE_FAIL/PARAM_MISSING/NOT_CONFIRMED)、`req_id`、`fail_node`、`e_code`(E5/E6/E8/E9/E10/E11/E12/E13/E20/E26/E29)、`next_action`(APPROVAL_GATE/RESUME/FIX_PLAN/CHECK_PLATFORM)、`nodes[]`（node/status=SUCCESS|FAIL|REPLAYED/result_file/summary）、`messages[]`
+- 行为保证：串行顺序、失败即停不重试、已成功环节续跑回放不重复写接口、同 req_id 幂等回放、plan_json 待补充字段门禁（出口A 口径）、E26 被测一致性预校验（offerName 与 plan_json 套餐名称核对）
+- 判定字段：config=status(SUCCESS/PARTIAL)、spec/fee=pass、test=全场景 successTestCaseCount==testCaseCount 且受理凭证（orderId/offerInstId）非空
+
+## 工具18 入口调度器 `dispatcher`（V6.0 新增，本地脚本，四层架构第0/1层）
+- 本地代码节点（非平台接口）：`scripts/dispatcher.py`，规则优先做意图归类/确认门禁/实体抽取；LLM 仅在 `needs_llm` 时做封闭枚举兜底（禁止自由文本）。
+- 入参：`--message`(必填) / `--message-file`(>1KB 消息走文件)、`--session-file`(选填，会话上下文 JSON：req_id/offer_id/product_id/approval_id/offer_name 等)
+- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(A/B/C/D1/D2/D3/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
+- 行为保证：意图封闭枚举（任何输入必归类）；确认语义词表 + 否定词表（REJECT）；实体抽取消息优先、会话兜底；规则未命中 → needs_llm=true 交 LLM 单选归类
+- 判定规则：确认门禁由本脚本 `confirmed` 决定（对应 run_pipeline `--confirmed` 与 SKILL.md 纪律3），模型禁止自行判断确认语义
+
+## 工具19 同构键值合并 `merge_fields`（V6.1 新增，本地脚本，**@deprecated V7.0 起退役**）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py merge_fields`，把「需求要素提取 elements」与「相似产品出参」按 field 名确定性合并，模型不再手工合并（四层架构：确定性合并逻辑代码化）。
+- **@deprecated**：flow-A 已整体切换模板轨（V7.0），本命令仅为过渡期向后兼容保留（一个迭代周期后随清理纪律删除），**新需求分析一律走工具22 `merge_nested`**；禁止新增依赖。
+- 入参：`--fields-json`(步骤1 产出，扁平 fields 数组或融合组结构) / `--fields-json-file`、`--offer-json`(similar_offer 出参) / `--offer-json-file`
+- `--offer-json` 兼容形态：扁平 fields 数组 / `{fields:[...]}` / 已归一组结构 / 原始 `offer_group`(members[].preset 可为字段数组或 {字段:值} 映射)
+- 合并规则（逐字段对位）：需求有值→需求值(原始需求)；需求无值且非价格→取 offer 同名字段(AI推理)；皆缺失→留空(步骤4 引擎补全)；**价格类字段(套餐档位/各成员月功能费)禁止从相似产品/跨成员照搬**→需求未提供时留空交引擎维持"待补充"
+- 出参：`resultCode`、`fields`（单商品数组）/ `group`（融合组结构：main_offer/member_offers 各自 fields，保留 category）
+- 行为保证：出参保留 category（供 build_plan 模块归并，避免 plan_md 模块列变空串）；价格纪律延伸到组级（逐成员独立判定，禁止跨成员照搬）。下游 `build_plan` 内置「字段→分类」注册表（`FIELD_CATEGORY`），即使 `ontology_reason` 剥离开 category 也会按 24 字段名确定性回填，模块/分类列始终正常——无需手工补 category。
+
+## 工具20 产品列表识别校验 `identify_products`（V7.0 新增，本地脚本，flow-A 步骤①后置闸）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py identify_products`，对 LLM 产品识别出参做**确定性校验**（四层架构：LLM 只做翻译，校验闸代码化）。
+- 入参：`--products-json`(LLM 步骤①输出：`{products:[{name, prodType, members[]}], need_summary}`) / `--products-json-file`
+- 校验规则：products 必须为非空数组；每项须含非空 `name` 且 `prodType` ∈ 封闭枚举（个人主套餐/宽带主套餐/个人附加资费/宽带附加资费/家庭基础套餐/家庭附加资费）
+- 出参：`resultCode`、`valid_products[]`（校验通过项）、`invalid_products[]`（形态/枚举违规项）、`total`
+- 错误处理：products 缺失/为空/非数组 → `PARAM_MISSING`；`invalid_products` 非空 → flow-A 按 E30 中断询问（禁止默认路由）
+- 行为保证：不产出 templateId（路由由第③步 `get_template` 按相似品 template 字段做，**LLM 不猜模板名**——防模板名幻觉）
+
+## 工具21 模板获取 `get_template`（V7.0 新增，本地脚本，flow-A 步骤③）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py get_template`，templateId → 模板 schema 全文（纯路由，无 LLM）。
+- 入参：`--template`(必填，templateId，如 familyBasePrc；来源=步骤② 相似品 K5 报文包裹层或存量目录 template 字段)
+- 出参：`resultCode`、`template`(x-template)、`schema`（模板 schema 全文：properties/enum/x-label/x-show-when/x-required/x-template）
+- 错误处理：模板文件不存在 → `PARAM_MISSING`（flow-A 按 E32 中断）
+- 行为保证：模板库=`scripts/templates/`（6 schema：personMainPrc 85 叶/broadBandMainPrc 43/personAddPrc 99/broadBandOptSpeedPrc 45/familyBasePrc 93/familyAddPrc 75）；出参 schema 叶子清单供第④步提示词注入（约 1~3K token）
+
+## 工具22 嵌套报文合并 `merge_nested`（V7.0 新增，本地脚本，flow-A 步骤⑤，**替代 @deprecated merge_fields**）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py merge_nested`（转发同目录 merge_nested.py），把「LLM 第④步提取要素」与「相似产品嵌套报文」按模板 schema JSONPath 对位合并，模型不再手工合并。
+- 入参：`--schema-file`(必填，模板 schema 路径) / `--elements-json`(第④步校验后要素) / `--elements-json-file`、`--offer-json`(相似品嵌套报文) / `--offer-json-file`、`--template`(相似品报文 {templateId:{…}} 包裹层解包名)、`--mode`(normal=新需求链路 / legacy=存量实例化，默认 normal)
+- 合并规则（逐路径确定性）：schema 为骨架递归 → 需求要素有值→需求值(source=原始需求；legacy 模式=存量提取) → 无值且非价格→取相似品同路径(source=AI补全) → schema default 兜底(source=默认值) → 仍缺留空、必填进 pending_required；占位标记（"待补充"/"系统待生成"）视为空值不参与合并
+- **价格禁照搬（normal 模式强制）**：档位/月费/月租/固定费类字段（按 x-label 关键词判别）需求未提供时一律留空，禁止从相似品取值；legacy 模式价格豁免（存量价格是事实数据）
+- **enum 校验不改写（评审结论#4）**：提取值 ∉ enum → `_meta[<path>.enum_violation]={value, enum[:6]}` 标记不改写；说明型 enum（范围/约束描述）豁免（与 excel_to_schema 同口径）
+- 出参：`resultCode`、`template`、`payload`（嵌套实例化报文）、`_meta`（逐叶子 source 溯源 + enum_violation）、`pending_required[]`
+- 行为保证：同输入逐字节稳定（幂等）；`payload` 本体是第⑥步 render_table 唯一合法入参（传 merge 全出参会渲染为空）；`pending_required` 非空 → flow-A 出口A（不保存）
+
+## 工具23 分节表格渲染 `render_table`（V7.0 新增，本地脚本，flow-A 步骤⑥）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py render_table`（转发同目录 render_table.py V2.0），把嵌套报文渲染为**业务人员可读的分节多表**（第3层结果组装，纯模板无 LLM）。
+- 入参：`--schema-file`(必填)、`--json-file`(必填，**=工具22 出参 payload 本体（嵌套报文），非 merge 全出参**)、`--title`(选填，表格标题=套餐名称)
+- 渲染形态（V2.0）：概览卡片置顶（资费名称/套餐月费/包含资源）→ 顶层容器=独立小节（"1. 基础信息/2. 发布信息/…"，加粗节标题）→ 小节内二级容器=加粗分组子标题行 → 三列表格（字段名称|字段值|备注）；**纯 x-label 中文，无技术键名、无层级标记列**；仅渲染有值段；必填缺失进文末【待补充字段】
+- 出参：markdown 分节多表文本（stdout；备注列含"满足条件时展示/默认值"标注）
+- 行为保证：同输入输出逐字节稳定（幂等可回归）；技术字段（templateId/prodId/prodPrcId/pricingId/opType）不出现在业务表格；渲染失败/空输出 → flow-A 按 E32 中断（先核对入参是否误传 merge 全出参）
+
+## 工具24 flat24 派生 `derive_flat24`（V7.0 新增，本地脚本，下游过渡兼容层，评审结论#1/#5）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py derive_flat24`，模板轨嵌套报文 → V3.0 flat24 字段数组**单向投影**（方向仅 v2→flat，flat→v2 有损禁止），供环节2/3 后端按 24 字段校验继续可用（后端零改动）。
+- 入参：`--template`(必填，templateId)、`--payload-json`(merge_nested 出参 payload) / `--payload-json-file`、`--mapping-file`(选填，默认 `references/ontology-fields.json` 的 path_to_field 映射表)
+- 派生规则（确定性）：嵌套报文扁平 walk → 按 path_to_field 映射表对位 flat24 字段名 → 无对应路径的自动丢弃（如 roleMax）；field/value/source=模板轨派生
+- 出参：`resultCode`、`template`、`fields[]`（flat24 字段数组）、`note`
+- 行为保证：仅作环节2/3 过渡兼容，模板轨唯一事实源=嵌套报文；派生结果随 plan_json_v2 一并入库（`flat_fields` 键，评审结论#5 双份入库）
+

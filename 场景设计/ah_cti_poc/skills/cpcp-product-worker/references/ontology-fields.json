@@ -1,0 +1,21 @@
+{
+  "version": "V1.0",
+  "purpose": "flat24 派生映射表（V7.0 模板轨 → V3.0 24 字段单向投影；工具24 derive_flat24 默认映射源）。方向仅 v2→flat，禁止反向（flat→v2 有损）。模板路径无 flat24 对应的自动丢弃。",
+  "notes": [
+    "prcMonthFee 与 fixFee 同值（存量报文口径），均映射到套餐档位时以 prcMonthFee 优先、fixFee 兜底（同名字段后写覆盖前写，故 fixFee 排前、prcMonthFee 排后）",
+    "模板无对应 24 字段路径（如 familyBasePrc.roleMax 成员数上限）不映射，派生时丢弃",
+    "24 字段中无模板对应路径的字段（如 套餐编码/是否允许办理副卡）不派生，交下游引擎默认值口径",
+    "同义映射口径继承 references/ontology-fields.md（@deprecated 提取注册表）"
+  ],
+  "path_to_field": {
+    "baseInfo.prodPrcName": "套餐名称",
+    "optionalInfo.acctMonth.fixFee": "套餐档位",
+    "optionalInfo.printContent.prcMonthFee": "套餐档位",
+    "optionalInfo.printContent.chargeStandard": "套外流量-计费标准",
+    "optionalInfo.printContent.containResource": "国内通用流量",
+    "releaseInfo.chnClassLimit": "销售渠道",
+    "optionalInfo.acctMonth.fixValidity": "套餐有效期",
+    "optionalInfo.acctMonth.calcMode": "新入网生效方式",
+    "optionalInfo.billGprsCfg.carryFlag": "流量结转规则"
+  }
+}

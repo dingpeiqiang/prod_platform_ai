@@ -1,0 +1,121 @@
+{
+ "familyBasePrc": {
+  "baseInfo": {
+   "teamType": "全家福",
+   "ifFloorsPrc": "否",
+   "prodPrcName": "5G-A融合套餐199元",
+   "effRuleId": "",
+   "cancelRuleId": "",
+   "prcEffCycle": "长期有效",
+   "prcEffType": "",
+   "prcEffNum": "",
+   "prcEffDate": "",
+   "effDate": "",
+   "expDate": "",
+   "payFlag": "",
+   "dateLimit": "24个月（自动续展，每次续展2年）",
+   "powerCode": "",
+   "familyCata": "",
+   "roleMax": "6",
+   "roleMin": "",
+   "canAddFamilyPrc": "允许办理家庭附加业务",
+   "prodId": "",
+   "pricingId": "",
+   "prodPrcId": "",
+   "orderNo": ""
+  },
+  "phoneMbrInfo": {
+   "ifChangeBasePrc": "允许",
+   "inProdPrcId": "",
+   "outProdPrcId": "",
+   "phoneMbrMax": "3",
+   "phoneMbrMin": "1",
+   "freeMbrCnt": "2",
+   "phoneMbrFee": 10
+  },
+  "broadBandMbrInfo": {
+   "kdMbrMax": "",
+   "kdMbrMin": "",
+   "mainKd": "1000M起",
+   "tvPrc": "1路",
+   "sencondKdPrc": "",
+   "thirdKdPrc": ""
+  },
+  "releaseInfo": {
+   "chnClassLimit": "实体渠道、电子渠道、直销渠道",
+   "groupId": "",
+   "groupIdMessage": ""
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": 199,
+    "containResource": "100GB国内通用流量、1000分钟国内语音、国内语音接听免费、最高下行2Gbps最高上行200Mbps、卫星权益10分钟10条短信",
+    "chargeStandard": "套外流量前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB（即3元/1GB），流量超过1GB按每超出1GB 3元收费；套外语音国内0.15元/分钟；套外短彩信0.1元/条",
+    "limitCondition": "国内通用流量仅限中国内地（不含港澳台和国际）使用，不含WLAN",
+    "otherEquity": "漏话提醒、智能应答、安全管家、视频彩铃、谢绝来电_天翼防骚扰、天翼云盘（家庭版）"
+   },
+   "prcSmsCfg": {
+    "opType": "",
+    "sysNoteNow": "",
+    "sysNoteNext": "",
+    "sysNoteCancle": "",
+    "sysNoteErke": ""
+   },
+   "acctMonth": {
+    "calcMode": "周期型缴费：月",
+    "fixFee": 199,
+    "acctItem": "",
+    "isSplitRate": "",
+    "splitRate9": "",
+    "splitRate6": "",
+    "fixValidity": "长期",
+    "fixValidityVAlue": ""
+   },
+   "acctFav": {
+    "favObject": "",
+    "favCondition": "",
+    "favItemType": "",
+    "favGroup": "",
+    "favType": "",
+    "favDiscount": "",
+    "favFee": "",
+    "favValidity": "",
+    "favValidityVAlue": "",
+    "favDesc": ""
+   },
+   "dlowFavFee": {
+    "fav1Fee": "",
+    "fav1ItemType": "",
+    "fav1Group": "",
+    "fav1Validity": "",
+    "fav1ValidityVAlue": ""
+   },
+   "billGprsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内通用流量",
+    "theshold": 100,
+    "unit": "GB",
+    "adjust": "",
+    "carryFlag": "是",
+    "remindFlag": "",
+    "shareFlag": "是"
+   },
+   "billVoiceCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内语音",
+    "theshold": 1000,
+    "adjust": "",
+    "remindFlag": "否",
+    "shareFlag": "是"
+   }
+  }
+ }
+}

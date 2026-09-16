@@ -1,0 +1,84 @@
+{
+ "familyBasePrc": {
+  "baseInfo": {
+   "teamType": "全家福、F套餐",
+   "ifFloorsPrc": "否",
+   "prodPrcName": "5G-A融合套餐239元",
+   "effRuleId": "1001",
+   "cancelRuleId": "1002",
+   "prcEffCycle": "长期有效",
+   "prcEffType": "月",
+   "prcEffNum": "2",
+   "prcEffDate": "20230930",
+   "effDate": "20230907",
+   "expDate": "20991231",
+   "payFlag": "是",
+   "dateLimit": "24",
+   "powerCode": "18",
+   "familyCata": "家客中心目录",
+   "roleMax": "6",
+   "roleMin": "1",
+   "canAddFamilyPrc": "ACCZ02321",
+   "prodId": "APAP00002",
+   "prodPrcId": "ACAG00002",
+   "orderNo": "20230823197104"
+  },
+  "phoneMbrInfo": {
+   "ifChangeBasePrc": "是",
+   "inProdPrcId": "ACAZ00001",
+   "outProdPrcId": "ACAZ00002",
+   "phoneMbrMax": "5",
+   "phoneMbrMin": "1",
+   "freeMbrCnt": "2",
+   "phoneMbrFee": "10"
+  },
+  "broadBandMbrInfo": {
+   "kdMbrMax": "3",
+   "kdMbrMin": "0",
+   "mainKd": "ACAZ02321",
+   "tvPrc": "ACAZ02321",
+   "sencondKdPrc": "ACAZ03232",
+   "thirdKdPrc": "ACAZ03233"
+  },
+  "releaseInfo": {
+   "chnClassLimit": "A7",
+   "groupId": "10001",
+   "groupIdMessage": "2,3"
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": "239元/月",
+    "containResource": "60G国内通用流量、1000分钟国内语音",
+    "chargeStandard": "0.29元/MB",
+    "limitCondition": "四川省范围内使用",
+    "otherEquity": "含优酷视频会员"
+   },
+   "prcSmsCfg": {
+    "opType": "0",
+    "sysNoteNow": "立即成功短信内容",
+    "sysNoteNext": "预约成功短信内容",
+    "sysNoteCancle": "退订短信内容",
+    "sysNoteErke": "前台二确短信内容"
+   },
+   "acctMonth": {
+    "calcMode": "按月收取",
+    "fixFee": 239,
+    "acctItem": "月租费",
+    "fixValidity": "长期"
+   },
+   "billGprsCfg": {
+    "resourceType": "国内通用流量",
+    "theshold": 60,
+    "unit": "GB",
+    "carryFlag": "是",
+    "shareFlag": "是"
+   },
+   "billVoiceCfg": {
+    "resourceType": "国内语音",
+    "theshold": 1000,
+    "unit": "分钟",
+    "shareFlag": "是"
+   }
+  }
+ }
+}

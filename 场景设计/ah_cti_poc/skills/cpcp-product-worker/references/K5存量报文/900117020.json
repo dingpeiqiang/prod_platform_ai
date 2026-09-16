@@ -1,0 +1,127 @@
+{
+ "personAddPrc": {
+  "baseInfo": {
+   "prodPrcName": "19.9元权益随心选生活版",
+   "effRuleId": "",
+   "cancelRuleId": "",
+   "prcEffCycle": "",
+   "prcEffType": "",
+   "prcEffNum": "",
+   "prcEffDate": "",
+   "effDate": "",
+   "expDate": "",
+   "effNum": "",
+   "planFlag": "",
+   "f_5G速率5GUser": "",
+   "unifiedQryCancle": "",
+   "reFeeFlag": "",
+   "prodId": "",
+   "pricingId": "",
+   "prodPrcId": "",
+   "orderNo": ""
+  },
+  "releaseInfo": {
+   "chnClassLimit": "实体渠道、电子渠道、直销渠道",
+   "groupId": "",
+   "groupIdMessage": ""
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": 19.9,
+    "containResource": "生活版权益和5GB国内通用流量",
+    "chargeStandard": "",
+    "limitCondition": "包内流量限订购手机号使用，其他融合成员不共享，融合成员可单独订购；包内流量不适用于流量不清零规则，当月剩余流量不结转；欠费、停机等异常状态下权益无法领取",
+    "otherEquity": ""
+   },
+   "prcSmsCfg": {
+    "opType": "",
+    "sysNoteNow": "",
+    "sysNoteNext": "",
+    "sysNoteCancle": "",
+    "sysNoteExpire": "",
+    "sysNoteErke": ""
+   },
+   "acctMonth": {
+    "calcMode": "首月全额收取，次月按月收取",
+    "fixCircle": "",
+    "fixFee": 19.9,
+    "acctItem": "",
+    "isSplitRate": "",
+    "splitRate9": "",
+    "splitRate6": "",
+    "fixValidity": "长期有效",
+    "fixValidityVAlue": ""
+   },
+   "acctFav": {
+    "favCondition": "",
+    "favItemType": "",
+    "favGroup": "",
+    "favType": "",
+    "favDiscount": "",
+    "favFee": "",
+    "favValidity": "",
+    "favValidityVAlue": "",
+    "favDesc": ""
+   },
+   "dlowFavFee": {
+    "fav1Method": "",
+    "fav1Fee": "",
+    "fav1ItemType": "",
+    "fav1Group": "",
+    "fav1Validity": "",
+    "fav1ValidityVAlue": ""
+   },
+   "billGprsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "通用流量",
+    "location": "国内流量",
+    "locationCodes": "",
+    "theshold": 5,
+    "unit": "GB",
+    "sid": "",
+    "periodUnit": "月（自然）",
+    "period": "",
+    "adjust": "账务连带",
+    "carryFlag": "否",
+    "remindFlag": ""
+   },
+   "billVoiceCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "",
+    "theshold": "",
+    "adjust": "",
+    "outCharge": "",
+    "remindFlag": "否"
+   },
+   "billSmsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "",
+    "theshold": "",
+    "adjust": "",
+    "outCharge": "",
+    "remindFlag": "否"
+   },
+   "SmsInstCfg": {
+    "SvcName": "",
+    "SmsInst": "",
+    "SmsContent": "",
+    "SmsCity": "",
+    "AccessNO": "",
+    "ProdPrcType": "",
+    "ProdPrcid": ""
+   }
+  }
+ }
+}

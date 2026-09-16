@@ -1,0 +1,28 @@
+{
+  "baseInfo": {
+    "prodPrcName": "29.9元权益随心选生活版"
+  },
+  "releaseInfo": {
+    "chnClassLimit": "实体渠道、电子渠道、直销渠道"
+  },
+  "optionalInfo": {
+    "printContent": {
+      "prcMonthFee": 29.9,
+      "containResource": "生活版权益和10GB国内通用流量",
+      "limitCondition": "包内流量限订购手机号使用，其他融合成员不共享，融合成员可单独订购；包内流量不适用于流量不清零规则，当月剩余流量不结转；欠费、停机等异常状态下权益无法领取"
+    },
+    "acctMonth": {
+      "calcMode": "首月全额收取，次月按月收取",
+      "fixFee": 29.9,
+      "fixValidity": "长期有效"
+    },
+    "billGprsCfg": {
+      "resourceType": "通用流量",
+      "location": "国内流量",
+      "theshold": 10,
+      "unit": "GB",
+      "periodUnit": "月（自然）",
+      "carryFlag": "否"
+    }
+  }
+}

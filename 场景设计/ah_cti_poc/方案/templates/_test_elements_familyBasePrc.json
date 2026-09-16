@@ -1,0 +1,24 @@
+{
+  "baseInfo": {
+    "prodPrcName": "5G-A融合套餐199元（全家福）",
+    "teamType": "全家福",
+    "ifFloorsPrc": "是",
+    "roleMax": "6",
+    "roleMin": "1",
+    "dateLimit": "36",
+    "prcEffCycle": "长期有效"
+  },
+  "phoneMbrInfo": {
+    "ifChangeBasePrc": "否",
+    "phoneMbrMax": "5"
+  },
+  "broadBandMbrInfo": {
+    "kdMbrMax": "3"
+  },
+  "optionalInfo": {
+    "printContent": {
+      "prcMonthFee": 199,
+      "containResource": "30G国内通用流量、500分钟国内语音"
+    }
+  }
+}

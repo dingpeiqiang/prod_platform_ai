@@ -3,23 +3,24 @@
 > 合并对应原子工作流 wf_sub_07（监控运维）与 wf_sub_08（审批进度查询）。轻量支线，按用户意图分流执行；运维问答依据：`references/K5FAQ/`。
 
 ## 意图判别（D-1 / D-2 / D-3 分流）
-| 用户表述 | 支线 |
-| --- | --- |
-| 查询审批进度/审批单状态/审批到哪了/审批结果/审批意见 | D-1 |
-| 查询监控/查询运营/查询运行监控/运营情况/销售品运行情况/上线后表现 | D-2 |
-| 确认上线（审批通过后的上线动作）/监控运维方案 | D-3 |
-| 表述含两诉求（如"查一下审批和运营情况"） | 先 D-1 后 D-2，一次回复中两段输出 |
+> V6.0：支线选取由 **`dispatcher.py` 出参 `intent`** 决定（QUERY_APPROVAL→D-1、QUERY_MONITOR→D-2、CONFIRM_ONLINE→D-3），模型不再按表述自行判断；下表为 dispatcher 触发词对应关系（规则已内置，仅作追溯）。
+| dispatcher intent | 用户表述 | 支线 |
+| --- | --- | --- |
+| QUERY_APPROVAL | 查询审批进度/审批单状态/审批到哪了/审批结果/审批意见 | D-1 |
+| QUERY_MONITOR | 查询监控/查询运营/查询运行监控/运营情况/销售品运行情况/上线后表现 | D-2 |
+| CONFIRM_ONLINE | 确认上线（审批通过后的上线动作）/监控运维方案 | D-3 |
+| （dispatcher 未命中则 needs_llm） | 表述含两诉求（如"查一下审批和运营情况"） | 规则命中其一，先输出命中的支线 |
 
 ## 支线D-1：审批进度查询（wf_sub_08）
 
 ### 触发条件
-- 用户消息："查询审批进度/审批单状态/审批到哪了/审批结果"等。
+- dispatcher 出参 `intent=QUERY_APPROVAL`。
 
 ### 前置检查
-- `approval_id`（与 product_id 至少一个，approval_id 优先）；
-- `product_id`：销售品 ID（缺失 approval_id 时按其查最新审批单）；
+- `approval_id`（与 product_id 至少一个，approval_id 优先）：取值 `dispatcher.py` 出参 `entities.approval_id`；
+- `product_id`：销售品 ID（缺失 approval_id 时按其查最新审批单），取值 `dispatcher.py` 出参 `entities.product_id`；
 - 两者皆缺 → 不发起调用，先追问："请提供审批单号或销售品ID，以便查询审批进度。"
-- **会话上下文取参**：会话中已明确出现过的 approval_id/product_id（本会话执行主干或审批环节的产出值）可直接使用，不属于"编造/历史兜底"；仅当会话内从未出现过且用户未提供时才追问。
+- **会话上下文取参**：`dispatcher.py` 出参 `entities.*` 已按"会话已明确出现过的值"兜底（本会话执行主干或审批环节的产出值），不属于"编造/历史兜底"；仅当会话内从未出现过且用户未提供时才追问。
 
 ### 执行程序
 ```bash
@@ -41,13 +42,13 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 ## 支线D-2：运行监控与告警（wf_sub_07）
 
 ### 触发条件
-- 用户消息："查询监控/查询运营/查询运行监控/销售品运行情况"等；
+- dispatcher 出参 `intent=QUERY_MONITOR`；
 - 定期巡检（由外部调度按日触发时同样加载本程序）。
 
 ### 前置检查
-- `product_id`（必填）：销售品 ID（存量 9 位 ID 或配置落地返回的 `P+req_id` 形态产品 ID）；
+- `product_id`（必填）：销售品 ID（存量 9 位 ID 或配置落地返回的 `P+req_id` 形态产品 ID），取值 `dispatcher.py` 出参 `entities.product_id`；
 - **V4.0 融合组**：product_id 可传主 offer_id（组维度指标）或成员 offer_id（成员维度），前置检查不强制区分（以出参为准，出参 offer_name 即所查对象）；
-- **会话上下文取参**：会话中执行主干环节1 返回的 product_id 可直接使用；会话内从未出现过且用户未提供时 → 不发起调用，先追问："请提供要查询的销售品ID。"（禁止凭空编造）；
+- **会话上下文取参**：`dispatcher.py` 出参 `entities.product_id` 会话兜底（本会话执行主干环节1 返回的 product_id）；会话内从未出现过且用户未提供时 → 不发起调用，先追问："请提供要查询的销售品ID。"（禁止凭空编造）；
 - `date_range`（选填，默认最近1天，如 `2026-09-11~2026-09-12`）；
 - `metric`（选填，默认 all；枚举 order/error/fee/all）。
 
@@ -82,11 +83,10 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 ## 支线D-3：确认上线与监控运维方案（审批通过后）
 
 ### 触发条件
-- 审批通过（D-1 查询到 status=通过）后，用户回复"**确认上线**"；
-- 或用户直接要求"生成监控运维方案"。
+- dispatcher 出参 `intent=CONFIRM_ONLINE`（审批通过后用户回复"**确认上线**"，或直接要求"生成监控运维方案"）。
 
 ### 前置检查
-- `product_id`（必填）：审批通过的销售品 ID（会话上下文取参规则同 D-2）。
+- `product_id`（必填）：审批通过的销售品 ID（`dispatcher.py` 出参 `entities.product_id`，会话上下文取参规则同 D-2）。
 
 ### 执行程序
 1. 校验审批状态：先运行支线D-1 确认 status=通过（未通过 → 中断提示"审批尚未通过，暂不能上线"）；

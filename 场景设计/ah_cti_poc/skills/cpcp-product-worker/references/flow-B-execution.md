@@ -2,6 +2,7 @@
 
 > 对应原子工作流 wf_sub_02→03→05→04。用户确认配置后**一次跑完四个环节（智能配置→配置规格稽核→资费校准→自动测试），中途不停顿**；仅环节失败时中断。**受理验证是自动测试的子集**（测试平台自动执行受理类场景即完成受理验证，数据源=环节4 测试结果，不新增接口调用、不设独立环节）。各环节共用 req_id；每环节成功后存储（node_name=config/spec/fee/test）并立即打印结果。
 > V4.0 融合组扩展：plan_json 为组结构（offer_type=融合）时，各环节输出增加成员维度（成员回显行/成员分组比对/组场景/组一致性核对）；单商品 plan_json 行为零变化。全部成员维度数据逐字引用出参（`group`/`member_role`/`offer_group_check`），禁止自行推理。
+> **V5.0 编排收敛**：四环节串行编排、成败判定、存储落盘、续跑回放、轮询等待由确定性状态机脚本 `scripts/run_pipeline.py` 执行（串行铁律/确认门禁/幂等回放内置，见 SKILL.md 脚本调用约定）；**模型不再逐步调用单环节脚本自行编排**，职责收敛为：①按 dispatcher 出参 `confirmed` 决定是否传 `--confirmed`（确认门禁以 `dispatcher.py` 判定为准，见 SKILL.md 四层架构第0层）；②按 run_pipeline 出参 state + 各环节出参工件渲染下方输出模板；③按 e_code 对照异常矩阵引导。下方各环节的命令序列保留为**状态机内部实现说明**（供排查与文档追溯），非模型执行指令。
 
 ## 术语速查（参数取值唯一依据，禁止临场重新推理）
 | 术语 | 定义 | 生成环节 | 使用环节 |
@@ -11,25 +12,28 @@
 | **会话工件** | 环节1 成功后落盘的两个工作区文件：`plan_json_<req_id>.json`（配置原文）与 `config_result_<req_id>.json`（环节1 出参原文），大报文一律经 `--xxx-file` 引用，禁止内联 | 环节1 | 环节1 存储、环节2/3 调用与存储、续跑回放 |
 
 ## 触发条件
-- 用户对执行方案回复确认类语句（**确认配置**/确认执行/同意/可以/执行吧等）；
-- 或【重新执行】：按 fail_node 从失败环节续跑（STAGE1_CONFIG→环节1、STAGE2_AUDIT→环节2、STAGE3_FEE→环节3、STAGE4_TEST→环节4），已成功环节凭存储记录回放、**不重复调用写接口**。
+- 用户对执行方案回复确认类语句（**确认配置**/确认执行/同意/可以/执行吧等）——**由 `dispatcher.py` 出参 `intent=CONFIRM_EXEC` 且 `confirmed=true` 触发**（入口第一动作必是运行 dispatcher，禁止模型自行判断确认语义）；
+- 或【重新执行】：dispatcher 出参 `intent=RESUME_EXEC` → 按 fail_node 从失败环节续跑（STAGE1_CONFIG→环节1、STAGE2_AUDIT→环节2、STAGE3_FEE→环节3、STAGE4_TEST→环节4），已成功环节凭存储记录回放、**不重复调用写接口**。
+
+## 执行入口（V5.0，模型唯一动作）
+```bash
+# 首次执行（确认门禁：confirmed=true 才传 --confirmed；confirmed 值取 dispatcher 出参）
+python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目录>" --confirmed
+# 重新执行/续跑（fail_node 由上一轮 run_pipeline 出参或异常引导给出）
+python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目录>" --confirmed --resume --fail-node "<STAGEx>"
+```
+- 出参 state JSON：`resultCode`/`fail_node`/`e_code`/`next_action`/`nodes[]`（node/status/result_file/summary）；`e_code` 直接对照 `references/exception-matrix.md` 引导；`nodes[].result_file` 指向各环节出参工件（输出模板数据逐字引用工件原文）；
+- `next_action` 语义：APPROVAL_GATE=四环节全部成功等待审批确认；RESUME=可回复【重新执行】；FIX_PLAN=引导【修改执行方案】；CHECK_PLATFORM=E26 核查测试平台后【重新执行】/【继续】。
 
 ## 前置检查
-- `req_id`（必填）：执行方案存储键，以会话最近一次值为准，禁止重新生成；新会话未知时先运行 `python scripts/cpcp_api.py query_node_result` 检索，检索不到提示用户重新提报需求；
-- 未识别到用户确认语义时**不得进入本程序**（防跳步由 SKILL.md 纪律保证，后端不重复校验）。
+- `req_id`（必填）：执行方案存储键，以 `dispatcher.py` 出参 `entities.req_id`（会话最近一次值）为准，禁止重新生成；新会话未知时先运行 `python scripts/cpcp_api.py query_node_result` 检索，检索不到提示用户重新提报需求；
+- **确认门禁**：`dispatcher.py` 出参 `confirmed` 必须为 true 才允许进入本程序（对应 run_pipeline `--confirmed`）；被否定/REJECT 场景不得进入（防跳步由 dispatcher 判定保证，后端不重复校验）。
 
-## 通用步骤模式（四环节共用，先读一遍）
-1. **自查上游**：`python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node <上游node>`，取 `list[0].result_json` 原文（可先用 `extract_record` 子命令提取）；total==0 → E5 中断；
-2. **调用本环节接口**（见下；大报文参数一律 `--xxx-file` 引用会话工件，见术语速查）；
-3. **判定**：仅依据出参字段（各环节判定字段见下），失败/异常 → 按 `references/exception-matrix.md` 中断并引导【重新执行】/【修改执行方案】；
-4. **存储**：将本环节出参**原文**写入工作区工件 `result_<node>_<req_id>.json`，再执行 `python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node <本环节名> --result-json-file "<工件路径>"`（失败/超时场景也存储，供报告定位与续跑判定）；
-5. **打印**（按各环节模板输出，数据逐字引用出参，不加工）。
-
-### 会话工件约定（SKILL.md 纪律8 落地）
-- 落盘时机与命名（工作区=当前会话可写目录）：
-  - 环节1 落地成功后：`plan_json_<req_id>.json` ← requirement.result_json 中 plan_json 原文；`config_result_<req_id>.json` ← save_product_config 完整出参；
-  - 其余环节：`result_<node>_<req_id>.json` ← 本环节出参原文（存储前落盘，存档与命令传参共用同一文件）；
-- 禁止在命令行内联 >1KB 的 JSON 报文；禁止对出参"精简/重排/再包装"后存储（result_json 恒为出参原文）；
+## 通用步骤模式（已由 run_pipeline 内部执行，仅供排查追溯）
+四环节的**自查上游→调用→判定→存储→打印**已全部收敛进 `scripts/run_pipeline.py`（自查/存储/续跑/幂等回放内置），以下是内部实现说明，非模型执行指令：
+- 判定字段：config=status(SUCCESS/PARTIAL)、spec/fee=pass、test=全场景 successTestCaseCount==testCaseCount 且受理凭证非空；融合组另看 `offer_group_check`；
+- 存储：本环节出参**原文**写入 `result_<node>_<req_id>.json` 工件并 `save_node_result`（el（失败/超时也存储，供续跑）；
+- 工件：`plan_json_<req_id>.json`/`config_result_<req_id>.json`/`result_<node>_<req_id>.json` 由 run_pipeline 落盘，>1KB 一律 `--xxx-file` 引用，禁止内联/精简/重排（SKILL.md 纪律8）。
 
 ## 输出结构总纪律（四环节统一，防输出结构混乱）
 - 每个环节输出**必须以统一环节标题头开头**，格式固定为：`【环节N/4·环节名】✅ 执行成功` 或 `【环节N/4·环节名】❌ 执行失败`（N=1智能配置/2配置规格稽核/3资费校准/4销售品自动测试），标题头下空一行再输出环节详情；
@@ -39,15 +43,7 @@
 - 末尾统一输出【执行主干全部完成】汇总块（见文末模板）；**任一环节失败/中断时改输出【异常】统一模板（见文末），禁止输出任何形式的汇总表格**（汇总表仅在四环节全部成功后输出，异常中断时表格中会夹带未经完整校验的"通过"判定语境，属模板误用）。
 
 ## 环节1：销售品智能配置（唯一生产写入步骤）
-```bash
-# 自查 requirement → 提取执行方案原文（plan_json，见术语速查"环节1 配置原文"）
-python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirement
-# 落地（plan_json=原文原样透传，禁止任何加工/改写；大报文走 --plan-json-file 引用会话工件）
-python scripts/cpcp_api.py save_product_config --req-id "<req_id>" --plan-json-file "<plan_json_<req_id>.json>" --operator "<操作人，可空>"
-# 下载上线脚本文件（product_id 取上一步出参；--save-path 必须显式指定为会话可写目录绝对路径，
-# 默认 ./ 为脚本所在只读目录，预先规避 E28 路径不可写）
-python scripts/cpcp_api.py download_launch_script --product-id "<product_id>" --save-path "<工作区绝对路径>\launch_<product_id>.sql"
-```
+> 内部实现（run_pipeline 已内置，供排查）：自查 requirement 取 plan_json 原文（经 `--plan-json-file` 引用会话工件，禁止加工）→ `save_product_config` 落地（plan_json 原文原样透传，禁止大模型重写）→ `download_launch_script`（`--save-path` 指向会话可写目录绝对路径，规避 E28）。
 - 判定：status==SUCCESS 或 PARTIAL → 通过；FAIL → E6 中断（打印失败分类明细）；
 - 存储 node=config（result_json=save_product_config 出参原文，经 `--result-json-file` 引用 `config_result_<req_id>.json` 工件）；**失败不自动重试**（写操作防重复写入）；
 - **输出模板（逐字引用出参）**：
@@ -76,11 +72,7 @@ python scripts/cpcp_api.py download_launch_script --product-id "<product_id>" --
 - PARTIAL 时改为：`**配置状态：部分成功**`，附失败分类明细（此时同样须显性展示 offer_id/product_id 行），结尾改为"请根据失败明细说明修改意见，或回复【重新执行】。"（不显示下一环节引导）。
 
 ## 环节2：配置规格稽核（实时，无轮询）
-```bash
-# config_json=环节1 配置原文（= plan_json 原文，直接复用环节1 的 plan_json_<req_id>.json 工件，禁止重新组装）
-# offer_id=环节1 出参 offer_id（=环节1 输出中显性回显的"销售品ID（offer_id）"，禁止重新推理或编造）
-python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-json-file "<plan_json_<req_id>.json>" --audit-scene all
-```
+> 内部实现（run_pipeline 已内置，供排查）：`spec_audit`，config_json 复用环节1 plan_json 工件（禁止重新组装），offer_id=环节1 出参 offer_id（禁止重新推理）。
 - 判定：pass==1 → 通过；pass==0 → E8 中断（打印 error_list 明细 + 整改建议，可联动 send_alert(high)）；
 - resultCode 非 0（NET_ERROR/TIMEOUT）→ 脚本已内置传输层重试（共尝试 3 次），仍异常 → 按 E7/E29 终止并询问用户（禁止智能体自行叠加重试）；
 - 存储 node=spec；
@@ -110,10 +102,7 @@ python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-j
 - **建议处理引导行（固定输出）**：`**建议处理：可输入"资费校准"或等待自动进入【资费校准】。**`（串行连续执行时用户无需操作，该行照常输出）。
 
 ## 环节3：资费校准（8 项比对）
-```bash
-# config_json=环节1 配置原文（复用同一 plan_json_<req_id>.json 工件，与环节2 完全一致，禁止换源）
-python scripts/cpcp_api.py billing_verify --config-json-file "<plan_json_<req_id>.json>" --check-scene all
-```
+> 内部实现（run_pipeline 已内置，供排查）：`billing_verify`，config_json 复用同一 plan_json 工件（与环节2 完全一致，禁止换源）。
 - 判定：pass==1 → 通过（risk_list 为空说明）；pass==0 → E9 中断（打印风险清单 + 引导修改执行方案）；
 - 风险解读（回放/查询场景）：先读 `references/K2资费/K2资费_叠加优惠约束说明_V1.0.md` 作为解释依据，**不得新增风险结论或修改风险等级**；
 - 存储 node=fee；
@@ -145,23 +134,7 @@ python scripts/cpcp_api.py billing_verify --config-json-file "<plan_json_<req_id
 - **建议处理引导行（固定输出）**：`**建议处理：可输入"自动测试"或等待自动进入【销售品自动测试】。**`（串行连续执行时用户无需操作，该行照常输出）。
 
 ## 环节4：销售品自动测试（含受理验证）
-```bash
-# ① 发起（offerId=环节1 offer_id，camelCase 保持）
-python scripts/cpcp_api.py offer_test --offer-id "<offerId>"          # resultCode==0 且 globalId 非空→继续；否则 E10
-# ② 场景（记录受理验证覆盖范围 S_O_TC/S_ADD_CARD/S_U_TC；空 → E11 中断）
-python scripts/cpcp_api.py test_scenes --global-id "<globalId>"
-# ③ 轮询进度（首选：poll_test_progress.py 长驻命令，一条命令完成循环，规避智能体 shell 拼接语法差异）
-# 必须显式传 --max-consecutive-fail 2（E12 阈值收紧口径，脚本默认值已为 2，显式传入防漂移）
-python scripts/poll_test_progress.py --global-id "<globalId>" --max-consecutive-fail 2
-# ③ 备选（仅长驻命令不可用时）：test_progress 单次查询 + 会话原生等待原语循环（PowerShell 用 Start-Sleep，
-#    禁用 cmd 风格 timeout/& 组合；bash 用 sleep；每 5s 一次直至 done=true/failed=true）
-#    连续 2 次查询失败 → E12（阈值已收紧）；累计 30 分钟未 done → E13（保留 globalId）
-#    等待期间静默（见 SKILL.md 纪律7），禁止输出推理文本
-# ④ 结果（须 done=true 后查询）
-python scripts/cpcp_api.py test_result --global-id "<globalId>"
-# ⑤ 报告文件下载（--save-path 显式指定会话可写目录绝对路径，规避 E28；见报告下载纪律）
-python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-path "<工作区绝对路径>\test_report_<globalId>.md"
-```
+> 内部实现（run_pipeline 已内置，供排查）：① `offer_test` 取 globalId（resultCode 非 0 → E10）→ ② `test_scenes`（空 → E11）→ ③ 轮询进度（poll_test_progress 长驻或单查+等待原语，`--max-consecutive-fail 2`，连续失败 → E12、30 分钟未 done → E13）→ ④ `test_result`（须 done=true 后查询）→ ⑤ `download_test_report`（`--save-path` 指向会话可写目录绝对路径，规避 E28）。
 - 判定：test_passed==通过（全部场景全部测点 resultCode==0 且受理凭证非空）→ 通过；否则 E14/E15 中断；
 - **环节4 内部执行顺序（编号步骤伪代码，必须严格按序执行，禁止提前校验/跳序）**：
 ```

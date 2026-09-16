@@ -52,6 +52,27 @@ CATEGORY_MODULE = {
     "订购与生效": "业务规则", "变更/退订/拆机": "业务规则", "计费/支付/风控": "业务规则",
 }
 
+# 字段 → 分类（V3.0 24 字段注册表）。ontology_reason 出参会剥离 category，
+# build_plan 据此确定性回填（否则 plan_md 模块列变空串）。单商品 on 语义。
+FIELD_CATEGORY = {
+    "套餐名称": "产品属性", "套餐编码": "产品属性", "套餐档位": "产品属性",
+    "套餐属性": "产品属性", "计费周期": "产品属性",
+    "套餐有效期": "生命周期", "到期处理方式": "生命周期",
+    "适用用户": "销售属性", "销售渠道": "销售属性",
+    "国内通用流量": "套餐内基础资源", "本地语音": "套餐内基础资源", "短信": "套餐内基础资源",
+    "是否允许办理副卡": "套餐内权益配置",
+    "套外流量-计费标准": "套外资费标准", "套外语音-国内通话": "套外资费标准",
+    "套外短彩信-短/彩信": "套外资费标准",
+    "新入网生效方式": "订购与生效", "老用户生效方式": "订购与生效", "过渡期资费规则": "订购与生效",
+    "套餐变更范围": "变更/退订/拆机", "变更生效方式": "变更/退订/拆机", "退订规则": "变更/退订/拆机",
+    "付费方式": "计费/支付/风控", "支付方式": "计费/支付/风控",
+    "流量结转规则": "计费/支付/风控", "断网授权": "计费/支付/风控",
+    # V4.0 融合组成员字段（复用分类口径；宽带/天翼高清/副卡/权益包等角色适用）
+    "宽带速率": "套餐内基础资源", "宽带月功能费": "套外资费标准",
+    "路数": "套餐内基础资源", "月功能费": "套外资费标准", "张数": "套餐内权益配置",
+    "套外扣费": "套外资费标准",
+}
+
 # V4.0 融合组：成员角色封闭枚举（与 seed_offer_groups.json member_role_enum 一致）
 MEMBER_ROLES = {"主卡套餐", "宽带", "天翼高清", "副卡功能费", "权益包", "其他"}
 GROUP_ROLE_KEY = "member_role"  # 组结构入参中成员角色键（成员 fields 数组各元素可携带）
@@ -62,9 +83,33 @@ SOURCE_LABEL = {"原始需求": "原始需求", "AI推理": "AI补全", "本体�
 # V4.0 融合组结构键（fields_json 组结构入参形态：{offer_type, main_offer, member_offers, group_rules?}）
 GROUP_KEYS = {"offer_type", "main_offer", "member_offers"}
 
+# 价格类字段判别（套餐档位/各成员月功能费）——禁止从相似产品/跨成员照搬，未提取时留空交引擎兜底
+PRICE_FIELD_KEYWORDS = ("档位", "月功能费", "功能费")
+
 
 def _module_of(category):
     return CATEGORY_MODULE.get(category, category)
+
+
+def _backfill_category(fields):
+    """ontology_reason 出参剥离 category 后，build_plan 据 24 字段注册表确定性回填，
+    保证 plan_md 模块/分类列与 plan_json 均携带正确分类（缺失才回填，不覆盖既有值）。"""
+    for f in fields:
+        if isinstance(f, dict) and not f.get("category"):
+            f["category"] = FIELD_CATEGORY.get(f.get("field"), "")
+    return fields
+
+
+def _mark_price_pending(fields):
+    """价格类字段（套餐档位/各成员月功能费等）被 ontology_reason 剥离为空的，确定性置"待补充"。
+    价格禁止推理纪律延伸到组级：成员价格字段（宽带月功能费/月功能费等）引擎可能不置待补充，
+    此处统一归一，保证 build_plan 出口A 待补充判定对单商品与各成员价格字段同样生效。"""
+    for f in fields:
+        if isinstance(f, dict) and _is_price_field(f.get("field", "")) and not _strip(f.get("value")):
+            f["value"] = "待补充"
+            if not f.get("source"):
+                f["source"] = "AI补全"
+    return fields
 
 
 def _is_group_input(fields):
@@ -245,6 +290,149 @@ def cmd_ontology_reason(args):
         _err("PARAM_MISSING", "待推理字段数组为空，请先完成需求要素提取（18 字段）")
     out, data = _reason_flat(fields)
     print(json.dumps(out, ensure_ascii=False))
+
+
+# ---------------- 同构键值合并（flow-A 步骤3 确定性工具） ----------------
+
+def _strip(v):
+    """值空白归一：None/空白串 → ""（"待补充"/"系统待生成"等引擎兜底标记视为空值不参与合并）。"""
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if s in ("", "待补充", "系统待生成"):
+        return ""
+    return s
+
+
+def _is_price_field(field):
+    """价格类字段判别（套餐档位 / 宽带月功能费 / 副卡月功能费等）：
+    价格禁止推理、禁止从相似产品照搬、禁止跨成员照搬——需求未提供时留空交引擎维持'待补充'。"""
+    return any(k in (field or "") for k in PRICE_FIELD_KEYWORDS)
+
+
+def _merge_flat(elements, offer_fields):
+    """单商品同构键值合并：需求有值→原始需求；无值→offerInfo 同名字段(AI推理)；皆缺失/价格→留空交引擎。
+    以 elements 为 24 字段骨架，offer-only 字段（非价格且有值）追加挂 AI推理。"""
+    offer_map = {f.get("field"): f for f in (offer_fields or []) if isinstance(f, dict)}
+    seen, out = set(), []
+    for e in elements:
+        if not isinstance(e, dict):
+            continue
+        field = e.get("field", "")
+        if not field or field in seen:
+            continue
+        seen.add(field)
+        cat = e.get("category", "")
+        val = _strip(e.get("value"))
+        if val:
+            out.append({"field": field, "category": cat, "value": val, "source": "原始需求"})
+        elif _is_price_field(field):
+            out.append({"field": field, "category": cat, "value": "", "source": ""})
+        else:
+            of = offer_map.get(field)
+            oval = _strip(of.get("value")) if of else ""
+            out.append({"field": field, "category": cat, "value": oval,
+                        "source": "AI推理" if oval else ""})
+    for of in (offer_fields or []):
+        if not isinstance(of, dict):
+            continue
+        field = of.get("field", "")
+        if not field or field in seen:
+            continue
+        seen.add(field)
+        oval = _strip(of.get("value"))
+        if _is_price_field(field) or not oval:
+            continue
+        out.append({"field": field, "category": of.get("category", ""), "value": oval, "source": "AI推理"})
+    return out
+
+
+def _offer_fields_of(offer, role):
+    """从相似产品出参侧提取目标角色 fields 数组（与 _normalize_group 同形对位）。
+    支持形态：
+      - similar_offer 完整出参 {similarOffer:{offerInfo:{fields}}, offer_group:{members[].preset}}
+        → 主商品取 offerInfo.fields，成员取 offer_group.members[].preset
+      - 扁平 fields 数组 / {fields:[...]} → 主商品
+      - 原始 offer_group {members:[{role,...,preset}]}
+      - 已归一组结构 {main_offer, member_offers}"""
+    if isinstance(offer, list):
+        return offer
+    if not isinstance(offer, dict):
+        return []
+    if "similarOffer" in offer:
+        inner = offer["similarOffer"]
+        if isinstance(inner, dict):
+            oi = inner.get("offerInfo")
+            if isinstance(oi, dict) and role == "主卡套餐" and isinstance(oi.get("fields"), list):
+                return oi["fields"]
+    group = offer.get("offer_group") if "offer_group" in offer else (offer if "members" in offer else None)
+    if isinstance(group, dict) and isinstance(group.get("members"), list):
+        for m in group["members"]:
+            if isinstance(m, dict) and m.get("role") == role:
+                preset = m.get("preset")
+                if isinstance(preset, list):
+                    return preset
+                if isinstance(preset, dict):
+                    return [{"field": k, "value": v, "source": "AI推理"} for k, v in preset.items()]
+        return []
+    if "fields" in offer and isinstance(offer["fields"], list):
+        return offer["fields"]
+    for part in ([offer.get("main_offer")] if "main_offer" in offer else []) + \
+            (offer.get("member_offers") or []):
+        if isinstance(part, dict) and (part.get("role") == role or
+                                       (role == "主卡套餐" and part.get("role") in (None, "主卡套餐"))):
+            return part.get("fields") or []
+    return []
+
+
+def cmd_merge_fields(args):
+    """[Deprecated] flow-A 旧轨（24 字段本体驱动）同构键值合并。
+    @deprecated S4 起由模板轨 merge_nested（schema 骨架 + JSONPath 对位）替代，
+    本命令仅为过渡期向后兼容保留，新需求分析一律走模板轨。"""
+    # DEPRECATED_MARKER: 迁移完成前保留旧轨行为，禁止新增依赖
+    fields_raw = _read_arg(args, "fields_json", "_json_file")
+    offer_raw = _read_arg(args, "offer_json", "_json_file")
+    if not fields_raw:
+        _err("PARAM_MISSING", "缺少需求要素 fields_json（步骤1 产出）")
+    if not offer_raw:
+        _err("PARAM_MISSING", "缺少相似产品出参 offer_json（步骤2 similar_offer 出参）")
+    try:
+        elements = json.loads(fields_raw)
+    except json.JSONDecodeError:
+        _err("PARSE_ERROR", "fields_json 不是合法 JSON，请检查内容或改用 --fields-json-file")
+    try:
+        offer = json.loads(offer_raw)
+    except json.JSONDecodeError:
+        _err("PARSE_ERROR", "offer_json 不是合法 JSON，请检查内容或改用 --offer-json-file")
+
+    # ---- V4.0 融合组分支：逐成员独立合并 ----
+    if _is_group_input(elements):
+        g = _normalize_group(elements)
+        main_fields = _merge_flat(g["main_offer"]["fields"],
+                                  _offer_fields_of(offer, "主卡套餐"))
+        members_out = []
+        for m in g["member_offers"]:
+            mfields = _merge_flat(m["fields"], _offer_fields_of(offer, m["role"]))
+            members_out.append({"role": m["role"], "fields": mfields})
+        # group_rules 以 offer_group 出参为准（纪律9 逐字引用），elements 仅占位留空
+        og = offer.get("offer_group") if isinstance(offer, dict) else None
+        gr = og.get("group_rules") if isinstance(og, dict) and isinstance(og.get("group_rules"), dict) \
+            else (g["group_rules"] if isinstance(g.get("group_rules"), dict) else {})
+        merged = {"offer_type": g["offer_type"],
+                  "main_offer": {"role": "主卡套餐", "fields": main_fields},
+                  "member_offers": members_out, "group_rules": gr}
+        print(json.dumps({"resultCode": "0", "resultMsg": "success（融合组逐成员合并）",
+                          "offer_type": g["offer_type"], "group": merged}, ensure_ascii=False))
+        return
+
+    # ---- V3.0 单商品分支 ----
+    if isinstance(elements, dict):
+        elements = elements.get("fields", [])
+    if not isinstance(elements, list):
+        _err("PARSE_ERROR", "fields_json 应为扁平字段数组或融合组结构")
+    merged = _merge_flat(elements, _offer_fields_of(offer, "主卡套餐"))
+    print(json.dumps({"resultCode": "0", "resultMsg": "success",
+                      "fields": merged}, ensure_ascii=False))
 
 
 # ---------------- 自动测试类 ----------------
@@ -651,6 +839,8 @@ def cmd_build_plan(args):
     if _is_group_input(fields):
         g = _normalize_group(fields)
         for part in [g["main_offer"]] + g["member_offers"]:
+            _backfill_category(part["fields"])
+            _mark_price_pending(part["fields"])
             for f in part["fields"]:
                 if isinstance(f, dict) and f.get("source") in SOURCE_LABEL:
                     f["source"] = SOURCE_LABEL[f["source"]]
@@ -704,6 +894,8 @@ def cmd_build_plan(args):
     for f in fields:
         if isinstance(f, dict) and f.get("source") in SOURCE_LABEL:
             f["source"] = SOURCE_LABEL[f["source"]]
+    _backfill_category(fields)
+    _mark_price_pending(fields)
     req_id = PLAN_PREFIX + _now() + "%03d" % random.randint(0, 999)
     pending = [f["field"] for f in fields if f.get("value") == "待补充"]
     plan_json = {"req_id": req_id, "fields": fields, "pending_fields": pending}
@@ -722,6 +914,118 @@ def cmd_build_plan(args):
 
     print(json.dumps({"req_id": req_id, "plan_json": json.dumps(plan_json, ensure_ascii=False),
                       "plan_md": plan_md, "pending_fields": pending}, ensure_ascii=False))
+
+
+# ---------------- 模板轨（flow-A 模板驱动重构，S3e 新增子命令） ----------------
+
+# 模板 schema 目录（skill 内相对定位）
+TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+
+
+def _template_path(template_id):
+    """templateId → schema 文件路径；不存在时报 PARAM_MISSING。"""
+    path = os.path.join(TEMPLATE_DIR, "%s.schema.json" % template_id)
+    if not os.path.exists(path):
+        _err("PARAM_MISSING",
+             "模板不存在：%s（可用模板见 scripts/templates/_index.json）" % template_id)
+    return path
+
+
+def _load_json_arg(raw, what):
+    try:
+        return json.loads(raw) if raw else {}
+    except json.JSONDecodeError as e:
+        _err("PARSE_ERROR", "%s 不是合法 JSON：%s" % (what, e))
+
+
+def cmd_identify_products(args):
+    """步骤① 产品列表识别出参校验（LLM 环节的确定性后置闸）：
+    校验 products 数组形态与产品类型枚举，输出归一报告。"""
+    data = _load_json_arg(_read_arg(args, "products_json", "_json_file"), "products_json")
+    products = data.get("products") if isinstance(data, dict) else data
+    if not isinstance(products, list) or not products:
+        _err("PARAM_MISSING", "products_json 应含非空 products 数组（步骤① LLM 识别产出）")
+    VALID_TYPES = ("个人主套餐", "宽带主套餐", "个人附加资费", "宽带附加资费",
+                   "家庭基础套餐", "家庭附加资费")
+    ok, bad = [], []
+    for p in products:
+        if isinstance(p, dict) and p.get("prodName") and p.get("prodType") in VALID_TYPES:
+            ok.append(p)
+        else:
+            bad.append(p)
+    print(json.dumps({"resultCode": "0", "resultMsg": "success",
+                      "valid_products": ok, "invalid_products": bad,
+                      "total": len(products)}, ensure_ascii=False))
+
+
+def cmd_get_template(args):
+    """步骤③ 模板获取：templateId → schema JSON（含叶子清单摘要供提示词注入）。"""
+    with open(_template_path(args.template), "r", encoding="utf-8") as f:
+        schema = json.load(f)
+    print(json.dumps({"resultCode": "0", "resultMsg": "success",
+                      "template": schema.get("x-template", args.template),
+                      "schema": schema}, ensure_ascii=False))
+
+
+def cmd_merge_nested(args):
+    """步骤⑤ 嵌套报文合并（转发 merge_nested.py，args 同名透传）。"""
+    import merge_nested  # noqa: 与本脚本同目录
+    sys.argv = ["merge_nested.py"] + [a for a in sys.argv[2:]]
+    merge_nested.main()
+
+
+def cmd_render_table(args):
+    """步骤⑥ 业务分节表格渲染（转发 render_table.py）。"""
+    import render_table
+    sys.argv = ["render_table.py"] + [a for a in sys.argv[2:]]
+    render_table.main()
+
+
+def cmd_validate_elements(args):
+    """第④步后置闸 提取要素校验（转发 validate_elements.py）。"""
+    import validate_elements
+    sys.argv = ["validate_elements.py"] + [a for a in sys.argv[2:]]
+    validate_elements.main()
+
+
+def cmd_derive_flat24(args):
+    """下游过渡兼容层：模板轨嵌套报文 → V3.0 flat24 字段数组（评审结论#1）。
+    环节2/3 后端仍按 24 字段校验，派生 plan_json 继续入库。"""
+    payload_raw = _read_arg(args, "payload_json", "_json_file")
+    data = _load_json_arg(payload_raw, "payload_json")
+    data = data.get("payload", data)
+    with open(_template_path(args.template), "r", encoding="utf-8") as f:
+        schema = json.load(f)
+    mapping_raw = args.mapping_file or os.path.join(
+        os.path.dirname(os.path.dirname(TEMPLATE_DIR)), "references", "ontology-fields.json")
+    mapping = {}
+    if os.path.exists(mapping_raw):
+        with open(mapping_raw, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+    # 确定性提取：扁平 walk 嵌套报文，按 ontology-fields 映射表对位 flat24 字段名
+    flat = {}
+
+    def walk(node, prefix=""):
+        if not isinstance(node, dict):
+            return
+        for k, v in node.items():
+            p2 = (prefix + "." + k) if prefix else k
+            if isinstance(v, dict):
+                walk(v, p2)
+            elif v not in ("", None):
+                flat[p2] = v
+    walk(data)
+    fields = []
+    for path, field_name in (mapping.get("path_to_field") or {}).items():
+        val = flat.get(path)
+        if val is None:
+            continue
+        fields.append({"field": field_name, "value": str(val), "source": "模板轨派生"})
+    print(json.dumps({"resultCode": "0", "resultMsg": "success（下游过渡兼容层）",
+                      "template": args.template,
+                      "fields": fields,
+                      "note": "仅作环节2/3 后端 24 字段校验过渡，模板轨唯一事实源为嵌套报文"},
+                     ensure_ascii=False))
 
 
 # ---------------- CLI ----------------
@@ -787,6 +1091,42 @@ def main():
     s.add_argument("--spec-result"); s.add_argument("--spec-result-file")
     s.add_argument("--fee-result"); s.add_argument("--fee-result-file")
     s.set_defaults(fn=cmd_map_fixed_cases)
+    # ---- 旧轨（24 字段本体驱动）：@deprecated，S4 起由模板轨子命令替代 ----
+    s = sub.add_parser("merge_fields")
+    s.add_argument("--fields-json"); s.add_argument("--fields-json-file")
+    s.add_argument("--offer-json"); s.add_argument("--offer-json-file")
+    s.set_defaults(fn=cmd_merge_fields)
+
+    # ---- 模板轨子命令（S3e，flow-A 模板驱动重构）----
+    s = sub.add_parser("identify_products")
+    s.add_argument("--products-json"); s.add_argument("--products-json-file")
+    s.set_defaults(fn=cmd_identify_products)
+    s = sub.add_parser("get_template")
+    s.add_argument("--template", required=True)
+    s.set_defaults(fn=cmd_get_template)
+    s = sub.add_parser("validate_elements")
+    s.add_argument("--schema-file", required=True)
+    s.add_argument("--elements-json"); s.add_argument("--elements-file")
+    s.add_argument("--mode", choices=("normal", "legacy"), default="legacy")
+    s.add_argument("--threshold", type=float, default=0.30)
+    s.set_defaults(fn=cmd_validate_elements)
+    s = sub.add_parser("merge_nested")
+    s.add_argument("--schema-file", required=True)
+    s.add_argument("--elements-json"); s.add_argument("--elements-json-file")
+    s.add_argument("--offer-json"); s.add_argument("--offer-json-file")
+    s.add_argument("--template", default="")
+    s.add_argument("--mode", choices=("normal", "legacy"), default="normal")
+    s.set_defaults(fn=cmd_merge_nested)
+    s = sub.add_parser("render_table")
+    s.add_argument("--schema-file", required=True)
+    s.add_argument("--json-file", required=True)
+    s.add_argument("--title", default="")
+    s.set_defaults(fn=cmd_render_table)
+    s = sub.add_parser("derive_flat24")
+    s.add_argument("--template", required=True)
+    s.add_argument("--payload-json"); s.add_argument("--payload-json-file")
+    s.add_argument("--mapping-file", default="")
+    s.set_defaults(fn=cmd_derive_flat24)
 
     args = p.parse_args()
     args.fn(args)

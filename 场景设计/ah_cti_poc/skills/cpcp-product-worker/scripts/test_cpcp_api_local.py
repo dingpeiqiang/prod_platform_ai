@@ -218,6 +218,102 @@ def main():
     print("12. 单商品回归防漂移 OK（五列表格逐字节 + 组键不泄漏）")
     ok += 1
 
+    # 13. merge_fields 单商品：需求有值→原始需求；需求无值+offer有值→AI推理；
+    #     价格字段(套餐档位)不照搬→留空；皆缺失→留空
+    elements_flat = [
+        {"field": "套餐名称", "category": "产品属性", "value": "校园青春卡", "source": "原始需求"},
+        {"field": "套餐档位", "category": "产品属性", "value": "", "source": ""},
+        {"field": "国内通用流量", "category": "套餐内基础资源", "value": "", "source": ""},
+        {"field": "本地语音", "category": "套餐内基础资源", "value": "", "source": ""},
+        {"field": "退订规则", "category": "变更/退订/拆机", "value": "", "source": ""},
+    ]
+    offer_flat = {
+        "fields": [
+            {"field": "套餐名称", "category": "产品属性", "value": "套餐A199元", "source": ""},
+            {"field": "套餐档位", "category": "产品属性", "value": "199元", "source": ""},
+            {"field": "国内通用流量", "category": "套餐内基础资源", "value": "30GB", "source": ""},
+            {"field": "本地语音", "category": "套餐内基础资源", "value": "", "source": ""},
+        ]
+    }
+    r = run(["merge_fields", "--fields-json", json.dumps(elements_flat, ensure_ascii=False),
+             "--offer-json", json.dumps(offer_flat, ensure_ascii=False)])
+    assert r.returncode == 0, r.stdout
+    merged = json.loads(r.stdout)["fields"]
+    by = {f["field"]: f for f in merged}
+    assert by["套餐名称"]["value"] == "校园青春卡" and by["套餐名称"]["source"] == "原始需求"
+    assert by["套餐档位"]["value"] == "" and by["套餐档位"]["source"] == ""  # 价格不照搬→留空
+    assert by["国内通用流量"]["value"] == "30GB" and by["国内通用流量"]["source"] == "AI推理"
+    assert by["本地语音"]["value"] == "" and by["本地语音"]["source"] == ""  # 皆缺失→留空
+    assert by["退订规则"]["value"] == "" and by["退订规则"]["source"] == ""  # 缺 offer→留空
+    assert all(f["category"] for f in merged)  # 保留 category（供 build_plan 模块归并）
+    print("13. merge_fields 单商品 OK（来源两态 + 价格不照搬 + 皆缺失留空）")
+    ok += 1
+
+    # 14. merge_fields 融合组：逐成员独立合并，价格禁止跨成员照搬
+    group_ele = {
+        "offer_type": "融合",
+        "main_offer": {"role": "主卡套餐", "fields": [
+            {"field": "套餐名称", "category": "产品属性", "value": "5G-A融合套餐199元", "source": "原始需求"},
+            {"field": "套餐档位", "category": "产品属性", "value": "", "source": ""},
+            {"field": "国内通用流量", "category": "套餐内基础资源", "value": "30GB", "source": "原始需求"},
+        ]},
+        "member_offers": [
+            {"role": "宽带", "fields": [
+                {"field": "宽带速率", "category": "套餐内基础资源", "value": "", "source": ""},
+                {"field": "宽带月功能费", "category": "套外资费标准", "value": "", "source": ""},
+            ]},
+            {"role": "副卡功能费", "fields": [
+                {"field": "月功能费", "category": "套外资费标准", "value": "", "source": ""},
+            ]},
+        ],
+        "group_rules": {},
+    }
+    offer_group = {
+        "group_id": "GP900113046",
+        "members": [
+            {"role": "主卡套餐", "preset": [{"field": "套餐档位", "value": "199元", "category": "产品属性"}]},
+            {"role": "宽带", "preset": {"宽带速率": "1000M起", "宽带月功能费": "100元"}},
+            {"role": "副卡功能费", "preset": {"月功能费": "10元"}},
+        ],
+    }
+    r = run(["merge_fields", "--fields-json", json.dumps(group_ele, ensure_ascii=False),
+             "--offer-json", json.dumps(offer_group, ensure_ascii=False)])
+    assert r.returncode == 0, r.stdout
+    gout = json.loads(r.stdout)["group"]
+    main_by = {f["field"]: f for f in gout["main_offer"]["fields"]}
+    assert main_by["套餐名称"]["source"] == "原始需求"
+    assert main_by["套餐档位"]["value"] == "" and main_by["套餐档位"]["source"] == ""  # 主价格不照搬
+    assert main_by["国内通用流量"]["value"] == "30GB" and main_by["国内通用流量"]["source"] == "原始需求"
+    bb = {f["field"]: f for f in gout["member_offers"][0]["fields"]}
+    assert bb["宽带速率"]["value"] == "1000M起" and bb["宽带速率"]["source"] == "AI推理"
+    assert bb["宽带月功能费"]["value"] == "" and bb["宽带月功能费"]["source"] == ""  # 成员价格不照搬（各自独立）
+    sf = {f["field"]: f for f in gout["member_offers"][1]["fields"]}
+    assert sf["月功能费"]["value"] == "" and sf["月功能费"]["source"] == ""  # 副卡价格不照搬
+    assert [m["role"] for m in gout["member_offers"]] == ["宽带", "副卡功能费"]
+    print("14. merge_fields 融合组 OK（逐成员合并 + 价格禁止跨成员照搬）")
+    ok += 1
+
+    # 15. build_plan 自愈：ontology_reason 出参剥离 category 后，按 24 字段注册表回填，
+    #     plan_md 模块/分类列正常（不再出现 ****）
+    no_cat = [
+        {"field": "套餐名称", "value": "5G-A套餐", "source": "原始需求"},
+        {"field": "套餐档位", "value": "199元", "source": "原始需求"},
+        {"field": "国内通用流量", "value": "60GB", "source": "原始需求"},
+        {"field": "付费方式", "value": "后付费", "source": "AI补全"},
+    ]
+    r = run(["build_plan", "--fields-json", json.dumps(no_cat, ensure_ascii=False)])
+    assert r.returncode == 0, r.stdout
+    out_nc = json.loads(r.stdout)
+    assert "| **基础信息** | 产品属性 | 套餐名称 | 5G-A套餐 | 【原始需求】 |" in out_nc["plan_md"], out_nc["plan_md"]
+    assert "| **资源配置** | 套餐内基础资源 | 国内通用流量 | 60GB | 【原始需求】 |" in out_nc["plan_md"]
+    assert "| **业务规则** | 计费/支付/风控 | 付费方式 | 后付费 | 【AI补全】 |" in out_nc["plan_md"]
+    assert "****" not in out_nc["plan_md"], out_nc["plan_md"]
+    plan_nc = json.loads(out_nc["plan_json"])
+    assert all(f.get("category") for f in plan_nc["fields"]), plan_nc["fields"]
+    assert plan_nc["fields"][0]["category"] == "产品属性"
+    print("15. build_plan category 自愈 OK（剥离 category 后模块/分类列正常回填，无 ****）")
+    ok += 1
+
     print("全部 %d 项本地自测通过" % ok)
 
 

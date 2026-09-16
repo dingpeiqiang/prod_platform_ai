@@ -1,0 +1,298 @@
+{
+ "resultCode": "0",
+ "resultMsg": "success（存量实例化）",
+ "template": "familyBasePrc",
+ "payload": {
+  "baseInfo": {
+   "teamType": "全家福",
+   "ifFloorsPrc": "否",
+   "prodPrcName": "5G-A融合套餐239元",
+   "effRuleId": "",
+   "cancelRuleId": "",
+   "prcEffCycle": "长期有效",
+   "prcEffType": "",
+   "prcEffNum": "",
+   "prcEffDate": "",
+   "effDate": "",
+   "expDate": "",
+   "payFlag": "",
+   "dateLimit": "24个月（自动续展，每次续展2年）",
+   "powerCode": "",
+   "familyCata": "",
+   "roleMax": "",
+   "roleMin": "",
+   "canAddFamilyPrc": "允许办理家庭附加业务",
+   "prodId": "",
+   "pricingId": "",
+   "prodPrcId": "",
+   "orderNo": ""
+  },
+  "phoneMbrInfo": {
+   "ifChangeBasePrc": "是",
+   "inProdPrcId": "",
+   "outProdPrcId": "",
+   "phoneMbrMax": "",
+   "phoneMbrMin": "",
+   "freeMbrCnt": "",
+   "phoneMbrFee": 10
+  },
+  "broadBandMbrInfo": {
+   "kdMbrMax": "",
+   "kdMbrMin": "",
+   "mainKd": "1000M起",
+   "tvPrc": "1路",
+   "sencondKdPrc": "",
+   "thirdKdPrc": ""
+  },
+  "releaseInfo": {
+   "chnClassLimit": "实体渠道、电子渠道、直销渠道",
+   "groupId": "",
+   "groupIdMessage": ""
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": 239,
+    "containResource": "120GB国内通用流量、1000分钟国内语音拨打、国内语音接听免费、最高下行2Gbps最高上行200Mbps、卫星权益15分钟15条短信、应用权益漏话提醒、智能应答、安全管家、视频彩铃、谢绝来电_天翼防骚扰、天翼云盘（家庭版）、宽带1000M起、天翼高清1路",
+    "chargeStandard": "套外流量前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB（即3元/1GB），流量超过1GB按每超出1GB 3元收费；套外语音国内0.15元/分钟；套外短彩信0.1元/条；套外卫星拨打国内电话9元/分钟，拨打国际长途20元/分钟，拨打国际卫星电话50元/分钟，国内接听9元/分钟，发送短信5元/条",
+    "limitCondition": "国内通用流量仅限中国内地（不含港澳台和国际）使用，不含WLAN；套餐内语音仅限中国内地使用；5G-A网络权益需终端支持且在5G-A网络覆盖良好环境下享受",
+    "otherEquity": "漏话提醒、智能应答、安全管家、视频彩铃、谢绝来电_天翼防骚扰、天翼云盘（家庭版）"
+   },
+   "prcSmsCfg": {
+    "opType": "",
+    "sysNoteNow": "",
+    "sysNoteNext": "",
+    "sysNoteCancle": "",
+    "sysNoteErke": ""
+   },
+   "acctMonth": {
+    "calcMode": "首月按天折算，一次性收取，次月按月收取",
+    "fixFee": 239,
+    "acctItem": "",
+    "isSplitRate": "",
+    "splitRate9": "",
+    "splitRate6": "",
+    "fixValidity": "长期有效",
+    "fixValidityVAlue": ""
+   },
+   "acctFav": {
+    "favObject": "",
+    "favCondition": "",
+    "favItemType": "",
+    "favGroup": "",
+    "favType": "",
+    "favDiscount": "",
+    "favFee": "",
+    "favValidity": "",
+    "favValidityVAlue": "",
+    "favDesc": ""
+   },
+   "dlowFavFee": {
+    "fav1Fee": "",
+    "fav1ItemType": "",
+    "fav1Group": "",
+    "fav1Validity": "",
+    "fav1ValidityVAlue": ""
+   },
+   "billGprsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内-通用-单月",
+    "theshold": 120,
+    "unit": "GB",
+    "adjust": "",
+    "carryFlag": "是",
+    "remindFlag": "",
+    "shareFlag": ""
+   },
+   "billVoiceCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内主叫",
+    "theshold": 1000,
+    "adjust": "",
+    "remindFlag": "否",
+    "shareFlag": ""
+   }
+  }
+ },
+ "_meta": {
+  "baseInfo.teamType": {
+   "label": "家庭套餐类型",
+   "value": "全家福",
+   "source": "存量提取"
+  },
+  "baseInfo.ifFloorsPrc": {
+   "label": "是否保底资费",
+   "value": "否",
+   "source": "存量提取"
+  },
+  "baseInfo.prodPrcName": {
+   "label": "资费名称",
+   "value": "5G-A融合套餐239元",
+   "source": "存量提取"
+  },
+  "baseInfo.prcEffCycle": {
+   "label": "资费有效周期",
+   "value": "长期有效",
+   "source": "存量提取"
+  },
+  "baseInfo.dateLimit": {
+   "label": "协议期",
+   "value": "24个月（自动续展，每次续展2年）",
+   "source": "存量提取"
+  },
+  "baseInfo.canAddFamilyPrc": {
+   "label": "允许办理家庭附加业务",
+   "value": "允许办理家庭附加业务",
+   "source": "存量提取"
+  },
+  "phoneMbrInfo.ifChangeBasePrc": {
+   "label": "是否变更主资费",
+   "value": "是",
+   "source": "存量提取"
+  },
+  "phoneMbrInfo.phoneMbrFee": {
+   "label": "超出成员月租（元/月）",
+   "value": 10,
+   "source": "存量提取"
+  },
+  "broadBandMbrInfo.mainKd": {
+   "label": "主宽带",
+   "value": "1000M起",
+   "source": "存量提取"
+  },
+  "broadBandMbrInfo.tvPrc": {
+   "label": "允许办理电视资费",
+   "value": "1路",
+   "source": "存量提取"
+  },
+  "releaseInfo.chnClassLimit": {
+   "label": "发布渠道",
+   "value": "实体渠道、电子渠道、直销渠道",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.prcMonthFee": {
+   "label": "套餐月费",
+   "value": 239,
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.containResource": {
+   "label": "包含资源",
+   "value": "120GB国内通用流量、1000分钟国内语音拨打、国内语音接听免费、最高下行2Gbps最高上行200Mbps、卫星权益15分钟15条短信、应用权益漏话提醒、智能应答、安全管家、视频彩铃、谢绝来电_天翼防骚扰、天翼云盘（家庭版）、宽带1000M起、天翼高清1路",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.chargeStandard": {
+   "label": "超套收费标准",
+   "value": "套外流量前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB（即3元/1GB），流量超过1GB按每超出1GB 3元收费；套外语音国内0.15元/分钟；套外短彩信0.1元/条；套外卫星拨打国内电话9元/分钟，拨打国际长途20元/分钟，拨打国际卫星电话50元/分钟，国内接听9元/分钟，发送短信5元/条",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.limitCondition": {
+   "label": "限定条件",
+   "value": "国内通用流量仅限中国内地（不含港澳台和国际）使用，不含WLAN；套餐内语音仅限中国内地使用；5G-A网络权益需终端支持且在5G-A网络覆盖良好环境下享受",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.otherEquity": {
+   "label": "其他权益",
+   "value": "漏话提醒、智能应答、安全管家、视频彩铃、谢绝来电_天翼防骚扰、天翼云盘（家庭版）",
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.calcMode": {
+   "label": "收费方式",
+   "value": "首月按天折算，一次性收取，次月按月收取",
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.fixFee": {
+   "label": "套餐固定费（元）",
+   "value": 239,
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.fixValidity": {
+   "label": "月租有效期",
+   "value": "长期有效",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.resourceType": {
+   "label": "流量类型",
+   "value": "国内-通用-单月",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.theshold": {
+   "label": "资源量",
+   "value": 120,
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.unit": {
+   "label": "流量单位",
+   "value": "GB",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.carryFlag": {
+   "label": "是否结转到次月",
+   "value": "是",
+   "source": "存量提取"
+  },
+  "optionalInfo.billVoiceCfg.resourceType": {
+   "label": "流量类型",
+   "value": "国内主叫",
+   "source": "存量提取"
+  },
+  "optionalInfo.billVoiceCfg.theshold": {
+   "label": "资源量",
+   "value": 1000,
+   "source": "存量提取"
+  },
+  "optionalInfo.billVoiceCfg.remindFlag": {
+   "label": "是否提醒",
+   "value": "否",
+   "source": "默认值"
+  }
+ },
+ "pending_required": [
+  "baseInfo.effRuleId",
+  "baseInfo.cancelRuleId",
+  "baseInfo.prcEffType",
+  "baseInfo.prcEffNum",
+  "baseInfo.prcEffDate",
+  "baseInfo.effDate",
+  "baseInfo.expDate",
+  "baseInfo.payFlag",
+  "baseInfo.powerCode",
+  "baseInfo.familyCata",
+  "baseInfo.roleMax",
+  "baseInfo.roleMin",
+  "phoneMbrInfo.inProdPrcId",
+  "phoneMbrInfo.outProdPrcId",
+  "phoneMbrInfo.phoneMbrMax",
+  "phoneMbrInfo.phoneMbrMin",
+  "phoneMbrInfo.freeMbrCnt",
+  "broadBandMbrInfo.kdMbrMax",
+  "broadBandMbrInfo.kdMbrMin",
+  "broadBandMbrInfo.sencondKdPrc",
+  "broadBandMbrInfo.thirdKdPrc",
+  "releaseInfo.groupId",
+  "releaseInfo.groupIdMessage",
+  "optionalInfo.acctMonth.acctItem",
+  "optionalInfo.acctMonth.isSplitRate",
+  "optionalInfo.acctFav.favObject",
+  "optionalInfo.acctFav.favCondition",
+  "optionalInfo.acctFav.favItemType",
+  "optionalInfo.acctFav.favType",
+  "optionalInfo.acctFav.favDiscount",
+  "optionalInfo.acctFav.favFee",
+  "optionalInfo.acctFav.favValidity",
+  "optionalInfo.dlowFavFee.fav1Fee",
+  "optionalInfo.dlowFavFee.fav1ItemType",
+  "optionalInfo.dlowFavFee.fav1Validity",
+  "optionalInfo.billGprsCfg.adjust",
+  "optionalInfo.billGprsCfg.remindFlag",
+  "optionalInfo.billGprsCfg.shareFlag",
+  "optionalInfo.billVoiceCfg.adjust",
+  "optionalInfo.billVoiceCfg.shareFlag"
+ ]
+}

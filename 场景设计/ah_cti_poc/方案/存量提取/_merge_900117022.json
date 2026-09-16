@@ -1,0 +1,258 @@
+{
+ "resultCode": "0",
+ "resultMsg": "success（存量实例化）",
+ "template": "personAddPrc",
+ "payload": {
+  "baseInfo": {
+   "prodPrcName": "19.9元权益随心选娱乐版",
+   "effRuleId": "",
+   "cancelRuleId": "",
+   "prcEffCycle": "",
+   "prcEffType": "",
+   "prcEffNum": "",
+   "prcEffDate": "",
+   "effDate": "",
+   "expDate": "",
+   "effNum": "",
+   "planFlag": "",
+   "f_5G速率5GUser": "",
+   "unifiedQryCancle": "",
+   "reFeeFlag": "",
+   "prodId": "",
+   "pricingId": "",
+   "prodPrcId": "",
+   "orderNo": ""
+  },
+  "releaseInfo": {
+   "chnClassLimit": "实体渠道、电子渠道、直销渠道",
+   "groupId": "",
+   "groupIdMessage": ""
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": 19.9,
+    "containResource": "娱乐版权益和5GB国内通用流量",
+    "chargeStandard": "",
+    "limitCondition": "包内流量限订购手机号使用，其他融合成员不共享，融合成员可单独订购；包内流量不适用于流量不清零规则，当月剩余流量不结转；欠费、停机等异常状态下权益无法领取",
+    "otherEquity": ""
+   },
+   "prcSmsCfg": {
+    "opType": "",
+    "sysNoteNow": "",
+    "sysNoteNext": "",
+    "sysNoteCancle": "",
+    "sysNoteExpire": "",
+    "sysNoteErke": ""
+   },
+   "acctMonth": {
+    "calcMode": "首月全额收取，次月按月收取",
+    "fixCircle": "",
+    "fixFee": 19.9,
+    "acctItem": "",
+    "isSplitRate": "",
+    "splitRate9": "",
+    "splitRate6": "",
+    "fixValidity": "长期有效",
+    "fixValidityVAlue": ""
+   },
+   "acctFav": {
+    "favCondition": "",
+    "favItemType": "",
+    "favGroup": "",
+    "favType": "",
+    "favDiscount": "",
+    "favFee": "",
+    "favValidity": "",
+    "favValidityVAlue": "",
+    "favDesc": ""
+   },
+   "dlowFavFee": {
+    "fav1Method": "",
+    "fav1Fee": "",
+    "fav1ItemType": "",
+    "fav1Group": "",
+    "fav1Validity": "",
+    "fav1ValidityVAlue": ""
+   },
+   "billGprsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "通用流量",
+    "location": "国内流量",
+    "locationCodes": "",
+    "theshold": 5,
+    "unit": "GB",
+    "sid": "",
+    "periodUnit": "月（自然）",
+    "period": "",
+    "adjust": "账务连带",
+    "carryFlag": "否",
+    "remindFlag": ""
+   },
+   "billVoiceCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "",
+    "theshold": "",
+    "adjust": "",
+    "outCharge": "",
+    "remindFlag": "否"
+   },
+   "billSmsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "",
+    "theshold": "",
+    "adjust": "",
+    "outCharge": "",
+    "remindFlag": "否"
+   },
+   "SmsInstCfg": {
+    "SvcName": "",
+    "SmsInst": "",
+    "SmsContent": "",
+    "SmsCity": "",
+    "AccessNO": "",
+    "ProdPrcType": "",
+    "ProdPrcid": ""
+   }
+  }
+ },
+ "_meta": {
+  "baseInfo.prodPrcName": {
+   "label": "资费名称",
+   "value": "19.9元权益随心选娱乐版",
+   "source": "存量提取"
+  },
+  "releaseInfo.chnClassLimit": {
+   "label": "发布渠道",
+   "value": "实体渠道、电子渠道、直销渠道",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.prcMonthFee": {
+   "label": "套餐月费",
+   "value": 19.9,
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.containResource": {
+   "label": "包含资源",
+   "value": "娱乐版权益和5GB国内通用流量",
+   "source": "存量提取"
+  },
+  "optionalInfo.printContent.limitCondition": {
+   "label": "限定条件",
+   "value": "包内流量限订购手机号使用，其他融合成员不共享，融合成员可单独订购；包内流量不适用于流量不清零规则，当月剩余流量不结转；欠费、停机等异常状态下权益无法领取",
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.calcMode": {
+   "label": "收费方式",
+   "value": "首月全额收取，次月按月收取",
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.fixFee": {
+   "label": "套餐固定费（元）",
+   "value": 19.9,
+   "source": "存量提取"
+  },
+  "optionalInfo.acctMonth.fixValidity": {
+   "label": "月租有效期",
+   "value": "长期有效",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.resourceType": {
+   "label": "流量类型",
+   "value": "通用流量",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.location": {
+   "label": "地域范围",
+   "value": "国内流量",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.theshold": {
+   "label": "资源量",
+   "value": 5,
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.unit": {
+   "label": "流量单位",
+   "value": "GB",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.periodUnit": {
+   "label": "资源周期单位",
+   "value": "月（自然）",
+   "source": "存量提取"
+  },
+  "optionalInfo.billGprsCfg.adjust": {
+   "label": "首月资源赠送方式",
+   "value": "账务连带",
+   "source": "默认值"
+  },
+  "optionalInfo.billGprsCfg.carryFlag": {
+   "label": "是否结转到次月",
+   "value": "否",
+   "source": "存量提取"
+  },
+  "optionalInfo.billVoiceCfg.remindFlag": {
+   "label": "是否提醒",
+   "value": "否",
+   "source": "默认值"
+  },
+  "optionalInfo.billSmsCfg.remindFlag": {
+   "label": "是否提醒",
+   "value": "否",
+   "source": "默认值"
+  }
+ },
+ "pending_required": [
+  "baseInfo.effRuleId",
+  "baseInfo.cancelRuleId",
+  "baseInfo.prcEffCycle",
+  "baseInfo.prcEffType",
+  "baseInfo.prcEffNum",
+  "baseInfo.prcEffDate",
+  "baseInfo.effDate",
+  "baseInfo.expDate",
+  "baseInfo.effNum",
+  "baseInfo.planFlag",
+  "baseInfo.f_5G速率5GUser",
+  "baseInfo.unifiedQryCancle",
+  "baseInfo.reFeeFlag",
+  "releaseInfo.groupId",
+  "releaseInfo.groupIdMessage",
+  "optionalInfo.acctMonth.acctItem",
+  "optionalInfo.acctMonth.isSplitRate",
+  "optionalInfo.acctMonth.splitRate9",
+  "optionalInfo.acctMonth.splitRate6",
+  "optionalInfo.acctFav.favCondition",
+  "optionalInfo.acctFav.favItemType",
+  "optionalInfo.acctFav.favType",
+  "optionalInfo.acctFav.favDiscount",
+  "optionalInfo.acctFav.favFee",
+  "optionalInfo.acctFav.favValidity",
+  "optionalInfo.dlowFavFee.fav1Method",
+  "optionalInfo.dlowFavFee.fav1Fee",
+  "optionalInfo.dlowFavFee.fav1ItemType",
+  "optionalInfo.dlowFavFee.fav1Validity",
+  "optionalInfo.billGprsCfg.period",
+  "optionalInfo.billGprsCfg.remindFlag",
+  "optionalInfo.billVoiceCfg.resourceType",
+  "optionalInfo.billVoiceCfg.theshold",
+  "optionalInfo.billVoiceCfg.adjust",
+  "optionalInfo.billVoiceCfg.outCharge",
+  "optionalInfo.billSmsCfg.resourceType",
+  "optionalInfo.billSmsCfg.theshold",
+  "optionalInfo.billSmsCfg.adjust",
+  "optionalInfo.billSmsCfg.outCharge"
+ ]
+}
