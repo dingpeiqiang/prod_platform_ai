@@ -25,6 +25,7 @@ import sys
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")  # 技术字段不出现在业务表格
+SYSTEM_GEN_KEYS = ("orderNo",)  # 系统自动生成字段（智能配置环节生成），不计入待补充
 
 INDENT_UNIT = "　"  # 全角空格缩进
 
@@ -79,7 +80,7 @@ def collect(schema, data, pending):
                 if key in SKIP_KEYS or not isinstance(obj_data, dict):
                     continue
                 if key not in obj_data or obj_data[key] in ("", None):
-                    if sub.get("x-required"):
+                    if sub.get("x-required") and key not in SYSTEM_GEN_KEYS:
                         pending.append((INDENT_UNIT * depth) + label)
                     continue
                 val = fmt_value(obj_data[key])

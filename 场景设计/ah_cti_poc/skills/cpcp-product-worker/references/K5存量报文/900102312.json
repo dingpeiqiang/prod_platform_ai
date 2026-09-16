@@ -2,8 +2,8 @@
  "personMainPrc": {
   "baseInfo": {
    "prodPrcName": "5G-A套餐单品399元",
-   "effRuleId": "",
-   "cancelRuleId": "",
+   "effRuleId": "立即生效",
+   "cancelRuleId": "预约生效",
    "effDate": "",
    "expDate": "",
    "prodId": "",
@@ -35,7 +35,7 @@
     "calcMode": "首月按天折算，一次性收取，次月按月收取",
     "fixFee": 399,
     "acctItem": "",
-    "isSplitRate": "",
+    "isSplitRate": "使用默认税率",
     "splitRate9": "",
     "splitRate6": "",
     "fixValidity": "长期有效",
@@ -73,7 +73,7 @@
     "adjust": "全额赠送流量",
     "carryFlag": "是",
     "outChargeMode": "",
-    "remindFlag": ""
+    "remindFlag": "提醒"
    },
    "billVoiceCfg": {
     "prodPrc": "",

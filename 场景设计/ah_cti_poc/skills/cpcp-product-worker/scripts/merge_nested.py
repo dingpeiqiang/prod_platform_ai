@@ -30,10 +30,14 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 # 价格字段判别关键词（与 cpcp_api._is_price_field 口径一致，嵌套语境按 x-label/路径尾段判定）
 PRICE_KEYWORDS = ("档位", "月功能费", "月租", "月费", "固定费", "费用")
+# 含这些词的 label 非资费金额（月租有效期/资源周期时长/收费间隔等时间维度字段），允许相似品补全
+PRICE_EXCLUDE_MARKS = ("有效期", "周期", "时长", "间隔")
 # 视为空值的占位标记
 EMPTY_MARKS = ("", "待补充", "系统待生成")
 # 技术字段（业务表格不展示，但报文保留）
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")
+# 系统自动生成字段（智能配置环节生成，需求/相似品均无值，不计入待补充清单）
+SYSTEM_GEN_KEYS = ("orderNo",)
 
 
 def is_descriptive_enum(enum):
@@ -61,9 +65,13 @@ def is_descriptive_enum(enum):
 
 
 def is_price(label, key):
-    """价格字段判定：优先 x-label（档位/月功能费/月租…），路径尾段名兜底。"""
+    """价格字段判定：优先 x-label（档位/月功能费/月租…），路径尾段名兜底。
+    含"有效期/周期/时长/间隔"的字段是时间维度非资费金额，不按价格拦截。"""
     for text in (label, key):
-        if any(kw in (text or "") for kw in PRICE_KEYWORDS):
+        t = text or ""
+        if any(m in t for m in PRICE_EXCLUDE_MARKS):
+            continue
+        if any(kw in t for kw in PRICE_KEYWORDS):
             return True
     return False
 
@@ -149,7 +157,7 @@ def merge(schema, elements_map, offer_map, meta, path="", pending=None, mode="no
         # 4) 仍缺：留空，必填进待补充
         if val is None:
             val, source = "", ""
-            if sub.get("x-required") and key not in SKIP_KEYS:
+            if sub.get("x-required") and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:
                 pending.append(cur)
         # 枚举校验不改写（评审结论#4）：提取值 ∉ enum → 标记 enum_violation
         # S3b：说明型 enum（非封闭值列举）豁免校验，避免误报

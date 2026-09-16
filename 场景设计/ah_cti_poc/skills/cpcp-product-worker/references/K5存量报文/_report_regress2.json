@@ -12,7 +12,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 35,
+   "pending_required": 34,
    "filled_fields": 36,
    "render_lines": 71
   },
@@ -26,7 +26,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 41,
+   "pending_required": 40,
    "filled_fields": 26,
    "render_lines": 65
   },
@@ -40,7 +40,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 24,
+   "pending_required": 23,
    "filled_fields": 21,
    "render_lines": 52
   },
@@ -54,7 +54,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 24,
+   "pending_required": 23,
    "filled_fields": 21,
    "render_lines": 52
   },
@@ -68,7 +68,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 24,
+   "pending_required": 23,
    "filled_fields": 21,
    "render_lines": 52
   },
@@ -82,7 +82,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 41,
+   "pending_required": 40,
    "filled_fields": 26,
    "render_lines": 65
   },
@@ -96,7 +96,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 24,
+   "pending_required": 23,
    "filled_fields": 21,
    "render_lines": 52
   },
@@ -110,7 +110,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 41,
+   "pending_required": 40,
    "filled_fields": 26,
    "render_lines": 65
   },
@@ -124,7 +124,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 24,
+   "pending_required": 23,
    "filled_fields": 21,
    "render_lines": 52
   },
@@ -138,7 +138,7 @@
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 35,
+   "pending_required": 34,
    "filled_fields": 36,
    "render_lines": 71
   },
@@ -152,7 +152,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -166,7 +166,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -180,7 +180,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -194,7 +194,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -208,7 +208,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -222,7 +222,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -236,7 +236,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   },
@@ -250,7 +250,7 @@
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
+   "pending_required": 39,
    "filled_fields": 17,
    "render_lines": 48
   }
