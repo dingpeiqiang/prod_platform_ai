@@ -156,10 +156,12 @@ public class OfferSimV16Service {
         Map<String, Object> groupConfig = parseConfig(MapOps.str(req.get("config_json")));
         errorList.addAll(groupAuditChecks(groupConfig));
 
+        // warning 级（如 OPTIONAL_DEPEND 依赖提示）不阻断：pass 与驳回话术仅按 error 级判定
+        boolean hasErrorLevel = errorList.stream().anyMatch(e -> !"warning".equals(e.get("level")));
         Map<String, Object> body = ok();
-        body.put("pass", errorList.isEmpty() ? "1" : "0");
+        body.put("pass", hasErrorLevel ? "0" : "1");
         body.put("error_list", errorList);
-        body.put("audit_summary", errorList.isEmpty()
+        body.put("audit_summary", !hasErrorLevel
                 ? "稽核通过：配置符合本次落地销售品 " + MapOps.str(offer.get("offer_name")) + " 规则"
                 : "稽核驳回：存在 " + errorList.size() + " 项阻断问题，请整改后重试");
         body.put("resultCode", "0");
@@ -326,7 +328,7 @@ public class OfferSimV16Service {
         body.put("script_url", scriptUrlOf(productId, externalBaseUrl));
         // V2.0 融合商品扩展：组结构 plan_json（含 main_offer/member_offers 键）→ 出参内嵌 group
         // （主 offer_id + members[]{role, offer_id, product_id}）；单品入参无 group 键（行为零变化）。
-        Map<String, Object> groupOut = buildGroupSaveResult(plan, offerId, productId);
+        Map<String, Object> groupOut = buildGroupSaveResult(plan, groupMainOfferId(plan, offerId), productId);
         if (groupOut != null) {
             body.put("group", groupOut);
             log.info("[OfferSimV16] 融合组配置落地 group_id={} members={}", groupOut.get("group_id"),
@@ -350,8 +352,8 @@ public class OfferSimV16Service {
         if (plan.get("member_offers") == null) {
             return null;
         }
-        Map<String, Object> group = groupSeed.findGroup(mainOfferId);
         Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> group = groupSeed.findGroup(mainOfferId);
         out.put("group_id", group == null ? "GP" + mainOfferId : MapOps.str(group.get("group_id")));
         out.put("main_offer_id", mainOfferId);
         out.put("main_product_id", productId);
@@ -394,6 +396,25 @@ public class OfferSimV16Service {
         String tail = mainOfferId.length() >= 5 ? mainOfferId.substring(mainOfferId.length() - 5) : mainOfferId;
         int seq = Math.abs((mainOfferId + role).hashCode()) % 9 + 1;
         return "8" + tail + seq;
+    }
+
+    /**
+     * 组落地主商品 offer_id 归一：plan 顶层无 offer_id/similarOfferId 溯源键时，
+     * 回退取 main_offer.offer_id（build_plan 组结构出参仅嵌套携带主商品编码）；
+     * 均缺席时回退传入的 fallback（新增产品链路生成编码，组定义不命中 → 成员模拟编码）。
+     */
+    private String groupMainOfferId(Map<String, Object> plan, String fallback) {
+        String top = firstNonEmptyText(plan.get("offer_id"), plan.get("similarOfferId"));
+        if (!top.isBlank()) {
+            return top;
+        }
+        if (plan.get("main_offer") instanceof Map<?, ?> mainMap) {
+            String nested = MapOps.str(castMap(mainMap).get("offer_id"));
+            if (!nested.isBlank()) {
+                return nested;
+            }
+        }
+        return fallback;
     }
 
     /* ================= 接口4：测试发起 offer_test ================= */

@@ -213,16 +213,16 @@ skills/cpcp-product-worker/
 
 ---
 
-## 7. 后端模拟服务改造清单
+## 7. 后端模拟服务改造清单（✅ 已全部完成并通过 F1~F8 联调验证 24/24 PASS）
 
-| # | 路由 | 改动 | 兼容策略 |
-| --- | --- | --- | --- |
-| 1 | `/similar/offer/query` | 命中融合品（组定义内 offer_id 或相似描述）时出参内嵌 `offer_group` | 单品命中时无 offer_group 键 |
-| 2 | `/product/config/save` | 识别组结构 plan_json → 生成主 offer_id + 成员 offer_id 列表；`group` 出参；SQL 模板按成员循环展开 | 单品入参行为不变 |
-| 3 | `/audit/realtime` | 组结构 config_json → 组级检查项（互斥/依赖/共享/退订联动），error_list item=`group:<role>` | 单品无组检查 |
-| 4 | `/billing/rules/verify` | compare_list 逐成员生成（member_role 键）；组级叠加校验入 risk_list | 单品 member_role 缺省 |
-| 5 | `/test/offer/start|scenes|progress|result` | 融合品发起 → 场景含组场景；result 增 offer_group_check | 单品不变 |
-| 6 | 种子数据 | `seed_offer_groups.json`（4 组）+ preset 扩展 | 现有 18 品种子不动 |
+| # | 路由 | 改动 | 兼容策略 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | `/similar/offer/query` | 命中融合品（组定义内 offer_id 或相似描述）时出参内嵌 `offer_group`；**仅主推荐（第 1 位）命中融合组才下发**，副推荐命中不影响单品模式 | 单品命中时无 offer_group 键 | ✅ |
+| 2 | `/product/config/save` | 识别组结构 plan_json → 生成主 offer_id + 成员 offer_id 列表；`group` 出参；主 offer_id 顶层溯源键缺席时回退取 `main_offer.offer_id`；SQL 模板按成员循环展开 | 单品入参行为不变 | ✅ |
+| 3 | `/audit/realtime` | 组结构 config_json → 组级检查项（互斥/依赖/共享/退订联动），error_list item=`group:<role>`；**pass/驳回话术仅按 error 级判定，warning（OPTIONAL_DEPEND）不阻断** | 单品无组检查 | ✅ |
+| 4 | `/billing/rules/verify` | compare_list 逐成员生成（member_role 键）；组级叠加校验入 risk_list | 单品 member_role 缺省 | ✅ |
+| 5 | `/test/offer/start|scenes|progress|result` | 融合品发起 → 场景含组场景；result 增 offer_group_check | 单品不变 | ✅ |
+| 6 | 种子数据 | `seed_offer_groups.json`（4 组）+ preset 扩展 | 现有 18 品种子不动 | ✅ |
 
 ---
 

@@ -68,20 +68,16 @@ public class OfferGroupSeedService {
     }
 
     /**
-     * 相似度命中结果对应融合组（优先精确 offer_id，其次主推荐）；
+     * 相似度命中结果对应融合组（仅主推荐第 1 位命中才下发）；
      * 未命中融合组返回 null（单商品模式，出参无 offer_group 键）。
      */
     public Map<String, Object> groupOfSimilar(List<Map<String, Object>> similarList) {
         if (similarList == null || similarList.isEmpty()) {
             return null;
         }
-        for (Map<String, Object> item : similarList) {
-            Map<String, Object> group = findGroup(MapOps.str(item.get("similarOfferId")));
-            if (group != null) {
-                return group;
-            }
-        }
-        return null;
+        // 仅主推荐（第 1 位）命中融合组才下发 offer_group：主推荐为单品时，
+        // 即便副推荐列表含融合品也按单商品模式处理（单商品链路行为零变化，F8 回归口径）
+        return findGroup(MapOps.str(similarList.get(0).get("similarOfferId")));
     }
 
     /**
