@@ -20,7 +20,7 @@ frontend/public/ops-web/
 │   └── js/
 │       ├── mock-data.js     # 数据层：按 product_id 归档每商品监控指标（POC mock）
 │       └── detail.js        # 渲染与图表：数据注入 + echarts 四维度 + 标签切换
-└── lib/echarts/echarts.min.js  # 本地 echarts（自 node_modules 拷贝，免 CDN）
+└── lib/echarts/echarts.min.js  # echarts 已内联进 product-detail.html（自包含，免服务器静态文件依赖）
 ```
 
 ## 单品详情页 URL 契约（SKILL 监控运营出口）
