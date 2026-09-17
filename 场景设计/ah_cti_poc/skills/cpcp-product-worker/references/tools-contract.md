@@ -95,7 +95,7 @@
 - GET `/api/v1/appstore/product/monitor`
 - 入参：`product_id`(必填,"缺少产品ID，请提供要查询的销售品")、`date_range`(选填,默认最近1天)、`metric`(选填,order/error/fee/all,默认all)
 - 出参：`order_count`(int)、`error_count`(int)、`fee_error_rate`(float)、`alarm_list[]`
-- **单品运营可视化页出口（V8.0，供外部 AI 应用平台 iframe 嵌入）**：D-2 文本摘要后确定性拼接页面 URL `/ops-web/product-detail.html?product_id={{product_id}}`（产物为 `frontend/public/ops-web/` 纯静态页，第3层组装固定拼接，非平台接口；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选用于未收录商品回退画像；页面渲染由 detail.js 纯代码完成，LLM 禁止手写 JSON/HTML 载荷）；**绝对路径**拼接部署基址 `http://10.86.13.201:31280`（前端云部署网关，nginx 容器内 listen 6173）→ `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`
+- **单品运营可视化 iframe 出口（V8.0；V9.3 强制 iframe 标签+绝对地址，供外部 AI 应用平台嵌入）**：D-2 文本摘要后**必须输出完整 iframe 标签** `<iframe src="http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}" width="800" height="400" title="单品运营可视化"></iframe>`（`src` 用**绝对地址**：部署基址 `http://10.86.13.201:31280` = 前端云部署网关（nginx 容器内 listen 6173）+ 固定路径 `/ops-web/product-detail.html`；**禁止仅输出相对路径或纯 URL**，否则缺失 http/ip/端口 无法 iframe 加载；产物为 `frontend/public/ops-web/` 纯静态页，第3层组装固定拼接，非平台接口；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选用于未收录商品回退画像；页面渲染由 detail.js 纯代码完成，LLM 仅输出固定 iframe 标签、禁止手写页面 JSON/HTML 载荷）
 
 ## 工具11 异常告警 `send_alert`
 - POST `/api/v1/appstore/alert/send`
@@ -140,7 +140,7 @@
 ## 工具18 入口调度器 `dispatcher`（V6.0 新增，本地脚本，四层架构第0/1层）
 - 本地代码节点（非平台接口）：`scripts/dispatcher.py`，规则优先做意图归类/确认门禁/实体抽取；LLM 仅在 `needs_llm` 时做封闭枚举兜底（禁止自由文本）。
 - 入参：`--message`(必填) / `--message-file`(>1KB 消息走文件)、`--session-file`(选填，会话上下文 JSON：req_id/offer_id/product_id/approval_id/offer_name 等)
-- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(ASK/A/B/C/D1/D2/D3/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
+- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/QUERY_OFFER/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(ASK/A/B/C/D1/D2/D3/D4/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
 - **ASK_INTENT（V9.1 新增）**：产品描述（产品/套餐/资费规格）但未表明意图（非问句、无查询/配置/确认词）时返回；route=ASK，SKILL 先澄清"查询 or 配置"，明确【配置】后再次运行 dispatcher 转 REQ_REPORT（触发需求提报），【查询】则走查询类意图；完整产品规格文档同理（product-doc-ask）
 - 行为保证：意图封闭枚举（任何输入必归类）；确认语义词表 + 否定词表（REJECT）；实体抽取消息优先、会话兜底；规则未命中 → needs_llm=true 交 LLM 单选归类
 - 判定规则：确认门禁由本脚本 `confirmed` 决定（对应 run_pipeline `--confirmed` 与 SKILL.md 纪律3），模型禁止自行判断确认语义
@@ -239,5 +239,11 @@
 - 入参：`--work-order-id`(必填)、`--status`(必填，枚举 open/in_progress/done/cancelled)、`--remark`(选填，回检备注)
 - 出参：`success`、`workOrder`（含更新后 status）
 - 行为保证：闭环状态机 open → in_progress → done/cancelled；失败 → E34 提示型
+
+## 工具31 存量产品信息查询 `query_offer`（flow-D 支线D-4，本地只读）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py query_offer`，读取本地存量目录 `方案/存量产品目录_清洗后.json` + `references/K4存量/`（K4 存量销售品资料库，按产品 ID 单文件）做确定性检索，纯只读不改写；LLM 不参与检索判定。
+- 入参：`--product-id`（9 位编码）/ `--name`（产品名称）/ `--keyword`（描述关键词），三者至少一个（缺少 → PARAM_MISSING："缺少查询入参，请提供 --product-id 或 --name/--keyword"）。
+- 出参：`resultCode`(0)、`matched[]`（逐条含 `offer_id`/`name`/`product_type`/`biz_series`/`tier`/`template`/`members[]` + `k4_text`（K4 档案原文）+ `k4_path`）；`status=dup` 的目录条目按 `duplicate_of` 自动透传到 active 品；目录未收录但 K4 档案存在时按 ID 直接读档；未命中 → `matched=[]`。
+- 处置：命中 → 按出参结构化回显存量产品信息（逐字引用，禁止编造字段）；`matched=[]` → 追问核对名称/ID或引导"存量合规扫描"查看全部；只读查询不生成 req_id、不进需求分析/配置流水线。
 
 

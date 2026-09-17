@@ -2,18 +2,20 @@
 
 > 合并对应原子工作流 wf_sub_07（监控运维）与 wf_sub_08（审批进度查询）。轻量支线，按用户意图分流执行；运维问答依据：`references/K5FAQ/`。
 
-## 意图判别（D-1 / D-2 / D-3 分流）
-> V6.0：支线选取由 **`dispatcher.py` 出参 `intent`** 决定（QUERY_APPROVAL→D-1、QUERY_MONITOR→D-2、CONFIRM_ONLINE→D-3），模型不再按表述自行判断；下表为 dispatcher 触发词对应关系（规则已内置，仅作追溯）。
+## 意图判别（D-1 / D-2 / D-3 / D-4 分流）
+> V6.0：支线选取由 **`dispatcher.py` 出参 `intent`** 决定（QUERY_APPROVAL→D-1、QUERY_MONITOR→D-2、CONFIRM_ONLINE→D-3、QUERY_OFFER→D-4），模型不再按表述自行判断；下表为 dispatcher 触发词对应关系（规则已内置，仅作追溯）。
 | dispatcher intent | 用户表述 | 支线 |
 | --- | --- | --- |
 | QUERY_APPROVAL | 查询审批进度/审批单状态/审批到哪了/审批结果/审批意见 | D-1 |
 | QUERY_MONITOR | 查询监控/查询运营/查询运行监控/运营情况/销售品运行情况/上线后表现 | D-2 |
 | CONFIRM_ONLINE | 确认上线（审批通过后的上线动作）/监控运维方案 | D-3 |
+| QUERY_OFFER | 查询存量/在架/现有产品信息（按产品名称/描述或产品ID） | D-4 |
 | （dispatcher 未命中则 needs_llm） | 表述含两诉求（如"查一下审批和运营情况"） | 规则命中其一，先输出命中的支线 |
 
 ## 输出标题头（九环节总表，演示防误判为未实现）
 - 本程序覆盖全局**环节9监控运维**（支线D-2 运行监控 / D-3 确认上线与监控运维方案），其正式输出必须以 `【环节9/9·监控运维】✅ 执行成功` 标题头开头（序号/全名取 SKILL.md 九环节总表；监控异常告警或取数失败等场景用 `【环节9/9·监控运维】❌ 执行失败`或按异常矩阵引导）；
-- 支线D-1（审批进度查询）是**环节8 上线审批**的状态查询入口，非独立环节，输出文字摘要即可（如需凸显可为该查询回复冠 `【环节8/9·上线审批】` 查询回显，属可选）；确认上线（D-3）动作仍归环节9 监控运维标题头下。
+- 支线D-1（审批进度查询）是**环节8 上线审批**的状态查询入口，非独立环节，输出文字摘要即可（如需凸显可为该查询回复冠 `【环节8/9·上线审批】` 查询回显，属可选）；确认上线（D-3）动作仍归环节9 监控运维标题头下；
+- **支线D-4（存量产品信息查询）是只读信息查询，非独立九环节**，按"查询回显"输出结构化产品信息摘要即可，不强制冠环节标题头（如需统一风格可冠 `【环节0/查询】` 类回显，不作硬性要求）。
 
 ## 支线D-1：审批进度查询（wf_sub_08，兼容需求工单审批与上线审批）
 
@@ -90,14 +92,17 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 - 告警列表：{{alarm_list 摘要，为空显示"无"}}
 {{异常时附加：已推送告警，告警单号 {{alert_id}}}}
 ```
-5. **输出单品运营可视化页面 URL（第3层组装，确定性拼接，禁止 LLM 自行渲染/改写 HTML）**：文本摘要之后在同一回复中输出，供外部 AI 应用平台 iframe 嵌入的独立页面（`frontend/public/ops-web/` 静态页，无登录、无 SPA 壳）：
+5. **输出单品运营可视化（xsbot-panel 外链，禁止纯文本/纯表格拼凑）**：文本摘要之后在同一回复中**输出 `xsbot-panel` 外链面板**，由前端右面板以 `mode:"external"` 加载外部运营看板 URL（前端 `panel:"right"`），LLM **禁止手写页面 HTML/图表载荷、禁止用纯文本/纯 URL/纯表格拼凑替代表单渲染**：
+
+`xsbot-panel` 外链——按本片段构造（`version/message_id/panels[{panel,mode,url,title}]`），`message_id` 用会话 `chat_id`，`url` 用运营看板基址拼接 `product_id` 与 `chatId`：
+```text
+
+```xsbot-panel
+{"version":"1.0","message_id":"{chat_id}","panels":[{"panel":"right","mode":"external","url":"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&chatId={chat_id}","title":"单品运营可视化"}]}
 ```
-**单品运营可视化：** `/ops-web/product-detail.html?product_id={{product_id}}`
 ```
-   - 拼接规则：固定路径 `/ops-web/product-detail.html` + `?product_id={{product_id}}`（product_id 用出参 offer_id/product_id；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选，用于未收录商品回退画像）；
-   - 页面内容：商品头 + 健康度主卡 + 四维度图表（效益/市场/运营质量/生命周期）+ 异动预警，**仅单品下钻详情，不含大盘列表**；
-   - 渲染纪律：页面渲染为 `detail.js` 纯前端确定性代码（数据层 `mock-data.js`），POC 阶段为归档画像数据，后续替换为后端出参映射，**LLM 禁止手写/改写 JSON 或 HTML 载荷**；
-   - **iframe 完整地址**：外部平台若需绝对路径，拼接部署基址 `http://10.86.13.201:31280`（前端云部署网关，nginx 容器内 listen 6173）→ 完整 URL 为 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`（同源 iframe 可省协议主机用相对路径）。
+   - **必须经 xsbot-panel 外链渲染**，禁止仅输出纯 URL/纯文本/表格拼凑；`product_id` 取 `dispatcher.py` 出参 `entities.product_id`、`chat_id` 取会话消息 ID（会话未出现过时不允许臆造为 0/占位），外部页面渲染完全由前端完成，LLM 禁止手写页面 HTML/图表载荷；
+   - 数据契约：外部运营页所需数据来自 `query_monitor` 出参（offer_name/order_count/order_trend/error_count/error_trend/fee_error_rate/fee_trend/alarm_list），由前端页面自行拉取渲染，LLM 只负责拼外链 URL，不内联监控数据；
 6. **异动根因本体推理与优化闭环（V8.1，仅步骤2判定异常时执行）**——复用现有 CPCP 本体推理平台（backend-app Java，具 `product-ops.ttl` 产商品运营归因与风险本体 + `ops_rules.json` R-A01~A06），**禁止新造本体/自拍 TTL**；本体推理**必须输出推理链**：
    ① **根因推理**（确定性调后端，第2层执行）：
    ```bash
@@ -167,18 +172,66 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 
 **当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。
 
-**单品运营可视化：** `/ops-web/product-detail.html?product_id={{product_id}}`
+**单品运营可视化：** 经 `xsbot-panel` 外链加载外部运营页（`mode:"external"`，右侧面板），URL：`http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}&chatId={{chat_id}}`
 
 {{套餐名称}}已成功上线，运营视图已开启。可输入"查询监控"查看运行情况。
 ```
 3. 用户后续发送"查询监控" → 转支线D-2 执行真实监控查询与异常告警。
 
-> **运营可视化页 URL（V9.2，D-3 同样必须输出）**：与 D-2 一段保持一致，监控运维方案文本后固定输出单品运营可视化页 URL——拼接规则同支线D-2 第5步：`/ops-web/product-detail.html?product_id={{product_id}}`（product_id 用 `dispatcher.py` 出参 entities.product_id / 会话上下文取值）；外部平台绝对地址为 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`。禁止省略该行，禁止 LLM 手写/改写 HTML 载荷。
-
+> **运营可视化 xsbot-panel 外链（V9.3，D-3 同样必须输出）**：与 D-2 第5步一段保持一致（同一 `xsbot-panel` 外链结构），监控运维方案文本后必须**输出 `xsbot-panel` 外链面板**加载单品运营可视化看板（`mode:"external"`、`panel:"right"`，URL 用 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&chatId={chat_id}`）。禁止省略该面板，禁止用纯文本/纯 URL 拼凑替代表单渲染；LLM 只拼接外链 URL，禁止手写页面 HTML/图表载荷、禁止内联监控数据。
+ 
 ### 禁止事项
 - 审批未通过时禁止输出"已成功上线"；
 - 监控运维方案为固定模板（阈值/推送时间为平台标准口径），禁止自行改写阈值；
-- 禁止省略运营可视化页 URL 行（D-3 输出同样必须给出）。
+- 禁止省略运营可视化面板（D-3 输出同样必须给出）；
+- 单品运营可视化必须经 `xsbot-panel` 外链渲染（`mode:"external"`），禁止仅输出纯 URL/纯文本/纯表格拼凑、禁止手写页面 HTML/图表载荷。
+
+## 支线D-4：存量产品信息查询（按名称/描述 或 产品ID）
+
+### 触发条件
+- dispatcher 出参 `intent=QUERY_OFFER`；
+- 用户查询**存量/在架/现有产品信息**：按产品名称/描述（如"查 5G-A融合套餐199元的存量信息"、"查询存量产品信息"）或按产品 ID（9 位编码，如"900102306 的产品资料"）。**只读查询，不触发任何配置/审批/上线动作**。
+
+### 前置检查
+- 查询入参（二选一，均可选）：`entities.product_id`（9 位存量编码）或 `entities.offer_name`（产品名称/描述关键词）；两者皆缺 → 不发起调用，先追问："请提供要查询的产品名称或产品ID。"
+- **会话上下文取参**：`dispatcher.py` 出参 `entities.*` 已按"会话已明确出现过的值"兜底，不属于编造/历史兜底；会话内从未出现过且用户未提供时才追问。
+
+### 执行程序
+查询统一走确定性本地脚本 `query_offer`（第2层执行，读取存量目录 + K4 存量销售品资料库，LLM 不参与检索判定）：
+```bash
+# 按产品 ID（9 位编码）
+python scripts/cpcp_api.py query_offer --product-id "<product_id>"
+# 按产品名称/描述关键词
+python scripts/cpcp_api.py query_offer --name "<offer_name>"
+python scripts/cpcp_api.py query_offer --keyword "<描述关键词>"
+```
+- **数据源**：`方案/存量产品目录_清洗后.json`（存量在架产品目录 18 条，字段 offer_id/name_clean/product_type/tier/members/template/status/duplicate_of）+ `references/K4存量/`（K4 存量销售品资料库，按产品 ID 单文件）；`status=dup` 的条目按 `duplicate_of` 透传到 active 品；
+- 出参 `matched[]`（逐条含 offer_id/name/product_type/tier/template/members + k4_text 档案原文 + k4_path）；
+- **命中且唯一（len(matched)==1）→ 输出结构化查询回显**（仅依据出参，逐字引用，禁止编造）：
+```
+**存量产品信息（{{name}}）**
+- 产品ID：{{offer_id}}｜类型：{{product_type}}｜产品线：{{biz_series}}｜档位：{{tier}}｜模板：{{template}}
+- 成员：{{members，逗号分隔；无则省略}}
+- 档案说明：{{k4_text 依档案绪言/总述摘要引用，超长时展示结构化要点，禁止改写数据}}
+```
+  提示下一步："如需了解该产品的监控/合规情况，可输入「查询监控 或 发起存量合规扫描」。"
+- **命中多条（len(matched)>1，按名称模糊多款命中时）→ 先列匹配清单请用户收敛到具体产品，再按其 offer_id/名称精确查询**（禁止把所有匹配并成一团输出、禁止臆选其中一款）：
+```
+**存量产品信息查询，匹配到 {{count}} 款，请选择或提供产品ID：**
+| 产品ID | 名称 | 类型 | 档位 |
+| :--: | :-- | :-- | :-- |
+| {{offer_id}} | {{name}} | {{product_type}} | {{tier}} |
+（逐行列出全部 matched）
+```
+  用户回复具体产品ID/名称后，重新执行 `query_offer --product-id/--name` 输出该款详情；
+- **未命中（matched=[]）→ 追问引导**："未在存量目录中找到该产品，请核对名称/ID，或输入「存量合规扫描」查看全部存量产品。"
+- 存量产品信息查询为只读，**不生成 req_id、不进入需求分析/配置流水线**。
+
+### 禁止事项
+- 禁止把存量产品信息查询误转入需求提报/配置/审批/上线流程（只读查询）；
+- 禁止编造产品字段（名称/档位/成员/资费均以目录与 K4 档案为准）；
+- 禁止改写 K4 档案数据、禁止把"未收录"产品包装为"已收录"；
+- 会话内从未出现且用户未提供的必填参数先追问，禁止编造后直接调用。
 
 ## 通用禁止事项
 - 会话内从未出现且用户未提供的必填参数先追问，禁止编造后直接调用。

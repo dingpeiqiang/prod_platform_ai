@@ -18,9 +18,11 @@ V2.1 形态（按业务模块分节多表，替代 V1.1 单一大表）：
 - 仅渲染有值的段/字段；必填缺失进文末【待补充字段】；同输入输出逐字节稳定（可回归）。
 
 输入：
-  --schema-file  模板 schema（templates/<templateId>.schema.json）
-  --json-file    实例化逻辑模型报文（按模板嵌套结构填写，payload 本体）
-  --meta-file    merge_nested 出参 _meta 溯源（path→{source}），可选；提供时逐叶子标注取值来源
+  --schema-file      模板 schema（templates/<templateId>.schema.json）
+  --json-file        实例化逻辑模型报文（按模板嵌套结构填写，payload 本体）
+  --meta-file        merge_nested 出参 _meta 溯源（path→{source}），可选；提供时逐叶子标注取值来源
+  --similar-offer    similar_offer 出参（相似产品信息，含 similarOfferId/similarOfferName），可选；
+                     提供时"复用相似产品"来源列拼接为「参考相似产品: {similarOfferId} {similarOfferName}」
 输出：markdown 分节多表（业务可读）
 """
 import argparse
@@ -40,6 +42,22 @@ SOURCE_MAP = {
     "本体推理": "本体推理",
     "默认值": "默认值",
 }
+# 复用相似产品的来源列前缀（拼接相似产品编码+名称）
+SIMILAR_REF_PREFIX = "参考相似产品: "
+
+
+def _similar_ref(similar_offer):
+    """从 similar_offer 出参提取相似产品「编码 名称」引用串；
+    无编码/名称时返回空（来源列回退为固定标签"复用相似产品"）。"""
+    if not isinstance(similar_offer, dict):
+        return ""
+    oid = similar_offer.get("similarOfferId", "")
+    oname = similar_offer.get("similarOfferName", "")
+    if isinstance(oid, (int, float)):
+        oid = str(oid)
+    if not oid or not oname:
+        return ""
+    return "%s%s %s" % (SIMILAR_REF_PREFIX, str(oid), str(oname))
 
 INDENT_UNIT = "　"  # 全角空格缩进
 
@@ -72,7 +90,7 @@ def fmt_value(v):
     return str(v)
 
 
-def collect(schema, data, pending, meta=None):
+def collect(schema, data, pending, meta=None, similar_ref=""):
     """遍历 schema 收集渲染节点。返回节列表：[{title, level, rows:[(depth,label,val,source,note)], order}]。"""
     sections = []
     meta = meta or {}
@@ -109,6 +127,8 @@ def collect(schema, data, pending, meta=None):
                 entry = meta.get(cur) or {}
                 source_raw = entry.get("source", "") if isinstance(entry, dict) else ""
                 source = SOURCE_MAP.get(source_raw, source_raw)
+                if source_raw == "AI补全" and similar_ref:
+                    source = similar_ref
                 sec["rows"].append(("|", depth, label, val, source, "；".join(note_parts)))
 
     top = {"title": "", "sub": "", "rows": []}
@@ -126,9 +146,10 @@ def get_path(data, dotted):
     return node if node not in ("", None) else None
 
 
-def render(schema, data, title="", meta=None):
+def render(schema, data, title="", meta=None, similar_offer=None):
     pending = []
-    sections = collect(schema, data, pending, meta)
+    similar_ref = _similar_ref(similar_offer)
+    sections = collect(schema, data, pending, meta, similar_ref)
 
     lines = []
     if title:
@@ -182,21 +203,27 @@ def main():
     p.add_argument("--schema-file", required=True)
     p.add_argument("--json-file", required=True)
     p.add_argument("--meta-file", default="")
+    p.add_argument("--similar-offer-file", default="", dest="similar_offer_file")
     p.add_argument("--title", default="")
     args = p.parse_args()
 
-    with open(args.schema_file, "r", encoding="utf-8") as f:
+    with open(args.schema_file, "r", encoding="utf-8-sig") as f:
         schema = json.load(f)
-    with open(args.json_file, "r", encoding="utf-8") as f:
+    with open(args.json_file, "r", encoding="utf-8-sig") as f:
         payload = json.load(f)
     data = payload.get(schema["x-template"], payload)
 
     meta = {}
     if args.meta_file:
-        with open(args.meta_file, "r", encoding="utf-8") as f:
+        with open(args.meta_file, "r", encoding="utf-8-sig") as f:
             meta = json.load(f)
 
-    print(render(schema, data, args.title, meta))
+    similar_offer = {}
+    if args.similar_offer_file:
+        with open(args.similar_offer_file, "r", encoding="utf-8-sig") as f:
+            similar_offer = json.load(f)
+
+    print(render(schema, data, args.title, meta, similar_offer))
 
 
 if __name__ == "__main__":

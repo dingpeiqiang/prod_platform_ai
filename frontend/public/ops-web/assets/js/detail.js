@@ -337,6 +337,9 @@
   function main() {
     var code = getParam('product_id') || getParam('productId') || getParam('offer_id') || getParam('offerId');
     var data = window.OPS_MOCK[code] || window.OPS_MOCK_DEFAULT(code, getParam('name'), getParam('type'));
+    if (code) data.code = code;
+    var name = getParam('name');
+    if (name) data.name = name;
     document.title = data.name + ' · 单品监控运营';
     renderAll(data);
     var back = document.getElementById('back-link');

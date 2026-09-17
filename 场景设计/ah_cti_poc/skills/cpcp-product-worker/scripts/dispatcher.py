@@ -22,7 +22,7 @@ LLM 仅在规则未命中/歧义时做**最小化意图归类**（封闭枚举�
 5. 大报文经 --session-file / --message-file 传递，命令行不内联（纪律8）。
 
 出参（stdout 单行 JSON，模型仅按 route 加载对应流程、按 needs_llm 决定是否套用 llm_prompt）：
-  {"resultCode":"0","intent":...,"route":"A|B|C|D1|D2|D3|QNA|NONE",
+  {"resultCode":"0","intent":...,"route":"A|B|C|D1|D2|D3|D4|QNA|NONE",
    "confirmed":bool,"needs_llm":bool,"llm_prompt":str,
    "entities":{"req_id":...,"offer_id":...,"product_id":...,"approval_id":...,"offer_name":...},
    "kb_target":"K1|K2|K3|K4|K5|", "resume":bool, "fail_node_hint":str,
@@ -63,6 +63,7 @@ INTENTS = [
     "APPROVAL",          # 上线审批/发起审批 → flow-C
     "QUERY_APPROVAL",    # 查询审批进度 → flow-D D-1
     "QUERY_MONITOR",     # 查询监控/运营 → flow-D D-2
+    "QUERY_OFFER",       # 查询存量产品信息（按名称/描述或产品ID）→ flow-D D-4
     "CONFIRM_ONLINE",    # 确认上线/监控运维方案 → flow-D D-3
     "ACCEPTANCE_PLAYBACK",  # 受理验证单独询问 → flow-B 环节4 回放
     "QNA",               # 业务知识问答 → K1~K5
@@ -113,6 +114,18 @@ INTENT_RULES = [
     ("CONFIRM_EXEC",
      [r"确认配置", r"确认执行", r"确认", r"同意", r"可以", r"执行吧"],
      "确认配置/确认执行（执行主干）"),
+    # 存量产品信息查询（flow-D 支线D-4）：按名称/描述 或 产品ID 查询存量在架产品信息。
+    # 置于 QNA 之前，避免"存量产品信息""XX套餐详情"被泛化问答吞掉；查询词（查/查看/了解…）优先命中。
+    # 监控/审批/受理验证/上线等更具体意图已在前序规则命中，本组仅兜底"存量/在架产品信息"场景。
+    ("QUERY_OFFER",
+     [r"(查|查询|查看|看看|了解一下|介绍)。?.{0,10}(存量|在架|在售|现有|上架|历史).{0,8}(产品|销售品|套餐|商品)(信息|资料|规格|详情|资费|价格|在售)",
+      r"(存量|在架|在售|现有|上架|历史).{0,6}(产品|销售品|套餐|商品).{0,8}(有哪|有哪些|信息|资料|规格|详情|资费|价格|在售)",
+      r"(查|查询|查看|看下|了解一下).{0,12}\d{9}\b",
+      r"\d{9}\b.{0,6}(信息|资料|详情|规格|产品|套餐)",
+      r"(?:查|查询|查看|了解|介绍)。?\s*([\u4e00-\u9fa5A-Za-z0-9\-·元]{1,20}(?:套餐|卡|包|产品)).{0,6}(信息|资料|详情|在售|在架|存量)",
+      r"([\u4e00-\u9fa5A-Za-z0-9\-·元]{1,20}(?:套餐|卡|包|产品)).{0,6}(在售|在架|存量信息|的信息|资料|详情)",
+      r"(查|看看|了解一下)。?(有没有|是否还在售|还有没有|在哪查).{0,8}(套餐|产品|销售品|卡|包)"],
+     "存量产品信息查询"),
     ("QNA",
      [r"(规范|规则|标准|怎么|如何|能否|能不能|是否|是什么|有哪些|收费|费用|资费|测试|用例|FAQ|常见|存量)"],
      "业务知识问答"),
@@ -234,7 +247,8 @@ OFFER_ID_RE = re.compile(r"(?:OFFER|OFP?)[-_]?\d{6,20}", re.IGNORECASE)
 # 匹配后剥离句首动词/助词前缀（帮我/我要/请/查/查看/查询/给/下/的 等），避免把"帮我校园青春卡"误当名称。
 # BUG③ 修复：`卡/包/产品` 后缀后不接受"含括围容装裹"——避免把"不包含港澳台"的动词"包"误当"X包"商品名
 OFFER_NAME_RE = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{1,12}(?:卡|包|产品)(?![含括围容装裹]))")
-OFFER_NAME_GEN_RE = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9]{1,12}套餐)")
+# 连字符/带宽名等存量品名称（如"5G-A融合套餐199元"）容错：名称可含 -· 与档位"元"，仍以 套餐 收尾
+OFFER_NAME_GEN_RE = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9\-·元]{1,14}套餐)")
 OFFER_NAME_STOP_PREFIX = ["帮我", "请帮", "请", "我要", "我", "查询", "查看", "查", "给",
                           "把", "下", "的", "和", "与", "和我的", "修改", "改", "调整", "变更", "上传"]
 
@@ -345,6 +359,7 @@ def _build_route(intent):
         "APPROVAL": "C",
         "QUERY_APPROVAL": "D1",
         "QUERY_MONITOR": "D2",
+        "QUERY_OFFER": "D4",
         "CONFIRM_ONLINE": "D3",
         "ACCEPTANCE_PLAYBACK": "B",
         "QNA": "QNA",

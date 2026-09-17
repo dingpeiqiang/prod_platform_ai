@@ -117,10 +117,11 @@ python -X utf8 "scripts\cpcp_api.py" validate_nested --template "<templateId>" -
 ### 步骤⑥：分节表格渲染（工具，确定性）
 逐产品执行（**入参必须是 merge_nested 出参的 payload 本体（嵌套报文），不是 merge 全出参**）：
 ```bash
-python -X utf8 "scripts\cpcp_api.py" render_table --schema-file "scripts\templates\<templateId>.schema.json" --json-file "<merge 出参 payload 工件路径>" --meta-file "<merge 出参 _meta 工件路径>" --title "<套餐名称>"
+python -X utf8 "scripts\cpcp_api.py" render_table --schema-file "scripts\templates\<templateId>.schema.json" --json-file "<merge 出参 payload 工件路径>" --meta-file "<merge 出参 _meta 工件路径>" [--similar-offer-file "<similar_offer 出参工件路径（含 similarOfferId/similarOfferName，可选）>"] --title "<套餐名称>"
 ```
 - 渲染形态（V2.1，业务人员可读）：概览卡片置顶（资费名称/套餐月费/包含资源）+ "1. 基础信息 / 2. 发布信息 / 3. 免填单 / 4. 月租…" 独立小节（可选配置下组件与 发布信息 同级）+ 更深容器为小节内二级分组加粗子标题，**四列表格（字段名称|字段值|取值来源|备注），纯 x-label 中文，无技术键名、无层级标记列**；
-- **取值来源列（V3.0）**：`--meta-file` 传入 merge_nested 出参 `_meta`（逐叶子溯源，path→{source}），render_table 确定性映射为业务标签——`原始需求`→**原始需求提取**、`AI补全`→**复用相似产品**、`本体推理`→**本体推理**、`默认值`→**默认值**；`本体推理`仅标注来源（validate_nested defaulted 补全的口径），**不回写 payload 值**；
+- **取值来源列（V3.0+复用相似产品拼接）**：`--meta-file` 传入 merge_nested 出参 `_meta`（逐叶子溯源，path→{source}），render_table 确定性映射为业务标签——`原始需求`→**原始需求提取**、`AI补全`→**复用相似产品**、`本体推理`→**本体推理**、`默认值`→**默认值**；`本体推理`仅标注来源（validate_nested defaulted 补全的口径），**不回写 payload 值**；
+- **复用相似产品拼接（V3.x）**：选用 `--similar-offer-file` 传入 similar_offer 出参（含 `similarOfferId`/`similarOfferName`）时，凡 `AI补全` 来源列渲染为 **`参考相似产品: {similarOfferId} {similarOfferName}`**（如 `参考相似产品: 12121212 5G-A轻享单品129元`），替代固定标签"复用相似产品"；未传相似品信息时回退固定标签"复用相似产品"；
 - 仅渲染有值段；必填缺失进文末【待补充字段】（与 merge `pending_required` 同源）；
 - 同输入输出逐字节稳定（幂等），渲染失败/输出为空 → E32 中断（先核对入参是否误传 merge 全出参）。
 

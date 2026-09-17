@@ -72,7 +72,7 @@
     "sid": "",
     "adjust": "全额赠送流量",
     "carryFlag": "是",
-    "outChargeMode": "",
+    "outChargeMode": "5+3(前3个G按5元/GB计费，从第4个G开始按3元/GB计费)",
     "remindFlag": "提醒"
    },
    "billVoiceCfg": {

@@ -314,6 +314,30 @@ def main():
     print("15. build_plan category 自愈 OK（剥离 category 后模块/分类列正常回填，无 ****）")
     ok += 1
 
+    # 16. 存量产品信息查询 query_offer（flow-D 支线D-4，本地只读，不依赖后端）
+    #     按 9 位产品 ID：900102306 为 dup 条目，应透传到其 duplicate_of 指向的 active 品
+    r = run(["query_offer", "--product-id", "900102306"])
+    assert r.returncode == 0, r.stdout
+    out = json.loads(r.stdout)
+    assert out["resultCode"] == "0" and len(out["matched"]) == 1, out
+    m0 = out["matched"][0]
+    assert m0["offer_id"] != "900102306" and m0["name"], (m0["offer_id"], m0["name"])
+    assert m0["k4_text"], m0["k4_path"]  # K4 档案原文已载入
+    #     按名称/描述关键词：连字符名"5G-A融合套餐"命中多款变体
+    r = run(["query_offer", "--name", "5G-A融合套餐"])
+    out = json.loads(r.stdout)
+    assert out["resultCode"] == "0" and len(out["matched"]) >= 1, out
+    assert all("5G-A融合套餐" in (m["name"]) for m in out["matched"]), out
+    #     未命中 → matched=[]
+    r = run(["query_offer", "--name", "不存在的套餐XYZ"])
+    out = json.loads(r.stdout)
+    assert out["resultCode"] == "0" and out["matched"] == [], out
+    #     缺参 → PARAM_MISSING
+    r = run(["query_offer"])
+    assert r.returncode == 2 and "PARAM_MISSING" in r.stdout, r.stdout
+    print("16. 存量产品信息查询 query_offer OK（按ID透传 dup/按名称命中/未命中/缺参校验）")
+    ok += 1
+
     print("全部 %d 项本地自测通过" % ok)
 
 

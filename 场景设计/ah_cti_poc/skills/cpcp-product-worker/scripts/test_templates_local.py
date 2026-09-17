@@ -190,6 +190,41 @@ def main():
     print("3-ok render_table 取值来源 四态齐全（原始需求提取/复用相似产品/本体推理/默认值）")
     ok += 1
 
+    # 3b) 取值来源列·复用相似产品拼接：传入相似品出参（similarOfferId+similarOfferName）时，
+    #     AI补全 → "参考相似产品: {id} {name}"；未传相似品时回退固定标签"复用相似产品"
+    data2 = json.dumps({"familyAddPrc": {
+        "baseInfo": {"prodType": "共享流量产品", "prodPrcName": "示例包", "effDate": "20260901"},
+        "optionalInfo": {"printContent": {"prcMonthFee": 10}},
+    }}, ensure_ascii=False)
+    meta2 = json.dumps({
+        "baseInfo.prodPrcName": {"label": "资费名称", "value": "示例包", "source": "原始需求"},
+        "baseInfo.effDate": {"label": "销售开始日期", "value": "20260901", "source": "AI补全"},
+    }, ensure_ascii=False)
+    sim2 = json.dumps({"similarOfferId": "12121212",
+                       "similarOfferName": "5G-A轻享单品129元"}, ensure_ascii=False)
+    p_tmp = os.path.join(HERE, "_tmp_sim_payload.json")
+    m_tmp = os.path.join(HERE, "_tmp_sim_meta.json")
+    s_tmp = os.path.join(HERE, "_tmp_sim_offer.json")
+    with open(p_tmp, "w", encoding="utf-8") as f:
+        f.write(data2)
+    with open(m_tmp, "w", encoding="utf-8") as f:
+        f.write(meta2)
+    with open(s_tmp, "w", encoding="utf-8") as f:
+        f.write(sim2)
+    r = run(["render_table", "--schema-file", schema, "--json-file", p_tmp,
+             "--meta-file", m_tmp, "--similar-offer-file", s_tmp, "--title", "源测试"])
+    r2 = run(["render_table", "--schema-file", schema, "--json-file", p_tmp,
+              "--meta-file", m_tmp, "--title", "源测试"])
+    os.unlink(p_tmp)
+    os.unlink(m_tmp)
+    os.unlink(s_tmp)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "参考相似产品: 12121212 5G-A轻享单品129元" in r.stdout, r.stdout
+    assert r2.returncode == 0, r2.stdout + r2.stderr
+    assert "复用相似产品" in r2.stdout, "未传相似品应回退固定标签"
+    print("3b-ok render_table 复用相似产品拼接 → 参考相似产品: 12121212 5G-A轻享单品129元（无相似品回退）")
+    ok += 1
+
     # V9.2 放松必填枚举判定：personMainPrc 套外计费标准（outChargeMode，必填枚举）需求以自由文本写入
     # 超套收费标准（chargeStandard）时，不应再进 pending_required（避免 5G-A 阶梯计费被误判为待补充）
     schema = os.path.join(TEMPLATES, "personMainPrc.schema.json")

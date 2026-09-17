@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import time
 import urllib.error
@@ -1136,6 +1137,115 @@ def cmd_shelf_compliance(args):
     print(json.dumps(out, ensure_ascii=False))
 
 
+# ---------------- 存量产品信息查询（flow-D 支线D-4，本地只读，确定性查询） ----------------
+# 查询存量在架产品信息：按产品 ID（9 位编码）或按名称/描述关键词。数据源=本地存量目录
+# `方案/存量产品目录_清洗后.json` + `references/K4存量/`（K4 存量销售品资料库逐 ID 档案）。
+# 纯只读，不改写任何数据；LLM 不参与检索判定（第2层执行，结果逐字引用）。
+CATALOG_REL = os.path.join("..", "..", "..", "方案", "存量产品目录_清洗后.json")
+K4_DIR_REL = os.path.join("..", "references", "K4存量")
+
+# 存量产品名称关键词归一：剥离常见句首助词/动词（查/查看/请/帮我…），避免把"我查XX套餐"当名称比对
+OFFER_QUERY_STOP_PREFIX = ["帮我", "请帮", "请", "我要", "我", "查询", "查看", "查一下", "查查",
+                           "查", "给", "了解一下", "了解", "介绍", "看看", "看", "的", "和", "与"]
+
+
+def _skill_dir():
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _resolve_catalog():
+    path = os.path.join(_skill_dir(), CATALOG_REL)
+    with open(path, "r", encoding="utf-8-sig") as f:
+        return json.load(f)
+
+
+def _normalize_keyword(kw):
+    """名称关键词归一：去空白/去常见前缀动词，便于与 name_clean 命中比对。"""
+    kw = re.sub(r"\s+", "", kw or "")
+    for p in OFFER_QUERY_STOP_PREFIX:
+        if kw.startswith(p):
+            kw = kw[len(p):]
+            break
+    return kw
+
+
+def _load_k4(offer_id):
+    """读取 K4 存量销售品资料库单条档案原文（按产品 ID 单文件）。"""
+    path = os.path.join(_skill_dir(), K4_DIR_REL, "K4存量_产品信息%s_V1.0.md" % offer_id)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return f.read()
+    return ""
+
+
+def _cmd_query_offer_lookup(keyword="", product_id=""):
+    """存量目录检索（确定性）：ID 精确优先（含 dup 透传到 active 品），否则名称关键词模糊命中。
+    返回 {resultCode, matched[]}；matched 逐条含目录元数据 + k4_text(单档案原文)。
+    未命中 matched=[]（调用方按 E 引导追问/提示无收录）。"""
+    cat = _resolve_catalog()
+    products = cat.get("products") or []
+    active = {p.get("offer_id"): p for p in products if p.get("status") != "dup"}
+    matched = []
+
+    def build(p):
+        oid = str(p.get("offer_id"))
+        return {"offer_id": oid,
+                "name": p.get("name_clean") or p.get("name_orig") or "",
+                "product_type": p.get("product_type") or "",
+                "biz_series": p.get("biz_series") or "",
+                "tier": p.get("tier") or "",
+                "template": p.get("template") or "",
+                "members": p.get("members") or [],
+                "k4_text": _load_k4(oid),
+                "k4_path": os.path.join(K4_DIR_REL, "K4存量_产品信息%s_V1.0.md" % oid)}
+
+    if product_id:
+        pid = str(product_id).strip()
+        # 命中本 catalog 条目；status=dup 时透传到其 duplicate_of 指向的 active 品
+        hit = next((p for p in products if str(p.get("offer_id")) == pid), None)
+        if hit and hit.get("status") == "dup" and hit.get("duplicate_of"):
+            hit = active.get(str(hit.get("duplicate_of")))
+        if hit:
+            matched.append(build(hit))
+        else:
+            # 目录未收录：仍尝试直接按 ID 读 K4 档案（K4 与目录可能存在偏差）
+            k4 = _load_k4(pid)
+            if k4:
+                matched.append({"offer_id": pid, "name": "", "product_type": "", "biz_series": "",
+                               "tier": "", "template": "", "members": [],
+                               "k4_text": k4, "k4_path": os.path.join(K4_DIR_REL, "K4存量_产品信息%s_V1.0.md" % pid)})
+    elif keyword:
+        kw = _normalize_keyword(keyword)
+        if kw:
+            for p in products:
+                eff = p
+                if p.get("status") == "dup" and p.get("duplicate_of"):
+                    eff = active.get(str(p.get("duplicate_of"))) or p
+                haystack = "%s %s %s %s" % (eff.get("offer_id", ""), eff.get("name_clean", ""),
+                                            eff.get("name_orig", ""), eff.get("product_type", ""))
+                if kw in haystack:
+                    matched.append(build(eff))
+            # 去重（同 offer_id 只保留一条）
+            seen, deduped = set(), []
+            for m in matched:
+                if m["offer_id"] not in seen:
+                    seen.add(m["offer_id"])
+                    deduped.append(m)
+            matched = deduped
+    return {"resultCode": "0", "matched": matched}
+
+
+def cmd_query_offer(args):
+    """存量产品信息查询（按 ID 或名称/描述关键词，确定性本地检索）。"""
+    if args.product_id:
+        out = _cmd_query_offer_lookup(product_id=args.product_id)
+    elif args.name or args.keyword:
+        out = _cmd_query_offer_lookup(keyword=args.name or args.keyword)
+    else:
+        _err("PARAM_MISSING", "缺少查询入参，请提供 --product-id 或 --name/--keyword")
+    print(json.dumps(out, ensure_ascii=False))
+
+
 # ---------------- 监控运营闭环（V8.1：异动根因本体推理 + 优化工单闭环） ----------------
 # 转发现有 CPCP 本体推理平台（backend-app Java，与 validate_nested/explain_nested 同一基址），
 # 禁止新造本体：复用具 product-ops.ttl（产商品运营归因与风险本体）+ ops_rules.json（R-A01~A06）
@@ -1310,6 +1420,7 @@ def main():
     s.add_argument("--schema-file", required=True)
     s.add_argument("--json-file", required=True)
     s.add_argument("--meta-file", default="")
+    s.add_argument("--similar-offer-file", default="")
     s.add_argument("--title", default="")
     s.set_defaults(fn=cmd_render_table)
     s = sub.add_parser("derive_flat24")
@@ -1330,6 +1441,13 @@ def main():
     s = sub.add_parser("shelf_compliance")
     s.add_argument("--offering-ids", default="")
     s.set_defaults(fn=cmd_shelf_compliance)
+
+    # flow-D 支线D-4 存量产品信息查询（本地只读）：按产品ID 或 名称/描述关键词
+    s = sub.add_parser("query_offer")
+    s.add_argument("--product-id", default="")
+    s.add_argument("--name", default="")
+    s.add_argument("--keyword", default="")
+    s.set_defaults(fn=cmd_query_offer)
 
     # V8.1 监控运营闭环：异动根因本体推理 + 优化工单
     s = sub.add_parser("ops_root_cause")

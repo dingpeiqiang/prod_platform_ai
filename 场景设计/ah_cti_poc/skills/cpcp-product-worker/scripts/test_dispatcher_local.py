@@ -118,8 +118,14 @@ def main():
     out = check("查一下销售品 900102308 的监控", "QUERY_MONITOR", {"needs_llm": False})
     assert out["entities"]["product_id"] == "900102308", out["entities"]
 
-    # 10. 存量查询 → QNA K4
-    out = check("查 5G-A融合套餐199元 的存量信息", "QNA", {"kb_target": "K4"})
+    # 10. 存量产品信息查询 → QUERY_OFFER（flow-D 支线D-4）；存量泛化问答仍走 QNA K4
+    out = check("查 5G-A融合套餐199元 的存量信息", "QUERY_OFFER", {"route": "D4"})
+    assert out["entities"]["offer_name"], out["entities"]
+    out = check("查询存量产品信息", "QUERY_OFFER", {"route": "D4"})
+    out = check("900102306 的产品资料", "QUERY_OFFER", {"route": "D4"})
+    assert out["entities"]["product_id"] == "900102306", out["entities"]
+    # 存量产品内容的泛化问答（无明确产品信息查询意图）仍归 QNA（存量素材供 AI 推理/学习参考）
+    out = check("存量销售品 4008610000 的资费信息", "QUERY_OFFER")
 
     # 11. BUG① 回归：裸"执行"仅短句确认；长文档正文含"执行"不得误判为 CONFIRM_EXEC
     out = check("执行", "CONFIRM_EXEC", {"confirmed": True, "route": "B"})
@@ -130,8 +136,8 @@ def main():
     out = check(long_doc, "ASK_INTENT", {"needs_llm": False, "route": "ASK"})
     assert out["intent"] != "CONFIRM_EXEC", out["intent"]
 
-    # 12. BUG② 回归：10 位服务号不可截成 9 位产品 ID
-    out = check("存量销售品 4008610000 的资费信息", "QNA")
+    # 12. BUG② 回归：10 位服务号不可截成 9 位产品 ID（存量产品信息查询同样不会误截）
+    out = check("存量销售品 4008610000 的资费信息", "QUERY_OFFER")
     assert out["entities"]["product_id"] == "", out["entities"]
     out = check("查一下销售品 900102308 的监控", "QUERY_MONITOR")
     assert out["entities"]["product_id"] == "900102308", out["entities"]
