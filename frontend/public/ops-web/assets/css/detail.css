@@ -139,13 +139,26 @@
 .ops-flow-seg small{font-size:10px;font-weight:400;opacity:.92;}
 
 /* ===== 自适应：随 iframe/容器宽度动态适配 ===== */
+html,body{max-width:100%;overflow-x:hidden;}
 .ops-main{width:100%;min-width:0;max-width:var(--ops-max,1280px);margin:0 auto;padding:20px 24px 60px;}
 .status-pill{white-space:nowrap;}
 .prod-name{flex-wrap:wrap;line-height:1.4;min-width:0;}
 .prod-head{min-width:0;}
 .prod-head > div:first-child{min-width:0;flex:1 1 auto;}
 .prod-head > div:last-child{flex-shrink:0;}
-.health-hero{min-width:0;}
+.health-hero{min-width:0;max-width:100%;}
+.dim-grid,.ops-mod{min-width:0;}
+.ops-mod{max-width:100%;overflow:hidden;}
+.ops-mod-head > div{min-width:0;flex-wrap:wrap;justify-content:flex-end;}
+.ops-tabs{flex-shrink:1;flex-wrap:wrap;max-width:100%;}
+.ops-tabs button{flex-shrink:1;}
+.ops-mkt-2col{min-width:0;}
+.ops-mkt-block{min-width:0;max-width:100%;}
+.ops-q-chips{min-width:0;}
+.ops-q-chip{min-width:120px;max-width:100%;}
+.ops-life{min-width:0;width:100%;}
+.ops-flow-track{min-width:0;}
+.ops-flow-seg{overflow:hidden;text-overflow:ellipsis;}
 
 /* 健康度主卡在窄屏下改为纵向排布，分数居中 */
 @media(max-width:720px){
@@ -159,6 +172,7 @@
   .prod-head{gap:10px;}
   .ops-main{padding:16px 14px 48px;}
   .ops-mod-head{flex-direction:column;align-items:flex-start;}
+  .ops-mod-head > div{justify-content:flex-start;}
   .ops-mod-title .q{display:block;border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:4px;margin-top:4px;width:100%;}
 }
 
