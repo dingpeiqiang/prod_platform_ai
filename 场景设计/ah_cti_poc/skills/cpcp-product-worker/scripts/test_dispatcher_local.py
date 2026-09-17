@@ -126,7 +126,8 @@ def main():
     assert out["matched_rule"] == "bare-exec-short", out["matched_rule"]
     long_doc = ("套餐生效方式：新入网立即生效，当月执行过渡期资费；老用户次月1日生效，"
                 "当月执行原套餐资费。退订当月费用不退还，且执行完毕后不可回退。")
-    out = check(long_doc, "QNA", {"needs_llm": False})
+    # 该长文本是产品规格描述、未表明查询/配置意图 → 归 ASK_INTENT（先澄清"查询 or 配置"），绝不误判为执行确认
+    out = check(long_doc, "ASK_INTENT", {"needs_llm": False, "route": "ASK"})
     assert out["intent"] != "CONFIRM_EXEC", out["intent"]
 
     # 12. BUG② 回归：10 位服务号不可截成 9 位产品 ID
@@ -139,7 +140,7 @@ def main():
     out = check("上网流量不包含港澳台的资费使用范围", "QNA", {"kb_target": "K2"})
     assert out["entities"]["offer_name"] != "不包", out["entities"]
 
-    # 14. 完整产品规格文档 → REQ_REPORT（flow-A），优先于 QNA；且不触发执行确认
+    # 14. 完整产品规格文档 → 未表明意图时归 ASK_INTENT（先澄清"查询 or 配置"），不擅自按需求提报
     full_doc = ("一、套内资费方案（一）套餐内资费档位：199元；计费周期：周期型缴费：月；"
                 "国内通用流量：120GB；国内语音拨打：1000分钟。1.国内通用流量仅限中国内地使用。"
                 "（二）套餐外资费：套外流量阶梯计费，套外语音0.15元/分钟。"
@@ -149,13 +150,29 @@ def main():
                 "（三）套餐有效期2年，届满前30日无异议自动续展。"
                 "五、套餐变更：（一）可变更至在售其他套餐，次月1日生效。"
                 "六、套餐退订拆机：（一）退订允许，次月生效，当月费用不退还。")
-    out = check(full_doc, "REQ_REPORT", {"needs_llm": False, "route": "A"})
-    assert out["matched_rule"] == "product-doc", out["matched_rule"]
+    out = check(full_doc, "ASK_INTENT", {"needs_llm": False, "route": "ASK"})
+    assert out["matched_rule"] == "product-doc-ask", out["matched_rule"]
     assert out["confirmed"] is False, out["confirmed"]
 
-    # 15. 文档检测负例：带疑问/查询意图的长文本不得误判为 REQ_REPORT
+    # 15. 文档检测负例：带疑问/查询意图的长文本不得误判为 REQ_REPORT/ASK_INTENT
     out = check("查一下这个套餐资费如何收费，能否给出详细的计费规则说明和优惠叠加方案？", "QNA")
-    assert out["intent"] != "REQ_REPORT", out["intent"]
+    assert out["intent"] not in ("REQ_REPORT", "ASK_INTENT"), out["intent"]
+
+    # 16. 产品描述未表明意图 → ASK_INTENT（澄清"查询 or 配置"）
+    out = check("5G-A融合套餐199元，国内流量120GB，语音1000分钟，副卡允许办理",
+                "ASK_INTENT", {"needs_llm": False, "route": "ASK"})
+    assert out["matched_rule"] == "product-desc-ask", out["matched_rule"]
+
+    # 17. 产品描述 + 明确配置意图 → REQ_REPORT（触发需求提报）
+    out = check("我要配置5G-A融合套餐，199元/月，120GB流量", "REQ_REPORT",
+                {"needs_llm": False, "route": "A"})
+    # 完整文档 + 明确提报意图 → REQ_REPORT
+    out = check("我要提报一个套餐：%s" % full_doc, "REQ_REPORT",
+                {"needs_llm": False, "route": "A"})
+
+    # 18. 意图澄清后：用户回复"配置" → REQ_REPORT；回复"查询" → 查询类
+    out = check("配置", "REQ_REPORT", {"needs_llm": False, "route": "A"})
+    out = check("我要配置", "REQ_REPORT", {"needs_llm": False, "route": "A"})
 
     print("全部 %d 项调度器自测通过" % ok)
 

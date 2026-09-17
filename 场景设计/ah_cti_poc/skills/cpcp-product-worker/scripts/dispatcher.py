@@ -56,7 +56,8 @@ _force_utf8_stdio()
 # ---------------- 意图封闭枚举 ----------------
 # 与 SKILL.md 意图路由表一一对应，禁止新增自由形态
 INTENTS = [
-    "REQ_REPORT",        # 提报需求/修改需求 → flow-A
+    "ASK_INTENT",        # 产品描述未表明意图 → 澄清"查询 or 配置"（ASK）
+    "REQ_REPORT",        # 提报需求/修改需求 → flow-A0 需求提报（生成需求提报文档+需求工单审批）→ flow-A
     "CONFIRM_EXEC",      # 确认配置/确认执行 → 执行主干（run_pipeline --confirmed）
     "RESUME_EXEC",       # 重新执行失败环节 → run_pipeline --resume
     "APPROVAL",          # 上线审批/发起审批 → flow-C
@@ -104,7 +105,10 @@ INTENT_RULES = [
      "重新执行失败环节"),
     ("REQ_REPORT",
      [r"(提报|提交|新增|我要{0,2})(销售品|套餐|产品|需求|方案)", r"需求", r"创建.{0,4}(套餐|销售品)",
-      r"(改|调整|变更|修改).{0,8}(一下|配置|方案|需求)", r"改配置"],
+      r"(改|调整|变更|修改).{0,8}(一下|配置|方案|需求)", r"改配置",
+      r"(我要|帮我|麻烦|请|现在|直接)?(配置|提报|创建|开通|办|生成)(.{0,8})(销售品|套餐|产品|方案|需求|这个|一款)",
+      r"^(?:我|现在|直接)?(?:要|想)?配置(?:这个|这款|这个套餐|这款套餐)?$",
+      r"^我要配置$"],
      "提报/修改需求"),
     ("CONFIRM_EXEC",
      [r"确认配置", r"确认执行", r"确认", r"同意", r"可以", r"执行吧"],
@@ -163,6 +167,60 @@ def _is_product_doc(message):
         return False
     kw = sum(1 for k in PRODUCT_DOC_KEYWORDS if k in message)
     return kw >= 2
+
+
+# ---------------- 产品描述意图澄清（ASK_INTENT） ----------------
+# 用户发送了一段产品/套餐/资费的**陈述性描述**，但既没有明确"查询"也没有明确"配置"意图时，
+# 不擅自按"需求提报"处理，先向用户澄清："您是要查询该产品，还是要进行配置？"
+# 规则（第0层，规则优先）：含产品/资费描述特征 + 非问句 + 无明确查询词 + 无明确配置词 → ASK_INTENT；
+# 一旦含明确查询词（查/看/怎么/能否…）或明确配置词（提报/配置/需求/创建…）则交回常规意图规则，不拦截。
+PRODUCT_DESC_NAME_HINTS = ["套餐", "产品", "销售品", "副卡", "宽带", "天翼", "5G", "流量包",
+                           "权益包", "加装包", "语音包", "会员", "校园卡"]
+PRODUCT_DESC_FEE_HINTS = ["元/月", "月租", "月费", "资费", "流量", "语音", "分钟", "GB", "G流量",
+                          "档位", "通话", "短信", "叠加包"]
+EXPLICIT_QUERY_WORDS = ["查询", "查看", "查一下", "查查", "看看", "帮我查", "给我查", "介绍",
+                        "有没有", "能不能", "能否", "怎么", "如何", "是什么", "有哪些", "多少钱",
+                        "了解", "请问", "问一下", "存量", "信息"]
+EXPLICIT_CONFIG_WORDS = ["提报", "配置", "需求", "创建", "新增", "生成", "开通", "办一个",
+                         "报装", "上线", "落地", "要走配置", "进入配置",
+                         "做成", "要办", "我要办", "我要提报", "我要配置", "配置一下"]
+CONFIRM_AS_INTENT_WORDS = ["确认配置", "确认执行", "确认", "同意", "可以", "执行吧"]
+
+
+def _is_product_desc_no_intent(message):
+    """产品描述但未表明意图（→ ASK_INTENT）：陈述性规格描述，非问句，且无查询/配置/确认意图词。"""
+    if len(message) < 4 or len(message) > 400:
+        return False
+    if "？" in message or "?" in message:
+        return False
+    for w in PRODUCT_DESC_NAME_HINTS:
+        if w in message:
+            break
+    else:
+        return False
+    if sum(1 for f in PRODUCT_DESC_FEE_HINTS if f in message) < 1:
+        return False
+    # 无明确查询/配置/确认意图词，才视为"未表明意图"
+    for w in EXPLICIT_QUERY_WORDS + EXPLICIT_CONFIG_WORDS + CONFIRM_AS_INTENT_WORDS:
+        if w in message:
+            return False
+    return True
+
+
+def _has_config_intent(message):
+    """消息是否附带明确配置/提报意图（用于产品文档/描述场景判定是否走 REQ_REPORT）。"""
+    for w in EXPLICIT_CONFIG_WORDS + CONFIRM_AS_INTENT_WORDS:
+        if w in message:
+            return True
+    for pat in (r"(提报|提交|新增|我要{0,2})(销售品|套餐|产品|需求|方案)", r"需求",
+                r"创建.{0,4}(套餐|销售品)", r"(改|调整|变更|修改).{0,8}(一下|配置|方案|需求)",
+                r"改配置", r"(我要|帮我|麻烦|请|现在|直接)?(配置|提报|创建|开通|办|生成)"
+                r"(.{0,8})(销售品|套餐|产品|方案|需求|这个|一款)",
+                r"^(?:我|现在|直接)?(?:要|想)?配置(?:这个|这款|这个套餐|这款套餐)?$",
+                r"^我要配置$"):
+        if re.search(pat, message):
+            return True
+    return False
 
 
 # ---------------- 实体抽取（正则 + 形如字典） ----------------
@@ -247,9 +305,17 @@ def _classify_intent(message):
             re.search(p, message) for p in RESUME_ONLY_RULES):
         return "RESUME_EXEC", "resume-only-regex", confirmed, resume
 
-    # 1'. 完整产品规格文档 → 新需求提报（REQ_REPORT/flow-A），优先于常规交互动词与 QNA
+    # 1'. 完整产品规格文档 → 产品描述；附带明确配置/提报意图则 REQ_REPORT，否则 ASK_INTENT（先澄清查询/配置）
     if not negated and _is_product_doc(message):
-        return "REQ_REPORT", "product-doc", confirmed, resume
+        if _has_config_intent(message):
+            return "REQ_REPORT", "product-doc-config", confirmed, resume
+        return "ASK_INTENT", "product-doc-ask", confirmed, resume
+
+    # 1''. 产品描述但未表明意图（非问句、且无任何查询/配置/确认词）→ ASK_INTENT（澄清"查询 or 配置"）
+    #      判断在规则循环前：只要是"陈述性产品/资费描述 + 无意图词"，先澄清，不被宽松的 QNA 词抢走；
+    #      一旦含查询词（存量/信息/查/怎么…）或配置词则放行给常规规则，不拦截。
+    if not negated and _is_product_desc_no_intent(message):
+        return "ASK_INTENT", "product-desc-ask", confirmed, resume
 
     # 2. 按优先级顺序匹配意图规则
     for intent, pats, desc in INTENT_RULES:
@@ -258,7 +324,8 @@ def _classify_intent(message):
         for p in pats:
             if re.search(p, message):
                 return intent, p, confirmed, resume
-    # 2'. BUG① 修复：裸"执行"仅当短句确认才归 CONFIRM_EXEC（长文档正文上的"执行"不误判）
+
+    # 2'. 裸"执行"仅当短句确认才归 CONFIRM_EXEC（长文档正文上的"执行"不误判）
     if (not negated and len(message.strip()) <= BARE_EXEC_MAX_LEN
             and BARE_EXEC_SHORT_RE.match(message.strip())):
         return "CONFIRM_EXEC", "bare-exec-short", confirmed, resume
@@ -271,6 +338,7 @@ def _classify_intent(message):
 def _build_route(intent):
     """意图 → 路由（第1层起点）。"""
     return {
+        "ASK_INTENT": "ASK",
         "REQ_REPORT": "A",
         "CONFIRM_EXEC": "B",
         "RESUME_EXEC": "B",

@@ -83,12 +83,13 @@
 - 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)、`compare_list[]`(V2.6 新增，8 项资费比对明细：project_name=套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期、requirement_desc=需求侧值（取落地配置 plan_json 字段原文）、billing_desc=系统侧值（含折算括注如"29元（首月按天折算）"、"长期有效（自动续展）"）、result=一致/不一致；**V4.0 融合组：逐成员生成，每项新增 `member_role` 键**（主卡套餐/宽带/天翼高清/副卡功能费/权益包/其他），单商品时缺省）
 - 60s；传输层重试脚本内置（共 3 次尝试）；pass=0 → E9 资费驳回分支；环节3 比对表逐行引用 compare_list（禁止模板自行拼装）；desc 系统性为空 → E27（见 exception-matrix，V4.0 融合组阈值逐成员内计算）
 
-## 工具9 上线审批推送 `submit_approval`
+## 工具9 上线审批推送 `submit_approval`（V9.1 审批双轨：需求工单审批 / 上线审批）
 - POST `/api/v1/appstore/approval/submit`
-- 入参：`req_id`(必填,"缺少执行方案key，请先完成执行主干")、`product_id`(必填,"缺少产品ID，请先完成配置落地")、`report_url`(必填,报告全文或链接)、`approval_flow`(选填,standard|urgent,默认standard)、`approve_confirmed`(脚本内置固定 true——用户已明确回复"发起审批"后才会进入程序C，此字段为后端硬门禁依据)
-- 出参：`approval_id`、`status`(审批中/通过/驳回)、`approval_matrix[]`(四节点审批矩阵)；`status=NOT_CONFIRMED` 且无 approval_id → approve_confirmed 未置 true（脚本已内置，正常不应出现；出现即报缺陷）
-- `approval_matrix[]` 每项：`node_seq`(1~4)、`node_name`(产品经理审核/资费主管审核/运营审核/上线审批)、`approver`(审批角色)、`status`(提交时首位"进行中"其余"待审核"；通过后全部"已通过")、`opinion`、`update_time`
-- 30s；传输层重试脚本内置（共 3 次尝试，业务失败不重试即 E16/E29 中断）；幂等（同 product_id 返回原 approval_id）；**后端硬校验：approve_confirmed=true 且 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送**
+- 入参：`req_id`(必填,"缺少执行方案key")、`product_id`(必填,"审批对象ID")、`report_url`(必填,报告全文或链接)、`approval_flow`(选填,standard|urgent,默认standard)、`approval_type`(选填,requirement|launch,默认launch)、`approve_confirmed`(脚本内置固定 true——用户已明确回复"发起审批"后才进入对应流程，此字段为后端硬门禁依据)
+- **approval_type 语义（V9.1）**：`requirement`=需求工单审批（flow-A0 需求提报后、需求分析前；POC 阶段审批对象 product_id 传 req_id 需求单号）；`launch`=上线审批（flow-C，四环节全成功且用户明确发起；后端硬校验 req_id 四环节结果齐全）
+- 出参：`approval_id`、`approval_type`、`status`(审批中/通过/驳回)、`approval_matrix[]`(审批节点矩阵)；`status=NOT_CONFIRMED` 且无 approval_id → approve_confirmed 未置 true（脚本已内置，正常不应出现；出现即报缺陷）
+- `approval_matrix[]` 每项：`node_seq`、`node_name`、`approver`(审批角色)、`status`、`opinion`、`update_time`
+- 30s；传输层重试脚本内置（共 3 次尝试，业务失败不重试即 E16/E29 中断）；幂等（同 req_id+approval_type 返回原 approval_id）；**后端硬校验：approve_confirmed=true；launch 另须 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送**
 
 ## 工具10 监控查询 `query_monitor`
 - GET `/api/v1/appstore/product/monitor`
@@ -104,8 +105,8 @@
 ## 工具13 审批进度查询 `approval_status`
 - GET `/api/v1/appstore/approval/status`
 - 入参：`approval_id` 与 `product_id` 至少一个（approval_id 优先；"请提供审批单号或销售品ID，以便查询审批进度"）
-- 出参：`approval_id`、`status`(审批中/通过/驳回)、`current_node`、`approver`、`opinion`、`submit_time`、`update_time`、`approval_matrix[]`(四节点审批矩阵，结构同工具9；D-1 展示审批矩阵源)
-- 模拟行为：审批提交 **10s** 后任一次查询自动流转为 `status=通过`、`current_node=流程结束（上架完成）`、`opinion=审核通过，同意上架`，`approval_matrix` 全部节点置"已通过"（惰性推进，查询/幂等读取时触发）
+- 出参：`approval_id`、`approval_type`(requirement|launch，D-1 据此区分衔接)、`status`(审批中/通过/驳回)、`current_node`、`approver`、`opinion`、`submit_time`、`update_time`、`approval_matrix[]`(审批节点矩阵，结构同工具9；D-1 展示审批矩阵源)
+- 模拟行为：审批提交 **10s** 后任一次查询自动流转为 `status=通过`、`opinion=审核通过，同意上架/同意进入需求分析`，`approval_matrix` 全部节点置"已通过"（惰性推进，查询/幂等读取时触发）
 - 查无审批单 → E21："未找到该销售品的审批单，请确认是否已发起审批"
 
 ## 工具14 字段本体推理 `ontology_reason`
@@ -139,7 +140,8 @@
 ## 工具18 入口调度器 `dispatcher`（V6.0 新增，本地脚本，四层架构第0/1层）
 - 本地代码节点（非平台接口）：`scripts/dispatcher.py`，规则优先做意图归类/确认门禁/实体抽取；LLM 仅在 `needs_llm` 时做封闭枚举兜底（禁止自由文本）。
 - 入参：`--message`(必填) / `--message-file`(>1KB 消息走文件)、`--session-file`(选填，会话上下文 JSON：req_id/offer_id/product_id/approval_id/offer_name 等)
-- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(A/B/C/D1/D2/D3/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
+- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(ASK/A/B/C/D1/D2/D3/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
+- **ASK_INTENT（V9.1 新增）**：产品描述（产品/套餐/资费规格）但未表明意图（非问句、无查询/配置/确认词）时返回；route=ASK，SKILL 先澄清"查询 or 配置"，明确【配置】后再次运行 dispatcher 转 REQ_REPORT（触发需求提报），【查询】则走查询类意图；完整产品规格文档同理（product-doc-ask）
 - 行为保证：意图封闭枚举（任何输入必归类）；确认语义词表 + 否定词表（REJECT）；实体抽取消息优先、会话兜底；规则未命中 → needs_llm=true 交 LLM 单选归类
 - 判定规则：确认门禁由本脚本 `confirmed` 决定（对应 run_pipeline `--confirmed` 与 SKILL.md 纪律3），模型禁止自行判断确认语义
 

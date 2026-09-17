@@ -1239,20 +1239,26 @@ public class OfferSimV16Service {
             body.put("status", "NOT_CONFIRMED");
             return body;
         }
-        // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 req_id 的
-        // 四环节结果（config/spec/fee/test）且全部 status=ok，防止未走完执行主干直接发起审批
-        // （V1.7 统一键：原 execution_id 参数合并为 req_id 单键）
+        // V9.1 审批双轨：approval_type=requirement（需求工单审批，flow-A0 需求提报后/需求分析前）
+        // 此时执行主干四环节尚未执行，跳过四环节门禁；approval_type=launch（上线审批，flow-C）
+        // 仍须四环节结果齐全才可推送。
+        String approvalType = MapOps.str(req.get("approval_type")).trim();
         String reqId = MapOps.str(req.get("req_id")).trim();
-        if (reqId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "req_id 必填（四环节结果门禁校验依据）");
-        }
-        for (String stage : List.of("config", "spec", "fee", "test")) {
-            Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
-            if (rec == null) {
-                Map<String, Object> body = camelOk();
-                body.put("status", "NOT_CONFIRMED");
-                body.put("reason", "执行主干未全部完成：缺少 " + stage + " 环节结果（req_id=" + reqId + "）");
-                return body;
+        if (!"requirement".equals(approvalType)) {
+            // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 req_id 的
+            // 四环节结果（config/spec/fee/test）且全部 status=ok，防止未走完执行主干直接发起审批
+            // （V1.7 统一键：原 execution_id 参数合并为 req_id 单键）
+            if (reqId.isEmpty()) {
+                return camelFail("PARAM_MISSING", "req_id 必填（四环节结果门禁校验依据）");
+            }
+            for (String stage : List.of("config", "spec", "fee", "test")) {
+                Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
+                if (rec == null) {
+                    Map<String, Object> body = camelOk();
+                    body.put("status", "NOT_CONFIRMED");
+                    body.put("reason", "执行主干未全部完成：缺少 " + stage + " 环节结果（req_id=" + reqId + "）");
+                    return body;
+                }
             }
         }
         String productId = MapOps.str(req.get("product_id")).trim();
@@ -1262,6 +1268,7 @@ public class OfferSimV16Service {
             advanceApproval(existedApproval);
             Map<String, Object> body = camelOk();
             body.put("approval_id", existed);
+            body.put("approval_type", MapOps.str(existedApproval.get("approval_type")));
             body.put("status", MapOps.str(existedApproval.get("status")));
             body.put("idempotent", "true");
             return body;
@@ -1271,6 +1278,7 @@ public class OfferSimV16Service {
         Map<String, Object> approval = new LinkedHashMap<>();
         approval.put("approval_id", approvalId);
         approval.put("product_id", productId);
+        approval.put("approval_type", approvalType.isBlank() ? "launch" : approvalType);
         approval.put("report_url", MapOps.str(req.get("report_url")));
         String flow = MapOps.str(req.get("approval_flow"));
         approval.put("approval_flow", flow.isBlank() ? "standard" : flow);
@@ -1288,6 +1296,7 @@ public class OfferSimV16Service {
 
         Map<String, Object> body = camelOk();
         body.put("approval_id", approvalId);
+        body.put("approval_type", approval.get("approval_type"));
         body.put("status", "审批中");
         body.put("approval_matrix", approvalMatrixOf(approval));
         return body;
@@ -1334,6 +1343,7 @@ public class OfferSimV16Service {
         advanceApproval(approval);
         Map<String, Object> body = camelOk();
         body.put("approval_id", MapOps.str(approval.get("approval_id")));
+        body.put("approval_type", MapOps.str(approval.get("approval_type")));
         body.put("status", MapOps.str(approval.get("status")));
         body.put("current_node", MapOps.str(approval.get("current_node")));
         body.put("approver", MapOps.str(approval.get("approver")));

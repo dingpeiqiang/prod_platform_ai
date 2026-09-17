@@ -493,10 +493,14 @@ def cmd_billing_verify(args):
 def cmd_submit_approval(args):
     report = _read_arg(args, "report_url", "_file")
     if not args.req_id or not args.product_id or not report:
-        _err("PARAM_MISSING", "缺少执行方案key/产品ID/上线报告，请先完成执行主干")
+        _err("PARAM_MISSING", "缺少执行方案key/审批对象ID/报告，请先完成对应环节")
+    approval_type = getattr(args, "approval_type", "launch") or "launch"
+    if approval_type not in ("requirement", "launch"):
+        _err("PARAM_MISSING", "approval-type 枚举非法（requirement/launch）")
     out = _http("POST", "/api/v1/appstore/approval/submit",
                 {"req_id": args.req_id, "product_id": args.product_id,
                  "report_url": report, "approval_flow": args.approval_flow or "standard",
+                 "approval_type": approval_type,
                  "approve_confirmed": True},
                 timeout=TIMEOUT_ASYNC)
     print(json.dumps(out, ensure_ascii=False))
@@ -1228,7 +1232,10 @@ def main():
     s = sub.add_parser("submit_approval")
     s.add_argument("--req-id", required=True); s.add_argument("--product-id", required=True)
     s.add_argument("--report-url"); s.add_argument("--report-file")
-    s.add_argument("--approval-flow", default="standard"); s.set_defaults(fn=cmd_submit_approval)
+    s.add_argument("--approval-flow", default="standard")
+    s.add_argument("--approval-type", default="launch",
+                   help="需求提报审批 requirement | 上线审批 launch（默认 launch）")
+    s.set_defaults(fn=cmd_submit_approval)
     s = sub.add_parser("query_monitor")
     s.add_argument("--product-id", required=True); s.add_argument("--date-range", default="")
     s.add_argument("--metric", default="all"); s.set_defaults(fn=cmd_query_monitor)

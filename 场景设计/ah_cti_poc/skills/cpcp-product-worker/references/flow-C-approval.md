@@ -1,9 +1,10 @@
 # 上线审批 —— 程序 C
 
 > 对应原子工作流 wf_sub_06。执行主干四环节全部成功且用户明确确认后，串行自查五类结果、生成上线校验看板并推送审批流（受理验证为自动测试子集，随 test 结果自查，不单列）。
+> **V9.1 审批双轨**：本程序为**上线审批**（approval-type=launch，环节8）；与之并列的**需求工单审批**（approval-type=requirement，环节1 需求提报后/需求分析前）由 flow-A0 承担。两类审批单以 approval-type 区分，查询均走 flow-D 支线D-1。
 
 ## 触发条件
-- 四环节（config/spec/fee/test）全部成功，**且用户明确回复"上线审批"/"发起审批"**；
+- 四环节（config/spec/fee/test）全部成功，**且用户明确回复"上线审批"/"发起审批"**（上线审批，approval-type=launch）；
 - 用户仅说"帮我上线"但未确认发起时，先提示："执行结果已保留，回复【上线审批】后才能提交审批流。"
 
 ## 前置检查
@@ -60,9 +61,9 @@ python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirem
 python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node report --result-json "<report>"
 ```
 
-### 步骤5：审批推送（原节点0502）
+### 步骤5：审批推送（原节点0502，上线审批 approval-type=launch）
 ```bash
-python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<product_id>" --report-url "<report>" --approval-flow standard
+python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<product_id>" --report-url "<report>" --approval-flow standard --approval-type launch
 ```
 - 后端硬校验：approve_confirmed（脚本内置 true，以"用户明确回复上线审批"为前提）+ req_id 四环节（config/spec/fee/test）结果齐全才放行，缺失即拒绝（跳步无法推送）；
 - 判定：返回 approval_id → 步骤6；`status=NOT_CONFIRMED` 且无 approval_id → 按 E16 中断（不应出现，出现即脚本/文档缺陷）；推送失败（含网络异常）→ 传输层重试由脚本内置（共尝试 3 次），耗尽后按 E16/E29 **直接中断询问**（禁止智能体自行叠加业务重试；幂等：同 product_id 重复提交返回原 approval_id）；
