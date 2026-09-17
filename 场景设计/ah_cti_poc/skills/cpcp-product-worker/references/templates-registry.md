@@ -1,7 +1,8 @@
 # 模板注册表（templates-registry）V1.0
 
-> 数据源=scripts/templates/_registry.json（excel_to_schema.py --emit-registry 自动统计，**禁止手写数字**）。
-> 本表供：第①步 product_type→templateId 路由、第④步提取提示词模板注入、derive_flat24 映射、第⑤步价格字段禁照搬判定。
+> 数据源=scripts/templates/_registry.json（聚合统计；**产品类型权威字段=各 schema 顶层 `x-product-type`**，
+> identify_products 运行时枚举即扫描该集合，新增配置场景投 schema 即可路由，无需改代码）。
+> 原 _index.json 已并入本注册表（唯一事实源）。本表供：第①步 product_type→templateId 路由、第④步提取提示词模板注入、derive_flat24 映射、第⑤步价格字段禁照搬判定。
 
 ## 模板总表
 

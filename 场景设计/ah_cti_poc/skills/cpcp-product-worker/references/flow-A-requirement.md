@@ -37,7 +37,7 @@
                "members": ["宽带", "天翼高清", "副卡功能费"]}],
  "need_summary": "≤5000字符需求摘要"}
 ```
-- 产品类型只允许上述 6 枚举之一；LLM **不直接猜 templateId**（模板路由由代码做，防模板名幻觉）；多产品并存时逐项列出；
+- **产品类型枚举以 templates/ 下各 schema 顶层 `x-product-type` 集合为准（低代码化，动态漂移）**——新增配置场景投 schema 声明 `x-product-type` 即自动成为合法类型；下方括号内仅为当前 6 模板的取值，非封闭写死。LLM **不直接猜 templateId**（模板路由由代码做，防模板名幻觉）；多产品并存时逐项列出；
 - **第①步必须走 LLM**（评审结论#2），不做规则优先；融合需求（宽带/天翼高清/副卡/权益包等成员表述）在 members 中体现，模型禁止自行推理成员间关系（成员构成仅作检索参照，非下发数据源）；
 - 识别结果必须经确定性后置闸校验：
 ```bash
@@ -66,7 +66,7 @@ python -X utf8 "scripts\cpcp_api.py" similar_offer --desc "<need_summary>"
 python -X utf8 "scripts\cpcp_api.py" get_template --template "<templateId>"
 ```
 - 出参 `schema` = 模板 schema 全文（含 x-template/x-label/properties/enum/x-show-when/x-required）；
-- 6 模板注册（personMainPrc 个人主资费 85 叶子 / broadBandMainPrc 宽带主资费 43 / personAddPrc 个人附加资费 99 / broadBandOptSpeedPrc 宽带加速包 45 / familyBasePrc 家庭基础套餐 93 / familyAddPrc 家庭附加业务 75）；
+- 6 模板注册（当前 6 模板：personMainPrc 个人主资费 85 叶子 / broadBandMainPrc 宽带主资费 43 / personAddPrc 个人附加资费 99 / broadBandOptSpeedPrc 宽带加速包 45 / familyBasePrc 家庭基础套餐 93 / familyAddPrc 家庭附加业务 75；合法产品类型枚举=各 schema 顶层 `x-product-type` 集合，新模板投放后自动纳入，无需改代码）；
 - 模板不存在/文件损坏 → E32 中断（脚本报 PARAM_MISSING，原样引用 resultMsg）；
 - **提取提示词组装**：将出参 schema 的**叶子清单**（path | x-label | type | 枚举前6项 | x-required | x-show-when）按 `references/extract-prompt-template.md` 模板注入（叶子 43~99 行约 1~3K token，可一次注入；禁止 LLM 自行读模板文件）。
 

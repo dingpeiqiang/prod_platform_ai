@@ -921,13 +921,19 @@ def cmd_build_plan(args):
 # 模板 schema 目录（skill 内相对定位）
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 
+# 技术字段（配置报文骨架隔离，不计业务字段，derive_flat24 自动派生时跳过）
+SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")
+# 系统自动生成字段（智能配置环节生成，需求/相似品均无值，不计入待补充与自动派生）
+SYSTEM_GEN_KEYS = ("orderNo",)
+
+
 
 def _template_path(template_id):
     """templateId → schema 文件路径；不存在时报 PARAM_MISSING。"""
     path = os.path.join(TEMPLATE_DIR, "%s.schema.json" % template_id)
     if not os.path.exists(path):
         _err("PARAM_MISSING",
-             "模板不存在：%s（可用模板见 scripts/templates/_index.json）" % template_id)
+             "模板不存在：%s（可用模板为 scripts/templates/ 下各 *.schema.json，其顶层 x-template/x-product-type 声明）" % template_id)
     return path
 
 
@@ -938,24 +944,50 @@ def _load_json_arg(raw, what):
         _err("PARSE_ERROR", "%s 不是合法 JSON：%s" % (what, e))
 
 
+def _template_product_types():
+    """扫描 templates/ 下全部 schema 的顶层 x-product-type，作为产品类型合法枚举。
+
+    低代码化（评审结论）：新增配置场景=投放一个 *.schema.json 并声明顶层 x-product-type，
+    即可自动进入 identify_products 合法枚举，无需再改本文件的 VALID_TYPES 硬编码元组。
+    """
+    types, seen = {}, set()
+    if os.path.isdir(TEMPLATE_DIR):
+        for name in sorted(os.listdir(TEMPLATE_DIR)):
+            if not name.endswith(".schema.json"):
+                continue
+            tid = name[: -len(".schema.json")]
+            try:
+                with open(os.path.join(TEMPLATE_DIR, name), "r", encoding="utf-8") as f:
+                    schema = json.load(f)
+                pt = schema.get("x-product-type")
+            except Exception:
+                pt = None
+            if pt and pt not in seen:
+                seen.add(pt)
+                types[tid] = pt
+    return types
+
+
 def cmd_identify_products(args):
     """步骤① 产品列表识别出参校验（LLM 环节的确定性后置闸）：
-    校验 products 数组形态与产品类型枚举，输出归一报告。"""
+    校验 products 数组形态与产品类型枚举（枚举以 templates/ 下 schema 顶层 x-product-type 为准），
+    输出归一报告。"""
     data = _load_json_arg(_read_arg(args, "products_json", "_json_file"), "products_json")
     products = data.get("products") if isinstance(data, dict) else data
     if not isinstance(products, list) or not products:
         _err("PARAM_MISSING", "products_json 应含非空 products 数组（步骤① LLM 识别产出）")
-    VALID_TYPES = ("个人主套餐", "宽带主套餐", "个人附加资费", "宽带附加资费",
-                   "家庭基础套餐", "家庭附加资费")
+    valid_types = _template_product_types()
     ok, bad = [], []
     for p in products:
-        if isinstance(p, dict) and p.get("prodName") and p.get("prodType") in VALID_TYPES:
+        if isinstance(p, dict) and p.get("prodName") and p.get("prodType") in valid_types.values():
             ok.append(p)
         else:
             bad.append(p)
     print(json.dumps({"resultCode": "0", "resultMsg": "success",
                       "valid_products": ok, "invalid_products": bad,
-                      "total": len(products)}, ensure_ascii=False))
+                      "total": len(products),
+                      "valid_product_types": sorted(valid_types.values()),
+                      "template_product_types": valid_types}, ensure_ascii=False))
 
 
 def cmd_get_template(args):
@@ -1015,16 +1047,44 @@ def cmd_derive_flat24(args):
             elif v not in ("", None):
                 flat[p2] = v
     walk(data)
+    # schema x-label 逐路径收集（自动派生兜底：映射表未覆盖的模板路径不静默丢失）
+    label_map = {}
+
+    def collect_label(sub, prefix=""):
+        for k, sub in (sub.get("properties") or {}).items():
+            p2 = (prefix + "." + k) if prefix else k
+            lbl = sub.get("x-label")
+            if lbl:
+                label_map[p2] = lbl
+            if sub.get("type") == "object":
+                collect_label(sub, p2)
+    collect_label(schema)
     fields = []
+    used = set()
     for path, field_name in (mapping.get("path_to_field") or {}).items():
         val = flat.get(path)
         if val is None:
             continue
         fields.append({"field": field_name, "value": str(val), "source": "模板轨派生"})
+        used.add(field_name)
+    # 自动派生：映射表未覆盖但报文有值的路径，按 schema x-label（缺则用路径尾段）生成字段名，
+    # 避免新增模板字段被静默丢弃（低代码化目标）；已用字段名去重，抑制技术键扩散。
+    seen = set()
+    for path, val in flat.items():
+        if path in (mapping.get("path_to_field") or {}):
+            continue
+        if path in SYSTEM_GEN_KEYS or path.split(".")[-1] in SKIP_KEYS:
+            continue
+        name = label_map.get(path) or path.split(".")[-1]
+        if not name or name in used or name in seen:
+            continue
+        seen.add(name)
+        fields.append({"field": name, "value": str(val), "source": "模板轨派生(自动)"})
     print(json.dumps({"resultCode": "0", "resultMsg": "success（下游过渡兼容层）",
                       "template": args.template,
                       "fields": fields,
-                      "note": "仅作环节2/3 后端 24 字段校验过渡，模板轨唯一事实源为嵌套报文"},
+                      "note": "仅作环节2/3 后端 24 字段校验过渡，模板轨唯一事实源为嵌套报文；"
+                              "映射表未覆盖路径按 schema x-label 自动派生，不静默丢弃"},
                      ensure_ascii=False))
 
 

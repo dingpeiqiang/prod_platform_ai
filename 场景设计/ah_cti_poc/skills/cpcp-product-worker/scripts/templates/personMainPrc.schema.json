@@ -890,5 +890,6 @@
   }
  },
  "x-template": "personMainPrc",
+ "x-product-type": "个人主套餐",
  "x-label": "个人主资费"
 }

@@ -454,5 +454,6 @@
   }
  },
  "x-template": "broadBandMainPrc",
+ "x-product-type": "宽带主套餐",
  "x-label": "宽带主资费"
 }

@@ -772,5 +772,6 @@
   }
  },
  "x-template": "familyAddPrc",
+ "x-product-type": "家庭附加资费",
  "x-label": "家庭附加业务"
 }

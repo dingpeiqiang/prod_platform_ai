@@ -462,5 +462,6 @@
   }
  },
  "x-template": "broadBandOptSpeedPrc",
+ "x-product-type": "宽带附加资费",
  "x-label": "宽带加速包"
 }

@@ -79,7 +79,7 @@ python scripts/dispatcher.py --message "<用户最新消息>" [--session-file "<
 | 异常矩阵 | `references/exception-matrix.md` | 任一环节异常时 |
 | 模板注册表 | `references/templates-registry.md` | flow-A 步骤① 路由参照 / 步骤⑤ 价格字段禁照搬判别时 |
 | 提取提示词模板 | `references/extract-prompt-template.md` | flow-A 步骤④ 组装提取提示词时（先读后提） |
-| 模板 schema | `scripts/templates/`（6 schema + _index.json + _registry.json） | 经工具21 get_template 读取，禁止 LLM 直接读文件 |
+| 模板 schema | `scripts/templates/`（各 `*.schema.json` 自描述，顶层 x-template/x-product-type；聚合统计见 `_registry.json`） | 经工具21 get_template 读取，禁止 LLM 直接读文件 |
 | flat24 派生映射 | `references/ontology-fields.json` + `references/ontology-fields.md` | 仅 derive_flat24 派生依据与人工核对（过渡兼容，不再作为提取注册表） |
 | 融合组种子数据 | `references/seed_offer_groups.json` | 旧轨存档（模板轨成员构成不再依赖，保留供查询） |
 | 存量产品目录 | `方案/存量产品目录_清洗后.json` | flow-A 步骤② 本地相似检索主源 |

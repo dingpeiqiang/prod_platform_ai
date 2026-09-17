@@ -952,5 +952,6 @@
   }
  },
  "x-template": "familyBasePrc",
+ "x-product-type": "家庭基础套餐",
  "x-label": "家庭基础套餐"
 }

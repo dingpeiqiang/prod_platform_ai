@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Docker Image Management Script for AI Dynamic Form Platform
 
@@ -40,7 +40,7 @@ $Config = @{
     }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
-        ImageTag      = "2.3"  # 构建时自动递增版本号
+        ImageTag      = "2.0"  # 构建时自动递增版本号
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -353,7 +353,7 @@ function Update-ScriptImageTag {
 
     $scriptPath = Join-Path $PSScriptRoot "docker-manager.ps1"
     $content = [System.IO.File]::ReadAllText($scriptPath)
-    $pattern = "(?ms)($block\s*=\s*@\{[^}]*?)ImageTag\s*=\s*""[^""]*""[^\r\n]*"
+    $pattern = "(?ms)($block\s*=\s*@\{[^}]*?)ImageTag\s*=\s*""[^""]*"""
     $newContent = [regex]::Replace($content, $pattern, "`$1ImageTag      = `"$NewTag`"  # 构建时自动递增版本号")
     if ($newContent -ne $content) {
         $utf8Bom = New-Object System.Text.UTF8Encoding($true)

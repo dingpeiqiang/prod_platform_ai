@@ -1043,5 +1043,6 @@
   }
  },
  "x-template": "personAddPrc",
+ "x-product-type": "个人附加资费",
  "x-label": "个人附加资费"
 }
