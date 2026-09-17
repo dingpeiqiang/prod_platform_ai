@@ -17,7 +17,9 @@
 4. 无值且非价格 → 取相似产品同路径值 → source=AI补全；
 5. 皆缺失或价格字段（价格禁止从相似产品照搬，主套餐档位/宽带月功能费/副卡月功能费各自独立判定）→ 留空；
 6. 待补充标记（"待补充"/"系统待生成"）视为空值，不参与合并；
-7. 输出附 _meta：每个叶子路径的 source 标注 + 待补充必填清单。
+7. 输出附 _meta：每个叶子路径的 source 标注 + 待补充必填清单；
+8. **V9.2 枚举全放开为自由文本**：schema 枚举（enum）仅作展示/参考，不做命中校验、不产 enum_violation，
+   提取到的任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）。
 
 向后兼容：--flat-elements 旧扁平字段数组（[{field,value}]，field=x-label）仍可合并（按 x-label 对位）。
 """
@@ -32,36 +34,16 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 PRICE_KEYWORDS = ("档位", "月功能费", "月租", "月费", "固定费", "费用")
 # 含这些词的 label 非资费金额（月租有效期/资源周期时长/收费间隔等时间维度字段），允许相似品补全
 PRICE_EXCLUDE_MARKS = ("有效期", "周期", "时长", "间隔")
+# V9.2 必填字段兜底判定：枚举已全放开为自由文本，但 LLM 可能把计费原文写入同体系"计费说明型"字段
+# （如超套收费标准 chargeStandard）而非枚举字段（如套外计费标准 outChargeMode）。此时该枚举字段即使
+# 本身为空也判为已覆盖（原文见说明字段），酌情不进待补充。
+CHARGE_DESC_KEYWORDS = ("超套", "套外", "资费", "计费", "收费")
 # 视为空值的占位标记
 EMPTY_MARKS = ("", "待补充", "系统待生成")
 # 技术字段（业务表格不展示，但报文保留）
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")
 # 系统自动生成字段（智能配置环节生成，需求/相似品均无值，不计入待补充清单）
 SYSTEM_GEN_KEYS = ("orderNo",)
-
-
-def is_descriptive_enum(enum):
-    """说明型 enum 判别（S3b，与 excel_to_schema.is_descriptive_enum 口径一致）：
-    范围/约束/格式描述（"1-9之间正整数"、"按资费表字符长度限制"）非封闭枚举，
-    命中则豁免 enum_violation 校验（P0 复盘确认 6/9 误报源于此）。"""
-    if not enum:
-        return False
-    import re
-    DESC_PATTERNS = (
-        r"^\d+-\d+之间",
-        r"^(正整数|整数|数字)$",
-        r"^(按|根据).*(限制|规则|模型|长度)",
-        r"^置灰",
-        r"^默认",
-        r"^\d+个?字符",
-        r"以内$",
-        r"长度限制$",
-    )
-    if any(re.search(p, s) for s in enum for p in DESC_PATTERNS):
-        return True
-    if len(enum) == 1 and any(w in enum[0] for w in ("限制", "之间", "以内", "长度", "规则", "说明")):
-        return True
-    return False
 
 
 def _today_str():
@@ -92,6 +74,24 @@ def strip(v):
         return v
     s = str(v).strip()
     return "" if s in EMPTY_MARKS else s
+
+
+def _charge_desc_covers(prop, cur, elements_map):
+    """V9.2 放松必填枚举判定：必填字段为空时，若其为枚举字段，且需求已在同体系
+    '计费说明型'自由文本字段（超套/套外/资费/计费/收费关键词命中）写入原文，判为已覆盖，
+    不进待补充。返回 True 表示已覆盖（应跳过 pending）。"""
+    if not prop.get("enum"):
+        return False
+    label = str(prop.get("x-label", "") or "") + cur
+    hit_key = [w for w in CHARGE_DESC_KEYWORDS if w in label]
+    if not hit_key:
+        return False
+    for epath, evalue in elements_map.items():
+        if not epath.endswith("chargeStandard"):
+            continue
+        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):
+            return True
+    return False
 
 
 def flatten_elements(node, prefix="", out=None):
@@ -164,19 +164,15 @@ def merge(schema, elements_map, offer_map, meta, path="", pending=None, mode="no
             rule = sub["x-default-rule"]
             val = _today_str() if rule == "system_date" else rule
             source = "默认值"
-        # 4) 仍缺：留空，必填进待补充
+        # 4) 仍缺：留空，必填进待补充（V9.2：必填枚举字段若需求已把计费方式写入同体系
+        #    说明型字段（超套收费标准等），判为已覆盖，不进待补充——放松枚举判定）
         if val is None:
             val, source = "", ""
             if sub.get("x-required") and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:
-                pending.append(cur)
-        # 枚举校验不改写（评审结论#4）：提取值 ∉ enum → 标记 enum_violation
-        # S3b：说明型 enum（非封闭值列举）豁免校验，避免误报
-        if val != "" and sub.get("enum") and not is_descriptive_enum(sub["enum"]):
-            if str(val) not in [str(x) for x in sub["enum"]]:
-                hit = any(str(val) in str(x) or str(x) in str(val) for x in sub["enum"])
-                if not hit:
-                    meta_key = cur + ".enum_violation"
-                    meta[meta_key] = {"value": val, "enum": sub["enum"][:6]}
+                if not _charge_desc_covers(sub, cur, elements_map):
+                    pending.append(cur)
+        # V9.2 枚举全放开为自由文本：schema 枚举仅作展示/参考，不做命中校验、不产出 enum_violation，
+        # 提取到的任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）。
         out[key] = val
         if source:
             meta[cur] = {"label": label, "value": val, "source": source}

@@ -1,0 +1,13 @@
+backend-app\f_group_verify.py:59: [similar] sim = call("/api/v1/appstore/similar/offer/query", {"businessDesc": desc})
+backend-app\f_group_verify.py:61: [similar] check("F1-1 similar_offer 命中融合组并下发 offer_group", og.get("group_id") == "GP900113046", sim)
+backend-app\f_group_verify.py:79: [补全] {"field": "宽带速率", "category": "套餐内基础资源", "value": "1000M起", "source": "AI补全"},
+backend-app\f_group_verify.py:83: [补全] {"field": "产品名称", "category": "产品属性", "value": "天翼高清", "source": "AI补全"},
+backend-app\f_group_verify.py:87: [补全] {"field": "产品名称", "category": "产品属性", "value": "5G体验副卡功能费", "category2": "", "source": "AI补全"},
+backend-app\f_group_verify.py:107: [instance] for p in bp.get("pending_fields", []) if isinstance(p, dict)) or
+backend-app\f_group_verify.py:154: [instance] member_roles_in_compare = [c.get("member_role") for c in compare if isinstance(c, dict) and c.get("member_role
+backend-app\f_group_verify.py:165: [instance] no_role = all("member_role" not in c for c in billing_single.get("compare_list", []) if isinstance(c, dict))
+backend-app\f_group_verify.py:208: [similar] sim_single = call("/api/v1/appstore/similar/offer/query", {"businessDesc": "我要上新一个5G-A套餐199元，包含60GB国内流量和1000分钟
+backend-app\scripts\import_template_from_xlsx.py:216: [instance] by_code = {f.get('field_code'): f for f in parent.get('fields', []) if isinstance(f, dict)}
+backend-app\scripts\import_template_from_xlsx.py:218: [instance] if isinstance(f, dict) and f.get('field_code'):
+backend-app\scripts\import_template_from_xlsx.py:226: [instance] existing_by_code = {f.get('field_code'): f for f in existing.get('fields', []) if isinstance(f, dict)}
+backend-app\scripts\import_template_from_xlsx.py:347: [互斥] 1: '已闭环：发布渠道互斥校验由模板 commonBasePrc.channelLimit.mutex_value_groups 表达，'

@@ -190,6 +190,29 @@ def main():
     print("3-ok render_table 取值来源 四态齐全（原始需求提取/复用相似产品/本体推理/默认值）")
     ok += 1
 
+    # V9.2 放松必填枚举判定：personMainPrc 套外计费标准（outChargeMode，必填枚举）需求以自由文本写入
+    # 超套收费标准（chargeStandard）时，不应再进 pending_required（避免 5G-A 阶梯计费被误判为待补充）
+    schema = os.path.join(TEMPLATES, "personMainPrc.schema.json")
+    elements = json.dumps({
+        "baseInfo.prodPrcName": "5G-A单品499元（高阶旗舰版）",
+        "optionalInfo.printContent.chargeStandard": (
+            "套外流量前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB（即3元/1GB），"
+            "流量超过1GB按每超出1GB 3元收费，以此类推；套外语音国内0.15元/分钟；套外短彩信0.1元/条"),
+    }, ensure_ascii=False)
+    e_tmp = os.path.join(HERE, "_tmp_charge_elems.json")
+    with open(e_tmp, "w", encoding="utf-8") as f:
+        f.write(elements)
+    r = run(["merge_nested", "--schema-file", schema, "--elements-json-file", e_tmp,
+             "--mode", "normal"])
+    os.unlink(e_tmp)
+    assert r.returncode == 0, r.stdout + r.stderr
+    mr = json.loads(r.stdout)
+    pending = mr.get("pending_required", [])
+    assert "optionalInfo.billGprsCfg.outChargeMode" not in pending, (
+        "V9.2 应放松：套外计费标准不得进待补充，实际 pending=%s" % pending)
+    print("4-ok merge_nested 放松必填枚举 套外计费标准已覆盖（不进待补充）")
+    ok += 1
+
     print("全部 %d 项模板轨冒烟通过（含 3 个无存量模板的模拟示例验证）" % ok)
 
 

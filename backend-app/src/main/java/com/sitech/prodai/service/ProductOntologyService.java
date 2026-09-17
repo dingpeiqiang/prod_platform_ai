@@ -2,6 +2,7 @@ package com.sitech.prodai.service;
 
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.mapper.OpsWorkOrderMapper;
+import com.sitech.prodai.service.common.MapOps;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import com.sitech.prodai.service.ops.OpsGraphSchemaValidator;
 import com.sitech.prodai.service.ops.OpsProductGraphLoader;
@@ -228,6 +229,10 @@ public class ProductOntologyService {
         return v == null ? "" : String.valueOf(v);
     }
 
+    private boolean blank(Object v) {
+        return strOf(v).isBlank();
+    }
+
     public synchronized Map<String, Object> loadGraph() {
         return graphManager.loadGraph();
     }
@@ -411,8 +416,8 @@ public class ProductOntologyService {
             body.put("message", "payload 必填：merge_nested 出参嵌套报文");
             return body;
         }
+        Map<String, Object> similarOffer = castNestedMap(request.get("similar_offer"));
         String traceId = "cfg-validate-" + System.currentTimeMillis();
-        List<Map<String, Object>> violations = new ArrayList<>();
         Set<String> ruleIds = new LinkedHashSet<>();
 
         // 1) 归一层：确保嵌套报文为 { template: { baseInfo, releaseInfo, optionalInfo } }
@@ -450,6 +455,62 @@ public class ProductOntologyService {
 
         // 4) 合规校验（complianceEngine，含 R7 SHACL delegate；R-C* 规则裁剪面）
         Map<String, Object> compliance = checkCompliance(derivedDraft.isEmpty() ? draft : derivedDraft, graph);
+        List<Map<String, Object>> violations = toViolations(compliance, ruleIds);
+        boolean pass = computePass(violations);
+        appendConfigAudit(traceId, Map.of("step", "compliance", "violationCount", violations.size(),
+                "pass", pass));
+
+        // 4.1) R-C04 依赖自愈（复用相似产品依赖关系，评审结论：相似品亦缺时提示补实例数据）：
+        //      附加资费缺 dependOn/sourceOfferRef 且相似品明示依赖关系 → 补入后重跑合规；
+        //      相似品也缺失 → 保留违规并附 actionable 建议，交由用户补数据/确认口径。
+        Map<String, Object> repaired = new LinkedHashMap<>();
+        List<String> instanceGaps = new ArrayList<>();
+        boolean rC04Blocked = violations.stream().anyMatch(v ->
+                "R-C04".equals(v.get("ruleId")) && "HIGH".equals(v.get("issueLevel")));
+        if (rC04Blocked && isAddonDraft(draft) && blank(draft.get("dependOn")) && blank(draft.get("sourceOfferRef"))) {
+            Map<String, String> dep = extractSimilarDependency(similarOffer);
+            if (!dep.isEmpty()) {
+                String kind = dep.containsKey("dependOn") ? "dependOn" : "sourceOfferRef";
+                String value = dep.get(kind);
+                draft.put(kind, value);
+                appendConfigAudit(traceId, Map.of("step", "r-c04-repair", "kind", kind,
+                        "value", value, "source", "similar_offer"));
+                Map<String, Object> reCheck = checkCompliance(derivedDraft.isEmpty() ? draft : derivedDraft, graph);
+                List<Map<String, Object>> newViolations = toViolations(reCheck, ruleIds);
+                boolean newPass = computePass(newViolations);
+                repaired.put("field", kind);
+                repaired.put("value", value);
+                repaired.put("source", "similar_offer");
+                repaired.put("rule", "R-C04");
+                repaired.put("note", "附加资费缺少依赖主资费，已复用相似产品 " + kind + " 补全后重跑合规");
+                violations = newViolations;
+                pass = newPass;
+            } else {
+                instanceGaps.add("附加资费缺少依赖的主资费/相容关系（dependOn/sourceOfferRef），且相似产品亦未声明该关系，"
+                        + "无法自动补全——请补充依赖主资费（销售品名称或编码），或确认该权益包可独立订购、无需挂靠主资费后重跑需求分析");
+            }
+        }
+        appendConfigAudit(traceId, Map.of("step", "r-c04", "repaired", !repaired.isEmpty(),
+                "instanceGaps", instanceGaps.size()));
+
+        body.put("success", true);
+        body.put("template", template);
+        body.put("violations", violations);
+        body.put("defaulted", defaulted);
+        body.put("rule_ids", new ArrayList<>(ruleIds).stream().sorted().toList());
+        body.put("pass", pass);
+        body.put("trace_id", traceId);
+        body.put("can_submit", pass);
+        body.put("repaired", repaired.isEmpty() ? null : repaired);
+        body.put("instance_gaps", instanceGaps.isEmpty() ? null : instanceGaps);
+        body.put("explain_hint", "如需推理可见性：POST /api/v1/product-ontology/config/explain {trace_id, audience}；"
+                + "字段溯源：GET /api/v1/product-ontology/config/provenance/{field}");
+        return body;
+    }
+
+    /** 合规 issue 列表 → violations 契约行（ruleId/issueType/issueLevel/field/message/engine）。 */
+    private List<Map<String, Object>> toViolations(Map<String, Object> compliance, Set<String> ruleIds) {
+        List<Map<String, Object>> violations = new ArrayList<>();
         if (compliance.get("issues") instanceof List<?> issues) {
             for (Object it : issues) {
                 if (!(it instanceof Map<?, ?> issue)) {
@@ -469,23 +530,60 @@ public class ProductOntologyService {
                 }
             }
         }
-        boolean pass = violations.isEmpty()
-                || violations.stream().noneMatch(v -> "HIGH".equals(v.get("issueLevel"))
-                        || "R-C06".equals(v.get("ruleId")));
-        appendConfigAudit(traceId, Map.of("step", "compliance", "violationCount", violations.size(),
-                "pass", pass));
+        return violations;
+    }
 
-        body.put("success", true);
-        body.put("template", template);
-        body.put("violations", violations);
-        body.put("defaulted", defaulted);
-        body.put("rule_ids", new ArrayList<>(ruleIds).stream().sorted().toList());
-        body.put("pass", pass);
-        body.put("trace_id", traceId);
-        body.put("can_submit", pass);
-        body.put("explain_hint", "如需推理可见性：POST /api/v1/product-ontology/config/explain {trace_id, audience}；"
-                + "字段溯源：GET /api/v1/product-ontology/config/provenance/{field}");
-        return body;
+    /** 门禁判定：无 HIGH 且无 R-C06 违反即通过。 */
+    private boolean computePass(List<Map<String, Object>> violations) {
+        return violations.stream().noneMatch(v -> "HIGH".equals(v.get("issueLevel"))
+                || "R-C06".equals(v.get("ruleId")));
+    }
+
+    /** 附加资费（非主资费）判定。 */
+    private boolean isAddonDraft(Map<String, Object> draft) {
+        return "addon".equalsIgnoreCase(strOf(draft.get("offeringType")))
+                || Boolean.FALSE.equals(draft.get("isMainOffer"))
+                || "false".equalsIgnoreCase(strOf(draft.get("isMainOffer")));
+    }
+
+    /**
+     * 从相似产品报文中提取依赖主资费关系（dependOn 或 sourceOfferRef，二选一优先 dependOn）。
+     * 兼容两类形态：扁平（K5 报文/offerInfo 顶层 dependOn/sourceOfferRef/supOfferId）与
+     * 嵌套（{template:{baseInfo:{...}}} 递归落入任一层）。返回为空 Map 表示相似品亦未声明依赖。
+     */
+    private Map<String, String> extractSimilarDependency(Map<String, Object> similarOffer) {
+        Map<String, String> found = new LinkedHashMap<>();
+        if (similarOffer == null || similarOffer.isEmpty()) {
+            return found;
+        }
+        List<String> keys = List.of("dependOn", "sourceOfferRef");
+        // 扁平探测
+        for (String k : keys) {
+            if (!blank(similarOffer.get(k))) {
+                found.put(k, String.valueOf(similarOffer.get(k)).trim());
+                return found;
+            }
+        }
+        // 递归嵌套探测（{template:{baseInfo:{...}}}）
+        java.util.ArrayDeque<Map<String, Object>> stack = new java.util.ArrayDeque<>();
+        stack.push(similarOffer);
+        while (!stack.isEmpty()) {
+            Map<String, Object> cur = stack.pop();
+            for (Map.Entry<String, Object> e : cur.entrySet()) {
+                if (keys.contains(e.getKey()) && !blank(e.getValue())) {
+                    found.put(e.getKey(), String.valueOf(e.getValue()).trim());
+                    return found;
+                }
+            }
+            for (Map.Entry<String, Object> e : cur.entrySet()) {
+                if (e.getValue() instanceof Map<?, ?> m) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> sub = (Map<String, Object>) m;
+                    stack.push(sub);
+                }
+            }
+        }
+        return found;
     }
 
     /** 归一层：把 {template: body} 或纯内层 body 统一为 {template: {baseInfo,...}}；template 缺失时按内层根键判定。 */
@@ -638,6 +736,73 @@ public class ProductOntologyService {
 
     public Map<String, Object> auditRisks(List<String> offeringIds) {
         return riskAuditEngine.auditRisks(offeringIds);
+    }
+
+    /**
+     * 存量产品批量合规扫描：遍历事实图在架（shelfOfferings）存量产品，逐一映射为合规草稿
+     * 并执行 R-C* 规则校验（chronic 含 R-C04 依赖缺失），输出每条存量产品的违规清单，供运营批量整改。
+     * <p>入参 {@code offeringIds} 为空时扫描全部存量；非空时仅扫描指定编码。出参
+     * {@code items[]} 每条含 offeringId/offeringName/offeringType/pass/violations[]/ruleIds/resultCode。
+     */
+    public Map<String, Object> auditShelfCompliance(List<String> offeringIds) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        List<Map<String, Object>> items = new ArrayList<>();
+        List<String> wanted = (offeringIds == null || offeringIds.isEmpty())
+                ? List.of()
+                : offeringIds.stream().filter(o -> !blank(o)).map(String::valueOf).toList();
+        Set<String> wantedSet = new LinkedHashSet<>(wanted);
+        Map<String, Object> graph = loadGraph();
+        List<Map<String, Object>> shelf = MapOps.castListOfMaps(graph.get("shelfOfferings"));
+        int passed = 0;
+        for (Map<String, Object> offering : shelf) {
+            String oid = strOf(offering.get("offeringId"));
+            if (!wantedSet.isEmpty() && !wantedSet.contains(oid)) {
+                continue;
+            }
+            Map<String, Object> draft = complianceEngine.shelfOfferingToDraft(offering);
+            Map<String, Object> compliance = complianceEngine.checkCompliance(draft, graph);
+            List<Map<String, Object>> violations = new ArrayList<>();
+            Set<String> ruleIds = new LinkedHashSet<>();
+            if (compliance.get("issues") instanceof List<?> issues) {
+                for (Object it : issues) {
+                    if (!(it instanceof Map<?, ?> issue)) {
+                        continue;
+                    }
+                    Map<String, Object> v = new LinkedHashMap<>();
+                    v.put("ruleId", issue.get("ruleId"));
+                    v.put("issueType", issue.get("issueType"));
+                    v.put("issueLevel", issue.get("issueLevel"));
+                    v.put("field", issue.get("field"));
+                    v.put("message", issue.get("message"));
+                    Object engine = issue.get("engine");
+                    v.put("engine", engine == null ? "java-compliance" : engine);
+                    violations.add(v);
+                    if (issue.get("ruleId") != null) {
+                        ruleIds.add(String.valueOf(issue.get("ruleId")));
+                    }
+                }
+            }
+            boolean pass = violations.stream().noneMatch(v -> "HIGH".equals(v.get("issueLevel"))
+                    || "R-C06".equals(v.get("ruleId")));
+            if (pass) {
+                passed++;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offeringId", oid);
+            item.put("offeringName", strOf(offering.get("offeringName")));
+            item.put("offeringType", strOf(draft.get("offeringType")));
+            item.put("pass", pass);
+            item.put("violations", violations);
+            item.put("ruleIds", new ArrayList<>(ruleIds).stream().sorted().toList());
+            item.put("resultCode", pass ? "PASS" : "FAIL");
+            items.add(item);
+        }
+        body.put("success", true);
+        body.put("total", items.size());
+        body.put("passedCount", passed);
+        body.put("failedCount", items.size() - passed);
+        body.put("items", items);
+        return body;
     }
 
     public Map<String, Object> evaluateHypothetical(List<Map<String, Object>> patches, String mode) {

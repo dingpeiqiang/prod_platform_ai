@@ -8,13 +8,12 @@ flow-A 模板轨第④步（LLM 提取）与第⑤步（merge_nested 合并）�
 校验项（口径与 extract-prompt-template.md 输出校验表一致）：
 1. 路径合法性     提取路径 ∈ 模板 schema 叶子集          → 非法路径剔除 + invalid_path 告警
 2. 数值合法性     type=number 路径的值可转数值            → 不可转剔除 + invalid_number 告警
-3. 枚举命中率     值 ∈ enum（宽松包含匹配）              → 未命中不改写，报 enum_violation（评审结论#4）；
-                   说明型 enum（范围/约束描述）豁免（S3b 同款口径，双保险）
-4. 是否类归一检查 x-label 含"是否"且 enum 为"是、否"形态  → 值含"允许/开通/支持"→提示归一"是"（不改写，仅提示）
-5. 提取质量门禁   正文可提取命中率 = 可提取必填命中数 / 可提取必填总数
+3. (V9.2 已移除) 枚举命中率——枚举全放开为自由文本，不再做命中校验、不产 enum_violation
+3. 是否类归一检查 x-label 含"是否"且 enum 为"是、否"形态  → 值含"允许/开通/支持"→提示归一"是"（不改写，仅提示）
+4. 提取质量门禁   正文可提取命中率 = 可提取必填命中数 / 可提取必填总数
                    可提取必填 = 模板必填 − 不可提取白名单（effDate/expDate/编码类等需求单语料天然没有的字段）
                    低于阈值 → quality_gate FAIL（E31 中断语义：打回重跑 LLM 一次，仍低转人工）
-6. 价格交叉核对   prcMonthFee/fixFee 提取值是否一致        → 不一致进告警清单（不阻断）
+5. 价格交叉核对   prcMonthFee/fixFee 提取值是否一致        → 不一致进告警清单（不阻断）
 
 用法：
   python validate_elements.py --schema-file templates/familyBasePrc.schema.json \
@@ -49,27 +48,6 @@ NON_EXTRACTABLE_PATTERNS = (
 
 # 是否类字段的正语义词 → 建议归一"是"（只提示不改写，评审结论#4 精神）
 YES_HINT_WORDS = ("允许", "开通", "支持", "可以", "可办")
-
-
-def is_descriptive_enum(enum):
-    """说明型 enum 判别（与 excel_to_schema / merge_nested 同口径，双保险）。"""
-    if not enum:
-        return False
-    DESC_PATTERNS = (
-        r"^\d+-\d+之间",
-        r"^(正整数|整数|数字)$",
-        r"^(按|根据).*(限制|规则|模型|长度)",
-        r"^置灰",
-        r"^默认",
-        r"^\d+个?字符",
-        r"以内$",
-        r"长度限制$",
-    )
-    if any(re.search(p, s) for s in enum for p in DESC_PATTERNS):
-        return True
-    if len(enum) == 1 and any(w in enum[0] for w in ("限制", "之间", "以内", "长度", "规则", "说明")):
-        return True
-    return False
 
 
 def is_non_extractable(path):
@@ -149,18 +127,6 @@ def validate(schema, elements, mode="legacy", threshold=0.30):
                 removed.append({"path": path, "value": val, "reason": "invalid_number"})
                 del valid_paths[path]
 
-    # 枚举命中率（宽松包含；说明型 enum 豁免）
-    for path, (val, prop) in valid_paths.items():
-        enum = prop.get("enum")
-        if not enum or is_descriptive_enum(enum):
-            continue
-        sval = str(val)
-        if sval in [str(x) for x in enum]:
-            continue
-        if any(sval in str(x) or str(x) in sval for x in enum):
-            continue
-        enum_violations.append({"path": path, "value": val, "enum": enum[:6]})
-
     # 是否类归一检查（只提示不改写）
     for path, (val, prop) in valid_paths.items():
         label = prop.get("x-label", "")
@@ -189,7 +155,7 @@ def validate(schema, elements, mode="legacy", threshold=0.30):
                             "values": [pmf, ff],
                             "note": "套餐月费与固定费不一致，请人工确认（不阻断）"})
 
-    result = "FAIL" if gate == "FAIL" else ("PASS_WITH_WARNINGS" if (removed or enum_violations) else "PASS")
+    result = "FAIL" if gate == "FAIL" else ("PASS_WITH_WARNINGS" if removed else "PASS")
     return {
         "resultCode": "0",
         "result": result,

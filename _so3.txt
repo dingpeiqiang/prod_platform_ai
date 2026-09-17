@@ -1,0 +1,4 @@
+303:             newProductArchive.put(offerId, buildOfferProfile(plan, offerId));
+308:         Map<String, Object> config = buildSavedConfig(productId, offerId, plan, seedOffer);
+1661:     private Map<String, Object> buildSavedConfig(String productId, String offerId,
+1807:     private Map<String, Object> buildOfferProfile(Map<String, Object> plan, String offerId) {

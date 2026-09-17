@@ -167,13 +167,18 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 
 **当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。
 
+**单品运营可视化：** `/ops-web/product-detail.html?product_id={{product_id}}`
+
 {{套餐名称}}已成功上线，运营视图已开启。可输入"查询监控"查看运行情况。
 ```
 3. 用户后续发送"查询监控" → 转支线D-2 执行真实监控查询与异常告警。
 
+> **运营可视化页 URL（V9.2，D-3 同样必须输出）**：与 D-2 一段保持一致，监控运维方案文本后固定输出单品运营可视化页 URL——拼接规则同支线D-2 第5步：`/ops-web/product-detail.html?product_id={{product_id}}`（product_id 用 `dispatcher.py` 出参 entities.product_id / 会话上下文取值）；外部平台绝对地址为 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`。禁止省略该行，禁止 LLM 手写/改写 HTML 载荷。
+
 ### 禁止事项
 - 审批未通过时禁止输出"已成功上线"；
-- 监控运维方案为固定模板（阈值/推送时间为平台标准口径），禁止自行改写阈值。
+- 监控运维方案为固定模板（阈值/推送时间为平台标准口径），禁止自行改写阈值；
+- 禁止省略运营可视化页 URL 行（D-3 输出同样必须给出）。
 
 ## 通用禁止事项
 - 会话内从未出现且用户未提供的必填参数先追问，禁止编造后直接调用。

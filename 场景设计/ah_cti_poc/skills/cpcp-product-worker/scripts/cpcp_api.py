@@ -1125,6 +1125,17 @@ def cmd_explain_nested(args):
     print(json.dumps(out, ensure_ascii=False))
 
 
+def cmd_shelf_compliance(args):
+    """存量产品批量合规扫描：遍历在架存量逐一执行 R-C* 规则（含 R-C04 依赖缺失）。
+    不传 --offering-id 扫全部存量；传一个或多个仅扫指定编码。出参 items[]/passedCount/failedCount。"""
+    body = {}
+    ids = [x.strip() for x in (args.offering_ids or "").split(",") if x and x.strip()]
+    if ids:
+        body["offering_ids"] = ids
+    out = _http("POST", "/api/v1/product-ontology/config/shelf-compliance", body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
 # ---------------- 监控运营闭环（V8.1：异动根因本体推理 + 优化工单闭环） ----------------
 # 转发现有 CPCP 本体推理平台（backend-app Java，与 validate_nested/explain_nested 同一基址），
 # 禁止新造本体：复用具 product-ops.ttl（产商品运营归因与风险本体）+ ops_rules.json（R-A01~A06）
@@ -1316,6 +1327,9 @@ def main():
     s.add_argument("--audience", default="business")
     s.add_argument("--field", default="")
     s.set_defaults(fn=cmd_explain_nested)
+    s = sub.add_parser("shelf_compliance")
+    s.add_argument("--offering-ids", default="")
+    s.set_defaults(fn=cmd_shelf_compliance)
 
     # V8.1 监控运营闭环：异动根因本体推理 + 优化工单
     s = sub.add_parser("ops_root_cause")

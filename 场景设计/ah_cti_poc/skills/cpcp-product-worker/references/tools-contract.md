@@ -174,8 +174,9 @@
 - 入参：`--schema-file`(必填，模板 schema 路径) / `--elements-json`(第④步校验后要素) / `--elements-json-file`、`--offer-json`(相似品嵌套报文) / `--offer-json-file`、`--template`(相似品报文 {templateId:{…}} 包裹层解包名)、`--mode`(normal=新需求链路 / legacy=存量实例化，默认 normal)
 - 合并规则（逐路径确定性）：schema 为骨架递归 → 需求要素有值→需求值(source=原始需求；legacy 模式=存量提取) → 无值且非价格→取相似品同路径(source=AI补全) → schema default 兜底(source=默认值) → 仍缺留空、必填进 pending_required；占位标记（"待补充"/"系统待生成"）视为空值不参与合并
 - **价格禁照搬（normal 模式强制）**：档位/月费/月租/固定费类字段（按 x-label 关键词判别）需求未提供时一律留空，禁止从相似品取值；legacy 模式价格豁免（存量价格是事实数据）
-- **enum 校验不改写（评审结论#4）**：提取值 ∉ enum → `_meta[<path>.enum_violation]={value, enum[:6]}` 标记不改写；说明型 enum（范围/约束描述）豁免（与 excel_to_schema 同口径）
-- 出参：`resultCode`、`template`、`payload`（嵌套实例化报文）、`_meta`（逐叶子 source 溯源 + enum_violation）、`pending_required[]`
+- **枚举全放开为自由文本（V9.2，替代原 enum_violation）**：schema 枚举仅作展示/参考，不做命中校验、不产 enum_violation，提取值任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）
+- **必填字段说明覆盖兜底（V9.2）**：必填字段为空时，若需求已在同体系"计费说明型"字段（chargeStandard 超套收费标准等）写入计费自由文本，判为已覆盖、不进 `pending_required`；否则照旧必填进 `pending_required`
+- 出参：`resultCode`、`template`、`payload`（嵌套实例化报文）、`_meta`（逐叶子 source 溯源）、`pending_required[]`
 - 行为保证：同输入逐字节稳定（幂等）；`payload` 本体是第⑥步 render_table 唯一合法入参（传 merge 全出参会渲染为空）；`pending_required` 非空 → flow-A 出口A（不保存）
 
 ## 工具23 分节表格渲染 `render_table`（V7.0 新增，本地脚本，flow-A 步骤⑥）
@@ -201,10 +202,18 @@
 - 处置：`pass=false`（存在 issueLevel=HIGH 或 ruleId=R-C06）→ E33 中断（附违规项与建议）；pass=true（仅 WARN/通过）→ 不阻断，WARN 随输出附【风险提示】；后端未启动/连接失败 → E34 提示型不阻断
 - 行为保证：结果逐字节引用不加工；价格字段禁推纪律由上游 merge_nested 保证，本闸不另补价
 
+## 工具25a 存量批量合规扫描 `shelf_compliance`（V9.2 新增，本地脚本转发 Java，存量产品本体规则合规）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `POST /api/v1/product-ontology/config/shelf-compliance`；**存量产品（在架 shelfOfferings）同样必须满足本体规则（R-C*，含 R-C04 附加资费依赖缺失）**，逐一映射为合规草稿并校验，输出违规清单供批量整改。
+- 入参：`--offering-ids`(选填，逗号分隔商品编码；**不传=扫描全部存量**，传=仅扫指定编码)
+- 出参：`success`、`total`、`passedCount`、`failedCount`、`items[]`（每条含 offeringId/offeringName/offeringType/pass/violations[]（含 ruleId/issueLevel/field/message）/ruleIds[]/resultCode）
+- 处置：扫描结果逐字节引用；failedCount>0 或存在存量品 R-C04 违规 → 提示运营按违规清单整改（补 dependOn/sourceOfferRef 或确认独立订购口径），禁止静默忽略存量违规；后端不可用 → E34 提示型（不阻断）
+- 行为保证：新增 @ 后端 `ProductOntologyService.auditShelfCompliance`，复用既存 `shelfOfferingToDraft` + `checkCompliance`，不新造规则；纯只读扫描，不改写存量数据
+
 ## 工具26 推理可见性 `explain_nested`（V7.0+ 新增，本地脚本转发 Java，flow-A 步骤⑤.5）
 - 本地代码节点（非平台接口）→ 转发 backend-app Java，**复用既有 `/config/explain` 与 `/config/provenance/{field}`（PROV-O），Python 侧重造 reason_trace**。
 - 入参：`--trace-id`(必填，validate_nested 出参)、`--audience`(选填，engineer/sales)、`--field`(选填，字段路径；传值→GET `/config/provenance/{field}`，缺省→POST `/config/explain`)
 - 出参：`resultCode`、`explanation`/`provenance`（如何得出 + 依据规则/字段来源）、`used_rules[]`
+- **调用时机（V9.2 自动显示）**：flow-A 步骤⑤.5 `validate_nested` 无阻断项后**自动调用**一次（`--audience sales`，POST /config/explain），渲染【推理依据】小节随环节2 输出——**无需用户追问**；用户追问"字段来源/为什么这么判"时再叠加 `--field <字段路径>`（GET /config/provenance/{field}）补字段级溯源
 - 错误处理：取数失败/服务不可用 → E34 提示型（不中断主干，输出"推理依据暂不可用"）
 
 ## 工具27 异动根因推理 `ops_root_cause`（V8.1 新增，本地脚本转发 Java，flow-D 支线D-2 闭环）

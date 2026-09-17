@@ -1,0 +1,66 @@
+docs\AI产商品助手-一页汇报.md:40: [主资费] | 配置方案 → 资费产品 → **品类**（6 类） | 一个方案配的是什么类型的套餐（个人主资费/宽带/家庭套餐…），品类决定必备要素 |
+docs\AI产商品助手-一页汇报.md:41: [互斥] | 方案 → 销售策略 | 渠道范围、互斥组、合约要求 |
+docs\AI产商品助手-一页汇报.md:43: [相容] | 方案 → 资费相容关系 | 与哪些在架套餐互斥、哪些必须依赖主套餐 |
+docs\AI产商品助手-一页汇报.md:83: [补全] **② 字段补全（知识推理）**：
+docs\AI产商品助手-一页汇报.md:87: [补全] - **每个补全的值都记录来源**——事后能回答"这个默认值是哪来的"。
+docs\AI产商品助手-一页汇报.md:93: [补全] | 必填缺失 | 名称/品类/固费/渠道缺一不可 | ✅ 已补全 |
+docs\AI产商品助手-一页汇报.md:94: [互斥] | 互斥冲突 | 与在架套餐同属互斥组不可共存 | ❌ **拦截**：与用户现有主套餐同互斥组 |
+docs\AI产商品助手-一页汇报.md:98: [互斥] **④ 结论输出**：`合规不通过 + 拦截原因 + 命中规则编号 + 证据（与哪个在架商品冲突）`——LLM 拿到这个结论只能如实转述"不可提交，原因是 R-C03 互斥冲突"，**无权改判**。
+docs\AI原生建设进度报告.md:144: [补全] | `complete()` | 同步补全 | 意图识别 |
+docs\AI原生建设进度报告.md:145: [补全] | `completePrompt()` | 单 Prompt 补全 | 简单查询 |
+docs\AI原生建设进度报告.md:146: [补全] | `completeMessages()` | 多轮对话补全 | 上下文对话 |
+docs\AI原生建设进度报告.md:560: [相似] | LLM 调用缓存 | P0 | 语义相似度匹配，命中缓存直接返回 |
+docs\LLM+本体+工作流框架改进实施方案.md:58: [主资费] "input": "帮我配一个个人主资费，月费39元，包含10GB流量",
+docs\LLM+本体+工作流框架改进实施方案.md:264: [互斥] - 新增 `TemplateTtlGenerator`（Java，放在 `service/ontologygen/` 或 scripts）：从合并后的 JSON 模板生成 `product-config.ttl` 中的类/属性/互斥/依赖公理片段
+docs\LLM+本体+工作流框架改进实施方案.md:332: [互斥] - **只迁移「可声明化」的规则**：必填（R-C06 类）、互斥（R-C03 类）、值域/枚举（R-C05 类）；涉及跨实体计算、白名单逻辑的规则（R-C04 附加依赖、R-C07~C09）保留 Java
+docs\LLM+本体+工作流框架改进实施方案.md:337: [互斥] 1. 选 3 条规则试点：R-C06（必填）、R-C03（互斥）、R-C05（零固费值域）→ 编写 `compliance-shacl.ttl`（sh:NodeShape/sh:PropertyShape）
+docs\LLM+本体+工作流框架评估报告.md:39: [主资费] - `broadBandMainPrc.json` / `broadBandOptSpeedPrc.json` — 宽带主资费/加速包
+docs\LLM+本体+工作流框架评估报告.md:43: [互斥] - `product-config.ttl`（1207 行，v2.2）— 产品配置 OWL 本体（类/属性/互斥/依赖公理）
+docs\LLM+本体+工作流框架评估报告.md:70: [互斥] 4. 合规规则 R-C01~R-C09（必填/互斥/依赖/白名单）集中于 `checkCompliance`
+docs\LLM+本体应用场景说明.md:36: [相容] - **配置方案本体**：配置方案 ↔ 品类（个人主资费/宽带/家庭套餐等 6 类）、销售策略、发布范围、计费方案、优惠、权益、资费相容关系；
+docs\LLM+本体应用场景说明.md:40: [互斥] 9 条合规规则（R-C01~C09）显式定义并绑定到品类模板：互斥冲突（R-C03）、附加依赖主资费（R-C04）、零固费红线（R-C05）、必填缺失（R-C06）、异常优惠漏洞（R-C07，如折扣 100% 且可重复计费）、固费上下限（R-C09）。
+docs\LLM+本体应用场景说明.md:49: [补全] ├─ 本体·字段推理：按品类模板补全缺省（语音/流量未说 → 模板默认值补齐）
+docs\LLM+本体应用场景说明.md:52: [互斥] │     发现：与用户现有主套餐互斥冲突（R-C03）→ 拦截
+docs\LLM+本体应用场景说明.md:55: [补全] "已按家庭融合模板补全语音300分钟/流量20GB；
+docs\LLM+本体应用场景说明.md:56: [互斥] 校验发现与主套餐互斥冲突（规则 R-C03），请调整后提交"
+docs\LLM+本体应用场景说明.md:69: [互斥] | **合规刚性** | 互斥、零固费、优惠漏洞等红线由规则引擎把守，AI 只解释不裁决，杜绝"幻觉放行" |
+docs\MCP工具管理指南.md:116: [instance] | `form_submit` | 提交表单 | form_instance_id, form_data |
+docs\业务驱动改造实施计划.md:189: [互斥] | 前端 | `ChatMessageList.vue` 新增 confirm 区块：候选渲染为可点击卡片（复用 clarify-area 样式），点击即以该候选话术重发（走 `suggest` 通道）；与 CLARIFY 补参区互斥渲染 |
+docs\业务驱动改造实施计划.md:199: [补全] | 后端 | ① `SessionContext` 增加 `assumptions` 列表；凡"系统自行推断"的取值（defaultValue 回填、超限继续、L4 业务常识补全）写入记录（参数名+推断值+来源）；② E5 表达层 prompt 注入"请向用户
+docs\业务驱动改造实施计划.md:234: [互斥] | M5 | 阶段五（UI 交互：选择题化/CONFIRM/假设透明） | T+15 天（可与 M4 并行） | 低（渐进增强，不破坏现有补参流） | CONFIRM/CLARIFY 互斥渲染；独立计数防死循环；前端仅渲染假设标注 |
+docs\业务驱动改造方案.md:646: [补全] | **L4 听懂没说的** | "家庭融合畅享128收入下滑了" | 没说时间范围 → 按业务常识补"本月"（向用户透明标注假设）；没说维度 → 归因规则自动跑渠道/促销/竞品/客群四维 | defaultValue + E5 结论中明示假设；规则补全而非追
+docs\业务驱动改造方案.md:682: [补全] | 追问率 | 触发 CLARIFY 的轮次 / 总轮次 | 持续下降（L3/L4 补全生效） | 证据缓存 + defaultValue |
+docs\业务驱动改造方案.md:698: [补全] > 这是全篇体验设计的兜底原则：懂用户（11.1）靠智能补全，但补全的边界必须清晰——**能推断的推断（透明标注），不能推断的追问，绝不允许"猜错了还煞有介事地执行完"**。
+docs\业务驱动改造方案.md:732: [补全] 所有"系统自行推断"的取值（defaultValue 回填、超限继续、L4 业务常识补全）必须满足**回显义务**：
+docs\产品查询助手方案.md:79: [相似] | `rd_config_search` | rd, query | 历史/相似配置检索 | `ProductOntologyService.discoverConfigs` → `ChatConfigureService` |
+docs\产品查询助手方案.md:196: [补全] - 澄清至多 2 轮，第 3 轮强制降维呈现兜底（`MAX_REFINE_ROUNDS=2`，与参数补全门 MAX_CLARIFY_ROUNDS=3 独立计数）；
+docs\产品查询助手方案.md:229: [相似] - `getHandoffs()` → `List.of("sparql_query", "product_360", "rd_config_search")`（查到套包后承接商品详情/相似配置，比单承接更贴客服链路）；
+docs\产品查询助手方案.md:325: [相似] **实施状态（B6 完成）**：新增 `InMemoryVectorSearch` 内嵌向量检索——中文字符 bigram + 英文/数字词段，TF-IDF + 余弦相似度，Top-K 降序，synchronized 线程安全；`KnowledgeBaseSe
+docs\产品查询助手方案.md:384: [互斥] | A4 | 商品 360 工具（`product_360`） | C2 | 新增只读工具：单商品聚合资费/订购量/投诉/合约到期分布一屏呈现；实现 `getScenes()` 含 query 即接入，编排层零改动 | ✅ 已实施（Product360Tool
+docs\产品查询助手方案.md:395: [互斥] | B4 | 查询→行动中间态 | C5 | 前端"加入对比清单"（多商品暂存 → 一键进 ComparePanel）；变更订阅提醒（可后置） | ✅ 已实施（useCompareTray 模块级单例 composable：清单暂存上限 6、去重、缺编码拒绝；
+docs\产品配置模板化方案.md:184: [互斥] 复杂规则（如互斥校验依赖在架数据查询）保留在 Java 规则集，通过 4.5 绑定。
+docs\产品配置模板化方案.md:332: [互斥] | R-C* 合规规则 | SHACL 约束 | 必填/互斥/依赖 → `sh:minCount` / `sh:in` / `sh:sparql`；SHACL 校验报告直接映射为 issues（ruleId/field/level/message） |
+docs\产品配置落地支撑实施计划明细.md:78: [互斥] | 报文规范约束落地 | ① `chnClassLimit` 发布渠道互斥（营业前台 vs 电子/大掌柜）不在前端即时校验，移至提交阶段合规校验（§8.1-1；**互斥规则由 P2-1 轻量约束供给，P1 仅落实前端不即时校验**）；② `groupIdMes
+docs\产品配置落地支撑实施计划明细.md:89: [instance] | 死代码接线 | 将现无引用的 `OntologyInstanceHistory`（仅 id/instanceId/action/createdAt）改造为表 B（列收敛为 version_id/action/operator/detail/created_
+docs\产品配置落地支撑实施计划明细.md:114: [主资费] | 范围 | `familyBasePrc`（家庭基础套餐）+ `broadBandMainPrc`（宽带主资费）走通 智聊→抽取→推理→合规→表单预览→入库。**P1 链路边界**：抽取/推理仍走存量 SLOT_KEYS/`inferFields` 硬编码逻
+docs\产品配置落地支撑实施计划明细.md:137: [互斥] | 生成规则 | `required`→必填约束；`enum_config.static`→枚举校验；数值约束→min/max/precision/pattern；`visible_when`/互斥→组合约束；`section.component`→子对象/列
+docs\产品配置落地支撑实施计划明细.md:342: [互斥] **v1.1 修订**（对齐设计方案 v1.5）：P1-6 增加 SMOKE 时序说明（消除与 P1-7 循环依赖）；P1-7 明确 P1 链路中抽取/推理走存量逻辑的边界；P2-7 增补审计子服务拆分（兑现 §14.4-2）；P1-4 明确 chnClass
+docs\产品配置落地支撑设计方案.md:95: [互斥] | releaseInfo | chnClassLimit → `releaseInfo.chnClassLimit` | multi-select | 是 | 发布渠道（互斥校验见 §8） |
+docs\产品配置落地支撑设计方案.md:107: [主资费] | **personMainPrc** 个人主资费 | 无（主资费精简） | `dlowFavFee`(保底：fav1Method/fav1Fee/fav1ItemType/fav1Group/fav1Validity/fav1ValidityVAlue)；`
+docs\产品配置落地支撑设计方案.md:108: [主资费] | **broadBandMainPrc** 宽带主资费 | domainName/downStreamId/upStreamId/ifAddFamily | 无组件资源；`wkBillCfg`(wkBillFlag 话单优惠，默认是) |
+docs\产品配置落地支撑设计方案.md:315: [互斥] - 规则：`required`→minCount；`enum_config.static`→sh:in；数值约束→min/max/exclusive/pattern；`visible_when`/互斥→sh:not/sh:property 组合；`sectio
+docs\产品配置落地支撑设计方案.md:363: [互斥] 1. **发布渠道 checkbox 不可前台校验**：`chnClassLimit`（营业前台 vs 电子/大掌柜互斥）校验移至提交阶段合规校验，不在前端即时校验；落点为 **P2-1 轻量约束的互斥约束实例**（由模板互斥声明编译；P1 仅落实"前端不校验
+docs\产品配置落地支撑设计方案.md:521: [instance] - **载体**：新增 JPA 实体 `OntologyVersion`（代码/类型/版本号 semver/作者/状态 draft|review|published|deprecated/变更摘要/createdAt/migratedAt），配套唯一索引（co
+docs\产品配置落地支撑设计方案.md:597: [instance] > 实施：`OntologyInstanceHistory` 现仅有 `id/instanceId/action/createdAt` 且**无处引用**。将其改造成 `OntologyVersionLog`（列收敛为 version_id/action/op
+docs\产品配置落地支撑设计方案.md:742: [互斥] **v1.5 修订**：§4.4 补 enum_map 值域契约（抽取/草稿存显示值、投影层翻译传输值）；§8.1-1 chnClassLimit 互斥校验落点由"SHACL sh:not"修正为"P2-1 轻量约束互斥实例"（对齐 SHACL 降档）。
+docs\产商品研发助手改造方案.md:112: [互斥] | 前端 productMockData.js（mock 数据） | 退订话术去 10086、互斥占位符去演示编码 |
+docs\产商品研发助手本体设计.md:104: [互斥] 每类产品一个 NodeShape，由配置模板（fields/enum/互斥）编译生成：
+docs\产商品研发助手本体设计.md:119: [互斥] sh:not [   # 互斥：绑主套餐 与 独立宽带组件 不可同时存在（对应 R-C 互斥校验）
+docs\双品类验证报告.md:22: [补全] | family_fusion_main_128 | familyBasePrc | TPL-FAMILY-BASE-128 | 家庭融合主套餐：场景默认(R-C01)+模板补全(R-C02)，合规通过 | 通过 |
+docs\双品类验证报告.md:23: [主资费] | family_fusion_addon_no_depend | familyAddPrc | TPL-FAMILY-ADD-20 | 家庭融合加装包：品类自动切换，缺主资费依赖被 R-C04 拦截 | 通过 |
+docs\双品类验证报告.md:24: [主资费] | broadband_main_500m | broadBandMainPrc | TPL-BB-MAIN-80 | 宽带主资费：品类推导+模板补全带宽/固费，合规通过 | 通过 |
+docs\双品类验证报告.md:25: [补全] | campus_addon_19 | personAddPrc | TPL-PERSON-ADD-19 | 校园附加包（带依赖）：模板补全 19 元，R-C04 依赖校验通过 | 通过 |
+docs\双品类验证报告.md:27: [补全] | five_g_main_99 | personMainPrc | TPL-PERSON-MAIN-99 | 5G 个人主套餐：品类推导+模板补全 99 元，合规通过 | 通过 |
+docs\智聊场景重设计方案.md:369: [补全] | 参数补全门 | `clarify-human` | `intent=CLARIFY` + clarify_contracts（复用现有契约） | formData 回填 → 重入起草 |
+docs\研发助手能力矩阵.md:11: [补全] | 智聊·对话配置 | `offering_config_chat` | `POST /config/chat` | 已有 | 槽位抽取 + 推理补全 + 合规 |
+docs\研发助手能力矩阵.md:18: [instance] | 草稿持久化 | — | `GET/POST/PUT/DELETE /config/drafts` | 已有 | JPA `ontology_instance`，按会话恢复 |

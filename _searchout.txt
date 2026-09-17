@@ -1,0 +1,57 @@
+components\ApiDoc.vue:211: [补全] description: 'LLM 补全接口',
+components\ChatMessageList.vue:308: [互斥] <!-- 需求歧义确认（U2）：候选解读渲染为可点卡片，点击即以该话术重发；与 CLARIFY 互斥渲染 -->
+components\ChatMessageList.vue:884: [互斥] .replace(/mutexGroup/g, '互斥组')
+components\ChatMessageList.vue:892: [互斥] .replace(/MAIN_PKG/g, '主套餐互斥组')
+components\CompliancePanel.vue:49: [补全] <div class="cp-inferred-title">本体补全字段</div>
+components\CompliancePanel.vue:86: [补全] if (props.issues?.length) return '待补全'
+components\CompliancePanel.vue:133: [互斥] targetUser: '目标用户', channelScope: '销售渠道', mutexGroup: '互斥组',
+components\CompliancePanel.vue:146: [互斥] mutexGroup: '互斥组', inScenario: '所属场景', forTargetUser: '面向客群',
+components\CompliancePanel.vue:155: [互斥] MAIN_PKG: '主套餐互斥组', draft: '当前草稿', empty: '空',
+components\KBManager.vue:118: [相似] <span class="meta-item">相似度: {{ (doc.similarity * 100).toFixed(1) }}%</span>
+components\RdAssistantPage.vue:204: [参照] <!-- 还原条：面板关闭后一键恢复（整条可点击，参照原型 config-restore-bar）；
+components\RdAssistantPage.vue:205: [互斥] 对比清单托底栏（查询→行动中间态）与运营视图还原条同层互斥呈现 -->
+components\RdAssistantPage.vue:428: [参照] /** 运营/查询意图后处理：驱动运营结果面板与查询结果卡（参照原 ops openPanelsFromSseMessage / query applyQueryToolToMsg） */
+components\RdAssistantPage.vue:1009: [补全] /** 内联表单 AI 补全回调：本实现暂仅刷新合规（回显字段已在 schema 更新） */
+components\RdAssistantPage.vue:1894: [互斥] /目标客群|客群|渠道|合约|订购|互斥|依赖/,
+components\RdAssistantPage.vue:2317: [参照] /* 还原条（参照原型 config-restore-bar）：渐变紫蓝背景 + 状态徽标多色 + 整条可点击 */
+components\workbench\ProductConfigWorkbench.vue:315: [dependOn] { key: 'sales', label: '销售规则', twoCol: false, codes: ['channelScope', 'regionScope', 'groupId', 'groupIdMessag
+components\workbench\ProductProfileCard.vue:65: [互斥] { label: '互斥组', value: p.mutexGroup },
+composables\useChatStream.js:577: [互斥] // 确认分支（U2）：需求歧义候选解读列表（与 CLARIFY 互斥渲染）
+composables\useProductConfig.js:407: [互斥] '- 「再绑一个畅享128主套餐一起卖」（演示互斥拦截）\n' +
+composables\useProductConfig.js:548: [dependOn] draft.dependOn = '宽带主服务'
+composables\useProductConfig.js:1116: [dependOn] dependOn: formData.dependOn,
+config\assistantModes.js:103: [补全] '用一句话描述业务诉求，系统自动抽取槽位、按本体补全字段，并即时拦截互斥与红线冲突。',
+config\assistantModes.js:108: [补全] '- 按品类与场景模板推理补全缺失字段（表单内联同步）',
+config\assistantModes.js:109: [互斥] '- 命中互斥组、在架冲突时当场提示，避免无效提交',
+config\assistantModes.js:117: [补全] '- 内联可编辑的配置表单（含推理补全字段说明）',
+config\assistantModes.js:141: [互斥] '- 识别文档中的套餐名称、客群、资费、资源、渠道、互斥关系等',
+config\assistantModes.js:147: [互斥] '2. 等待抽取完成，在清单里核对「待修正」项（尤其是场景、互斥、月费）',
+config\assistantModes.js:169: [相似] '从历史商品与成熟配置中检索相似方案，一键复制为新草稿，并自动触发合规校验。',
+services\chatApi.js:379: [补全] // 占位正文「意图: xxx」时，优先用 intent 摘要补全展示
+services\productOntologyLocal.js:20: [互斥] mutexGroup: '互斥组',
+services\productOntologyLocal.js:21: [dependOn] dependOn: '依赖商品',
+services\productOntologyLocal.js:39: [互斥] mutexGroup: '互斥组',
+services\productOntologyLocal.js:44: [互斥] MAIN_PKG: '主套餐互斥组',
+services\productOntologyLocal.js:45: [互斥] ADDON: '附加包互斥组',
+services\productOntologyLocal.js:135: [补全] resultLabel = '待补全'
+services\productOntologyLocal.js:222: [互斥] pushRel(cfg, 'hasRelation', high.some((i) => i.ruleId === 'R-C03') ? '互斥冲突' : '关联商品', shelf, {
+services\productOntologyLocal.js:267: [互斥] { s: offeringName, p: '互斥组', o: cnVal(draft.mutexGroup || 'MAIN_PKG') },
+services\productOntologyLocal.js:268: [互斥] { s: cnVal(draft.bindExistingMainPkg), p: '互斥组', o: '主套餐互斥组' },
+services\productOntologyLocal.js:290: [补全] summary: result.compliancePass ? '合规通过' : (high.length ? '已阻断' : '待补全'),
+services\productOntologyLocal.js:308: [补全] lines.push(`补全 ${inferred.slice(0, 3).map((f) => `${cnField(f.field)}=${f.value}`).join('、')}`)
+services\productOntologyLocal.js:331: [补全] label: '字段补全',
+utils\ontologyLabels.js:10: [相容] OfferCompatibility: '资费相容关系',
+utils\ontologyLabels.js:83: [相容] hasOfferCompatibility: '含相容关系',
+utils\ontologyLabels.js:87: [相似] similarTo: '相似方案',
+utils\ontologyLabels.js:101: [补全] 'R-C01': '场景默认补全',
+utils\ontologyLabels.js:102: [补全] 'R-C02': '品类模板补全',
+utils\ontologyLabels.js:103: [互斥] 'R-C03': '互斥/优惠冲突',
+utils\ontologyLabels.js:104: [主资费] 'R-C04': '附加依赖主资费',
+utils\productFormSchema.js:85: [dependOn] data.dependOn = draft.dependOn || ''
+utils\productFormSchema.js:121: [主资费] { label: '个人主资费', value: 'personMainPrc' },
+utils\productFormSchema.js:122: [主资费] { label: '宽带主资费', value: 'broadBandMainPrc' },
+utils\productFormSchema.js:133: [主资费] { label: '大众-个人主资费', value: '大众-个人主资费' },
+utils\productFormSchema.js:139: [主资费] { label: '家庭-宽带主资费', value: '家庭-宽带主资费' },
+utils\productFormSchema.js:168: [互斥] withSrc({ fieldCode: 'mutexGroup', fieldName: '互斥组', fieldType: 'input', required: false, value: d.mutexGroup 
+utils\productFormSchema.js:169: [dependOn] withSrc({ fieldCode: 'dependOn', fieldName: '依赖主资费', fieldType: 'input', required: false, value: d.dependOn ||
+utils\productFormSchema.js:194: [互斥] placeholder: '如 OF-XXXX-001（互斥主套餐编码）',

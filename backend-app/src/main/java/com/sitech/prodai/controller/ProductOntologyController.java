@@ -410,6 +410,22 @@ public class ProductOntologyController {
         return ok(productOntologyService.validateNested(request));
     }
 
+    /** 存量产品批量合规扫描：遍历在架存量产品逐一执行 R-C* 规则校验（含 R-C04 依赖缺失），输出违规清单供批量整改。 */
+    @Operation(summary = "存量产品批量合规扫描", description = "遍历在架（shelfOfferings）存量产品逐一执行 R-C* 规则校验（含 R-C04 依赖缺失），输出违规清单；request.offering_ids 为空扫全部，非空仅扫指定编码")
+    @PostMapping("/config/shelf-compliance")
+    public Map<String, Object> shelfCompliance(@RequestBody(required = false) Map<String, Object> request) {
+        List<String> offeringIds = List.of();
+        if (request != null && request.get("offering_ids") instanceof List<?> list) {
+            offeringIds = new ArrayList<>();
+            for (Object o : list) {
+                if (o != null) {
+                    offeringIds.add(String.valueOf(o));
+                }
+            }
+        }
+        return ok(productOntologyService.auditShelfCompliance(offeringIds));
+    }
+
     @Operation(summary = "对话式配置", description = "自然语言对话生成/修订配置草稿（text 必填）")
     @PostMapping("/config/chat")
     public Map<String, Object> chatConfigure(@RequestBody ChatConfigureRequest request) {

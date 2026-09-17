@@ -73,7 +73,7 @@ python -X utf8 "scripts\cpcp_api.py" get_template --template "<templateId>"
 ### 步骤④：模板化提取（LLM，翻译环节）+ 校验闸
 按 `references/extract-prompt-template.md` 提示词（规则 8 条逐条强制）逐产品提取配置要素：
 - 只提取原文可找到（含同义改写）的路径；未提及路径**不输出**（合并器按 schema 补骨架，无需空值）；
-- 输出嵌套 JSON（与模板同构，仅命中路径），**枚举字段用原文措辞不强行归一**（评审结论#4：校验不改写，归一异常进清单人工确认）；
+- 输出嵌套 JSON（与模板同构，仅命中路径），**枚举字段全放开为自由文本（V9.2）：用原文措辞、不强行归一、不做枚举命中校验**（评审结论#4 精神延续——校验不改写，现彻底放开枚举）；
 - 修饰语剥离（"30GB（可结转）"→ 资源值 + 结转路径分置）；价格值必须取原文数字（"199元/月"→199）；
 - 展示条件字段（清单标"条件:"）仅当原文明确满足条件时提取；成员表述归入对应成员容器，禁止混入基础信息；
 - **价格字段正常提取**（主套餐档位/宽带月功能费/副卡月功能费各自独立判定，禁止互相推导）。
@@ -84,8 +84,8 @@ python -X utf8 "scripts\cpcp_api.py" validate_elements --schema-file "scripts\te
 ```
 - 出参 `quality_gate=FAIL`（可提取必填命中率 < 阈值）→ **E31**：打回重跑第④步 LLM 一次，仍低则中断转人工；
 - `removed`（非法路径/非法数值）→ 已自动剔除，重跑时以 `valid_paths` 口径提示 LLM；
-- `enum_violations` 非空 → 不改写不阻断，随第⑤步 _meta 保留进清单；
 - `yes_norm_hints`（是否类建议归一）→ 仅提示，不改写；
+- **枚举不再参与校验（V9.2）**：`validate_elements` 已移除 enum_violation，枚举字段接受任意原文；
 - 校验通过（PASS / PASS_WITH_WARNINGS）→ 进入第⑤步。
 
 ### 步骤⑤：嵌套报文合并（工具，确定性）
@@ -95,8 +95,9 @@ python -X utf8 "scripts\cpcp_api.py" merge_nested --schema-file "scripts\templat
 ```
 - 合并规则（脚本内置，模型不得自行合并）：schema 为骨架逐路径对位（JSONPath，禁止模糊匹配）→ 需求要素有值用需求值(source=原始需求) → 无值且非价格取相似品同路径(source=AI补全) → schema default 兜底(source=默认值) → 仍缺留空、必填进 `pending_required`；
 - **价格禁照搬（normal 模式强制）**：档位/月费/月租/固定费类字段需求未提供时一律留空进待补充，禁止从相似品取值；主套餐档位 ≠ 宽带月功能费 ≠ 副卡月功能费，各自独立判定；
-- 出参：`payload`（嵌套实例化报文）+ `_meta`（逐叶子 source 溯源 + enum_violation 标记）+ `pending_required`；
-- `_meta` 中 enum_violation 条目 = 非空告警清单，须在第⑧步输出附【枚举确认提示】小节逐条列出（人工确认，不阻断）。
+- **枚举全放开为自由文本（V9.2）**：schema 枚举仅作展示/参考，不做命中校验、不产 enum_violation，提取到的任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）；必填字段仅当**真正为空**才进待补充；
+- **必填字段说明覆盖兜底（V9.2）**：必填枚举字段（如套外计费标准 outChargeMode）若 LLM 把计费原文写入了同体系"计费说明型"字段（超套收费标准 chargeStandard）而非本字段，判为**已覆盖**、不进待补充（原文见说明字段）；
+- 出参：`payload`（嵌套实例化报文）+ `_meta`（逐叶子 source 溯源）+ `pending_required`。
 
 ### 步骤⑤.5：嵌套本体校验闸（工具，确定性，V7.0+推理接入）
 逐产品执行（**入参必须是 merge_nested 出参 payload 本体，与第⑥步同源**）：
@@ -104,12 +105,13 @@ python -X utf8 "scripts\cpcp_api.py" merge_nested --schema-file "scripts\templat
 python -X utf8 "scripts\cpcp_api.py" validate_nested --template "<templateId>" --payload-json-file "<merge 出参 payload 工件路径>" [--similar-offer-file "<相似品报文路径（可选，供冲突比对）>"]
 ```
 - 转发 Java `POST /api/v1/product-ontology/config/validate-nested`（backend-app 端口 6174）；技术链路=normalizeNested 归一层 → ConfigMessageProjector.fromMessage 反投影为扁平 draft → TemplateDeriveEngine.derive 补全 → TemplateComplianceService.checkCompliance（含 SHACL delegate R-C06/R-C03/R-C05），**复用现有 CPCP 本体/platform，禁止新造本体或自拍 TTL**；
-- 出参：`pass`（bool，门禁判定）、`violations[]`（item 含 ruleId/issueType/issueLevel=HIGH|WARN/field/message/engine）、`defaulted[]`、`rule_ids[]`（命中的校验规则）、`trace_id`（本次校验审计号）、`can_submit`（==pass）、`explain_hint`；
+- 出参：`pass`（bool，门禁判定）、`violations[]`（item 含 ruleId/issueType/issueLevel=HIGH|WARN/field/message/engine）、`defaulted[]`、`rule_ids[]`（命中的校验规则）、`trace_id`（本次校验审计号）、`can_submit`（==pass）、`explain_hint`；**R-C04 自愈扩展（V9.2）**：当附加资费缺依赖主资费（dependOn/sourceOfferRef 均缺）且触发 R-C04 时，后端自动**复用相似产品（`similar_offer`）的依赖关系**——相似品明示依赖 → 补入 `dependOn/sourceOfferRef` 后重跑合规，出参附 `repaired`（field/value/source/source=similar_offer）；相似品**同样未声明依赖** → 保留 R-C04 违规并附 `instance_gaps[]`（提示用户补充依赖主资费或确认可独立订购）；
 - **处置（四层架构铁律，结果逐字节引用不加工）**：
   - `pass=false`（存在 `issueLevel=HIGH` 或 `ruleId=R-C06` 违反）→ **按 E33 中断**，附违规项与建议，禁止强行产出执行方案；禁止 LLM 自行"改数据绕过"；
+  - **R-C04 项（依赖缺失）已按自愈口径处理**：出参含 `repaired` 时该违规已因复用相似产品依赖而通过；出参含 `instance_gaps[]` 时按 E33 中断并**逐字引用 instance_gaps 建议**（引导用户回复补充依赖主资费或确认独立订购口径），禁止 LLM 自行补依赖或放行；
   - 仅 `level=WARN`/low 或校验通过 → **不阻断**，继续第⑥步；WARN 项随第⑧步输出附【风险提示】小节（非必填字段冲突，供用户知悉，不强制）；
   - **价格字段（档位/月费/月租/固定费）违反/待禁推仍走已有 pending_required 纪律**（第⑤步已强制留空，⑤.5 不另补价，禁止从相似品照搬或跨成员推导）；
-- **推理可见性**：用户追问"为什么这么判/依据哪条规则/字段来源"时，用出参 `trace_id` 调 `explain_nested --trace-id <trace_id> [--audience <engineer|sales>] [--field <字段路径>]`——field 时 GET /config/provenance/{field}（PROV-O 溯源），否则 POST /config/explain；**复用 Java 已有 explain/provenance，Python 侧重造 reason_trace**（禁止）；取数失败按 E34 提示型处置（不中断主干，输出"推理依据暂不可用"）；
+- **推理依据（自动显示，V9.2）**：校验无阻断项（pass=true 或仅 WARN）时，**自动**用出参 `trace_id` 调 `explain_nested --trace-id <trace_id> [--audience sales]`（POST /config/explain，不含 `--field`）渲染【推理依据】小节随环节2 输出——**无需用户另行追问"为什么/依据"**；用户再追问"某字段来源/为什么这么判"时，可叠加 `--field <字段路径>`（GET /config/provenance/{field}，PROV-O 溯源）补充字段级依据；`--field` 仅作追问时的增强，不改变自动显示行为。**复用 Java 已有 explain/provenance，Python 侧重造 reason_trace**（禁止）；explain 取数失败按 E34 提示型处置（不中断主干，输出"推理依据暂不可用"，其余输出照常）；
 - 一次性校验失败/后端未启动（HTTP 连接失败）→ **不阻断主干**，按 E34 提示"本体校验暂不可用，已跳过（配置仍可生成，建议后续补校验）"，继续第⑥步（防校验服务抖动卡死需求分析）。
 
 ### 步骤⑥：分节表格渲染（工具，确定性）
@@ -150,6 +152,8 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 
 【待补充字段】{{merge_nested pending_required 逐项（x-label 中文）}}
 
+【推理依据】{{explain_nested 出参 explanation/used_rules 逐字引用}}（可再回复"字段来源"查看某字段溯源）
+
 执行方案暂未保存、暂不能执行（回复"确认配置"无效）：
 - 请直接补充价格/资源类字段值，将更新执行方案并再次确认。
 ```
@@ -162,13 +166,14 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 
 {{render_table 分节多表，逐字引用}}
 
+【推理依据】{{explain_nested 出参 explanation/used_rules 逐字引用}}（可再回复"字段来源"查看某字段溯源）
+
 {{多产品时逐产品分节展示，每产品以"◆ {{name}}（{{prodType}}）"小节头分隔}}
 
 《加载方案》已生成并保存（req_id：{{req_id}}），AI补全项已直接整合。**建议处理：可输入"确认配置"进入【销售品智能配置】。**
 ```
 > 说明：需求提报（环节1）已在 flow-A0 输出；如在同一会话连续完成需求提报与需求分析，两标题头（环节1/环节2）由 flow-A0 与 flow-A 各自输出并以 `---` 分隔，保证演示一眼可辨两步均已实现。
-- 第⑤步 `_meta` 存在 enum_violation 条目时：出口B 文案末尾追加【枚举确认提示】小节，逐条列出"字段：提取值（可选枚举：前6项）"，说明"回复修改意见可调整措辞"；
-- 第④步 `yes_norm_hints` 非空时：并入【枚举确认提示】展示（"建议归一为'是'"）；
+- **枚举全放开（V9.2）**：枚举字段接受任意原文、不产 enum_violation，故出口不再附【枚举确认提示】（该小节随枚举放开移除）；是否类字段的归一建议仅在 `yes_norm_hints` 非空时并入出口提示展示（"建议归一为'是'"，不改写）；
 - 如需调整方案：提示"请直接说明修改意见（仅价格、资源类字段须由您补充，其余字段已按相似产品补全）"；
 - **输出纪律**：只输出 render_table 表格 + 出口文案；禁止额外生成文档文件/下载链接（除非用户明确要求导出文件）；禁止输出内部推理过程（提取细节、合并推导、_meta 全文、任务清单等）。
 
