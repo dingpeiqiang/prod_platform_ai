@@ -159,6 +159,37 @@ def main():
         print("2-ok derive_flat24 %-20s 出参键完整" % tid)
         ok += 1
 
+    # 取值来源列（V3.0）：--meta-file 逐叶子溯源 → 原始需求提取/复用相似产品/本体推理/默认值（确定性映射）
+    schema = os.path.join(TEMPLATES, "familyAddPrc.schema.json")
+    data = json.dumps({"familyAddPrc": {
+        "baseInfo": {"prodType": "共享流量产品", "prodPrcName": "示例包", "effDate": "20260901"},
+        "optionalInfo": {"printContent": {"prcMonthFee": 10},
+                         "acctMonth": {"calcMode": "首月全额收取", "fixFee": 10}},
+    }}, ensure_ascii=False)
+    meta = json.dumps({
+        "baseInfo.prodPrcName": {"label": "资费名称", "value": "示例包", "source": "原始需求"},
+        "baseInfo.effDate": {"label": "销售开始日期", "value": "20260901", "source": "AI补全"},
+        "optionalInfo.printContent.prcMonthFee": {"label": "套餐月费", "value": 10, "source": "本体推理"},
+        "optionalInfo.acctMonth.fixFee": {"label": "固定费", "value": 10, "source": "默认值"},
+    }, ensure_ascii=False)
+    p_tmp = os.path.join(HERE, "_tmp_src_payload.json")
+    m_tmp = os.path.join(HERE, "_tmp_src_meta.json")
+    with open(p_tmp, "w", encoding="utf-8") as f:
+        f.write(data)
+    with open(m_tmp, "w", encoding="utf-8") as f:
+        f.write(meta)
+    r = run(["render_table", "--schema-file", schema, "--json-file", p_tmp,
+             "--meta-file", m_tmp, "--title", "源测试"])
+    os.unlink(p_tmp)
+    os.unlink(m_tmp)
+    assert r.returncode == 0, r.stdout + r.stderr
+    txt = r.stdout
+    assert "取值来源" in txt, "缺少取值来源列"
+    for label in ("原始需求提取", "复用相似产品", "本体推理", "默认值"):
+        assert label in txt, "取值来源未渲染：%s" % label
+    print("3-ok render_table 取值来源 四态齐全（原始需求提取/复用相似产品/本体推理/默认值）")
+    ok += 1
+
     print("全部 %d 项模板轨冒烟通过（含 3 个无存量模板的模拟示例验证）" % ok)
 
 

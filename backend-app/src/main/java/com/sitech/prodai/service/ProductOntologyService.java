@@ -13,9 +13,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 产商品配置与运营本体推理门面（R2 Phase6 拆分后的薄 Facade）。
@@ -384,6 +387,138 @@ public class ProductOntologyService {
 
     public Map<String, Object> explainFieldDefault(String field) {
         return chatConfigureService.explainFieldDefault(field);
+    }
+
+    /**
+     * 嵌套报文本体校验闸（flow-A 步骤⑤.5，V7.0 模板轨）：
+     * 将 merge_nested 产出的嵌套报文 payload 投影为扁平草稿，走 Java 推理平台
+     * （合规校验 complianceEngine + 推导校验 deriveEngine），输出 violations/defaulted/rule_ids，
+     * 并生成 trace_id 供 {@code config/explain}/{@code config/provenance} 追溯推理可见性。
+     * <p>入参：{@code template}(模板 id)、{@code payload}(嵌套报文，可为 {@code {template:{...}}} 或内层 body)、
+     * {@code similar_offer}(可选，相似品报文)。出参：{@code success/violations[]/defaulted[]/rule_ids[]/trace_id}。
+     */
+    public Map<String, Object> validateNested(Map<String, Object> request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (request == null) {
+            body.put("success", false);
+            body.put("message", "request 必填：{template, payload}");
+            return body;
+        }
+        String template = strOf(request.get("template"));
+        Map<String, Object> payload = castNestedMap(request.get("payload"));
+        if (payload.isEmpty()) {
+            body.put("success", false);
+            body.put("message", "payload 必填：merge_nested 出参嵌套报文");
+            return body;
+        }
+        String traceId = "cfg-validate-" + System.currentTimeMillis();
+        List<Map<String, Object>> violations = new ArrayList<>();
+        Set<String> ruleIds = new LinkedHashSet<>();
+
+        // 1) 归一层：确保嵌套报文为 { template: { baseInfo, releaseInfo, optionalInfo } }
+        Map<String, Object> nested = normalizeNested(template, payload);
+
+        // 2) 嵌套报文 → 扁平草稿（本体投影，ConfigMessageProjector.fromMessage）
+        Map<String, Object> draft = messageProjector.fromMessage(nested);
+        if (!strOf(draft.get("messageRootKey")).isBlank()) {
+            template = strOf(draft.get("messageRootKey"));
+        }
+        appendConfigAudit(traceId, Map.of("step", "project", "template", template,
+                "draftFieldCount", draft.size()));
+
+        // 3) 推导/默认补全（复用 deriveEngine，识别 defaulted 来源）
+        Map<String, Object> graph = loadGraph();
+        Map<String, Object> deriveBody = deriveEngine.derive(Map.of(), draft, graph);
+        Map<String, Object> derivedDraft = castNestedMap(deriveBody.get("draft"));
+        List<Map<String, Object>> defaulted = new ArrayList<>();
+        if (deriveBody.get("inferredFields") instanceof List<?> inferred) {
+            for (Object it : inferred) {
+                if (it instanceof Map<?, ?> row) {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("field", row.get("field"));
+                    m.put("value", row.get("value"));
+                    m.put("fillSource", row.get("fillSource"));
+                    m.put("rule", row.get("rule"));
+                    defaulted.add(m);
+                    if (row.get("rule") != null) {
+                        ruleIds.add(String.valueOf(row.get("rule")));
+                    }
+                }
+            }
+        }
+        appendConfigAudit(traceId, Map.of("step", "derive", "defaultedCount", defaulted.size()));
+
+        // 4) 合规校验（complianceEngine，含 R7 SHACL delegate；R-C* 规则裁剪面）
+        Map<String, Object> compliance = checkCompliance(derivedDraft.isEmpty() ? draft : derivedDraft, graph);
+        if (compliance.get("issues") instanceof List<?> issues) {
+            for (Object it : issues) {
+                if (!(it instanceof Map<?, ?> issue)) {
+                    continue;
+                }
+                Map<String, Object> v = new LinkedHashMap<>();
+                v.put("ruleId", issue.get("ruleId"));
+                v.put("issueType", issue.get("issueType"));
+                v.put("issueLevel", issue.get("issueLevel"));
+                v.put("field", issue.get("field"));
+                v.put("message", issue.get("message"));
+                Object engine = issue.get("engine");
+                v.put("engine", engine == null ? "java-compliance" : engine);
+                violations.add(v);
+                if (issue.get("ruleId") != null) {
+                    ruleIds.add(String.valueOf(issue.get("ruleId")));
+                }
+            }
+        }
+        boolean pass = violations.isEmpty()
+                || violations.stream().noneMatch(v -> "HIGH".equals(v.get("issueLevel"))
+                        || "R-C06".equals(v.get("ruleId")));
+        appendConfigAudit(traceId, Map.of("step", "compliance", "violationCount", violations.size(),
+                "pass", pass));
+
+        body.put("success", true);
+        body.put("template", template);
+        body.put("violations", violations);
+        body.put("defaulted", defaulted);
+        body.put("rule_ids", new ArrayList<>(ruleIds).stream().sorted().toList());
+        body.put("pass", pass);
+        body.put("trace_id", traceId);
+        body.put("can_submit", pass);
+        body.put("explain_hint", "如需推理可见性：POST /api/v1/product-ontology/config/explain {trace_id, audience}；"
+                + "字段溯源：GET /api/v1/product-ontology/config/provenance/{field}");
+        return body;
+    }
+
+    /** 归一层：把 {template: body} 或纯内层 body 统一为 {template: {baseInfo,...}}；template 缺失时按内层根键判定。 */
+    private Map<String, Object> normalizeNested(String template, Map<String, Object> payload) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        // 若 payload 已带 template 根键（{ personMainPrc: {...} } 或 { template: {...} }），取其内层
+        Object direct = payload.get(template);
+        if (!(direct instanceof Map<?, ?>)) {
+            // 尝试任一已知品类根键（兼容调用方未传 template）
+            for (Map.Entry<String, Object> e : payload.entrySet()) {
+                Object v = e.getValue();
+                if (v instanceof Map<?, ?> inner && inner.containsKey("baseInfo")) {
+                    root.put(e.getKey(), v);
+                    return root;
+                }
+            }
+            // 纯内层 body（含 baseInfo/releaseInfo/optionalInfo），按 template 或默认包裹
+            String key = (!strOf(template).isBlank()) ? template : "personMainPrc";
+            Map<String, Object> body = new LinkedHashMap<>();
+            payload.forEach((k, val) -> body.put(String.valueOf(k), val));
+            root.put(key, body);
+            return root;
+        }
+        root.put(template, direct);
+        return root;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castNestedMap(Object value) {
+        if (value instanceof Map<?, ?> m) {
+            return (Map<String, Object>) m;
+        }
+        return new LinkedHashMap<>();
     }
 
     private void appendConfigAudit(String traceId, Map<String, Object> step) {

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通用经营指标 · 预警规则</title>
+<link rel="stylesheet" href="./assets/css/common.css">
+<style>
+  .ops-main{max-width:1280px;margin:0 auto;padding:20px 24px 60px;}
+  .back-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--blue);cursor:pointer;margin-bottom:14px;font-weight:600;text-decoration:none;}
+  .back-link:hover{text-decoration:underline;}
+  .warn-strip{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--text-sub);padding:10px 14px;background:#F7F9FC;border-radius:6px;margin-bottom:12px;}
+  .warn-strip b{color:var(--text);font-size:12px;}
+</style>
+</head>
+<body>
+<main class="ops-main">
+
+  <a class="back-link" href="./index.html">← 返回运营视图</a>
+  <div class="card" style="padding:14px 18px;background:#FBFCFE;border:1px solid #D3DEEC;">
+    <div style="display:flex;gap:12px;font-size:12.5px;line-height:1.6;color:#00704D;">
+      <div style="width:20px;height:20px;border-radius:5px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">✓</div>
+      <div>
+        <b>配置、稽核、校准、测试、受理验证已全部通过</b>，OA 上线审批已完成。
+        当前产品进入监控运维阶段，因刚上线暂无实际数据，以下为 <b>通用经营指标口径</b> 与 <b>预警推送规则</b>，确认后系统将自 T+1 日出账起自动采集并触发监控。
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">通用经营指标 · 预警规则 · 推送方式</div>
+    </div>
+    <div class="warn-strip">
+      <b>预警机制</b>
+      <span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">达到阈值即触发</span></span>
+      <span style="display:flex;align-items:center;gap:5px;"><i style="width:9px;height:9px;border-radius:2px;background:var(--purple);display:inline-block;"></i>异常推送（日调度）</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="metric-table">
+        <thead>
+          <tr>
+            <th style="width:108px;">指标类型</th>
+            <th style="width:116px;">指标名称</th>
+            <th style="width:320px;">预警规则</th>
+            <th>指标口径</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 效益维度 -->
+          <tr><td class="m-module" rowspan="5">效益维度</td><td class="m-name">当月收入</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;10%</span></span></td><td class="m-desc">该套餐当月出账收入（报表口径）</td></tr>
+          <tr><td class="m-name">累计收入</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;10%</span></span></td><td class="m-desc">该套餐当年 1 月至统计月累计出账收入</td></tr>
+          <tr><td class="m-name">收入同/环比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">下滑&gt;5% 或连续两月下滑</span></span></td><td class="m-desc">（本月收入 − 上月收入）÷ 上月收入（或同比口径）</td></tr>
+          <tr><td class="m-name">利润率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 12%</span></span></td><td class="m-desc">（收入 − 营销费用 − 成本）÷ 收入</td></tr>
+          <tr><td class="m-name">营销费用占比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 18%</span></span></td><td class="m-desc">该套餐营销费用 ÷ 该套餐收入</td></tr>
+          <!-- 市场维度 -->
+          <tr><td class="m-module" rowspan="5">市场维度</td><td class="m-name">到达用户</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;5%</span></span></td><td class="m-desc">当月出账且状态正常的该套餐主卡用户数（到达用户），副卡不重复计算</td></tr>
+          <tr><td class="m-name">月净增用户</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">连续 3 日为负</span></span></td><td class="m-desc">当月新增 − 当月退订</td></tr>
+          <tr><td class="m-name">活跃用户率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 60%</span></span></td><td class="m-desc">当月有使用行为的该套餐用户 ÷ 到达用户</td></tr>
+          <tr><td class="m-name">付费活跃率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 5%</span></span></td><td class="m-desc">付费活跃用户（当月产生实际计费账单）÷ 到达用户</td></tr>
+          <tr><td class="m-name">渠道结构占比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">单一渠道占比&gt;70%</span></span></td><td class="m-desc">线下营业厅 / 中国电信线上渠道 / 10000热线 / 安徽电信线上渠道 到达用户占比</td></tr>
+          <!-- 运营质量维度 -->
+          <tr><td class="m-module" rowspan="5">运营质量维度</td><td class="m-name">T+1 活跃率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 70%</span></span></td><td class="m-desc">订购次日内仍活跃的新增用户 ÷ 当期新增用户</td></tr>
+          <tr><td class="m-name">T+3 退订率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 3%</span></span></td><td class="m-desc">订购后 3 天内退订用户 ÷ 当期新增用户</td></tr>
+          <tr><td class="m-name">T+6 退订率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 10%</span></span></td><td class="m-desc">订购后 6 天内退订用户 ÷ 当期新增用户</td></tr>
+          <tr><td class="m-name">业务办理成功率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 98%</span></span></td><td class="m-desc">该套餐受理成功笔数 ÷ 受理总笔数</td></tr>
+          <tr><td class="m-name">资费投诉率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 0.1%</span></span></td><td class="m-desc">涉及该套餐资费的投诉工单数 ÷ 到达用户</td></tr>
+          <!-- 生命周期维度 -->
+          <tr><td class="m-module" rowspan="5">生命周期维度</td><td class="m-name">新用户吸引占比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 8%</span></span></td><td class="m-desc">新入网用户中订购该套餐的人数占比</td></tr>
+          <tr><td class="m-name">活跃用户占比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 60%</span></span></td><td class="m-desc">存量用户中当月为活跃阶段的占比（月活跃率）</td></tr>
+          <tr><td class="m-name">T+6 留存率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 95%</span></span></td><td class="m-desc">订购后第 6 天仍保持套餐状态的新增用户 ÷ 当期新增用户</td></tr>
+          <tr><td class="m-name">沉默用户占比</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 10%</span></span></td><td class="m-desc">当月无任何使用行为的用户 ÷ 到达用户</td></tr>
+          <tr><td class="m-name">续约率</td><td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 90%</span></span></td><td class="m-desc">到期用户中成功续约该套餐的用户占比</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title">运营数据看板</div>
+      <div class="card-sub">数据采集状态</div>
+    </div>
+    <div class="skeleton-wrap">
+      <div class="skeleton-icon">◔</div>
+      <div class="skeleton-title">数据积累中</div>
+      <div class="skeleton-desc">
+        产品上线时间 <b>2026-09-15</b>，预计 <b>T+1 日出账后</b> 首次生成数据。<br>
+        届时将自动填充规模、新增、收入、质量、渠道五大模块的完整看板。
+      </div>
+      <div class="sk-bars">
+        <div class="sk-bar"></div>
+        <div class="sk-bar"></div>
+        <div class="sk-bar" style="width:80%;"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

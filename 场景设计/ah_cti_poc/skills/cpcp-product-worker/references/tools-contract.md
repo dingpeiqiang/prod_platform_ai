@@ -86,13 +86,15 @@
 ## 工具9 上线审批推送 `submit_approval`
 - POST `/api/v1/appstore/approval/submit`
 - 入参：`req_id`(必填,"缺少执行方案key，请先完成执行主干")、`product_id`(必填,"缺少产品ID，请先完成配置落地")、`report_url`(必填,报告全文或链接)、`approval_flow`(选填,standard|urgent,默认standard)、`approve_confirmed`(脚本内置固定 true——用户已明确回复"发起审批"后才会进入程序C，此字段为后端硬门禁依据)
-- 出参：`approval_id`、`status`(审批中/通过/驳回)；`status=NOT_CONFIRMED` 且无 approval_id → approve_confirmed 未置 true（脚本已内置，正常不应出现；出现即报缺陷）
+- 出参：`approval_id`、`status`(审批中/通过/驳回)、`approval_matrix[]`(四节点审批矩阵)；`status=NOT_CONFIRMED` 且无 approval_id → approve_confirmed 未置 true（脚本已内置，正常不应出现；出现即报缺陷）
+- `approval_matrix[]` 每项：`node_seq`(1~4)、`node_name`(产品经理审核/资费主管审核/运营审核/上线审批)、`approver`(审批角色)、`status`(提交时首位"进行中"其余"待审核"；通过后全部"已通过")、`opinion`、`update_time`
 - 30s；传输层重试脚本内置（共 3 次尝试，业务失败不重试即 E16/E29 中断）；幂等（同 product_id 返回原 approval_id）；**后端硬校验：approve_confirmed=true 且 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送**
 
 ## 工具10 监控查询 `query_monitor`
 - GET `/api/v1/appstore/product/monitor`
 - 入参：`product_id`(必填,"缺少产品ID，请提供要查询的销售品")、`date_range`(选填,默认最近1天)、`metric`(选填,order/error/fee/all,默认all)
 - 出参：`order_count`(int)、`error_count`(int)、`fee_error_rate`(float)、`alarm_list[]`
+- **单品运营可视化页出口（V8.0，供外部 AI 应用平台 iframe 嵌入）**：D-2 文本摘要后确定性拼接页面 URL `/ops-web/product-detail.html?product_id={{product_id}}`（产物为 `frontend/public/ops-web/` 纯静态页，第3层组装固定拼接，非平台接口；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选用于未收录商品回退画像；页面渲染由 detail.js 纯代码完成，LLM 禁止手写 JSON/HTML 载荷）；**绝对路径**拼接部署基址 `http://10.86.13.201:31280`（前端云部署网关，nginx 容器内 listen 6173）→ `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`
 
 ## 工具11 异常告警 `send_alert`
 - POST `/api/v1/appstore/alert/send`
@@ -102,8 +104,8 @@
 ## 工具13 审批进度查询 `approval_status`
 - GET `/api/v1/appstore/approval/status`
 - 入参：`approval_id` 与 `product_id` 至少一个（approval_id 优先；"请提供审批单号或销售品ID，以便查询审批进度"）
-- 出参：`approval_id`、`status`(审批中/通过/驳回)、`current_node`、`approver`、`opinion`、`submit_time`、`update_time`
-- 模拟行为：审批提交 **10s** 后任一次查询自动流转为 `status=通过`、`current_node=流程结束（上架完成）`、`opinion=审核通过，同意上架`（惰性推进，查询/幂等读取时触发）
+- 出参：`approval_id`、`status`(审批中/通过/驳回)、`current_node`、`approver`、`opinion`、`submit_time`、`update_time`、`approval_matrix[]`(四节点审批矩阵，结构同工具9；D-1 展示审批矩阵源)
+- 模拟行为：审批提交 **10s** 后任一次查询自动流转为 `status=通过`、`current_node=流程结束（上架完成）`、`opinion=审核通过，同意上架`，`approval_matrix` 全部节点置"已通过"（惰性推进，查询/幂等读取时触发）
 - 查无审批单 → E21："未找到该销售品的审批单，请确认是否已发起审批"
 
 ## 工具14 字段本体推理 `ontology_reason`
@@ -175,10 +177,11 @@
 - 行为保证：同输入逐字节稳定（幂等）；`payload` 本体是第⑥步 render_table 唯一合法入参（传 merge 全出参会渲染为空）；`pending_required` 非空 → flow-A 出口A（不保存）
 
 ## 工具23 分节表格渲染 `render_table`（V7.0 新增，本地脚本，flow-A 步骤⑥）
-- 本地代码节点（非平台接口）：`scripts/cpcp_api.py render_table`（转发同目录 render_table.py V2.0），把嵌套报文渲染为**业务人员可读的分节多表**（第3层结果组装，纯模板无 LLM）。
-- 入参：`--schema-file`(必填)、`--json-file`(必填，**=工具22 出参 payload 本体（嵌套报文），非 merge 全出参**)、`--title`(选填，表格标题=套餐名称)
-- 渲染形态（V2.0）：概览卡片置顶（资费名称/套餐月费/包含资源）→ 顶层容器=独立小节（"1. 基础信息/2. 发布信息/…"，加粗节标题）→ 小节内二级容器=加粗分组子标题行 → 三列表格（字段名称|字段值|备注）；**纯 x-label 中文，无技术键名、无层级标记列**；仅渲染有值段；必填缺失进文末【待补充字段】
-- 出参：markdown 分节多表文本（stdout；备注列含"满足条件时展示/默认值"标注）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py render_table`（转发同目录 render_table.py V3.0），把嵌套报文渲染为**业务人员可读的分节多表**（第3层结果组装，纯模板无 LLM）。
+- 入参：`--schema-file`(必填)、`--json-file`(必填，**=工具22 出参 payload 本体（嵌套报文），非 merge 全出参**)、`--meta-file`(选填，工具22 出参 `_meta` 溯源，path→{source})、`--title`(选填，表格标题=套餐名称)
+- 渲染形态（V3.0）：概览卡片置顶（资费名称/套餐月费/包含资源）→ 顶层容器=独立小节（"1. 基础信息/2. 发布信息/…"，加粗节标题）→ 小节内二级容器=加粗分组子标题行 → **四列表格（字段名称|字段值|取值来源|备注）**；**纯 x-label 中文，无技术键名、无层级标记列**；仅渲染有值段；必填缺失进文末【待补充字段】
+- **取值来源列（V3.0）**：依 `--meta-file` `_meta` 逐叶子 source 确定性映射——`原始需求`→**原始需求提取**、`AI补全`→**复用相似产品**、`本体推理`→**本体推理**、`默认值`→**默认值**；`本体推理`仅标注来源不写值（value 仍以 payload 为准）；无 `_meta` 时该列留空
+- 出参：markdown 分节多表文本（stdout；备注列含"满足条件时展示"标注，取值来源独立成列）
 - 行为保证：同输入输出逐字节稳定（幂等可回归）；技术字段（templateId/prodId/prodPrcId/pricingId/opType）不出现在业务表格；渲染失败/空输出 → flow-A 按 E32 中断（先核对入参是否误传 merge 全出参）
 
 ## 工具24 flat24 派生 `derive_flat24`（V7.0 新增，本地脚本，下游过渡兼容层，评审结论#1/#5）
@@ -187,4 +190,43 @@
 - 派生规则（确定性）：嵌套报文扁平 walk → 按 path_to_field 映射表对位 flat24 字段名 → 无对应路径的自动丢弃（如 roleMax）；field/value/source=模板轨派生
 - 出参：`resultCode`、`template`、`fields[]`（flat24 字段数组）、`note`
 - 行为保证：仅作环节2/3 过渡兼容，模板轨唯一事实源=嵌套报文；派生结果随 plan_json_v2 一并入库（`flat_fields` 键，评审结论#5 双份入库）
+
+## 工具25 嵌套本体校验闸 `validate_nested`（V7.0+ 新增，本地脚本转发 Java，flow-A 步骤⑤.5）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `POST /api/v1/product-ontology/config/validate-nested`；**复用现有 CPCP 本体推理平台（backend-app 端口 6174，TTL + OWLAPI/Openllet/RDF4J/SWRL/SHACL），禁止新造本体或自拍 TTL**。
+- 入参：`--template`(必填，templateId)、`--payload-json-file`(必填，=merge_nested 出参 payload 本体工件)、`--similar-offer-file`(选填，相似品嵌套报文，供冲突比对)
+- 技术链路（Java 侧已实现，`ProductOntologyService.validateNested`）：normalizeNested 归一层 → `ConfigMessageProjector.fromMessage` 反投影为扁平 lowerCamelCase draft → `TemplateDeriveEngine.derive` 补全 → `TemplateComplianceService.checkCompliance`（含 `ShaclValidationDelegate` R-C06/R-C03/R-C05，引擎优先+Lite 兜底）
+- 出参：`resultCode`、`pass`（bool，门禁判定）、`template`、`violations[]`（item 含 ruleId/issueType/issueLevel=HIGH|WARN/field/message/engine）、`defaulted[]`（field/value/fillSource/rule）、`rule_ids[]`、`trace_id`、`can_submit`（==pass）、`explain_hint`
+- 处置：`pass=false`（存在 issueLevel=HIGH 或 ruleId=R-C06）→ E33 中断（附违规项与建议）；pass=true（仅 WARN/通过）→ 不阻断，WARN 随输出附【风险提示】；后端未启动/连接失败 → E34 提示型不阻断
+- 行为保证：结果逐字节引用不加工；价格字段禁推纪律由上游 merge_nested 保证，本闸不另补价
+
+## 工具26 推理可见性 `explain_nested`（V7.0+ 新增，本地脚本转发 Java，flow-A 步骤⑤.5）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java，**复用既有 `/config/explain` 与 `/config/provenance/{field}`（PROV-O），Python 侧重造 reason_trace**。
+- 入参：`--trace-id`(必填，validate_nested 出参)、`--audience`(选填，engineer/sales)、`--field`(选填，字段路径；传值→GET `/config/provenance/{field}`，缺省→POST `/config/explain`)
+- 出参：`resultCode`、`explanation`/`provenance`（如何得出 + 依据规则/字段来源）、`used_rules[]`
+- 错误处理：取数失败/服务不可用 → E34 提示型（不中断主干，输出"推理依据暂不可用"）
+
+## 工具27 异动根因推理 `ops_root_cause`（V8.1 新增，本地脚本转发 Java，flow-D 支线D-2 闭环）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `POST /api/v1/product-ontology/ops/root-cause`；**复用 CPCP 本体推理平台（`product-ops.ttl` 产商品运营归因与风险本体 + `ops_rules.json` R-A01~A06 + Openllet SWRL），禁止新造本体/自拍 TTL**。
+- 入参：`--product-id`/`--offering-id`（二选一，商品 ID）、`--text`（选填，异动描述，供文本归因；至少一个）
+- 出参（推理链完整字段，D-2 第6步② 逐字引用）：`success`、`offeringId`、`offeringName`、`anomalies[]`（R-A01 异动确认：metricCode/metricValue/metricDelta/message/ruleId）、`candidates[]`、`paths[]`（R-A02~A05 归因排名，topN：rank/rootCauseType/name/weight/ruleId/evidence[]/path[]/isPrimary）、`evidenceTriples[]`（本体 {s,p,o} 证据三元组）、`entityNames{}`、`reportEvidence{}`、`market{}`、`graphScope{}`、`appliedRules[]`、`opsRulesVersion`、`reasonEngine`（openllet-swrl | java-rules | openllet-swrl+java-fallback）、`swrlFiredRules[]`（命中 SWRL 规则，幂等）、`swrlMessage`、`actionList[]`（优化建议，规则/图数据驱动）、`workOrder.draft`、`metricFacts{}`（可选）、`snapshotAt`；`paths` 为空 → 出参 `message`"已确认异动但未命中归因规则"
+- 处置：接口失败/后端不可用 → E34 提示型（不阻断，输出"根因推理暂不可用"）；出参逐字引用不加工，`swrlFiredRules`/`paths`/`evidenceTriples` 即**推理链**本体
+
+## 工具28 创建处置工单 `create_work_order`（V8.1 新增，本地脚本转发 Java，flow-D 支线D-2 闭环）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `POST /api/v1/product-ontology/ops/work-orders`
+- 入参：`--product-id`/`--offering-id`（必填）、`--source`（选填，默认 ops_assistant）、`--session-id`（选填，会话）、`--title`（选填，缺省=商品名+优化工单）、`--summary`（选填，异动+根因摘要）、`--actions`（选填，JSON 数组=actionList 优化动作）、`--root-causes`（选填，JSON 数组=paths 根因）、`--offering-name`（选填）
+- 出参：`success`、`message`、`workOrder`（含 `workOrderId` WO 开头/`title`/`offeringId`/`offeringName`/`summary`/`actions[]`/`status=open`/`source`/`sessionId`）、`persisted`；后端初始化中 → `success=false` 服务稍后重试
+- 行为保证：rule/data 驱动，工单即闭环落点；失败 → E34 提示型（不阻断根因结论）
+
+## 工具29 查询处置工单 `query_work_order`（V8.1 新增，本地脚本转发 Java，flow-D 支线D-2 回检）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `GET /api/v1/product-ontology/ops/work-orders`
+- 入参：`--status`（选填，open/in_progress/done/cancelled）、`--session-id`、`--q`（关键词：工单号/标题/商品名/商品编码）、`--page`、`--size`（分页，page 从 1 起，size 缺省 20）
+- 出参：`success`、`items[]`（workOrder 字段）+ 分页 `total/page/size`（有分页参数时）
+- 错误处理：取数失败 → E34 提示型
+
+## 工具30 工单状态流转 `update_work_order`（V8.1 新增，本地脚本转发 Java，flow-D 支线D-2 回检）
+- 本地代码节点（非平台接口）→ 转发 backend-app Java `PUT /api/v1/product-ontology/ops/work-orders/{workOrderId}`
+- 入参：`--work-order-id`(必填)、`--status`(必填，枚举 open/in_progress/done/cancelled)、`--remark`(选填，回检备注)
+- 出参：`success`、`workOrder`（含更新后 status）
+- 行为保证：闭环状态机 open → in_progress → done/cancelled；失败 → E34 提示型
+
 

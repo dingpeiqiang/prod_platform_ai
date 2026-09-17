@@ -100,6 +100,20 @@ Assert-True ($g6.code -eq 5005) "查无记录:5005"
 $r1x = PostJson "$BaseUrl/api/v1/similar/offer/query" @{ businessDesc = "完全无关的描述xyzabc123" }
 Assert-True ($null -ne $r1x) "接口1无命中不报错"
 
+# 审批矩阵契约：预置四环节结果 -> 提交审批 -> 查询，均须返回 approval_matrix[] 四节点
+$apprReqId = "PLANAPPRMTX001"
+foreach ($stage in @("config","spec","fee","test")) {
+    $rs = PostJson "$BaseUrl/api/v1/appstore/result/save" @{ req_id = $apprReqId; node_name = $stage; result_json = '{"pass":"1"}'; status = "ok" }
+    Assert-True ($null -ne $rs -and $rs.resultCode -eq "0") "审批矩阵:保存$stage节点结果"
+}
+$ar = PostJson "$BaseUrl/api/v1/appstore/approval/submit" @{ req_id = $apprReqId; product_id = "900102308"; report_url = "report-url-x"; approval_flow = "standard"; approve_confirmed = "true" }
+$am = if ($ar) { @($ar.approval_matrix) } else { @() }
+Assert-True ($ar.approval_id -and $am.Count -eq 4 -and $am[0].status -eq "进行中") "审批矩阵:提交四节点" "matrix=$($am.Count)"
+Assert-True ($am[0].node_name -eq "产品经理审核" -and $am[0].approver -eq "产品经理") "审批矩阵:首节点信息"
+$ast = GetJson "$BaseUrl/api/v1/appstore/approval/status?approval_id=$($ar.approval_id)"
+$astm = if ($ast) { @($ast.approval_matrix) } else { @() }
+Assert-True ($ast.approval_id -and $astm.Count -eq 4) "审批矩阵:查询四节点" "matrix=$($astm.Count)"
+
 Write-Host ""
 Write-Host "=== 结果: 通过=$pass 失败=$fail ==="
 if ($fail -gt 0) {

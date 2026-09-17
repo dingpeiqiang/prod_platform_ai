@@ -42,6 +42,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/api/v1/similar",
             "/api/v1/audit",
             "/api/v1/product",
+            "/api/v1/product-ontology",
             "/api/v1/test",
             "/api/v1/billing",
             "/api/v1/approval",

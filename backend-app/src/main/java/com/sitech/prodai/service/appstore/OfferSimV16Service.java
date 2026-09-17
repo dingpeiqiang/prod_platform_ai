@@ -64,6 +64,13 @@ public class OfferSimV16Service {
     private final Map<String, String> approvalByProduct = new ConcurrentHashMap<>();
     /** 模拟审批自动流转时长（毫秒）：提交后 10s 自动"通过"并上架，避免演示中审批一直停在"审批中" */
     private static final long APPROVAL_AUTO_PASS_MS = 10_000L;
+    /** 审批矩阵节点定义（节点名 -> 审批角色），四节点矩阵：产品经理→资费主管→运营审核→IT支撑（上线审批） */
+    private static final String[][] APPROVAL_MATRIX_NODES = {
+        {"产品经理审核", "产品经理"},
+        {"资费主管审核", "资费主管"},
+        {"运营审核", "运营专员"},
+        {"上线审批", "IT支撑"}
+    };
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
     /** 演示场景开关（默认全通过）：offer_id -> 注入类型集合 */
@@ -1183,6 +1190,43 @@ public class OfferSimV16Service {
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
+    /** 构建四节点审批矩阵初始态：全部"待审核"，首个节点"进行中" */
+    private List<Map<String, Object>> buildApprovalMatrix() {
+        List<Map<String, Object>> matrix = new ArrayList<>();
+        for (int i = 0; i < APPROVAL_MATRIX_NODES.length; i++) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("node_seq", i + 1);
+            node.put("node_name", APPROVAL_MATRIX_NODES[i][0]);
+            node.put("approver", APPROVAL_MATRIX_NODES[i][1]);
+            node.put("status", i == 0 ? "进行中" : "待审核");
+            node.put("opinion", "");
+            node.put("update_time", "");
+            matrix.add(node);
+        }
+        return matrix;
+    }
+
+    /** 按审批单当前状态刷新审批矩阵（终态"通过"时全部节点置"已通过"并填意见） */
+    private void refreshApprovalMatrix(Map<String, Object> approval) {
+        List<Map<String, Object>> matrix = (List<Map<String, Object>>) approval.get("approval_matrix");
+        if (matrix == null || matrix.isEmpty()) {
+            return;
+        }
+        boolean passed = "通过".equals(MapOps.str(approval.get("status")));
+        for (Map<String, Object> node : matrix) {
+            if (passed) {
+                node.put("status", "已通过");
+                node.put("opinion", "审核通过，同意上架");
+                node.put("update_time", MapOps.str(approval.get("update_time")));
+            }
+        }
+    }
+
+    private List<Map<String, Object>> approvalMatrixOf(Map<String, Object> approval) {
+        Object matrix = approval.get("approval_matrix");
+        return matrix instanceof List ? (List<Map<String, Object>>) matrix : List.of();
+    }
+
     public synchronized Map<String, Object> approvalSubmit(Map<String, Object> req) {
         if (MapOps.empty(req.get("product_id"))) {
             return camelFail("PARAM_MISSING", "product_id 必填");
@@ -1237,6 +1281,7 @@ public class OfferSimV16Service {
         approval.put("submit_time", LocalDateTime.now().format(TS));
         approval.put("update_time", LocalDateTime.now().format(TS));
         approval.put("created_at", System.currentTimeMillis());
+        approval.put("approval_matrix", buildApprovalMatrix());
         approvals.put(approvalId, approval);
         approvalByProduct.put(productId, approvalId);
         log.info("[OfferSimV16] 审批提交 approval_id={} product_id={}", approvalId, productId);
@@ -1244,6 +1289,7 @@ public class OfferSimV16Service {
         Map<String, Object> body = camelOk();
         body.put("approval_id", approvalId);
         body.put("status", "审批中");
+        body.put("approval_matrix", approvalMatrixOf(approval));
         return body;
     }
 
@@ -1264,6 +1310,7 @@ public class OfferSimV16Service {
             approval.put("approver", "产品经理");
             approval.put("opinion", "审核通过，同意上架");
             approval.put("update_time", LocalDateTime.now().format(TS));
+            refreshApprovalMatrix(approval);
             log.info("[OfferSimV16] 审批自动流转为通过 approval_id={}", approval.get("approval_id"));
         }
     }
@@ -1293,6 +1340,7 @@ public class OfferSimV16Service {
         body.put("opinion", MapOps.str(approval.get("opinion")));
         body.put("submit_time", MapOps.str(approval.get("submit_time")));
         body.put("update_time", MapOps.str(approval.get("update_time")));
+        body.put("approval_matrix", approvalMatrixOf(approval));
         return body;
     }
 

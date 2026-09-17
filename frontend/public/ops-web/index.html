@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>单品运营管理 · 视图组件</title>
+<link rel="stylesheet" href="./assets/css/common.css">
+<style>
+  .ops-main{max-width:1200px;margin:0 auto;padding:20px 24px 60px;}
+  h1{font-size:18px;margin-bottom:6px;}
+  .sub{font-size:12.5px;color:var(--text-lt);margin-bottom:20px;line-height:1.7;}
+  .comps{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .comp{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);display:block;text-decoration:none;color:inherit;transition:all .2s;}
+  .comp:hover{border-color:var(--blue);box-shadow:0 6px 18px rgba(10,95,214,.12);transform:translateY(-2px);}
+  .comp .t{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .comp .t .tc{width:8px;height:8px;border-radius:2px;background:var(--blue);display:inline-block;}
+  .comp .d{font-size:12px;color:var(--text-sub);margin-top:6px;line-height:1.6;}
+  .comp .u{font-size:11px;color:var(--text-lt);margin-top:10px;word-break:break-all;}
+  .dim2{background:var(--green);}
+  .dim3{background:var(--yellow);}
+  .dim4{background:var(--purple);}
+</style>
+</head>
+<body>
+<main class="ops-main">
+  <h1>单品运营管理 · 视图组件</h1>
+  <div class="sub">
+    由 <code>方案/运营视图2/运营视图2.html</code> 拆分为多个可独立加载的子页面组件，托管于
+    <code>frontend/public/ops-web/</code>（Vite 静态目录，构建后原样拷贝到 dist）。
+    外部 AI 平台「监控运营」环节通过 iframe 加载 <code>product-detail.html?product_id=</code>，仅展示下钻后的单品详情内容。
+  </div>
+
+  <div class="comps">
+
+    <a class="comp" href="./metrics-dictionary.html">
+      <div class="t"><span class="tc"></span>指标口径与预警规则</div>
+      <div class="d">通用经营指标字典 · 四维度 20 项指标口径与预警阈值 · 数据骨架屏。</div>
+      <div class="u">metrics-dictionary.html</div>
+    </a>
+
+    <a class="comp" href="./product-detail.html?product_id=900102308">
+      <div class="t"><span class="tc dim2"></span>单品监控运营详情（健康画像）</div>
+      <div class="d">下钻后单品页：健康度 + 效益/市场/运营质量/生命周期四维度图表 + 异动预警。</div>
+      <div class="u">product-detail.html?product_id=900102308</div>
+    </a>
+
+    <a class="comp" href="./product-detail.html?product_id=900102310">
+      <div class="t"><span class="tc dim3"></span>单品监控运营详情（亚健康画像）</div>
+      <div class="d">下钻后单品页（亚健康样例）：四维度运营问题画像与预警提示。</div>
+      <div class="u">product-detail.html?product_id=900102310</div>
+    </a>
+
+    <a class="comp" href="./product-detail.html">
+      <div class="t"><span class="tc dim4"></span>单品监控运营详情（默认画像）</div>
+      <div class="d">未指定/未收录 product_id 时的默认回退画像（可附 name/type 参数）。</div>
+      <div class="u">product-detail.html?product_id=&amp;name=&amp;type=</div>
+    </a>
+
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="card-title">embed 用法（外部 AI 平台）</div>
+    <div style="font-size:12.5px;color:var(--text-sub);line-height:1.8;margin-top:10px;">
+      部署基址：<code>http://10.86.13.201:31280</code>（nginx 网关，静态页托管于 <code>/ops-web/</code>）。<br>
+      <code>&lt;iframe src="http://10.86.13.201:31280/ops-web/product-detail.html?product_id={offer_id}" style="width:100%;height:720px;border:0;"&gt;&lt;/iframe&gt;</code><br><br>
+      说明：<b>product_id</b> 支持 <code>product_id / productId / offer_id / offerId</code> 任一参数名；<br>
+      <b>name</b> / <b>type</b> 可选，用于未收录商品时回退画像显示商品名与类型。
+    </div>
+  </div>
+</main>
+</body>
+</html>

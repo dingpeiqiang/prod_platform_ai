@@ -403,6 +403,13 @@ public class ProductOntologyController {
         return ok(body);
     }
 
+    /** 嵌套报文本体校验闸（flow-A 步骤⑤.5）：把 merge_nested 嵌套报文投影进 Java 推理平台，输出 violations/defaulted/rule_ids/trace_id。 */
+    @Operation(summary = "嵌套报文本体校验", description = "模板轨 flow-A 步骤⑤.5：嵌套报文 payload → 扁平草稿 → 合规/推导校验，输出 violations/defaulted/rule_ids/trace_id（可见性走 config/explain + config/provenance）")
+    @PostMapping("/config/validate-nested")
+    public Map<String, Object> validateNested(@RequestBody(required = false) Map<String, Object> request) {
+        return ok(productOntologyService.validateNested(request));
+    }
+
     @Operation(summary = "对话式配置", description = "自然语言对话生成/修订配置草稿（text 必填）")
     @PostMapping("/config/chat")
     public Map<String, Object> chatConfigure(@RequestBody ChatConfigureRequest request) {

@@ -1,0 +1,2636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>安徽电信 · 产品运营管理平台</title>
+<style>
+:root{
+  --blue:#0A5FD6;
+  --blue-d:#084BA8;
+  --blue-l:#EAF3FF;
+  --bg:#F0F4F9;
+  --card:#FFFFFF;
+  --text:#1A2233;
+  --text-sub:#5C6B84;
+  --text-lt:#8896AC;
+  --line:#E2E9F2;
+  --green:#00B578;
+  --green-bg:#E6F8F1;
+  --yellow:#F5A623;
+  --yellow-bg:#FFF6E5;
+  --red:#F5222D;
+  --red-bg:#FFEDEE;
+  --purple:#7A5AF8;
+  --purple-bg:#F1EDFE;
+  --radius:10px;
+  --shadow:0 4px 14px rgba(20,40,80,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+  background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== 顶部导航 ===== */
+.topbar{
+  height:56px;background:var(--blue);color:#fff;
+  display:flex;align-items:center;padding:0 24px;position:sticky;top:0;z-index:100;
+}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;margin-right:48px;letter-spacing:.5px;}
+.logo-mark{width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:14px;}
+.nav-tabs{display:flex;gap:24px;flex:1;height:100%;}
+.nav-tab{padding:0 4px;display:flex;align-items:center;color:rgba(255,255,255,.75);cursor:pointer;font-size:14px;transition:all .2s;position:relative;}
+.nav-tab.active{color:#fff;font-weight:600;}
+.nav-tab.active::after{content:"";position:absolute;bottom:0;left:0;right:0;height:3px;background:#fff;border-radius:3px 3px 0 0;}
+.topbar-right{display:flex;align-items:center;gap:16px;font-size:13px;}
+.avatar{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.4);}
+
+/* ===== 布局 ===== */
+.layout{display:flex;min-height:calc(100vh - 56px);}
+.main{flex:1;padding:20px 24px 60px;overflow-x:auto;}
+
+.view{display:none;}
+.view.active{display:block;animation:fadeIn .25s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* ===== 通用卡片 ===== */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.card-title{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.card-sub{font-size:12px;color:var(--text-lt);font-weight:400;}
+.btn{border:1px solid var(--line);background:#fff;color:var(--text);padding:6px 14px;border-radius:6px;font-size:12.5px;cursor:pointer;font-family:inherit;transition:all .18s;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--blue);color:var(--blue);}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600;}
+.btn-primary:hover{background:var(--blue-d);color:#fff;}
+.btn-sm{padding:4px 10px;font-size:12px;}
+
+/* ===== 修复后的指标表格（防乱码） ===== */
+.table-responsive {width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px;}
+.metric-table {width:100%;min-width:960px;border-collapse:collapse;table-layout:fixed;}
+.metric-table th, .metric-table td {padding:12px 14px;border-bottom:1px solid #F0F3F8;word-wrap:break-word;overflow-wrap:break-word;font-size:12.5px;vertical-align:top;line-height:1.6;}
+.metric-table th {background:#F7F9FC;color:var(--text-sub);font-weight:600;font-size:12px;text-align:center;white-space:nowrap;}
+.metric-table tbody tr:hover {background:#FAFCFE;}
+.metric-table tbody tr:last-child td {border-bottom:none;}
+.m-module {font-weight:700;color:var(--blue);border-right:1px solid var(--line);background:#FBFCFE;}
+.m-name {font-weight:600;color:var(--text);}
+.m-desc {color:var(--text-sub);}
+.m-rule .rw {color:#D48806;font-weight:600;}
+.m-rule .rr {color:var(--red);font-weight:600;}
+/* 风险等级胶囊：阈值 + 等级一体化标签（单行，不换行） */
+.m-rule {display:flex;flex-wrap:nowrap;gap:6px;align-items:center;white-space:nowrap;}
+.risk-pill {display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 6px;border-radius:20px;font-size:11.5px;line-height:1.4;white-space:nowrap;border:1px solid transparent;flex-shrink:0;}
+.risk-pill .lv {display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:10px;font-size:11px;font-weight:700;color:#fff;}
+.risk-pill .th {font-weight:600;}
+.risk-high {background:#FEF2F2;border-color:#FECACA;}
+.risk-high .lv {background:var(--red);}
+.risk-high .th {color:#B91C1C;}
+.risk-mid {background:#FFFBEB;border-color:#FDE68A;}
+.risk-mid .lv {background:#D97706;}
+.risk-mid .th {color:#B45309;}
+.risk-low {background:#F0FDF4;border-color:#BBF7D0;}
+.risk-low .lv {background:#16A34A;}
+.risk-low .th {color:#15803D;}
+
+/* ===== 大盘：驾驶舱样式（参考 cmi_zb_pom 首页风格） ===== */
+
+/* 参考页核心样式移植：收入卡 / 产品数量分析 / 服务收入 tab 区 */
+.light-section { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.section-title { font-size: 16px; font-weight: 600; color: #334155; margin-bottom: 16px; }
+.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px; }
+@media (max-width: 1100px) { .main-grid { grid-template-columns: 1fr; } }
+
+/* 左：系列收入总卡（顶部浅蓝渐变） */
+.market-revenue-card {
+  height: 300px; padding: 20px 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  background: linear-gradient(180deg, #e6effb 0%, #f0f9ff 15%, #fafbff 28%, #ffffff 45%);
+}
+.market-revenue-cols { display: flex; gap: 24px; margin-top: 6px; }
+.market-revenue-col { flex: 1; }
+.mr-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 2px; }
+.mr-icon-blue { background: #dbeafe; color: #2563eb; }
+.mr-icon-amber { background: #fef3c7; color: #d97706; }
+.mr-label { font-size: 13px; color: #4b5563; font-weight: 500; }
+.mr-value-line { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mr-value { font-size: 28px; font-weight: 700; color: #111827; line-height: 1.2; white-space: nowrap; }
+.mr-value .unit { font-size: 14px; font-weight: 600; color: #374151; }
+.mr-yoy { font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.yoy-up { color: #dc2626; font-weight: 600; }
+.yoy-down { color: #16a34a; font-weight: 600; }
+.caret { font-style: normal; font-size: 10px; font-family: "Segoe UI Symbol", sans-serif; }
+
+/* 内嵌三系列收入（通信/算力/智能 → 5G-A / 权益随心选 / 融合） */
+.series-revenue-inner {
+  margin-top: 16px; padding: 14px 16px; border-radius: 8px;
+  background: linear-gradient(180deg, #e6effb 0%, #f0f9ff 10%, #fafbff 25%, #ffffff 43%);
+  box-shadow: none;
+}
+.series-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+.series-col { padding-right: 16px; border-right: 1px solid #e5e7eb; }
+.series-col + .series-col { padding-left: 16px; }
+.series-col:last-child { border-right: none; padding-right: 0; }
+.series-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.series-head-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.series-head-name { font-size: 13.5px; font-weight: 600; color: #1f2937; }
+.series-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.series-pair .sp-label { font-size: 11.5px; color: #6b7280; }
+.series-pair .sp-value { font-size: 17px; font-weight: 700; color: #111827; }
+.series-pair .sp-value .unit { font-size: 12px; font-weight: 600; color: #374151; }
+.series-pair .sp-yoy { font-size: 11.5px; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+.series-pair .sp-yoy .k { font-weight: 500; color: #374151; }
+
+/* 右：产品数量分析卡（移植为健康度分析） */
+.health-analysis-card {
+  height: 300px; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  background: linear-gradient(180deg, #e6effb 0%, #f0f9ff 8%, #fafbff 15%, #ffffff 28%);
+  display: flex; flex-direction: column;
+}
+.health-analysis { display: flex; gap: 18px; align-items: flex-start; flex: 1; }
+.health-count-list { flex: 0 0 auto; min-width: 148px; margin-top: 26px; }
+.health-count-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; font-size: 13px; color: #475569; border-radius: 6px; }
+.health-count-row--total { font-weight: 600; color: #1e293b; }
+.health-count-row--warn { cursor: pointer; position: relative; }
+.health-count-row--warn:hover { background: #e0f2fe; }
+.health-count-row--warn.active { background: #e0f2fe; }
+.health-count-row .value { font-weight: 500; color: #1e293b; margin-left: 4px; }
+.health-count-row .trigger { margin-left: 4px; color: #64748b; font-size: 10px; transition: transform 0.2s; font-style: normal; font-family: "Segoe UI Symbol", sans-serif; }
+.health-count-row--warn.open .trigger { color: #2563eb; transform: rotate(180deg); }
+.health-warn-menu { position: absolute; right: -140px; top: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 150px; max-height: 220px; overflow-y: auto; display: none; padding: 4px 0; }
+.health-warn-menu.show { display: block; }
+.health-warn-menu .item { padding: 7px 12px; font-size: 12px; color: #475569; cursor: pointer; white-space: nowrap; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.health-warn-menu .item:hover { background: #f1f5f9; }
+.health-warn-menu .item .sc { font-weight: 700; }
+.sc-red { color: #dc2626; } .sc-yellow { color: #d97706; } .sc-green { color: #16a34a; }
+
+.health-pie-wrap { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.health-pie-figure { width: 220px; height: 100px; display: flex; align-items: center; justify-content: center; }
+.health-pie-legend { width: 220px; margin-top: 2px; }
+.health-pie-legend-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; }
+.health-pie-legend-left { display: flex; align-items: center; gap: 8px; }
+.health-pie-dot { width: 10px; height: 10px; border-radius: 9999px; flex: 0 0 auto; }
+.health-pie-legend-label { font-size: 12.5px; font-weight: 600; color: #111827; }
+.health-pie-legend-value { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+@media (max-width: 640px) {
+  .health-pie-legend-label { font-size: 11px; }
+  .health-pie-legend-value { font-size: 15px; }
+  .health-pie-legend-row { padding: 2px 0; }
+}
+
+/* 服务收入 tab 区块（单套餐收入下钻） */
+.series-revenue-box { background: linear-gradient(180deg, #e6effb 0%, #f0f9ff 3%, #fafbff 7%, #ffffff 15%); background-color: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; margin-bottom: 20px; }
+.sr-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+.sr-tabs { display: flex; }
+.sr-tab { padding: 10px 20px; font-size: 13.5px; color: #64748b; cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; margin-bottom: -1px; font-family: inherit; }
+.sr-tab:hover { color: #475569; }
+.sr-tab.active { color: #2563eb; font-weight: 600; border-bottom-color: #2563eb; }
+.sr-export { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; color: #2563eb; background: #fff; border: 1px solid #2563eb; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.sr-export:hover { background: #eff6ff; }
+.sr-content { padding: 16px; }
+.sr-cards { display: grid; gap: 12px; margin-bottom: 14px; }
+.revenue-card { cursor: pointer; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; padding: 12px 14px; transition: box-shadow .15s; }
+.revenue-card:hover { box-shadow: 0 2px 8px rgba(37,99,235,0.10); }
+.revenue-card.active { border-color: #3b82f6; background: #f3f8ff; box-shadow: 0 0 0 1px rgba(37,99,235,0.12); }
+.rc-inner { display: flex; align-items: center; gap: 10px; }
+.rc-icon { width: 28px; height: 28px; border-radius: 9999px; background: #e0f2fe; display: flex; align-items: center; justify-content: center; color: #2563eb; font-size: 14px; flex-shrink: 0; font-style: normal; font-family: "Segoe UI Symbol", sans-serif; }
+.rc-title { font-size: 12.5px; color: #64748b; }
+.rc-value { font-size: 19px; font-weight: 800; color: #0f172a; line-height: 1.2; }
+.rc-value .unit { font-size: 12px; font-weight: 600; color: #334155; }
+.rc-yoy { margin-top: 2px; display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+.rc-yoy .k { color: #111827; }
+.rc-yoy .v { font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+.rc-yoy .v.up { color: #dc2626; } .rc-yoy .v.down { color: #16a34a; }
+.rc-yoy .v .caret { font-size: 10px; }
+.sr-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 1000px) { .sr-charts { grid-template-columns: 1fr; } }
+.sr-chart-block { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
+.sr-chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
+.sr-chart-title { font-size: 13px; color: #334155; font-weight: 600; }
+.sr-legend { font-size: 11px; color: #64748b; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.sr-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.sr-legend i.sq { width: 8px; height: 8px; display: inline-block; }
+.sr-legend i.minus { width: 10px; height: 2px; display: inline-block; }
+.sr-chart-body { width: 100%; height: 190px; }
+.mode-switch { display: inline-flex; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }
+.mode-switch button { padding: 3px 10px; font-size: 12px; border: none; background: #fff; color: #6b7280; cursor: pointer; font-family: inherit; }
+.mode-switch button.active { background: #1d4ed8; color: #fff; }
+.month-picker-sm { border: 1px solid #e5e7eb; border-radius: 4px; padding: 3px 6px; font-size: 12px; color: #64748b; background: #fff; font-family: inherit; }
+
+/* 地市分布双卡 */
+.region-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+@media (max-width: 1000px) { .region-grid { grid-template-columns: 1fr; } }
+.region-card { padding: 18px 20px; }
+.region-rows { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.region-row-top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+.region-row-top span { color: var(--text-sub); }
+.region-bar { height: 8px; background: #EEF2F7; border-radius: 4px; overflow: hidden; }
+.region-bar > div { height: 100%; border-radius: 4px; }
+
+/* 产品下钻列表 */
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+.prod-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow);}
+.prod-card:hover{border-color:var(--blue);box-shadow:0 6px 18px rgba(10,95,214,.12);transform:translateY(-2px);}
+.prod-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;}
+.prod-name{font-size:13.5px;font-weight:700;line-height:1.4;flex:1;}
+.prod-code{font-size:11px;color:var(--text-lt);margin-top:3px;font-weight:400;}
+.health-score{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;}
+.hs-green{background:linear-gradient(135deg,#00B578,#22C88C);}
+.hs-yellow{background:linear-gradient(135deg,#F5A623,#FFB93D);}
+.hs-red{background:linear-gradient(135deg,#F5222D,#FF5A5F);}
+.prod-type{display:inline-block;font-size:10.5px;padding:1px 8px;border-radius:4px;font-weight:600;margin-bottom:10px;}
+.pt-single{background:var(--blue-l);color:var(--blue);}
+.pt-fusion{background:var(--purple-bg);color:var(--purple);}
+.prod-metrics{display:flex;gap:16px;font-size:11px;color:var(--text-lt);}
+.prod-metrics b{display:block;font-size:13px;color:var(--text);font-weight:700;margin-top:2px;}
+
+/* 单品详情 */
+.back-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--blue);cursor:pointer;margin-bottom:14px;font-weight:600;}
+.back-link:hover{text-decoration:underline;}
+.health-hero{background:linear-gradient(120deg,#F7FBFF,#EDF5FD);border:1px solid #D6E8F7;border-radius:var(--radius);padding:20px;margin-bottom:16px;display:flex;gap:24px;align-items:center;flex-wrap:wrap;}
+.hero-score{width:88px;height:88px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#F5A623,#FFC04D);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 18px rgba(245,166,35,.35);}
+.hero-score.hs-green{background:linear-gradient(135deg,#00B578,#22C88C);box-shadow:0 6px 18px rgba(0,181,120,.35);}
+.hero-score.hs-red{background:linear-gradient(135deg,#F5222D,#FF5A5F);box-shadow:0 6px 18px rgba(245,34,45,.35);}
+.hero-score b{font-size:30px;font-weight:800;line-height:1;}
+.hero-score span{font-size:11px;opacity:.9;margin-top:2px;}
+.hero-body{flex:1;min-width:240px;}
+.hero-tagline{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:3px 12px;border-radius:6px;margin-bottom:8px;}
+.hero-desc{font-size:13px;color:var(--text-sub);line-height:1.7;margin-bottom:12px;}
+.hero-metrics{display:flex;gap:28px;flex-wrap:wrap;}
+.hero-metrics div{font-size:11px;color:var(--text-lt);}
+.hero-metrics b{display:block;font-size:17px;color:var(--text);font-weight:700;margin-top:2px;}
+
+.dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+@media(max-width:900px){.dim-grid{grid-template-columns:1fr;}}
+.dim-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px;box-shadow:var(--shadow);}
+.dim-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+.dim-name{font-size:13px;font-weight:700;}
+.dim-name em{font-style:normal;font-size:11px;color:var(--text-lt);font-weight:400;margin-left:6px;}
+.dim-score{font-size:18px;font-weight:800;color:var(--blue);}
+.dim-score small{font-size:11px;color:var(--text-lt);font-weight:400;}
+.dim-list{display:flex;flex-direction:column;gap:7px;}
+.dim-item{display:flex;justify-content:space-between;align-items:center;font-size:12px;}
+.dim-item span{color:var(--text-sub);}
+.dim-item b{font-weight:600;}
+.mini-score{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;padding:0 6px;margin-left:6px;}
+.ms-h{background:var(--green);}
+.ms-m{background:var(--yellow);}
+.ms-l{background:var(--red);}
+
+/* ===== 运营问题模块（单产品画像 → 图表化改造） ===== */
+.ops-mod{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 14px;margin-bottom:0;box-shadow:var(--shadow);}
+.ops-mod-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.ops-mod-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.ops-mod-title .bar{width:4px;height:15px;border-radius:2px;background:var(--blue);display:inline-block;}
+.ops-mod-title .q{font-size:11.5px;font-weight:500;color:var(--text-lt);border-left:1px solid var(--line);padding-left:10px;margin-left:2px;}
+.ops-mod-score{font-size:17px;font-weight:800;color:var(--blue);}
+.ops-mod-score small{font-size:11px;color:var(--text-lt);font-weight:400;}
+.ops-3col{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:16px;align-items:stretch;}
+@media(max-width:1100px){.ops-3col{grid-template-columns:1fr 1fr;} .ops-3col .ops-col:last-child{grid-column:1/-1;}}
+.ops-col{min-width:0;}
+.ops-bigbox{background:linear-gradient(160deg,#F2F8FF,#EAF3FD);border:1px solid #D6E8F7;border-radius:10px;padding:16px;display:flex;flex-direction:column;justify-content:center;}
+.ops-biglabel{font-size:12px;color:var(--text-sub);}
+.ops-bigvalue{font-size:32px;font-weight:800;color:#111827;line-height:1.15;margin:6px 0 10px;}
+.ops-bigvalue small{font-size:14px;font-weight:600;color:var(--text-sub);}
+.ops-bigchips{display:flex;flex-direction:column;gap:6px;}
+.ops-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;}
+.ops-chip .k{color:var(--text-lt);}
+.ops-chip .v{font-weight:700;color:var(--green);}
+.ops-chip .v.down{color:var(--red);}
+.ops-stat{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:8px 0;border-bottom:1px dashed #EDF0F4;}
+.ops-stat:last-child{border-bottom:none;}
+.ops-stat span{color:var(--text-sub);}
+.ops-stat b{font-weight:700;}
+.ops-chartbox{width:100%;height:150px;}
+.ops-legend{font-size:11px;color:var(--text-lt);display:flex;justify-content:center;gap:14px;margin-top:4px;}
+.ops-legend span{display:inline-flex;align-items:center;gap:4px;}
+.ops-dot{width:8px;height:8px;border-radius:2px;display:inline-block;}
+/* 市场 Tab */
+.ops-tabs{display:inline-flex;border:1px solid #D1D5DB;border-radius:6px;overflow:hidden;}
+.ops-tabs button{background:none;border:none;padding:5px 14px;font-size:12px;color:#6b7280;cursor:pointer;font-family:inherit;}
+.ops-tabs button.active{background:var(--blue);color:#fff;font-weight:600;}
+.ops-tabpane{display:none;}
+.ops-tabpane.active{display:block;}
+.ops-sub-toggle{display:inline-flex;border:1px solid #D1D5DB;border-radius:6px;overflow:hidden;margin-bottom:8px;}
+.ops-sub-toggle button{background:none;border:none;padding:3px 14px;font-size:11.5px;color:#6b7280;cursor:pointer;font-family:inherit;}
+.ops-sub-toggle button.active{background:var(--blue);color:#fff;font-weight:600;}
+/* 环形 */
+.ops-ring{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.ops-ringchart{width:150px;height:120px;}
+.ops-ring legend{font-size:11px;color:var(--text-lt);}
+.ops-ring-row{display:flex;justify-content:space-between;width:100%;font-size:11.5px;color:var(--text-sub);}
+/* 漏斗 */
+.ops-funnel{display:flex;flex-direction:column;gap:6px;}
+.ops-funnel-step{position:relative;text-align:right;padding:8px 12px;color:#fff;font-size:12px;font-weight:600;border-radius:4px;}
+.ops-funnel-step small{display:block;font-weight:400;opacity:.9;}
+/* 状态卡 */
+.ops-statusgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.ops-status{background:#F7F9FC;border:1px solid #EDF0F4;border-radius:8px;padding:10px 12px;}
+.ops-status .lab{font-size:11px;color:var(--text-sub);}
+.ops-status .val{font-size:16px;font-weight:700;margin:3px 0;}
+.ops-status .st{font-size:11px;font-weight:600;}
+.st-ok{color:var(--green);}
+.st-warn{color:#D48806;}
+.st-bad{color:var(--red);}
+/* 风险洞察卡 */
+.ops-risks{display:flex;flex-direction:column;gap:8px;}
+.ops-risk{border-radius:8px;padding:9px 12px;font-size:12px;border:1px solid var(--line);}
+.ops-risk .rt{font-weight:700;display:flex;align-items:center;gap:6px;}
+.ops-risk .rd{color:var(--text-sub);margin-top:3px;line-height:1.5;}
+.risk-ok{background:var(--green-bg);border-color:#C4F0DE;}
+.risk-ok .rt{color:#00704D;}
+.risk-warn{background:var(--yellow-bg);border-color:#FFE3B0;}
+.risk-warn .rt{color:#9A6400;}
+.risk-bad{background:var(--red-bg);border-color:#FFD4D6;}
+.risk-bad .rt{color:#A8071A;}
+/* 生命周期生命线 */
+.ops-life{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:stretch;}
+@media(max-width:900px){.ops-life{grid-template-columns:1fr 1fr;}}
+.ops-life-stage{position:relative;background:#F7F9FC;border:1px solid var(--line);border-radius:9px;padding:14px 12px;text-align:center;}
+.ops-life-stage .ico{font-size:18px;margin-bottom:4px;}
+.ops-life-stage .sn{font-size:12px;font-weight:700;margin-bottom:8px;}
+.ops-life-stage .sv{font-size:22px;font-weight:800;color:var(--blue);line-height:1.1;}
+.ops-life-stage .sv small{font-size:11px;font-weight:500;color:var(--text-sub);}
+.ops-life-stage .sd{font-size:11px;color:var(--text-lt);margin-top:6px;}
+.ops-life-stage::after{content:"";position:absolute;top:50%;right:-14px;width:14px;height:2px;background:#CBD6E3;}
+.ops-life-stage:last-child::after{display:none;}
+/* 市场维度：左用户 / 右渠道 两栏 */
+.ops-mkt-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:820px){.ops-mkt-2col{grid-template-columns:1fr;}}
+.ops-mkt-block{min-width:0;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#FBFCFE;}
+.ops-mkt-block-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;}
+.ops-mkt-block-title{font-size:12.5px;font-weight:700;color:var(--text);}
+.ops-mkt-sub{font-size:11px;color:var(--text-lt);}
+.ops-rate-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.ops-utabpane{display:none;}
+.ops-utabpane.active{display:block;}
+.ops-mkt-month{border:1px solid #D1D5DB;border-radius:5px;padding:4px 8px;font-size:11.5px;color:var(--text-sub);font-family:inherit;background:#fff;cursor:pointer;}
+/* 运营质量维度：汇总小卡 */
+.ops-q-chips{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+.ops-q-chip{flex:1;min-width:120px;border-radius:9px;padding:9px 11px 9px 11px;position:relative;overflow:hidden;background:#FBFCFE;border:1px solid var(--line);}
+.ops-q-chip::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;}
+.ops-q-chip .q-ico{width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;float:left;margin-right:9px;}
+.ops-q-chip span{display:block;font-size:11px;color:var(--text-sub);line-height:1.2;}
+.ops-q-chip .q-row{display:flex;align-items:baseline;gap:6px;}
+.ops-q-chip b{font-size:17px;font-weight:800;line-height:1.25;}
+.ops-q-chip .q-trend{font-size:10.5px;font-weight:700;}
+.ops-q-chip em{font-style:normal;font-size:10.5px;color:var(--text-lt);display:block;margin-top:1px;}
+.ops-q-chip.c-green{border-color:#C9EEDD;}
+.ops-q-chip.c-green::before{background:var(--green);}
+.ops-q-chip.c-green .q-ico{background:#D7F1E4;}
+.ops-q-chip.c-green b{color:var(--green);}
+.ops-q-chip.c-green .q-trend{color:var(--green);}
+.ops-q-chip.c-yellow{border-color:#FFE3B0;}
+.ops-q-chip.c-yellow::before{background:var(--yellow);}
+.ops-q-chip.c-yellow .q-ico{background:#FFF0D4;}
+.ops-q-chip.c-yellow b{color:#9A6400;}
+.ops-q-chip.c-yellow .q-trend{color:#9A6400;}
+.ops-q-chip.c-blue{border-color:#C7E0FB;}
+.ops-q-chip.c-blue::before{background:var(--blue);}
+.ops-q-chip.c-blue .q-ico{background:#DBECFF;}
+.ops-q-chip.c-blue b{color:var(--blue);}
+.ops-q-chip.c-blue .q-trend{color:var(--blue);}
+.ops-q-chip.c-red{border-color:#F7CFD2;}
+.ops-q-chip.c-red::before{background:var(--red);}
+.ops-q-chip.c-red .q-ico{background:#FADBDD;}
+.ops-q-chip.c-red b{color:var(--red);}
+.ops-q-chip.c-red .q-trend{color:var(--red);}
+/* 生命周期维度：用户生命线 */
+.ops-life{display:grid;grid-template-columns:repeat(5,1fr);gap:18px;align-items:stretch;}
+@media(max-width:900px){.ops-life{grid-template-columns:1fr 1fr;}}
+.ops-life-node{position:relative;background:linear-gradient(180deg,#FDFEFF,#F4F7FC);border:1px solid var(--line);border-radius:11px;padding:14px 10px 12px;text-align:center;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.ops-life-node::after{content:"";position:absolute;top:50%;right:-19px;width:18px;border-top:2px dashed #CBD6E3;}
+.ops-life-node:last-child::after{display:none;}
+.ops-life-node .ops-tag{display:inline-block;font-size:10.5px;color:#fff;border-radius:20px;padding:2px 10px;font-weight:600;margin-bottom:10px;}
+.ops-life-node .ln-ico{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:6px;}
+.ops-life-node .ln-ico svg{width:20px;height:20px;}
+.ln-ico.c-blue{background:#E3EFFE;}
+.ln-ico.c-blue svg{stroke:var(--blue);}
+.ln-ico.c-green{background:#E2F7EE;}
+.ln-ico.c-green svg{stroke:var(--green);}
+.ln-ico.c-purple{background:#F1EDFE;}
+.ln-ico.c-purple svg{stroke:var(--purple);}
+.ln-ico.c-amber{background:#FDF1DD;}
+.ln-ico.c-amber svg{stroke:#D48806;}
+.ln-ico.c-red{background:#FDE7E8;}
+.ln-ico.c-red svg{stroke:var(--red);}
+.ops-life-node .ln-name{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.ops-life-node .ln-val{font-size:22px;font-weight:800;line-height:1.1;color:var(--text);}
+.ops-life-node .ln-val small{font-size:11px;font-weight:500;color:var(--text-sub);}
+.ops-life-node .ln-pct{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-lt);background:#EEF3F9;border-radius:12px;padding:3px 9px;margin-top:9px;}
+.ops-life-node .ln-pct i{width:7px;height:7px;border-radius:2px;display:inline-block;}
+.ln-t-new{background:var(--blue);}
+.ln-t-act{background:var(--green);}
+.ln-t-ret{background:var(--purple);}
+.ln-t-sil{background:#D48806;}
+.ln-t-churn{background:var(--red);}
+/* 生命周期：阶段占比流量图 */
+.ops-flow{margin-top:14px;padding-top:14px;border-top:1px dashed #EDF0F4;}
+.ops-flow-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.ops-flow-title{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px;color:var(--text);}
+.ops-flow-title i{width:4px;height:13px;border-radius:2px;background:var(--purple);display:inline-block;}
+.ops-flow-title .flow-sub{font-size:11px;color:var(--text-lt);font-weight:400;margin-left:6px;}
+.ops-flow-legend{display:flex;gap:14px;font-size:11px;color:var(--text-lt);flex-wrap:wrap;}
+.ops-flow-legend span{display:inline-flex;align-items:center;gap:5px;}
+.ops-flow-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+.ops-flow-track{display:flex;width:100%;height:40px;border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.04);}
+.ops-flow-seg{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:12px;font-weight:700;white-space:nowrap;min-width:0;}
+.ops-flow-seg small{font-size:10px;font-weight:400;opacity:.92;}
+
+.alert{display:flex;gap:12px;padding:12px 16px;border-radius:8px;margin-bottom:10px;font-size:12.5px;line-height:1.6;border:1px solid transparent;}
+.alert-icon{width:22px;height:22px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:700;}
+.alert-red{background:var(--red-bg);border-color:#FFD4D6;}
+.alert-red .alert-icon{background:var(--red);}
+.alert-red .alert-text{color:#A8071A;}
+.alert-yellow{background:var(--yellow-bg);border-color:#FFE3B0;}
+.alert-yellow .alert-icon{background:var(--yellow);}
+.alert-yellow .alert-text{color:#9A6400;}
+.alert-green{background:var(--green-bg);border-color:#C4F0DE;}
+.alert-green .alert-icon{background:var(--green);}
+.alert-green .alert-text{color:#00704D;}
+.alert-text b{font-weight:700;}
+
+/* 骨架屏 */
+.skeleton-wrap{background:#FBFCFE;border:1px dashed #D3DEEC;border-radius:10px;padding:32px 20px;text-align:center;}
+.skeleton-icon{width:46px;height:46px;border-radius:12px;background:var(--blue-l);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px;}
+.skeleton-title{font-size:13.5px;font-weight:700;margin-bottom:6px;}
+.skeleton-desc{font-size:12px;color:var(--text-lt);line-height:1.7;margin-bottom:18px;}
+.sk-bars{display:flex;flex-direction:column;gap:9px;max-width:560px;margin:0 auto;}
+.sk-bar{height:38px;border-radius:7px;background:linear-gradient(90deg,#EEF3F9 25%,#F7FAFD 50%,#EEF3F9 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;}
+@keyframes shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:#CBD6E3;border-radius:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+</style>
+</head>
+<body>
+
+<!-- ===== 顶部导航 ===== -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">皖</div>
+    产品运营管理平台
+  </div>
+  <div class="nav-tabs"></div>
+  <div class="topbar-right">
+    <span>2026-09-15</span>
+    <div class="avatar">张</div>
+    <span>管理员</span>
+  </div>
+</div>
+
+<div class="layout">
+  <main class="main">
+
+    <!-- ======================================================
+         视图一：单品运营配置（刚上线 · 无数据）
+    ======================================================= -->
+    <section id="view-single" class="view active">
+
+      <div class="card" style="padding:16px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px;">
+              5G-A套餐159元
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 11px;border-radius:20px;background:var(--green-bg);color:var(--green);">
+                <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+                已上线 · 监控初始化中
+              </span>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-lt);margin-top:4px;">
+              产品编码：900102308 &nbsp;·&nbsp; 上线时间：2026-09-15 10:24 &nbsp;·&nbsp; 归属：省公司市场部
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-primary" onclick="switchView('board')">查看运营视图</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:14px 18px;background:#FBFCFE;border:1px solid #D3DEEC;">
+        <div style="display:flex;gap:12px;font-size:12.5px;line-height:1.6;color:#00704D;">
+          <div style="width:20px;height:20px;border-radius:5px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">✓</div>
+          <div>
+            <b>配置、稽核、校准、测试、受理验证已全部通过</b>，OA 上线审批已完成。
+            当前产品进入监控运维阶段，因刚上线暂无实际数据，以下为 <b>通用经营指标口径</b> 与 <b>预警推送规则</b>，确认后系统将自 T+1 日出账起自动采集并触发监控。
+          </div>
+        </div>
+      </div>
+
+      <!-- 指标字典与预警规则 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">通用经营指标 · 预警规则 · 推送方式</div>
+        </div>
+
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--text-sub);padding:10px 14px;background:#F7F9FC;border-radius:6px;margin-bottom:12px;">
+          <b style="color:var(--text);font-size:12px;">预警机制</b>
+          <span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">达到阈值即触发</span></span>
+          <span style="display:flex;align-items:center;gap:5px;"><i style="width:9px;height:9px;border-radius:2px;background:var(--purple);display:inline-block;"></i>异常推送（日调度）</span>
+        </div>
+
+        <div class="table-responsive">
+          <table class="metric-table">
+            <thead>
+              <tr>
+                <th style="width:108px;">指标类型</th>
+                <th style="width:116px;">指标名称</th>
+                <th style="width:320px;">预警规则</th>
+                <th>指标口径</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- 效益维度：收入与价值类 -->
+              <tr>
+                <td class="m-module" rowspan="5">效益维度</td>
+                <td class="m-name">当月收入</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;10%</span></span></td>
+                <td class="m-desc">该套餐当月出账收入（报表口径）</td>
+              </tr>
+              <tr>
+                <td class="m-name">累计收入</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;10%</span></span></td>
+                <td class="m-desc">该套餐当年 1 月至统计月累计出账收入</td>
+              </tr>
+              <tr>
+                <td class="m-name">收入同/环比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">下滑&gt;5% 或连续两月下滑</span></span></td>
+                <td class="m-desc">（本月收入 − 上月收入）÷ 上月收入（或同比口径）</td>
+              </tr>
+              <tr>
+                <td class="m-name">利润率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 12%</span></span></td>
+                <td class="m-desc">（收入 − 营销费用 − 成本）÷ 收入</td>
+              </tr>
+              <tr>
+                <td class="m-name">营销费用占比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 18%</span></span></td>
+                <td class="m-desc">该套餐营销费用 ÷ 该套餐收入</td>
+              </tr>
+
+              <!-- 市场维度：规模、活跃与渠道 -->
+              <tr>
+                <td class="m-module" rowspan="5">市场维度</td>
+                <td class="m-name">到达用户</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">环比↓&gt;5%</span></span></td>
+                <td class="m-desc">当月出账且状态正常的该套餐主卡用户数（到达用户），副卡不重复计算</td>
+              </tr>
+              <tr>
+                <td class="m-name">月净增用户</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">连续 3 日为负</span></span></td>
+                <td class="m-desc">当月新增 − 当月退订</td>
+              </tr>
+              <tr>
+                <td class="m-name">活跃用户率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 60%</span></span></td>
+                <td class="m-desc">当月有使用行为的该套餐用户 ÷ 到达用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">付费活跃率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 5%</span></span></td>
+                <td class="m-desc">付费活跃用户（当月产生实际计费账单）÷ 到达用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">渠道结构占比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">单一渠道占比&gt;70%</span></span></td>
+                <td class="m-desc">线下营业厅 / 中国电信线上渠道 / 10000热线 / 安徽电信线上渠道 到达用户占比</td>
+              </tr>
+
+              <!-- 运营质量维度：质量与留存 -->
+              <tr>
+                <td class="m-module" rowspan="5">运营质量维度</td>
+                <td class="m-name">T+1 活跃率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 70%</span></span></td>
+                <td class="m-desc">订购次日内仍活跃的新增用户 ÷ 当期新增用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">T+3 退订率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 3%</span></span></td>
+                <td class="m-desc">订购后 3 天内退订用户 ÷ 当期新增用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">T+6 退订率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 10%</span></span></td>
+                <td class="m-desc">订购后 6 天内退订用户 ÷ 当期新增用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">业务办理成功率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 98%</span></span></td>
+                <td class="m-desc">该套餐受理成功笔数 ÷ 受理总笔数</td>
+              </tr>
+              <tr>
+                <td class="m-name">资费投诉率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 0.1%</span></span></td>
+                <td class="m-desc">涉及该套餐资费的投诉工单数 ÷ 到达用户</td>
+              </tr>
+
+              <!-- 生命周期维度：新增、留存与用户结构 -->
+              <tr>
+                <td class="m-module" rowspan="5">生命周期维度</td>
+                <td class="m-name">新用户吸引占比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 8%</span></span></td>
+                <td class="m-desc">新入网用户中订购该套餐的人数占比</td>
+              </tr>
+              <tr>
+                <td class="m-name">活跃用户占比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 60%</span></span></td>
+                <td class="m-desc">存量用户中当月为活跃阶段的占比（月活跃率）</td>
+              </tr>
+              <tr>
+                <td class="m-name">T+6 留存率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 95%</span></span></td>
+                <td class="m-desc">订购后第 6 天仍保持套餐状态的新增用户 ÷ 当期新增用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">沉默用户占比</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">高于 10%</span></span></td>
+                <td class="m-desc">当月无任何使用行为的用户 ÷ 到达用户</td>
+              </tr>
+              <tr>
+                <td class="m-name">续约率</td>
+                <td class="m-rule"><span class="risk-pill risk-high"><span class="lv">阈</span><span class="th">低于 90%</span></span></td>
+                <td class="m-desc">到期用户中成功续约该套餐的用户占比</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 数据骨架 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">运营数据看板</div>
+          <div class="card-sub">数据采集状态</div>
+        </div>
+        <div class="skeleton-wrap">
+          <div class="skeleton-icon">◔</div>
+          <div class="skeleton-title">数据积累中</div>
+          <div class="skeleton-desc">
+            产品上线时间 <b>2026-09-15</b>，预计 <b>T+1 日出账后</b> 首次生成数据。<br>
+            届时将自动填充规模、新增、收入、质量、渠道五大模块的完整看板。
+          </div>
+          <div class="sk-bars">
+            <div class="sk-bar"></div>
+            <div class="sk-bar"></div>
+            <div class="sk-bar" style="width:80%;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================
+         视图二：驾驶舱风格调度大盘（仅通用经营指标）
+    ======================================================= -->
+    <section id="view-board" class="view">
+
+      <!-- 顶部：面包屑 + 月份选择（参考首页工具栏） -->
+      <div style="display:flex;align-items:center;justify-content:space-between;height:44px;margin-bottom:6px;">
+        <div style="font-size:13px;">
+          <span style="color:#4b5563;font-weight:500;">全省大盘</span>
+        </div>
+        <div style="position:relative;display:inline-flex;align-items:center;">
+          <input type="month" id="boardMonthPicker" value="2026-09" title="选择月份"
+                 style="padding:8px 36px 8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;color:#374151;background:#fff;appearance:none;-webkit-appearance:none;font-family:inherit;">
+          <span style="position:absolute;right:10px;color:#9ca3af;pointer-events:none;font-size:13px;">📅</span>
+        </div>
+      </div>
+
+      <!-- 第一排：左 = 全省系列收入（2/3），右 = 健康度分析（1/3） -->
+      <div class="main-grid">
+        <!-- 左：系列收入总卡 -->
+        <div class="market-revenue-card">
+          <div class="section-title">市场收入</div>
+          <div class="market-revenue-cols">
+            <!-- 累计收入 -->
+            <div class="market-revenue-col">
+              <div style="display:flex;align-items:flex-start;gap:12px;">
+                <div class="mr-icon mr-icon-blue">🖥</div>
+                <div>
+                  <div style="font-size:13px;color:#4b5563;font-weight:500;">累计收入</div>
+                  <div class="mr-value-line">
+                    <div class="mr-value">1023.21<span class="unit">万元</span></div>
+                    <div style="font-size:12.5px;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                      <span style="color:#374151;">月同比</span>
+                      <span class="yoy-down">-10.1% <i class="caret">▼</i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- 当月收入 -->
+            <div class="market-revenue-col">
+              <div style="display:flex;align-items:flex-start;gap:12px;">
+                <div class="mr-icon mr-icon-amber">👤</div>
+                <div>
+                  <div style="font-size:13px;color:#4b5563;font-weight:500;">当月收入</div>
+                  <div class="mr-value-line">
+                    <div class="mr-value">980.55<span class="unit">万元</span></div>
+                    <div style="font-size:12.5px;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+                      <span style="color:#374151;">月同比</span>
+                      <span class="yoy-up">3.6% <i class="caret">▲</i></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 内嵌三系列收入：通信服务收入→5G-A系列 / 算力服务收入→权益随心选系列 / 智能服务收入→融合套餐系列 -->
+          <div class="series-revenue-inner">
+            <div class="series-grid">
+              <!-- 5G-A系列收入 -->
+              <div class="series-col">
+                <div class="series-head">
+                  <div class="series-head-icon" style="background:#dbeafe;color:#2563eb;">📶</div>
+                  <div class="series-head-name">5G-A系列收入</div>
+                </div>
+                <div class="series-pair">
+                  <div>
+                    <div class="sp-label">累计收入</div>
+                    <div class="sp-value">613.45<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-up">2.7% <i class="caret">▲</i></span></div>
+                  </div>
+                  <div>
+                    <div class="sp-label">当月收入</div>
+                    <div class="sp-value">420.18<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-down">-5.2% <i class="caret">▼</i></span></div>
+                  </div>
+                </div>
+              </div>
+              <!-- 权益随心选系列收入 -->
+              <div class="series-col">
+                <div class="series-head">
+                  <div class="series-head-icon" style="background:#d1fae5;color:#059669;">🎛</div>
+                  <div class="series-head-name">权益随心选系列收入</div>
+                </div>
+                <div class="series-pair">
+                  <div>
+                    <div class="sp-label">累计收入</div>
+                    <div class="sp-value">245.67<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-down">-6.2% <i class="caret">▼</i></span></div>
+                  </div>
+                  <div>
+                    <div class="sp-label">当月收入</div>
+                    <div class="sp-value">180.34<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-up">1.9% <i class="caret">▲</i></span></div>
+                  </div>
+                </div>
+              </div>
+              <!-- 融合套餐系列收入 -->
+              <div class="series-col">
+                <div class="series-head">
+                  <div class="series-head-icon" style="background:#ffedd5;color:#ea580c;">🧩</div>
+                  <div class="series-head-name">融合套餐系列收入</div>
+                </div>
+                <div class="series-pair">
+                  <div>
+                    <div class="sp-label">累计收入</div>
+                    <div class="sp-value">188.22<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-down">-4.8% <i class="caret">▼</i></span></div>
+                  </div>
+                  <div>
+                    <div class="sp-label">当月收入</div>
+                    <div class="sp-value">150.91<span class="unit">万</span></div>
+                    <div class="sp-yoy"><span class="k">月同比</span><span class="yoy-up">2.3% <i class="caret">▲</i></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：健康度分析 -->
+        <div class="health-analysis-card">
+          <div class="section-title">健康度分析</div>
+          <div class="health-analysis">
+            <div class="health-count-list">
+              <div class="health-count-row health-count-row--total">
+                <span>套餐总数</span>
+                <span class="value">10个</span>
+              </div>
+              <div class="health-count-row health-count-row--warn" data-dropdown="dropdown-warn">
+                <span>预警套餐数</span>
+                <span><span class="value">4个</span><i class="trigger">▾</i></span>
+                <div id="dropdown-warn" class="health-warn-menu">
+                  <div class="item"><span>5G-A套餐单品299元</span><span class="sc sc-yellow">59</span></div>
+                  <div class="item"><span>5G-A融合套餐199元</span><span class="sc sc-red">52</span></div>
+                  <div class="item"><span>权益随心选29元</span><span class="sc sc-red">58</span></div>
+                  <div class="item"><span>权益随心选39元</span><span class="sc sc-red">48</span></div>
+                </div>
+              </div>
+              <div class="health-count-row health-count-row--warn" data-dropdown="dropdown-excellent">
+                <span>健康套餐数</span>
+                <span><span class="value">3个</span><i class="trigger">▾</i></span>
+                <div id="dropdown-excellent" class="health-warn-menu">
+                  <div class="item"><span>5G-A融合套餐199元</span><span class="sc sc-green">91</span></div>
+                  <div class="item"><span>5G-A套餐159元</span><span class="sc sc-green">88</span></div>
+                  <div class="item"><span>5G-A融合套餐239元</span><span class="sc sc-green">87</span></div>
+                </div>
+              </div>
+              <div class="health-count-row health-count-row--warn" data-dropdown="dropdown-good">
+                <span>亚健康套餐数</span>
+                <span><span class="value">3个</span><i class="trigger">▾</i></span>
+                <div id="dropdown-good" class="health-warn-menu">
+                  <div class="item"><span>5G-A套餐单品199元</span><span class="sc sc-yellow">79</span></div>
+                  <div class="item"><span>5G-A融合套餐299元</span><span class="sc sc-yellow">74</span></div>
+                  <div class="item"><span>5G-A套餐单品239元</span><span class="sc sc-yellow">65</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="health-pie-wrap">
+              <div class="health-pie-figure">
+                <svg id="healthPieSvg" width="220" height="100" viewBox="0 0 220 100" role="img" aria-label="套餐健康度分布">
+                  <ellipse cx="110" cy="82" rx="78" ry="6" fill="rgba(29, 78, 216, 0.12)"></ellipse>
+                  <ellipse cx="110" cy="50" rx="58" ry="16" stroke="#2563eb" stroke-width="3" fill="none" opacity="0.18"></ellipse>
+                  <g id="healthPieBottom" transform="translate(0,10) scale(1,0.40) translate(0,64)"></g>
+                  <g id="healthPieTop" transform="scale(1,0.40) translate(0,64)"></g>
+                </svg>
+              </div>
+              <div class="health-pie-legend">
+                <div class="health-pie-legend-row">
+                  <div class="health-pie-legend-left">
+                    <span class="health-pie-dot" style="background:#0ea5ff"></span>
+                    <span class="health-pie-legend-label">健康套餐（≥80分）</span>
+                  </div>
+                  <span class="health-pie-legend-value" style="color:#0ea5ff">30%</span>
+                </div>
+                <div class="health-pie-legend-row">
+                  <div class="health-pie-legend-left">
+                    <span class="health-pie-dot" style="background:#ff2a7a"></span>
+                    <span class="health-pie-legend-label">亚健康套餐（60-80分）</span>
+                  </div>
+                  <span class="health-pie-legend-value" style="color:#ff2a7a">40%</span>
+                </div>
+                <div class="health-pie-legend-row" style="padding-bottom:0;">
+                  <div class="health-pie-legend-left">
+                    <span class="health-pie-dot" style="background:#ff7a00"></span>
+                    <span class="health-pie-legend-label">预警套餐（&lt;60分）</span>
+                  </div>
+                  <span class="health-pie-legend-value" style="color:#ff7a00">30%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二排：单套餐收入下钻（tab 切换 + 导出 + 双图） -->
+      <div class="series-revenue-box">
+        <div class="sr-toolbar">
+          <div class="sr-tabs">
+            <button type="button" class="sr-tab active" data-tab="wga">5G-A系列收入</button>
+            <button type="button" class="sr-tab" data-tab="quanyi">权益随心选系列收入</button>
+            <button type="button" class="sr-tab" data-tab="ronghe">融合套餐系列收入</button>
+          </div>
+          <button type="button" class="sr-export" id="srExportBtn">⇪ 导出</button>
+        </div>
+        <div class="sr-content" id="srContent"></div>
+      </div>
+
+      <!-- 第三排：套餐下钻列表 -->
+      <div class="card" id="board-list">
+        <div class="card-head">
+          <div class="card-title">下钻至全量套餐</div>
+          <div class="card-sub">点击单个套餐进入健康度运营视图</div>
+        </div>
+        <div class="prod-grid">
+          <div class="prod-card" onclick="openHealth('5G-A套餐159元','900102308','单品')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A套餐159元</div><div class="prod-code">900102308</div></div>
+              <div class="health-score hs-green">88</div>
+            </div>
+            <span class="prod-type pt-single">单品</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>12.5 万</b></div>
+              <div>新增<b>1.82 万</b></div>
+              <div>环比<b style="color:var(--red);">+16.4%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A套餐单品199元','900113045','单品')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A套餐单品199元</div><div class="prod-code">900113045</div></div>
+              <div class="health-score hs-green">85</div>
+            </div>
+            <span class="prod-type pt-single">单品</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>8.3 万</b></div>
+              <div>新增<b>1.14 万</b></div>
+              <div>环比<b style="color:var(--red);">+12.6%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A套餐单品239元','900113043','单品')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A套餐单品239元</div><div class="prod-code">900113043</div></div>
+              <div class="health-score hs-green">82</div>
+            </div>
+            <span class="prod-type pt-single">单品</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>6.7 万</b></div>
+              <div>新增<b>0.86 万</b></div>
+              <div>环比<b style="color:var(--red);">+8.2%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A套餐单品299元','900102310','单品')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A套餐单品299元</div><div class="prod-code">900102310</div></div>
+              <div class="health-score hs-yellow">79</div>
+            </div>
+            <span class="prod-type pt-single">单品</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>4.2 万</b></div>
+              <div>新增<b>0.42 万</b></div>
+              <div>环比<b style="color:var(--green);">-3.6%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A融合套餐199元','900113046','融合')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A融合套餐199元</div><div class="prod-code">900113046</div></div>
+              <div class="health-score hs-green">91</div>
+            </div>
+            <span class="prod-type pt-fusion">融合</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>15.8 万</b></div>
+              <div>新增<b>2.14 万</b></div>
+              <div>环比<b style="color:var(--red);">+21.8%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A融合套餐199元','900102306','融合')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A融合套餐199元</div><div class="prod-code">900102306</div></div>
+              <div class="health-score hs-yellow">74</div>
+            </div>
+            <span class="prod-type pt-fusion">融合</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>3.6 万</b></div>
+              <div>新增<b>0.32 万</b></div>
+              <div>环比<b style="color:var(--green);">-7.4%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A融合套餐239元','900113044','融合')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A融合套餐239元</div><div class="prod-code">900113044</div></div>
+              <div class="health-score hs-green">87</div>
+            </div>
+            <span class="prod-type pt-fusion">融合</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>9.4 万</b></div>
+              <div>新增<b>1.26 万</b></div>
+              <div>环比<b style="color:var(--red);">+14.2%</b></div>
+            </div>
+          </div>
+          <div class="prod-card" onclick="openHealth('5G-A融合套餐299元','900102307','融合')">
+            <div class="prod-card-top">
+              <div><div class="prod-name">5G-A融合套餐299元</div><div class="prod-code">900102307</div></div>
+              <div class="health-score hs-green">83</div>
+            </div>
+            <span class="prod-type pt-fusion">融合</span>
+            <div class="prod-metrics">
+              <div>到达用户<b>5.8 万</b></div>
+              <div>新增<b>0.68 万</b></div>
+              <div>环比<b style="color:var(--red);">+9.6%</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 单品健康度详情（点击后显示） ===== -->
+      <div id="health-detail" style="display:none;">
+        <div class="back-link" onclick="closeHealth()">← 返回 5G-A 产品列表</div>
+        <div class="card" style="padding:16px 20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div>
+              <div style="font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px;">
+                <span id="hd-name">5G-A套餐159元</span>
+                <span id="hd-code" style="font-size:12px;font-weight:400;color:var(--text-lt);">900102308</span>
+                <span id="hd-type" class="prod-type pt-single" style="margin-bottom:0;">单品</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-sm">导出报表</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="health-hero">
+          <div class="hero-score hs-green"><b>88</b><span>分</span></div>
+          <div class="hero-body">
+            <div class="hero-tagline" style="background:var(--green-bg);color:var(--green);">健康 · 较上月 +4 分</div>
+            <div class="hero-desc">5G-A 网络驻留比持续提升，高值用户占比稳定；当月新增 1.82 万、新增占比 10.0% 保持稳健，续约率 91.5%、整体运营健康。</div>
+            <div class="hero-metrics">
+              <div>到达用户<b>12.5 万</b></div>
+              <div>当月新增<b style="color:var(--green);">1.82 万</b></div>
+              <div>当月收入<b>3,168 万</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dim-grid">
+
+          <!-- ① 效益维度：赚了多少？赚得怎么样？ -->
+          <div class="ops-mod">
+            <div class="ops-mod-head">
+              <div class="ops-mod-title"><span class="bar"></span>效益维度<span class="q">赚了多少 · 赚得怎么样</span></div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="ops-tabs" id="opsEffectTabs">
+                  <button type="button" class="active" data-effect="income">收入趋势</button>
+                  <button type="button" data-effect="profit">利润率</button>
+                  <button type="button" data-effect="crm">营销费用占比</button>
+                </div>
+                <div class="ops-mod-score">40<small> 分</small></div>
+              </div>
+            </div>
+
+            <!-- 收入趋势：双柱(当月+累计) + 同/环比折线 -->
+            <div class="ops-tabpane active" id="opsEffectIncomePane">
+              <div class="ops-sub-toggle" id="opsEffectRateTabs">
+                <button type="button" class="active" data-rate="yoy">同比</button>
+                <button type="button" data-rate="mom">环比</button>
+              </div>
+              <div class="ops-chartbox" id="opsEffectIncome" style="height:225px;"></div>
+              <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>当月收入(万元)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>累计收入(万元)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>当月收入同比/环比(%)</span></div>
+            </div>
+
+            <!-- 利润率：折线 -->
+            <div class="ops-tabpane" id="opsEffectProfitPane">
+              <div class="ops-chartbox" id="opsEffectProfit" style="height:225px;"></div>
+              <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>利润率(%)<b style="margin-left:6px;color:var(--text);">14.2%</b></span></div>
+            </div>
+
+            <!-- 营销费用占比：折线 -->
+            <div class="ops-tabpane" id="opsEffectCrmPane">
+              <div class="ops-chartbox" id="opsEffectCrm" style="height:225px;"></div>
+              <div class="ops-legend"><span><i class="ops-dot" style="background:var(--yellow);"></i>营销费用占比(%)<b style="margin-left:6px;color:var(--text);">16.5%</b></span></div>
+            </div>
+          </div>
+
+          <!-- ② 市场维度：有多少人 · 增长怎么样 · 人从哪来？ -->
+          <div class="ops-mod">
+            <div class="ops-mod-head">
+              <div class="ops-mod-title"><span class="bar" style="background:var(--green);"></span>市场维度<span class="q">有多少人 · 增长怎么样 · 人从哪里来</span></div>
+              <div class="ops-mod-score">22<small> 分</small></div>
+            </div>
+
+            <!-- 左：用户 ／ 右：渠道划分 -->
+            <div class="ops-mkt-2col">
+
+              <!-- 用户区块 -->
+              <div class="ops-mkt-block ops-mkt-users">
+                <div class="ops-mkt-block-head">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span class="ops-mkt-block-title">用户</span>
+                    <div class="ops-tabs" id="opsUserTabs">
+                      <button type="button" class="active" data-utab="scale">规模</button>
+                      <button type="button" data-utab="active">活跃</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 规模：双柱(到达用户+月净增) + 同/环比折线 -->
+                <div class="ops-utabpane active" id="opsUserScalePane">
+                  <div class="ops-rate-row">
+                    <span class="ops-mkt-sub">到达用户 · 月净增</span>
+                    <div class="ops-sub-toggle" id="opsGrowthRateTabs">
+                      <button type="button" class="active" data-grate="yoy">同比</button>
+                      <button type="button" data-grate="mom">环比</button>
+                    </div>
+                  </div>
+                  <div class="ops-chartbox" id="opsMktScale" style="height:195px;"></div>
+                  <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>到达用户(万)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>月净增(万)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>同/环比(%)</span></div>
+                </div>
+
+                <!-- 活跃：活跃用户率 + 付费活跃率 双折线 -->
+                <div class="ops-utabpane" id="opsUserActivePane">
+                  <div class="ops-chartbox" id="opsActiveTrend" style="height:195px;"></div>
+                  <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>活跃用户率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>付费活跃率(%)</span></div>
+                </div>
+              </div>
+
+              <!-- 渠道划分区块 -->
+              <div class="ops-mkt-block ops-mkt-channel">
+                <div class="ops-mkt-block-head">
+                  <span class="ops-mkt-block-title">渠道划分</span>
+                  <select class="ops-mkt-month" id="opsChannelMonth">
+                    <option value="2025-12">2025年12月</option>
+                    <option value="2026-01">2026年1月</option>
+                    <option value="2026-02">2026年2月</option>
+                    <option value="2026-03">2026年3月</option>
+                    <option value="2026-04">2026年4月</option>
+                    <option value="2026-05">2026年5月</option>
+                    <option value="2026-06">2026年6月</option>
+                    <option value="2026-07">2026年7月</option>
+                    <option value="2026-08">2026年8月</option>
+                    <option value="2026-09" selected>2026年9月</option>
+                  </select>
+                </div>
+                <div class="ops-chartbox" id="opsChannelPie" style="height:245px;"></div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- ③ 运营质量维度：运营有没有问题？哪里有问题？ -->
+          <div class="ops-mod">
+            <div class="ops-mod-head">
+              <div class="ops-mod-title"><span class="bar" style="background:var(--yellow);"></span>运营质量维度<span class="q">运营有没有问题 · 哪里有问题</span></div>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="ops-tabs" id="opsQualityTabs">
+                  <button type="button" class="active" data-qt="retain">留存</button>
+                  <button type="button" data-qt="service">服务</button>
+                </div>
+                <div class="ops-mod-score">18<small> 分</small></div>
+              </div>
+            </div>
+
+            <!-- 留存：T+1活跃率 / T+3 / T+6 退订率 -->
+            <div class="ops-tabpane active" id="opsQRetainPane">
+              <div class="ops-q-chips">
+                <div class="ops-q-chip c-green"><span class="q-ico">📈</span><span>T+1 活跃率</span><div class="q-row"><b>78.4%</b><span class="q-trend">▲0.2</span></div><em>新增次日仍活跃</em></div>
+                <div class="ops-q-chip c-yellow"><span class="q-ico">📉</span><span>T+3 退订率</span><div class="q-row"><b>1.40%</b><span class="q-trend">▼0.06</span></div><em>新增 3 日退订</em></div>
+                <div class="ops-q-chip c-blue"><span class="q-ico">📉</span><span>T+6 退订率</span><div class="q-row"><b>2.30%</b><span class="q-trend">▼0.06</span></div><em>新增 6 日退订</em></div>
+              </div>
+              <div class="ops-chartbox" id="opsQRetain" style="height:225px;"></div>
+              <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>T+1活跃率(%)</span><span><i class="ops-dot" style="background:var(--yellow);"></i>T+3退订率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>T+6退订率(%)</span></div>
+            </div>
+
+            <!-- 服务：资费投诉率 / 业务办理成功率 -->
+            <div class="ops-tabpane" id="opsQServicePane">
+              <div class="ops-q-chips">
+                <div class="ops-q-chip c-blue"><span class="q-ico">✅</span><span>业务办理成功率</span><div class="q-row"><b>99.2%</b><span class="q-trend">▲0.1</span></div><em>高于 98% 目标线</em></div>
+                <div class="ops-q-chip c-red"><span class="q-ico">⚠️</span><span>资费投诉率</span><div class="q-row"><b>0.02%</b><span class="q-trend">▼</span></div><em>远低于 0.1% 预警线</em></div>
+              </div>
+              <div class="ops-chartbox" id="opsQService" style="height:225px;"></div>
+              <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>业务办理成功率(%)</span><span><i class="ops-dot" style="background:var(--red);"></i>资费投诉率(%)</span></div>
+            </div>
+          </div>
+
+          <!-- ④ 生命周期维度：用户处在哪个阶段？新增质量怎么样？ -->
+          <div class="ops-mod">
+            <div class="ops-mod-head">
+              <div class="ops-mod-title"><span class="bar" style="background:var(--purple);"></span>生命周期维度<span class="q">用户处在哪个阶段 · 新增质量怎么样</span></div>
+              <div class="ops-mod-score">8<small> 分</small></div>
+            </div>
+            <!-- 用户生命线：各阶段表现 + 占比 -->
+            <div class="ops-life">
+              <div class="ops-life-node">
+                <span class="ops-tag ln-t-new">新增</span>
+                <div class="ln-ico c-blue"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z"/><path d="M2 19a6 6 0 0 1 10-4.2"/><path d="M19 8v6M16 11h6"/></svg></div>
+                <div class="ln-name">新增用户</div>
+                <div class="ln-val">10.0<small>%</small></div>
+                <div class="ln-pct"><i style="background:var(--blue);"></i>本月新增占比</div>
+              </div>
+              <div class="ops-life-node">
+                <span class="ops-tag ln-t-act">激活</span>
+                <div class="ln-ico c-green"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
+                <div class="ln-name">活跃用户</div>
+                <div class="ln-val">86.4<small>%</small></div>
+                <div class="ln-pct"><i style="background:var(--green);"></i>月活跃率</div>
+              </div>
+              <div class="ops-life-node">
+                <span class="ops-tag ln-t-ret">留存</span>
+                <div class="ln-ico c-purple"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v5c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-3z"/><path d="m9 12 2 2 4-4"/></svg></div>
+                <div class="ln-name">留存用户</div>
+                <div class="ln-val">97.7<small>%</small></div>
+                <div class="ln-pct"><i style="background:var(--purple);"></i>T+6 留存</div>
+              </div>
+              <div class="ops-life-node">
+                <span class="ops-tag ln-t-sil">沉默</span>
+                <div class="ln-ico c-amber"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13.5A9 9 0 1 1 10.5 3a7 7 0 0 0 10.5 10.5z"/></svg></div>
+                <div class="ln-name">沉默用户</div>
+                <div class="ln-val">8.5<small>%</small></div>
+                <div class="ln-pct"><i style="background:#D48806;"></i>沉默占比</div>
+              </div>
+              <div class="ops-life-node">
+                <span class="ops-tag ln-t-churn">流失 · 续约</span>
+                <div class="ln-ico c-red"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.9-6.6"/><path d="M21 3v5h-5"/></svg></div>
+                <div class="ln-name">续约率</div>
+                <div class="ln-val">91.5<small>%</small></div>
+                <div class="ln-pct"><i style="background:var(--red);"></i>到期续约率</div>
+              </div>
+            </div>
+
+            <!-- 阶段占比流量图 -->
+            <div class="ops-flow">
+              <div class="ops-flow-head">
+                <div class="ops-flow-title"><i></i>存量结构 · 阶段占比</div>
+              </div>
+              <div class="ops-flow-track">
+                <div class="ops-flow-seg" style="width:86.4%;background:linear-gradient(90deg,#00A86C,#00B578);">活跃用户<small>86.4%</small></div>
+                <div class="ops-flow-seg" style="width:8.5%;background:linear-gradient(90deg,#C07A06,#D48806);">沉默<small>8.5%</small></div>
+                <div class="ops-flow-seg" style="width:5.1%;background:linear-gradient(90deg,#D91B27,#F5222D);">流失<small>5.1%</small></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="card-title" style="font-size:13px;"><span style="width:3px;height:14px;background:var(--red);border-radius:2px;display:inline-block;"></span>异动预警</div></div>
+          <div class="alert alert-green" style="margin-bottom:0;"><div class="alert-icon">✓</div><div class="alert-text"><b>存量基本盘稳定：</b>投诉率 0.02%、T+6 退订率 2.30%、业务办理成功率 99.2%、续约率 91.5% 均在正常范围</div></div>
+        </div>
+      </div>
+        <!-- ===== 5G-A套餐单品299元 健康度详情（亚健康画像） ===== -->
+        <div id="health-detail-299" style="display:none;">
+          <div class="back-link" onclick="closeHealth()">← 返回 5G-A 产品列表</div>
+          <div class="card" style="padding:16px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+              <div>
+                <div style="font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px;">
+                  <span id="hd-name-299">5G-A套餐单品299元</span>
+                  <span id="hd-code-299" style="font-size:12px;font-weight:400;color:var(--text-lt);">900102310</span>
+                  <span id="hd-type-299" class="prod-type pt-single" style="margin-bottom:0;">单品</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-sm">导出报表</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="health-hero">
+            <div class="hero-score hs-yellow"><b>79</b><span>分</span></div>
+            <div class="hero-body">
+              <div class="hero-tagline" style="background:var(--yellow-bg);color:#D48806;">亚健康 · 较上月 -3 分</div>
+              <div class="hero-desc">高端档位用户增长放缓，收入环比连续两月下滑（-2.8%），利润率降至 11.6% 而营销费用占比升至 18.9%，续约率 88.6% 偏低、沉默用户占比 14.2% 偏高，需重点维系高值存量用户并加大权益焕活。</div>
+              <div class="hero-metrics">
+                <div>到达用户<b>4.2 万</b></div>
+                <div>当月新增<b style="color:var(--green);">0.42 万</b></div>
+                <div>当月收入<b>1,246 万</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dim-grid">
+
+            <!-- ① 效益维度 -->
+            <div class="ops-mod">
+              <div class="ops-mod-head">
+                <div class="ops-mod-title"><span class="bar"></span>效益维度<span class="q">赚了多少 · 赚得怎么样</span></div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div class="ops-tabs" id="opsEffectTabs299">
+                    <button type="button" class="active" data-effect="income">收入趋势</button>
+                    <button type="button" data-effect="profit">利润率</button>
+                    <button type="button" data-effect="crm">营销费用占比</button>
+                  </div>
+                  <div class="ops-mod-score">33<small> 分</small></div>
+                </div>
+              </div>
+
+              <div class="ops-tabpane active" id="opsEffectIncomePane299">
+                <div class="ops-sub-toggle" id="opsEffectRateTabs299">
+                  <button type="button" class="active" data-rate="yoy">同比</button>
+                  <button type="button" data-rate="mom">环比</button>
+                </div>
+                <div class="ops-chartbox" id="opsEffectIncome299" style="height:225px;"></div>
+                <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>当月收入(万元)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>累计收入(万元)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>当月收入同比/环比(%)</span></div>
+              </div>
+
+              <div class="ops-tabpane" id="opsEffectProfitPane299">
+                <div class="ops-chartbox" id="opsEffectProfit299" style="height:225px;"></div>
+                <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>利润率(%)<b style="margin-left:6px;color:var(--text);">11.6%</b></span></div>
+              </div>
+
+              <div class="ops-tabpane" id="opsEffectCrmPane299">
+                <div class="ops-chartbox" id="opsEffectCrm299" style="height:225px;"></div>
+                <div class="ops-legend"><span><i class="ops-dot" style="background:var(--yellow);"></i>营销费用占比(%)<b style="margin-left:6px;color:var(--text);">18.9%</b></span></div>
+              </div>
+            </div>
+
+            <!-- ② 市场维度 -->
+            <div class="ops-mod">
+              <div class="ops-mod-head">
+                <div class="ops-mod-title"><span class="bar" style="background:var(--green);"></span>市场维度<span class="q">有多少人 · 增长怎么样 · 人从哪里来</span></div>
+                <div class="ops-mod-score">19<small> 分</small></div>
+              </div>
+
+              <div class="ops-mkt-2col">
+                <div class="ops-mkt-block ops-mkt-users">
+                  <div class="ops-mkt-block-head">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                      <span class="ops-mkt-block-title">用户</span>
+                      <div class="ops-tabs" id="opsUserTabs299">
+                        <button type="button" class="active" data-utab="scale">规模</button>
+                        <button type="button" data-utab="active">活跃</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="ops-utabpane active" id="opsUserScalePane299">
+                    <div class="ops-rate-row">
+                      <span class="ops-mkt-sub">到达用户 · 月净增</span>
+                      <div class="ops-sub-toggle" id="opsGrowthRateTabs299">
+                        <button type="button" class="active" data-grate="yoy">同比</button>
+                        <button type="button" data-grate="mom">环比</button>
+                      </div>
+                    </div>
+                    <div class="ops-chartbox" id="opsMktScale299" style="height:195px;"></div>
+                    <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>到达用户(万)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>月净增(万)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>同/环比(%)</span></div>
+                  </div>
+
+                  <div class="ops-utabpane" id="opsUserActivePane299">
+                    <div class="ops-chartbox" id="opsActiveTrend299" style="height:195px;"></div>
+                    <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>活跃用户率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>付费活跃率(%)</span></div>
+                  </div>
+                </div>
+
+                <div class="ops-mkt-block ops-mkt-channel">
+                  <div class="ops-mkt-block-head">
+                    <span class="ops-mkt-block-title">渠道划分</span>
+                    <select class="ops-mkt-month" id="opsChannelMonth299">
+                      <option value="2025-12">2025年12月</option>
+                      <option value="2026-01">2026年1月</option>
+                      <option value="2026-02">2026年2月</option>
+                      <option value="2026-03">2026年3月</option>
+                      <option value="2026-04">2026年4月</option>
+                      <option value="2026-05">2026年5月</option>
+                      <option value="2026-06">2026年6月</option>
+                      <option value="2026-07">2026年7月</option>
+                      <option value="2026-08">2026年8月</option>
+                      <option value="2026-09" selected>2026年9月</option>
+                    </select>
+                  </div>
+                  <div class="ops-chartbox" id="opsChannelPie299" style="height:245px;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ③ 运营质量维度 -->
+            <div class="ops-mod">
+              <div class="ops-mod-head">
+                <div class="ops-mod-title"><span class="bar" style="background:var(--yellow);"></span>运营质量维度<span class="q">运营有没有问题 · 哪里有问题</span></div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div class="ops-tabs" id="opsQualityTabs299">
+                    <button type="button" class="active" data-qt="retain">留存</button>
+                    <button type="button" data-qt="service">服务</button>
+                  </div>
+                  <div class="ops-mod-score">17<small> 分</small></div>
+                </div>
+              </div>
+
+              <div class="ops-tabpane active" id="opsQRetainPane299">
+                <div class="ops-q-chips">
+                  <div class="ops-q-chip c-green"><span class="q-ico">📈</span><span>T+1 活跃率</span><div class="q-row"><b>76.1%</b><span class="q-trend">▲0.3</span></div><em>新增次日仍活跃</em></div>
+                  <div class="ops-q-chip c-red"><span class="q-ico">⚠️</span><span>T+3 退订率</span><div class="q-row"><b>2.10%</b><span class="q-trend">▼0.03</span></div><em>新增 3 日退订</em></div>
+                  <div class="ops-q-chip c-yellow"><span class="q-ico">⚠️</span><span>T+6 退订率</span><div class="q-row"><b>3.20%</b><span class="q-trend">▼0.02</span></div><em>新增 6 日退订</em></div>
+                </div>
+                <div class="ops-chartbox" id="opsQRetain299" style="height:225px;"></div>
+                <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>T+1活跃率(%)</span><span><i class="ops-dot" style="background:var(--yellow);"></i>T+3退订率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>T+6退订率(%)</span></div>
+              </div>
+
+              <div class="ops-tabpane" id="opsQServicePane299">
+                <div class="ops-q-chips">
+                  <div class="ops-q-chip c-yellow"><span class="q-ico">⚠️</span><span>业务办理成功率</span><div class="q-row"><b>98.4%</b><span class="q-trend">▲0.1</span></div><em>略低于 99% 目标</em></div>
+                  <div class="ops-q-chip c-red"><span class="q-ico">⚠️</span><span>资费投诉率</span><div class="q-row"><b>0.04%</b><span class="q-trend">▼</span></div><em>接近 0.05% 预警</em></div>
+                </div>
+                <div class="ops-chartbox" id="opsQService299" style="height:225px;"></div>
+                <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>业务办理成功率(%)</span><span><i class="ops-dot" style="background:var(--red);"></i>资费投诉率(%)</span></div>
+              </div>
+            </div>
+
+            <!-- ④ 生命周期维度 -->
+            <div class="ops-mod">
+              <div class="ops-mod-head">
+                <div class="ops-mod-title"><span class="bar" style="background:var(--purple);"></span>生命周期维度<span class="q">用户处在哪个阶段 · 新增质量怎么样</span></div>
+                <div class="ops-mod-score">6<small> 分</small></div>
+              </div>
+              <div class="ops-life">
+                <div class="ops-life-node">
+                  <span class="ops-tag ln-t-new">新增</span>
+                  <div class="ln-ico c-blue"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0z"/><path d="M2 19a6 6 0 0 1 10-4.2"/><path d="M19 8v6M16 11h6"/></svg></div>
+                  <div class="ln-name">新增用户</div>
+                  <div class="ln-val">10.5<small>%</small></div>
+                  <div class="ln-pct"><i style="background:var(--blue);"></i>本月新增占比</div>
+                </div>
+                <div class="ops-life-node">
+                  <span class="ops-tag ln-t-act">激活</span>
+                  <div class="ln-ico c-green"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
+                  <div class="ln-name">活跃用户</div>
+                  <div class="ln-val">80.5<small>%</small></div>
+                  <div class="ln-pct"><i style="background:var(--green);"></i>月活跃率</div>
+                </div>
+                <div class="ops-life-node">
+                  <span class="ops-tag ln-t-ret">留存</span>
+                  <div class="ln-ico c-purple"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v5c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-3z"/><path d="m9 12 2 2 4-4"/></svg></div>
+                  <div class="ln-name">留存用户</div>
+                  <div class="ln-val">96.8<small>%</small></div>
+                  <div class="ln-pct"><i style="background:var(--purple);"></i>T+6 留存</div>
+                </div>
+                <div class="ops-life-node">
+                  <span class="ops-tag ln-t-sil">沉默</span>
+                  <div class="ln-ico c-amber"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13.5A9 9 0 1 1 10.5 3a7 7 0 0 0 10.5 10.5z"/></svg></div>
+                  <div class="ln-name">沉默用户</div>
+                  <div class="ln-val">14.2<small>%</small></div>
+                  <div class="ln-pct"><i style="background:#D48806;"></i>沉默占比</div>
+                </div>
+                <div class="ops-life-node">
+                  <span class="ops-tag ln-t-churn">流失 · 续约</span>
+                  <div class="ln-ico c-red"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.9-6.6"/><path d="M21 3v5h-5"/></svg></div>
+                  <div class="ln-name">续约率</div>
+                  <div class="ln-val">88.6<small>%</small></div>
+                  <div class="ln-pct"><i style="background:var(--red);"></i>到期续约率</div>
+                </div>
+              </div>
+
+              <div class="ops-flow">
+                <div class="ops-flow-head">
+                  <div class="ops-flow-title"><i></i>存量结构 · 阶段占比</div>
+                </div>
+                <div class="ops-flow-track">
+                  <div class="ops-flow-seg" style="width:80.5%;background:linear-gradient(90deg,#00A86C,#00B578);">活跃用户<small>80.5%</small></div>
+                  <div class="ops-flow-seg" style="width:14.2%;background:linear-gradient(90deg,#C07A06,#D48806);">沉默<small>14.2%</small></div>
+                  <div class="ops-flow-seg" style="width:5.3%;background:linear-gradient(90deg,#D91B27,#F5222D);">流失<small>5.3%</small></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="card">
+            <div class="card-head"><div class="card-title" style="font-size:13px;"><span style="width:3px;height:14px;background:var(--red);border-radius:2px;display:inline-block;"></span>异动预警</div></div>
+            <div class="alert alert-yellow" style="margin-bottom:0;"><div class="alert-icon">!</div><div class="alert-text"><b>收入连续两月环比下滑（-2.8%）</b>，续约率 88.6% 与 T+6 退订率 3.20% 均偏离健康线、沉默用户占比 14.2% 偏高，建议针对到期用户开展权益加码维系并加大沉默用户唤醒</div></div>
+          </div>
+        </div>
+
+
+    </section>
+
+  </main>
+</div>
+
+<script src="./lib/echarts/echarts.min.js"></script>
+<script>
+  function switchView(name){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+name).classList.add('active');
+    if(name==='board'){ closeHealth(); }
+    // view-board 之前处于 display:none，ECharts 以 0 尺寸初始化；激活后需 resize 重绘
+    if(name==='board'){
+      setTimeout(function(){
+        if (window.__srChartsResize) window.__srChartsResize();
+      }, 50);
+    }
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  var healthProfiles = {
+    '900102308': 'health-detail',
+    '900102310': 'health-detail-299'
+  };
+
+  function openHealth(name, code, type){
+    var active = document.querySelector('.view.active');
+    if (active && active.id !== 'view-board') {
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      document.getElementById('view-board').classList.add('active');
+    }
+    var targetId = healthProfiles[code] || 'health-detail';
+    var detail = document.getElementById(targetId);
+    document.querySelectorAll('#view-board [id^="health-detail"]').forEach(function(el){ el.style.display='none'; });
+    document.getElementById('board-list').style.display='none';
+    if (targetId === 'health-detail') {
+      document.getElementById('hd-name').textContent = name;
+      document.getElementById('hd-code').textContent = code;
+      setType('hd-type', type);
+    } else {
+      document.getElementById('hd-name-299').textContent = name;
+      document.getElementById('hd-code-299').textContent = code;
+      setType('hd-type-299', type);
+    }
+    detail.style.display='block';
+    setTimeout(function(){
+      detail.scrollIntoView({behavior:'smooth', block:'start'});
+      if (window.__opsCharts) window.__opsCharts.forEach(function(c){ if (c) c.resize(); });
+    }, 50);
+  }
+
+  function setType(id, type){
+    var typeEl = document.getElementById(id);
+    typeEl.textContent = type;
+    typeEl.className = 'prod-type ' + (type==='融合' ? 'pt-fusion' : 'pt-single');
+    typeEl.style.marginBottom = '0';
+  }
+
+  function closeHealth(){
+    document.querySelectorAll('#view-board [id^="health-detail"]').forEach(function(el){ el.style.display='none'; });
+    document.getElementById('board-list').style.display='block';
+  }
+
+  /* ===== 右侧：健康度分析 ===== */
+
+      // 健康度分布下拉（不健康/健康/亚健康 套餐明细）
+  (function initHealthDropdowns(){
+    var rows = document.querySelectorAll('.health-count-row--warn');
+    rows.forEach(function(row){
+      var dropdownId = row.getAttribute('data-dropdown');
+      var menu = dropdownId ? document.getElementById(dropdownId) : null;
+      if (!menu) return;
+      row.addEventListener('click', function(e){
+        e.stopPropagation();
+        var isOpen = row.classList.contains('open');
+        rows.forEach(function(r){ r.classList.remove('open'); });
+        document.querySelectorAll('.health-warn-menu').forEach(function(m){ m.classList.remove('show'); });
+        if (!isOpen) {
+          row.classList.add('open');
+          menu.classList.add('show');
+        }
+      });
+      menu.querySelectorAll('.item').forEach(function(item){
+        item.addEventListener('click', function(e){ e.stopPropagation(); });
+      });
+    });
+    document.addEventListener('click', function(){
+      rows.forEach(function(r){ r.classList.remove('open'); });
+      document.querySelectorAll('.health-warn-menu').forEach(function(m){ m.classList.remove('show'); });
+    });
+  })();
+
+  // 健康度三段环形饼图（30/40/30，与参考首页同款 3D 观感 SVG）
+  (function initHealthPieChart(){
+    var svg = document.getElementById('healthPieSvg');
+    var topGroup = document.getElementById('healthPieTop');
+    var bottomGroup = document.getElementById('healthPieBottom');
+    if (!svg || !topGroup || !bottomGroup) return;
+
+    var segments = [
+      { p: 30, color: '#0ea5ff', bottomColor: '#0b66c3' },
+      { p: 40, color: '#ff2a7a', bottomColor: '#c40055' },
+      { p: 30, color: '#ff7a00', bottomColor: '#c75a00' }
+    ];
+
+    var cx = 110, cy = 55, r = 48, strokeW = 26;
+
+    function pointOnCircle(angleDeg){
+      var rad = angleDeg * Math.PI / 180;
+      return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
+    }
+    function arcPath(startDeg, endDeg){
+      var start = pointOnCircle(startDeg);
+      var end = pointOnCircle(endDeg);
+      var sweepFlag = 1;
+      var largeArcFlag = (endDeg - startDeg) > 180 ? 1 : 0;
+      return 'M ' + start.x + ' ' + start.y + ' A ' + r + ' ' + r + ' 0 ' + largeArcFlag + ' ' + sweepFlag + ' ' + end.x + ' ' + end.y;
+    }
+
+    topGroup.innerHTML = '';
+    bottomGroup.innerHTML = '';
+    var current = 0;
+    segments.forEach(function(seg){
+      var span = seg.p * 3.6;
+      var next = current + span;
+      var d = arcPath(current, next);
+
+      var pathTop = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathTop.setAttribute('d', d);
+      pathTop.setAttribute('stroke', seg.color);
+      pathTop.setAttribute('stroke-width', strokeW);
+      pathTop.setAttribute('fill', 'none');
+      pathTop.setAttribute('stroke-linecap', 'butt');
+      topGroup.appendChild(pathTop);
+
+      var pathBottom = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathBottom.setAttribute('d', d);
+      pathBottom.setAttribute('stroke', seg.bottomColor);
+      pathBottom.setAttribute('stroke-width', strokeW);
+      pathBottom.setAttribute('fill', 'none');
+      pathBottom.setAttribute('stroke-linecap', 'butt');
+      bottomGroup.appendChild(pathBottom);
+
+      current = next;
+    });
+  })();
+
+  /* ===== 单产品画像：运营问题模块图表（159 元画像试点） ===== */
+  window.__opsCharts = [];
+  (function initOpsCharts(){
+    if (typeof echarts === 'undefined') return;
+    var months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月'];
+    var fontSub = '#5C6B84', fontLt = '#8896AC', gridLine = '#EEF2F7';
+    var blue = '#0A5FD6', green = '#00B578', red = '#F5222D', yellow = '#F5A623';
+
+    function mk(id){
+      var el = document.getElementById(id);
+      if (!el) return null;
+      var c = echarts.init(el);
+      window.__opsCharts.push(c);
+      return c;
+    }
+    function baseAxis(extra){
+      var o = {
+        grid:{left:6,right:12,top:24,bottom:4,containLabel:true},
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'shadow'}},
+        xAxis:{type:'category',data:months,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:11}},
+        yAxis:{type:'value',splitLine:{lineStyle:{color:gridLine}},axisLabel:{color:fontLt,fontSize:11}},
+        color:[blue,yellow,green]
+      };
+      for (var k in extra) o[k] = extra[k];
+      return o;
+    }
+    function lineSeries(name,data,color,area){
+      var s = {name:name,type:'line',data:data,smooth:true,symbolSize:5,lineStyle:{width:2.5,color:color},itemStyle:{color:color}};
+      if (area) s.areaStyle = {opacity:.12,color:color};
+      return s;
+    }
+
+    // ① 效益：三标签（收入趋势 / 利润率 / 营销费用占比）
+    var effectIncomeChart = mk('opsEffectIncome');
+    var effectProfitChart = mk('opsEffectProfit');
+    var effectCrmChart = mk('opsEffectCrm');
+
+    // 收入趋势：双柱(当月收入左轴 + 累计收入右轴) + 同/环比折线(右轴)
+    var effectRateState = 'yoy';
+    var monthIncome = [2950,3010,2980,3050,3120,3060,3150,3210,3168];
+    var cumIncome = [2950,5960,8940,11990,15110,18170,21320,24530,27698];
+    var rateData = {
+      yoy:  [6.5,7.1,6.8,7.9,8.7,9.0,9.2,9.4,9.6],
+      mom:  [null,2.0,-1.0,2.3,2.3,-1.9,2.9,1.9,-1.3]
+    };
+    function renderEffectIncome(){
+      if (!effectIncomeChart) return;
+      var rateName = effectRateState === 'yoy' ? '同比(%)' : '环比(%)';
+      function barGrad(c1,c2){
+        return new echarts.graphic.LinearGradient(0,0,0,1,[
+          {offset:0,color:c1},{offset:1,color:c2}
+        ]);
+      }
+      function barGrad(c1,c2){
+        return new echarts.graphic.LinearGradient(0,0,0,1,[
+          {offset:0,color:c1},{offset:1,color:c2}
+        ]);
+      }
+      effectIncomeChart.setOption({
+        grid:{left:6,right:6,top:10,bottom:4,containLabel:true},
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'cross'}},
+        xAxis:{type:'category',data:months,boundaryGap:true,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:11}},
+        yAxis:[
+          {type:'value',splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+          {type:'value',name:'%',nameTextStyle:{color:fontLt,fontSize:10},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+        ],
+        series:[
+          {name:'当月收入(万元)',type:'bar',data:monthIncome,barWidth:11,barCategoryGap:'20%',
+            itemStyle:{color:barGrad('#1d8bff','#9fd8ff'),shadowColor:'rgba(29,139,255,0.35)',shadowBlur:8,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+          {name:'累计收入(万元)',type:'bar',data:cumIncome,barWidth:11,barCategoryGap:'20%',
+            itemStyle:{color:barGrad('#0a4eb0','#7ab4f5'),shadowColor:'rgba(10,78,176,0.35)',shadowBlur:8,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+          {name:rateName,type:'line',yAxisIndex:1,data:rateData[effectRateState],smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},z:12}
+        ]
+      });
+    }
+    renderEffectIncome();
+
+    // 利润率：折线
+    if (effectProfitChart){
+      effectProfitChart.setOption(Object.assign(baseAxis(), {
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+        color:[blue],
+        series:[lineSeries('利润率(%)',[11.8,12.2,12.0,12.9,13.4,13.1,13.8,14.0,14.2],blue)]
+      }));
+    }
+    // 营销费用占比：折线
+    if (effectCrmChart){
+      effectCrmChart.setOption(Object.assign(baseAxis(), {
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+        color:[yellow],
+        series:[lineSeries('营销费用占比(%)',[18.2,17.8,18.0,17.4,17.0,17.2,16.8,16.6,16.5],yellow)]
+      }));
+    }
+
+    // 效益三主标签切换
+    var effectTabs = document.querySelectorAll('#opsEffectTabs button');
+    function setEffectPane(key){
+      var map = { income:'opsEffectIncomePane', profit:'opsEffectProfitPane', crm:'opsEffectCrmPane' };
+      effectTabs.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-effect')===key); });
+      ['opsEffectIncomePane','opsEffectProfitPane','opsEffectCrmPane'].forEach(function(id){
+        document.getElementById(id).classList.toggle('active', id===map[key]);
+      });
+      setTimeout(function(){
+        [effectIncomeChart,effectProfitChart,effectCrmChart].forEach(function(c){ if (c) c.resize(); });
+      }, 20);
+    }
+    effectTabs.forEach(function(btn){
+      btn.addEventListener('click', function(){ setEffectPane(this.getAttribute('data-effect')); });
+    });
+    // 同/环比子切换
+    var rateBtns = document.querySelectorAll('#opsEffectRateTabs button');
+    rateBtns.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        rateBtns.forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        effectRateState = btn.getAttribute('data-rate');
+        renderEffectIncome();
+      });
+    });
+
+    // ② 市场-用户：双柱(到达用户+月净增) + 同/环比折线
+    var mktScaleChart = mk('opsMktScale');
+    var arriveUsers = [10.8,11.0,11.2,11.4,11.6,11.8,12.0,12.3,12.5];
+    var netIncrease = [6.4,6.6,6.2,6.9,7.1,6.8,7.4,7.5,7.9];
+    var mktRateData = {
+      yoy: [5.8,6.0,6.1,6.3,6.5,6.7,6.9,7.1,7.3],
+      mom: [null,1.9,1.8,1.8,1.8,1.7,1.7,2.5,1.6]
+    };
+    var mktRateState = 'yoy';
+    function renderMktScale(){
+      if (!mktScaleChart) return;
+      var rateName = mktRateState === 'yoy' ? '同比(%)' : '环比(%)';
+      mktScaleChart.setOption({
+        grid:{left:6,right:6,top:8,bottom:2,containLabel:true},
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'cross'}},
+        xAxis:{type:'category',data:months,boundaryGap:true,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+        yAxis:[
+          {type:'value',splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+          {type:'value',name:'%',nameTextStyle:{color:fontLt,fontSize:9},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+        ],
+        series:[
+          {name:'到达用户(万)',type:'bar',data:arriveUsers,barWidth:8,
+            itemStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#1d8bff'},{offset:1,color:'#9fd8ff'}]),shadowColor:'rgba(29,139,255,0.35)',shadowBlur:7,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+          {name:'月净增(万)',type:'bar',data:netIncrease,barWidth:8,
+            itemStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#0a4eb0'},{offset:1,color:'#7ab4f5'}]),shadowColor:'rgba(10,78,176,0.35)',shadowBlur:7,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+          {name:rateName,type:'line',yAxisIndex:1,data:mktRateData[mktRateState],smooth:true,symbol:'circle',symbolSize:4,lineStyle:{width:2},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},z:12}
+        ]
+      });
+    }
+    renderMktScale();
+
+    // ② 市场-用户：活跃用户率 + 付费活跃率 双折线（直接展示）
+    var activeTrendChart = mk('opsActiveTrend');
+    var activeUserData = [82.1,82.6,83.0,83.9,84.5,85.2,85.8,86.1,86.4];
+    var paidActiveData = [89.5,90.0,90.3,91.0,91.4,91.9,92.2,92.5,92.8];
+    function renderActiveTrend(){
+      if (!activeTrendChart) return;
+      activeTrendChart.setOption(Object.assign(baseAxis(), {
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+        color:[green,blue],
+        series:[
+          lineSeries('活跃用户率(%)',activeUserData,green),
+          lineSeries('付费活跃率(%)',paidActiveData,blue)
+        ]
+      }));
+    }
+    renderActiveTrend();
+
+    // ② 市场-用户：规模/活跃 标签切换
+    var userTabMap = { scale:'opsUserScalePane', active:'opsUserActivePane' };
+    var userTabs = document.querySelectorAll('#opsUserTabs button');
+    function setUserPane(key){
+      userTabs.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-utab')===key); });
+      ['opsUserScalePane','opsUserActivePane'].forEach(function(id){
+        document.getElementById(id).classList.toggle('active', id===userTabMap[key]);
+      });
+      setTimeout(function(){
+        [mktScaleChart,activeTrendChart].forEach(function(c){ if (c) c.resize(); });
+      }, 20);
+    }
+    userTabs.forEach(function(btn){
+      btn.addEventListener('click', function(){ setUserPane(this.getAttribute('data-utab')); });
+    });
+
+    // ② 市场-渠道划分：饼图（月份可选）
+    var channelPieChart = mk('opsChannelPie');
+    var channelMonthData = {
+      '2025-12': { name:'2025年12月', data:[['线下营业厅',41],['中国电信线上渠道',26],['10000热线',19],['安徽电信线上渠道',14]] },
+      '2026-01': { name:'2026年1月', data:[['线下营业厅',40],['中国电信线上渠道',27],['10000热线',19],['安徽电信线上渠道',14]] },
+      '2026-02': { name:'2026年2月', data:[['线下营业厅',39],['中国电信线上渠道',28],['10000热线',20],['安徽电信线上渠道',13]] },
+      '2026-03': { name:'2026年3月', data:[['线下营业厅',40],['中国电信线上渠道',27],['10000热线',19],['安徽电信线上渠道',14]] },
+      '2026-04': { name:'2026年4月', data:[['线下营业厅',39],['中国电信线上渠道',28],['10000热线',20],['安徽电信线上渠道',13]] },
+      '2026-05': { name:'2026年5月', data:[['线下营业厅',38],['中国电信线上渠道',29],['10000热线',20],['安徽电信线上渠道',13]] },
+      '2026-06': { name:'2026年6月', data:[['线下营业厅',38],['中国电信线上渠道',28],['10000热线',21],['安徽电信线上渠道',13]] },
+      '2026-07': { name:'2026年7月', data:[['线下营业厅',38],['中国电信线上渠道',28],['10000热线',20],['安徽电信线上渠道',14]] },
+      '2026-08': { name:'2026年8月', data:[['线下营业厅',38],['中国电信线上渠道',28],['10000热线',20],['安徽电信线上渠道',14]] },
+      '2026-09': { name:'2026年9月', data:[['线下营业厅',38],['中国电信线上渠道',28],['10000热线',20],['安徽电信线上渠道',14]] }
+    };
+    var channelColors = ['#1d8bff','#0a4eb0','#10b981','#F5A623'];
+    function renderChannelPie(monthKey){
+      if (!channelPieChart) return;
+      var item = channelMonthData[monthKey] || channelMonthData['2026-09'];
+      channelPieChart.setOption({
+        color:channelColors,
+        tooltip:{formatter:'{b}：{c}%',confine:true},
+        legend:{bottom:0,itemWidth:9,itemHeight:9,textStyle:{fontSize:10,color:fontSub}},
+        series:[{
+          type:'pie',radius:['46%','72%'],center:['50%','46%'],avoidLabelOverlap:false,
+          label:{show:true,formatter:'{d}%',fontSize:10,color:fontSub},labelLine:{length:8,length2:6},
+          data:item.data.map(function(d){ return {name:d[0],value:d[1]}; })
+        }]
+      }, true);
+    }
+    renderChannelPie('2026-09');
+
+    // ② 市场-用户：同/环比子切换
+    var gRateBtns = document.querySelectorAll('#opsGrowthRateTabs button');
+    gRateBtns.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        gRateBtns.forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        mktRateState = btn.getAttribute('data-grate');
+        renderMktScale();
+      });
+    });
+
+    // ② 市场-渠道：月份选择
+    var channelMonthSel = document.getElementById('opsChannelMonth');
+    if (channelMonthSel){
+      channelMonthSel.addEventListener('change', function(){ renderChannelPie(this.value); });
+    }
+
+    // ③ 运营质量：留存（T+1活跃率 / T+3 / T+6 退订率）
+    var qRetainChart = mk('opsQRetain');
+    var qRetainActive = [74.2,74.9,75.5,76.1,76.8,77.3,77.8,78.2,78.4];
+    var qRetainT3 = [1.85,1.78,1.70,1.66,1.60,1.55,1.50,1.46,1.40];
+    var qRetainT6 = [2.82,2.75,2.68,2.60,2.54,2.48,2.42,2.36,2.30];
+    function lastMark(val,color){
+      return {type:'max',name:'最新',symbol:'circle',symbolSize:51,symbolRotate:0,
+        itemStyle:{color:color,borderColor:'#fff',borderWidth:2,shadowBlur:8,shadowColor:'rgba(0,0,0,0.12)'},
+        label:{show:true,fontSize:10,fontWeight:700,color:color,position:'top',formatter:function(p){return val;},offset:[0,-4]}};
+    }
+    function renderQRetain(){
+      if (!qRetainChart) return;
+      qRetainChart.setOption({
+        grid:{left:6,right:10,top:16,bottom:2,containLabel:true},
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+        color:[green,yellow,blue],
+        xAxis:{type:'category',data:months,boundaryGap:false,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+        yAxis:[
+          {type:'value',name:'活跃率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,0,0,26]},splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+          {type:'value',name:'退订率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,24,0,0]},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+        ],
+        series:[
+          {name:'T+1活跃率(%)',type:'line',data:qRetainActive,yAxisIndex:0,smooth:true,symbol:'circle',symbolSize:6,symbolKeepAspect:true,lineStyle:{width:3},itemStyle:{color:green,borderColor:'#fff',borderWidth:1.5,shadowBlur:6,shadowColor:'rgba(0,181,120,0.35)'},markPoint:lastMark(78.4,green),z:12},
+          {name:'T+3退订率(%)',type:'line',data:qRetainT3,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('1.40',yellow),z:12},
+          {name:'T+6退订率(%)',type:'line',data:qRetainT6,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:blue,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('2.30',blue),z:12}
+        ]
+      });
+    }
+    renderQRetain();
+
+    // ③ 运营质量：服务（业务办理成功率 / 资费投诉率）
+    var qServiceChart = mk('opsQService');
+    var qServiceOk = [98.4,98.5,98.7,98.8,98.9,99.0,99.0,99.1,99.2];
+    var qServiceGrievance = [0.095,0.088,0.081,0.075,0.068,0.062,0.052,0.038,0.02];
+    function renderQService(){
+      if (!qServiceChart) return;
+      qServiceChart.setOption({
+        grid:{left:6,right:10,top:16,bottom:2,containLabel:true},
+        tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+        color:[blue,red],
+        xAxis:{type:'category',data:months,boundaryGap:false,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+        yAxis:[
+          {type:'value',name:'成功率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,0,0,26]},splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+          {type:'value',name:'投诉率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,24,0,0]},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+        ],
+        series:[
+          {name:'业务办理成功率(%)',type:'line',data:qServiceOk,yAxisIndex:0,smooth:true,symbol:'circle',symbolSize:6,lineStyle:{width:3},itemStyle:{color:blue,borderColor:'#fff',borderWidth:1.5,shadowBlur:6,shadowColor:'rgba(10,95,214,0.35)'},markPoint:lastMark('99.2',blue),z:12},
+          {name:'资费投诉率(%)',type:'line',data:qServiceGrievance,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:red,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('0.02',red),z:12}
+        ]
+      });
+    }
+    renderQService();
+
+    // ③ 运营质量：留存/服务 标签切换
+    var qTabMap = { retain:'opsQRetainPane', service:'opsQServicePane' };
+    var qTabs = document.querySelectorAll('#opsQualityTabs button');
+    function setQPane(key){
+      qTabs.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-qt')===key); });
+      ['opsQRetainPane','opsQServicePane'].forEach(function(id){
+        document.getElementById(id).classList.toggle('active', id===qTabMap[key]);
+      });
+      setTimeout(function(){
+        [qRetainChart,qServiceChart].forEach(function(c){ if (c) c.resize(); });
+      }, 20);
+    }
+    qTabs.forEach(function(btn){
+      btn.addEventListener('click', function(){ setQPane(this.getAttribute('data-qt')); });
+    });
+
+    /* ===== 299 元画像：图表（亚健康画像，独立数据） ===== */
+    (function(){
+      function barGrad(c1,c2){ return new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:c1},{offset:1,color:c2}]); }
+      // 效益
+      var ecIn = mk('opsEffectIncome299'), ecProfit = mk('opsEffectProfit299'), ecCrm = mk('opsEffectCrm299');
+      var mIn299 = [1395,1380,1368,1352,1340,1326,1300,1282,1246];
+      var cum299 = [1395,2775,4143,5495,6835,8161,9461,10743,11989];
+      var rd299 = { yoy:[5.2,4.9,4.6,4.3,4.0,3.6,3.2,2.7,2.1], mom:[null,-1.1,-0.9,-1.2,-0.9,-1.0,-2.0,-1.4,-2.8] };
+      var rs299 = 'yoy';
+      function renderIn299(){
+        if (!ecIn) return;
+        var rn = rs299==='yoy' ? '同比(%)' : '环比(%)';
+        ecIn.setOption({
+          grid:{left:6,right:6,top:10,bottom:4,containLabel:true},
+          tooltip:{trigger:'axis',confine:true,axisPointer:{type:'cross'}},
+          xAxis:{type:'category',data:months,boundaryGap:true,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:11}},
+          yAxis:[
+            {type:'value',splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+            {type:'value',name:'%',nameTextStyle:{color:fontLt,fontSize:10},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+          ],
+          series:[
+            {name:'当月收入(万元)',type:'bar',data:mIn299,barWidth:11,barCategoryGap:'20%',itemStyle:{color:barGrad('#1d8bff','#9fd8ff'),shadowColor:'rgba(29,139,255,0.35)',shadowBlur:8,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+            {name:'累计收入(万元)',type:'bar',data:cum299,barWidth:11,barCategoryGap:'20%',itemStyle:{color:barGrad('#0a4eb0','#7ab4f5'),shadowColor:'rgba(10,78,176,0.35)',shadowBlur:8,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+            {name:rn,type:'line',yAxisIndex:1,data:rd299[rs299],smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},z:12}
+          ]
+        });
+      }
+      renderIn299();
+      if (ecProfit) ecProfit.setOption(Object.assign(baseAxis(),{tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},color:[blue],series:[lineSeries('利润率(%)',[12.8,12.6,12.5,12.4,12.2,12.1,11.9,11.8,11.6],blue)]}));
+      if (ecCrm) ecCrm.setOption(Object.assign(baseAxis(),{tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},color:[yellow],series:[lineSeries('营销费用占比(%)',[17.2,17.5,17.8,17.9,18.1,18.3,18.5,18.7,18.9],yellow)]}));
+      var et299 = document.querySelectorAll('#opsEffectTabs299 button');
+      function setEff299(key){
+        var m = { income:'opsEffectIncomePane299', profit:'opsEffectProfitPane299', crm:'opsEffectCrmPane299' };
+        et299.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-effect')===key); });
+        ['opsEffectIncomePane299','opsEffectProfitPane299','opsEffectCrmPane299'].forEach(function(id){ document.getElementById(id).classList.toggle('active', id===m[key]); });
+        setTimeout(function(){ [ecIn,ecProfit,ecCrm].forEach(function(c){ if (c) c.resize(); }); }, 20);
+      }
+      et299.forEach(function(btn){ btn.addEventListener('click', function(){ setEff299(this.getAttribute('data-effect')); }); });
+      var rt299 = document.querySelectorAll('#opsEffectRateTabs299 button');
+      rt299.forEach(function(btn){
+        btn.addEventListener('click', function(){
+          rt299.forEach(function(b){ b.classList.remove('active'); });
+          btn.classList.add('active');
+          rs299 = btn.getAttribute('data-rate');
+          renderIn299();
+        });
+      });
+
+      // 市场
+      var mktScale299 = mk('opsMktScale299');
+      var arrive299=[3.4,3.5,3.6,3.7,3.8,3.9,4.0,4.1,4.2];
+      var net299=[0.22,0.20,0.19,0.18,0.17,0.16,0.15,0.14,0.12];
+      var mktR299={yoy:[3.8,3.5,3.3,3.1,2.9,2.7,2.5,2.3,2.1],mom:[null,2.9,2.9,2.8,2.7,2.6,2.6,2.5,2.4]};
+      var mktRs299='yoy';
+      function renderMkt299(){
+        if (!mktScale299) return;
+        var rn = mktRs299==='yoy' ? '同比(%)' : '环比(%)';
+        mktScale299.setOption({
+          grid:{left:6,right:6,top:8,bottom:2,containLabel:true},
+          tooltip:{trigger:'axis',confine:true,axisPointer:{type:'cross'}},
+          xAxis:{type:'category',data:months,boundaryGap:true,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+          yAxis:[
+            {type:'value',splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+            {type:'value',name:'%',nameTextStyle:{color:fontLt,fontSize:9},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+          ],
+          series:[
+            {name:'到达用户(万)',type:'bar',data:arrive299,barWidth:8,itemStyle:{color:barGrad('#1d8bff','#9fd8ff'),shadowColor:'rgba(29,139,255,0.35)',shadowBlur:7,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+            {name:'月净增(万)',type:'bar',data:net299,barWidth:8,itemStyle:{color:barGrad('#0a4eb0','#7ab4f5'),shadowColor:'rgba(10,78,176,0.35)',shadowBlur:7,shadowOffsetY:3,borderRadius:[2,2,0,0]},z:3},
+            {name:rn,type:'line',yAxisIndex:1,data:mktR299[mktRs299],smooth:true,symbol:'circle',symbolSize:4,lineStyle:{width:2},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},z:12}
+          ]
+        });
+      }
+      renderMkt299();
+      var act299 = mk('opsActiveTrend299');
+      if (act299) act299.setOption(Object.assign(baseAxis(),{tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},color:[green,blue],series:[lineSeries('活跃用户率(%)',[78.2,78.5,78.9,79.2,79.5,79.8,80.1,80.3,80.5],green),lineSeries('付费活跃率(%)',[88.0,88.2,88.5,88.8,89.0,89.2,89.4,89.5,89.6],blue)]}));
+      var ut299 = document.querySelectorAll('#opsUserTabs299 button');
+      function setUser299(key){
+        var m = { scale:'opsUserScalePane299', active:'opsUserActivePane299' };
+        ut299.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-utab')===key); });
+        ['opsUserScalePane299','opsUserActivePane299'].forEach(function(id){ document.getElementById(id).classList.toggle('active', id===m[key]); });
+        setTimeout(function(){ [mktScale299,act299].forEach(function(c){ if (c) c.resize(); }); }, 20);
+      }
+      ut299.forEach(function(btn){ btn.addEventListener('click', function(){ setUser299(this.getAttribute('data-utab')); }); });
+      var gr299 = document.querySelectorAll('#opsGrowthRateTabs299 button');
+      gr299.forEach(function(btn){
+        btn.addEventListener('click', function(){
+          gr299.forEach(function(b){ b.classList.remove('active'); });
+          btn.classList.add('active');
+          mktRs299 = btn.getAttribute('data-grate');
+          renderMkt299();
+        });
+      });
+      // 渠道
+      var chPie299 = mk('opsChannelPie299');
+      var chD299 = {
+        '2025-12':[['线下营业厅',44],['中国电信线上渠道',26],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-01':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-02':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-03':[['线下营业厅',44],['中国电信线上渠道',26],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-04':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-05':[['线下营业厅',42],['中国电信线上渠道',28],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-06':[['线下营业厅',42],['中国电信线上渠道',28],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-07':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-08':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]],
+        '2026-09':[['线下营业厅',43],['中国电信线上渠道',27],['10000热线',17],['安徽电信线上渠道',13]]
+      };
+      var chC299=['#1d8bff','#0a4eb0','#10b981','#F5A623'];
+      function renderCh299(k){
+        if (!chPie299) return;
+        var d = chD299[k] || chD299['2026-09'];
+        chPie299.setOption({ color:chC299, tooltip:{formatter:'{b}：{c}%',confine:true}, legend:{bottom:0,itemWidth:9,itemHeight:9,textStyle:{fontSize:10,color:fontSub}},
+          series:[{type:'pie',radius:['46%','72%'],center:['50%','46%'],avoidLabelOverlap:false,label:{show:true,formatter:'{d}%',fontSize:10,color:fontSub},labelLine:{length:8,length2:6},data:d.map(function(x){ return {name:x[0],value:x[1]}; })}] }, true);
+      }
+      renderCh299('2026-09');
+      var chSel299 = document.getElementById('opsChannelMonth299');
+      if (chSel299) chSel299.addEventListener('change', function(){ renderCh299(this.value); });
+
+      // 运营质量
+      var qR299 = mk('opsQRetain299');
+      var qRA299=[72.0,72.6,73.1,73.7,74.2,74.9,75.4,75.8,76.1], qRT3_299=[2.40,2.34,2.30,2.25,2.21,2.18,2.15,2.13,2.10], qRT6_299=[3.50,3.44,3.40,3.35,3.32,3.29,3.26,3.23,3.20];
+      function renderQRetain299(){
+        if (!qR299) return;
+        qR299.setOption({
+          grid:{left:6,right:10,top:16,bottom:2,containLabel:true},
+          tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+          color:[green,yellow,blue],
+          xAxis:{type:'category',data:months,boundaryGap:false,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+          yAxis:[
+            {type:'value',name:'活跃率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,0,0,26]},splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+            {type:'value',name:'退订率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,24,0,0]},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+          ],
+          series:[
+            {name:'T+1活跃率(%)',type:'line',data:qRA299,yAxisIndex:0,smooth:true,symbol:'circle',symbolSize:6,lineStyle:{width:3},itemStyle:{color:green,borderColor:'#fff',borderWidth:1.5,shadowBlur:6,shadowColor:'rgba(0,181,120,0.35)'},markPoint:lastMark('76.1',green),z:12},
+            {name:'T+3退订率(%)',type:'line',data:qRT3_299,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:yellow,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('2.10',yellow),z:12},
+            {name:'T+6退订率(%)',type:'line',data:qRT6_299,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:blue,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('3.20',blue),z:12}
+          ]
+        });
+      }
+      renderQRetain299();
+      var qS299 = mk('opsQService299');
+      var qOk299=[97.8,97.9,98.0,98.1,98.2,98.2,98.3,98.3,98.4], qG299=[0.030,0.032,0.033,0.035,0.036,0.037,0.039,0.039,0.04];
+      function renderQService299(){
+        if (!qS299) return;
+        qS299.setOption({
+          grid:{left:6,right:10,top:16,bottom:2,containLabel:true},
+          tooltip:{trigger:'axis',confine:true,axisPointer:{type:'line'}},
+          color:[blue,red],
+          xAxis:{type:'category',data:months,boundaryGap:false,axisLine:{lineStyle:{color:gridLine}},axisTick:{show:false},axisLabel:{color:fontSub,fontSize:10}},
+          yAxis:[
+            {type:'value',name:'成功率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,0,0,26]},splitLine:{lineStyle:{color:gridLine,type:'dashed'}},axisLabel:{color:fontLt,fontSize:10}},
+            {type:'value',name:'投诉率 %',nameTextStyle:{color:fontLt,fontSize:9,padding:[0,24,0,0]},splitLine:{show:false},axisLabel:{color:fontLt,fontSize:10}}
+          ],
+          series:[
+            {name:'业务办理成功率(%)',type:'line',data:qOk299,yAxisIndex:0,smooth:true,symbol:'circle',symbolSize:6,lineStyle:{width:3},itemStyle:{color:blue,borderColor:'#fff',borderWidth:1.5,shadowBlur:6,shadowColor:'rgba(10,95,214,0.35)'},markPoint:lastMark('98.4',blue),z:12},
+            {name:'资费投诉率(%)',type:'line',data:qG299,yAxisIndex:1,smooth:true,symbol:'circle',symbolSize:5,lineStyle:{width:2.5},itemStyle:{color:red,borderColor:'#fff',borderWidth:1.5},markPoint:lastMark('0.04',red),z:12}
+          ]
+        });
+      }
+      renderQService299();
+      var qt299 = document.querySelectorAll('#opsQualityTabs299 button');
+      function setQ299(key){
+        var m = { retain:'opsQRetainPane299', service:'opsQServicePane299' };
+        qt299.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-qt')===key); });
+        ['opsQRetainPane299','opsQServicePane299'].forEach(function(id){ document.getElementById(id).classList.toggle('active', id===m[key]); });
+        setTimeout(function(){ [qR299,qS299].forEach(function(c){ if (c) c.resize(); }); }, 20);
+      }
+      qt299.forEach(function(btn){ btn.addEventListener('click', function(){ setQ299(this.getAttribute('data-qt')); }); });
+    })();
+
+    // 视口变化重绘
+    window.addEventListener('resize', function(){
+      window.__opsCharts.forEach(function(c){ if (c) c.resize(); });
+    });
+  })();
+
+  /* ===== 第二排：单套餐收入下钻（三系列 tab 切换） ===== */
+  (function initSeriesRevenueTabs(){
+    var srContent = document.getElementById('srContent');
+    var tabs = document.querySelectorAll('.sr-tab');
+    var srExportState = { tabKey: 'wga', tabName: '5G-A系列收入', cardTitle: '', rightMode: 'year', leftTitle: '', rightTitle: '', leftCfg: null, rightCfg: null };
+
+    var monthLabels = ['1月','2月','3月','4月','5月','6月','7月','8月','9月'];
+
+    // 渠道结构 & 地市分布（按套餐下钻，每套餐 4 项渠道 + 5 项地市）
+    function makeChannelData(base, drift){
+      return [
+        { name: '线下营业厅',     pct: +(base[0] + drift).toFixed(2) },
+        { name: '10000热线',      pct: +(base[1] - drift * 0.6).toFixed(2) },
+        { name: '中国电信线上渠道', pct: +(base[2] - drift * 0.2).toFixed(2) },
+        { name: '安徽电信线上渠道', pct: +(base[3] - drift * 0.2).toFixed(2) }
+      ];
+    }
+    function makeCityData(base, drift){
+      return [
+        { name: '合肥', pct: +(base[0] + drift).toFixed(2) },
+        { name: '芜湖', pct: +(base[1] - drift * 0.3).toFixed(2) },
+        { name: '蚌埠', pct: +(base[2] - drift * 0.2).toFixed(2) },
+        { name: '阜阳', pct: +(base[3] - drift * 0.3).toFixed(2) },
+        { name: '安庆', pct: +(base[4] - drift * 0.2).toFixed(2) }
+      ];
+    }
+
+    var seriesTabs = {
+      wga: {
+        cards: [
+          { title: '5G-A套餐159元', value: '680.00', unit: '万元', yoyText: '月同比 8.6% ↑' },
+          { title: '5G-A套餐单品199元', value: '598.40', unit: '万元', yoyText: '月同比 6.9% ↑' },
+          { title: '5G-A套餐单品239元', value: '561.20', unit: '万元', yoyText: '月同比 -4.5% ↓' },
+          { title: '5G-A套餐单品299元', value: '524.00', unit: '万元', yoyText: '月同比 5.2% ↑' }
+        ],
+        // 左图：单柱状图（横坐标 = 月份，月收入 + 月同比）
+        leftLegend: ['月收入', '月同比'],
+        leftChart: { xLabels: monthLabels, barsA: [680,720,650,710,630,700,680,690,620], line: [70,68,72,66,74,69,71,67,73], leftMax: 900, rightMax: 90, seriesNames: { barA: '月收入', line1: '月同比' } },
+        // 右图：单柱状图（横坐标 = 月份，到达用户 + 月同比）
+        rightChart: { xLabels: monthLabels, bars: [4350,4380,4380,4560,4680,4590,4590,4740,4740], line: [75,74,72,76,78,73,71,74,72], leftMax: 6000, rightMax: 90, lineColor: '#f59e0b' },
+        // 渠道结构 & 地市分布（按套餐，与 cards 索引一一对应）
+        channelData: [
+          makeChannelData([59.40, 30.57, 6.12, 3.91], 0),
+          makeChannelData([57.80, 31.60, 6.30, 4.30], 0.4),
+          makeChannelData([61.20, 29.40, 5.90, 3.50], -0.3),
+          makeChannelData([56.90, 32.10, 6.60, 4.40], 0.2)
+        ],
+        cityData: [
+          makeCityData([31.2, 14.6, 11.3, 9.8, 8.4], 0),
+          makeCityData([29.5, 15.8, 12.1, 10.2, 8.9], 0.3),
+          makeCityData([33.0, 13.9, 10.8, 9.5, 8.1], -0.2),
+          makeCityData([28.7, 16.2, 12.6, 10.5, 9.0], 0.1)
+        ]
+      },
+      quanyi: {
+        cards: [
+          { title: '权益随心选29元', value: '620.00', unit: '万元', yoyText: '月同比 5.4% ↑' },
+          { title: '权益随心选39元', value: '576.60', unit: '万元', yoyText: '月同比 -3.8% ↓' },
+          { title: '权益随心选59元', value: '538.80', unit: '万元', yoyText: '月同比 7.1% ↑' }
+        ],
+        leftLegend: ['月收入', '月同比'],
+        leftChart: { xLabels: monthLabels, barsA: [620,680,610,670,640,690,610,650,600], line: [72,70,74,68,76,71,73,69,75], leftMax: 900, rightMax: 90, seriesNames: { barA: '月收入', line1: '月同比' } },
+        rightChart: { xLabels: monthLabels, bars: [4440,4440,4440,4650,4740,4650,4650,4800,4800], line: [78,76,74,79,80,75,73,76,74], leftMax: 6000, rightMax: 90, lineColor: '#f59e0b' },
+        // 渠道结构 & 地市分布（按套餐，与 cards 索引一一对应）
+        channelData: [
+          makeChannelData([54.30, 33.80, 7.20, 4.70], 0),
+          makeChannelData([56.10, 32.50, 6.80, 4.60], 0.3),
+          makeChannelData([52.80, 34.60, 7.50, 5.10], -0.2)
+        ],
+        cityData: [
+          makeCityData([27.6, 17.1, 13.4, 11.0, 9.6], 0),
+          makeCityData([26.2, 18.0, 14.0, 11.6, 10.1], 0.2),
+          makeCityData([29.1, 16.3, 12.7, 10.4, 9.2], -0.1)
+        ]
+      },
+      ronghe: {
+        cards: [
+          { title: '5G-A融合套餐199元', value: '590.00', unit: '万元', yoyText: '月同比 8.8% ↑' },
+          { title: '5G-A融合套餐239元', value: '548.70', unit: '万元', yoyText: '月同比 6.2% ↑' },
+          { title: '5G-A融合套餐299元', value: '512.30', unit: '万元', yoyText: '月同比 -4.2% ↓' }
+        ],
+        leftLegend: ['月收入', '月同比'],
+        leftChart: { xLabels: monthLabels, barsA: [590,630,600,650,620,670,610,640,600], line: [70,68,72,66,74,69,71,67,73], leftMax: 900, rightMax: 90, seriesNames: { barA: '月收入', line1: '月同比' } },
+        rightChart: { xLabels: monthLabels, bars: [4350,4350,4350,4590,4710,4560,4560,4710,4710], line: [75,73,71,77,79,72,70,73,71], leftMax: 6000, rightMax: 90, lineColor: '#f59e0b' },
+        // 渠道结构 & 地市分布（按套餐，与 cards 索引一一对应）
+        channelData: [
+          makeChannelData([62.50, 28.30, 5.60, 3.60], 0),
+          makeChannelData([60.80, 29.60, 5.90, 3.70], 0.3),
+          makeChannelData([64.10, 27.20, 5.20, 3.50], -0.2)
+        ],
+        cityData: [
+          makeCityData([34.8, 13.5, 10.6, 9.2, 7.8], 0),
+          makeCityData([32.9, 14.8, 11.4, 9.8, 8.3], 0.2),
+          makeCityData([36.2, 12.6, 10.0, 8.7, 7.4], -0.1)
+        ]
+      }
+    };
+
+    function csvEscape(value){
+      var str = value == null ? '' : String(value);
+      if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+      return str;
+    }
+    function triggerCsvDownload(filename, rows){
+      var csv = rows.map(function(row){ return row.map(csvEscape).join(','); }).join('\n');
+      var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function formatYoyHtml(yoyText){
+      var raw = String(yoyText || '月同比 10.1% ↓');
+      var numberMatch = raw.match(/-?\d+(\.\d+)?%?/);
+      var numText = numberMatch ? numberMatch[0].replace('%', '') : '10.1';
+      var isNegative = raw.indexOf('-') >= 0 || raw.indexOf('↓') >= 0;
+      var color = isNegative ? '#16a34a' : '#dc2626';
+      var arrow = isNegative ? '▼' : '▲';
+      var showValue = (isNegative ? '-' : '') + numText + '%';
+      return ''
+        + '<span style="font-size:11.5px;color:#111827;">月同比</span>'
+        + '<span style="font-size:11.5px;color:' + color + ';font-weight:600;display:inline-flex;align-items:center;gap:3px;">'
+        + showValue + ' <i class="caret">' + arrow + '</i>'
+        + '</span>';
+    }
+
+    // 左图：单柱状图（月收入 + 月同比折线），横坐标 = 月份
+    function buildLeftOption(cfg){
+      return {
+        grid: { left: 36, right: 36, top: 20, bottom: 26 },
+        graphic: [
+          { type: 'text', left: 4, top: 0, style: { text: '单位：万元', fill: '#9ca3af', fontSize: 11 } },
+          { type: 'text', right: 4, top: 0, style: { text: '单位：%', fill: '#9ca3af', fontSize: 11 } }
+        ],
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: cfg.xLabels,
+          axisLine: { lineStyle: { color: '#d1d5db' } },
+          axisLabel: { color: '#9ca3af', fontSize: 11 },
+          axisTick: { show: false }
+        },
+        yAxis: [
+          {
+            type: 'value', max: cfg.leftMax,
+            splitLine: { lineStyle: { color: '#e5e7eb', type: 'dashed' } },
+            axisLabel: { color: '#9ca3af', fontSize: 10 },
+            axisLine: { show: false }, axisTick: { show: false }
+          },
+          {
+            type: 'value', max: cfg.rightMax,
+            splitLine: { show: false },
+            axisLabel: { color: '#9ca3af', fontSize: 10 },
+            axisLine: { show: false }, axisTick: { show: false }
+          }
+        ],
+        series: [
+          {
+            name: (cfg.seriesNames && cfg.seriesNames.barA) || '月收入',
+            type: 'bar', barWidth: 10, data: cfg.barsA,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#3b82f6' }, { offset: 1, color: '#b9dcff' }
+              ]),
+              shadowColor: 'rgba(59, 130, 246, 0.35)', shadowBlur: 6, shadowOffsetY: 3,
+              borderRadius: [2, 2, 0, 0]
+            }
+          },
+          {
+            name: '本年顶盖', type: 'pictorialBar', data: cfg.barsA,
+            symbol: 'diamond', symbolSize: [13, 6], symbolPosition: 'end', symbolOffset: [0, -2], z: 12,
+            tooltip: { show: false },
+            itemStyle: { color: '#6fb2ff', opacity: 1 }
+          },
+          {
+            name: (cfg.seriesNames && cfg.seriesNames.line1) || '月同比',
+            type: 'line', yAxisIndex: 1, data: cfg.line,
+            smooth: true, symbol: 'circle', symbolSize: 4,
+            lineStyle: { color: '#f59e0b', width: 2 },
+            itemStyle: { color: '#fff', borderColor: '#f59e0b', borderWidth: 1.5 }
+          }
+        ]
+      };
+    }
+
+    // 右图：单柱状图（当前选中套餐各月到达用户 + 月同比折线）
+    function buildRightOption(cfg){
+      return {
+        grid: { left: 44, right: 36, top: 20, bottom: 26 },
+        graphic: [
+          { type: 'text', left: 4, top: 0, style: { text: '单位：户', fill: '#9ca3af', fontSize: 11 } },
+          { type: 'text', right: 4, top: 0, style: { text: '单位：%', fill: '#9ca3af', fontSize: 11 } }
+        ],
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: cfg.xLabels,
+          axisLine: { lineStyle: { color: '#d1d5db' } },
+          axisLabel: { color: '#9ca3af', fontSize: 11 },
+          axisTick: { show: false }
+        },
+        yAxis: [
+          {
+            type: 'value', max: cfg.leftMax,
+            splitLine: { lineStyle: { color: '#e5e7eb', type: 'dashed' } },
+            axisLabel: { color: '#9ca3af', fontSize: 10 },
+            axisLine: { show: false }, axisTick: { show: false }
+          },
+          {
+            type: 'value', max: cfg.rightMax,
+            splitLine: { show: false },
+            axisLabel: { color: '#9ca3af', fontSize: 10 },
+            axisLine: { show: false }, axisTick: { show: false }
+          }
+        ],
+        series: [
+          {
+            name: '到达用户', type: 'bar', barWidth: 10, data: cfg.bars,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#1d8bff' }, { offset: 1, color: '#9fd8ff' }
+              ]),
+              shadowColor: 'rgba(29, 139, 255, 0.35)', shadowBlur: 8, shadowOffsetY: 3,
+              borderRadius: [2, 2, 0, 0]
+            }
+          },
+          {
+            name: '到达用户顶盖', type: 'pictorialBar', data: cfg.bars,
+            symbol: 'diamond', symbolSize: [13, 6], symbolPosition: 'end', symbolOffset: [0, -2], z: 12,
+            tooltip: { show: false },
+            itemStyle: { color: '#74beff', opacity: 1 }
+          },
+          {
+            name: '月同比', type: 'line', yAxisIndex: 1, data: cfg.line,
+            smooth: true, symbol: 'circle', symbolSize: 5,
+            lineStyle: { color: cfg.lineColor, width: 2 },
+            itemStyle: { color: '#fff', borderColor: cfg.lineColor, borderWidth: 1.5 }
+          }
+        ]
+      };
+    }
+
+    function cardAdjusted(chartCfg, idx, scaleSmall){
+      var factor = 1 + (idx * (scaleSmall ? 0.05 : 0.08));
+      var bias = idx * (scaleSmall ? 2 : 4);
+      var out = {
+        xLabels: chartCfg.xLabels.slice(),
+        leftMax: chartCfg.leftMax, rightMax: chartCfg.rightMax,
+        lineColor: chartCfg.lineColor, seriesNames: chartCfg.seriesNames
+      };
+      if (chartCfg.bars) out.bars = chartCfg.bars.map(function(v, i){ return Math.round(v * factor + (i % 3 - 1) * bias); });
+      if (chartCfg.barsA) out.barsA = chartCfg.barsA.map(function(v, i){ return Math.round(v * factor + (i % 4 - 1.5) * bias); });
+      if (chartCfg.line) out.line = chartCfg.line.map(function(v, i){ return Math.max(1, Math.round(v + idx * 2 + (i % 4 - 2))); });
+      return out;
+    }
+
+    var tabNameMap = { wga: '5G-A系列收入', quanyi: '权益随心选系列收入', ronghe: '融合套餐系列收入' };
+    var activeCardIndex = 0;
+    var leftMode = 'month';
+    var leftChart = null, rightChart = null;
+    var leftChartEl = null, rightChartEl = null;
+    var leftTitleEl = null, rightTitleEl = null;
+    var cardsEl = [];
+
+    function getRightTitleByCard(){
+      return '用户分析-' + (seriesTabs[srExportState.tabKey].cards[activeCardIndex] ? seriesTabs[srExportState.tabKey].cards[activeCardIndex].title : '');
+    }
+
+    function renderRegionRows(){
+      var data = seriesTabs[srExportState.tabKey];
+      var cardTitle = data.cards[activeCardIndex] ? data.cards[activeCardIndex].title : '';
+      var chTitleEl = document.getElementById('srChannelTitle');
+      var chRowsEl = document.getElementById('srChannelRows');
+      var cityTitleEl = document.getElementById('srCityTitle');
+      var cityRowsEl = document.getElementById('srCityRows');
+      var chList = (data.channelData && data.channelData[activeCardIndex]) || [];
+      var cityList = (data.cityData && data.cityData[activeCardIndex]) || [];
+
+      if (chTitleEl) chTitleEl.textContent = '渠道结构-' + cardTitle;
+      if (cityTitleEl) cityTitleEl.textContent = '地市分布（Top 5）-' + cardTitle;
+
+      if (chRowsEl) {
+        chRowsEl.innerHTML = chList.map(function(item){
+          return ''
+            + '<div>'
+            + '  <div class="region-row-top"><span>' + item.name + '</span><b>' + item.pct.toFixed(2) + '%</b></div>'
+            + '  <div class="region-bar"><div style="width:' + item.pct + '%;background:linear-gradient(90deg,#0A5FD6,#4A9EFF);"></div></div>'
+            + '</div>';
+        }).join('');
+      }
+      if (cityRowsEl) {
+        cityRowsEl.innerHTML = cityList.map(function(item){
+          return ''
+            + '<div>'
+            + '  <div class="region-row-top"><span>' + item.name + '</span><b>' + item.pct.toFixed(2) + '%</b></div>'
+            + '  <div class="region-bar"><div style="width:' + item.pct + '%;background:linear-gradient(90deg,#00B578,#4BD9A5);"></div></div>'
+            + '</div>';
+        }).join('');
+      }
+    }
+
+    function renderChartsByActiveCard(){
+      var data = seriesTabs[srExportState.tabKey];
+      var leftCfgBase = cardAdjusted(data.leftChart, activeCardIndex, false);
+      var leftCfg = leftMode === 'month'
+        ? {
+            xLabels: leftCfgBase.xLabels,
+            barsA: leftCfgBase.barsA.map(function(v){ return Math.round(v * 0.72); }),
+            line: leftCfgBase.line.map(function(v){ return Math.max(1, Math.round(v * 0.82)); }),
+            leftMax: leftCfgBase.leftMax, rightMax: leftCfgBase.rightMax,
+            seriesNames: leftCfgBase.seriesNames
+          }
+        : leftCfgBase;
+      var rightCfg = cardAdjusted(data.rightChart, activeCardIndex, true);
+
+      if (leftChart) leftChart.setOption(buildLeftOption(leftCfg), true);
+      if (rightChart) rightChart.setOption(buildRightOption(rightCfg), true);
+      if (leftTitleEl) leftTitleEl.textContent = '收入分析-' + (data.cards[activeCardIndex] ? data.cards[activeCardIndex].title : '');
+      if (rightTitleEl) rightTitleEl.textContent = getRightTitleByCard();
+      renderRegionRows();
+
+      Array.prototype.forEach.call(cardsEl, function(el){
+        var idx = Number(el.getAttribute('data-card-idx'));
+        if (idx === activeCardIndex) {
+          el.classList.add('active');
+        } else {
+          el.classList.remove('active');
+        }
+      });
+
+      srExportState.cardTitle = (data.cards[activeCardIndex] ? data.cards[activeCardIndex].title : '');
+      srExportState.rightMode = leftMode;
+      srExportState.leftTitle = leftTitleEl ? leftTitleEl.textContent : '';
+      srExportState.rightTitle = rightTitleEl ? rightTitleEl.textContent : '';
+      srExportState.leftCfg = {
+        xLabels: leftCfg.xLabels ? leftCfg.xLabels.slice() : [],
+        barsA: leftCfg.barsA ? leftCfg.barsA.slice() : [],
+        line: leftCfg.line ? leftCfg.line.slice() : [],
+        seriesNames: leftCfg.seriesNames || {}
+      };
+      srExportState.rightCfg = {
+        xLabels: rightCfg.xLabels ? rightCfg.xLabels.slice() : [],
+        bars: rightCfg.bars ? rightCfg.bars.slice() : [],
+        line: rightCfg.line ? rightCfg.line.slice() : []
+      };
+    }
+
+    function setMode(mode){
+      leftMode = mode;
+      renderChartsByActiveCard();
+      var pairs = [
+        ['leftModeYearBtn', 'leftModeMonthBtn'],
+        ['rightModeYearBtn', 'rightModeMonthBtn']
+      ];
+      pairs.forEach(function(p){
+        var yearBtn = document.getElementById(p[0]);
+        var monthBtn = document.getElementById(p[1]);
+        if (yearBtn && monthBtn) {
+          if (mode === 'month') {
+            monthBtn.classList.add('active'); yearBtn.classList.remove('active');
+          } else {
+            yearBtn.classList.add('active'); monthBtn.classList.remove('active');
+          }
+        }
+      });
+    }
+
+    function renderTab(key){
+      if (!srContent) return;
+      var data = seriesTabs[key] || seriesTabs.wga;
+      activeCardIndex = 0;
+      srExportState.tabKey = key;
+      srExportState.tabName = tabNameMap[key] || '系列收入';
+
+      var n = data.cards.length;
+      var html = '';
+      html += '<div class="sr-cards" style="grid-template-columns:repeat(' + n + ',1fr);">';
+      data.cards.forEach(function(card, idx){
+        var active = idx === 0;
+        var yoyText = card.yoyText || '';
+        html += '<div class="revenue-card' + (active ? ' active' : '') + '" data-card-idx="' + idx + '">';
+        html += '  <div class="rc-inner">';
+        html += '    <div class="rc-icon">◔</div>';
+        html += '    <div style="flex:1;min-width:0;">';
+        html += '      <div class="rc-title">' + card.title + '</div>';
+        html += '      <div class="rc-value">' + card.value + '<span class="unit">' + card.unit + '</span></div>';
+        html += '      <div class="rc-yoy">' + formatYoyHtml(yoyText) + '</div>';
+        html += '    </div>';
+        html += '  </div>';
+        html += '</div>';
+      });
+      html += '</div>';
+
+      html += '<div class="sr-charts">';
+      html += '  <div class="sr-chart-block">';
+      html += '    <div class="sr-chart-head">';
+      html += '      <div class="sr-chart-title" id="leftChartTitle">收入分析-' + (data.cards[0] ? data.cards[0].title : '') + '</div>';
+      html += '      <div class="mode-switch">'
+        + '        <button type="button" id="leftModeYearBtn">年度分析</button>'
+        + '        <button type="button" id="leftModeMonthBtn" class="active">月度分析</button>'
+        + '      </div>';
+      html += '    </div>';
+      var lg = data.leftLegend || ['月收入', '月同比'];
+      html += '    <div class="sr-legend">'
+        + '      <span><i class="sq" style="background:#3b82f6;"></i>' + lg[0] + '</span>'
+        + '      <span><i class="minus" style="background:#f59e0b;"></i>' + lg[1] + '</span>'
+        + '    </div>';
+      html += '    <div class="sr-chart-body" id="srLeftChart"></div>';
+      html += '  </div>';
+      html += '  <div class="sr-chart-block">';
+      html += '    <div class="sr-chart-head">';
+      html += '      <div class="sr-chart-title" id="rightChartTitle"></div>';
+      html += '      <div class="mode-switch">'
+        + '        <button type="button" id="rightModeYearBtn">年度分析</button>'
+        + '        <button type="button" id="rightModeMonthBtn" class="active">月度分析</button>'
+        + '      </div>';
+      html += '    </div>';
+      html += '    <div class="sr-legend">'
+        + '      <span><i class="sq" style="background:#1d8bff;"></i>到达用户</span>'
+        + '      <span><i class="minus" style="background:#f59e0b;"></i>月同比</span>'
+        + '    </div>';
+      html += '    <div class="sr-chart-body" id="srRightChart"></div>';
+      html += '  </div>';
+      html += '</div>';
+
+      // 渠道结构 & 地市分布（与左/右图同层级，随所选套餐联动）
+      html += '<div class="sr-charts" style="margin-top:18px;">';
+      html += '  <div class="sr-chart-block" style="padding:16px 18px;">';
+      html += '    <div class="sr-chart-head" style="margin-bottom:10px;">';
+      html += '      <div class="sr-chart-title" id="srChannelTitle"></div>';
+      html += '    </div>';
+      html += '    <div class="region-rows" id="srChannelRows"></div>';
+      html += '  </div>';
+      html += '  <div class="sr-chart-block" style="padding:16px 18px;">';
+      html += '    <div class="sr-chart-head" style="margin-bottom:10px;">';
+      html += '      <div class="sr-chart-title" id="srCityTitle"></div>';
+      html += '    </div>';
+      html += '    <div class="region-rows" id="srCityRows"></div>';
+      html += '  </div>';
+      html += '</div>';
+
+      srContent.innerHTML = html;
+
+      leftChartEl = srContent.querySelector('#srLeftChart');
+      rightChartEl = srContent.querySelector('#srRightChart');
+      leftChart = leftChartEl ? echarts.init(leftChartEl) : null;
+      rightChart = rightChartEl ? echarts.init(rightChartEl) : null;
+      leftTitleEl = srContent.querySelector('#leftChartTitle');
+      rightTitleEl = srContent.querySelector('#rightChartTitle');
+      cardsEl = srContent.querySelectorAll('[data-card-idx]');
+
+      Array.prototype.forEach.call(cardsEl, function(el){
+        el.addEventListener('click', function(){
+          activeCardIndex = Number(el.getAttribute('data-card-idx')) || 0;
+          renderChartsByActiveCard();
+        });
+      });
+
+      var yearBtn = srContent.querySelector('#leftModeYearBtn');
+      var monthBtn = srContent.querySelector('#leftModeMonthBtn');
+      var rYearBtn = srContent.querySelector('#rightModeYearBtn');
+      var rMonthBtn = srContent.querySelector('#rightModeMonthBtn');
+      if (yearBtn) yearBtn.addEventListener('click', function(){ setMode('year'); });
+      if (monthBtn) monthBtn.addEventListener('click', function(){ setMode('month'); });
+      if (rYearBtn) rYearBtn.addEventListener('click', function(){ setMode('year'); });
+      if (rMonthBtn) rMonthBtn.addEventListener('click', function(){ setMode('month'); });
+
+      setMode('month');
+    }
+
+    // init
+    var activeTab = document.querySelector('.sr-tab.active');
+    renderTab(activeTab ? activeTab.getAttribute('data-tab') : 'wga');
+
+    tabs.forEach(function(tab){
+      tab.addEventListener('click', function(){
+        var key = this.getAttribute('data-tab');
+        tabs.forEach(function(t){ t.classList.remove('active'); });
+        this.classList.add('active');
+        renderTab(key);
+      });
+    });
+
+    // 窗口 resize 时重绘图表
+    window.addEventListener('resize', function(){
+      if (leftChart) leftChart.resize();
+      if (rightChart) rightChart.resize();
+    });
+
+    // view-board 从 display:none 激活时重绘（否则 ECharts 以 0 尺寸渲染导致柱状图折叠）
+    window.__srChartsResize = function(){
+      if (leftChart) { leftChart.resize(); leftChart.setOption(leftChart.getOption(), true); }
+      if (rightChart) { rightChart.resize(); rightChart.setOption(rightChart.getOption(), true); }
+      if (window.__opsCharts) {
+        window.__opsCharts.forEach(function(c){ if (c) { c.resize(); c.setOption(c.getOption(), true); } });
+      }
+    };
+
+    // 导出 CSV
+    var exportBtn = document.getElementById('srExportBtn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', function(){
+        if (!srExportState.leftCfg || !srExportState.rightCfg) {
+          alert('当前暂无可导出数据');
+          return;
+        }
+        var now = new Date();
+        var yyyy = now.getFullYear();
+        var mm = String(now.getMonth() + 1).padStart(2, '0');
+        var dd = String(now.getDate()).padStart(2, '0');
+        var hh = String(now.getHours()).padStart(2, '0');
+        var mi = String(now.getMinutes()).padStart(2, '0');
+        var ss = String(now.getSeconds()).padStart(2, '0');
+
+        var left = srExportState.leftCfg;
+        var right = srExportState.rightCfg;
+        var leftNames = left.seriesNames || {};
+
+        var rows = [];
+        rows.push(['导出时间', yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + mi + ':' + ss]);
+        rows.push(['页签', srExportState.tabName]);
+        rows.push(['当前选中套餐', srExportState.cardTitle]);
+        rows.push(['左图模式', srExportState.rightMode === 'month' ? '月度分析' : '年度分析']);
+        rows.push([]);
+
+        rows.push(['左图', srExportState.leftTitle]);
+        rows.push(['维度', leftNames.barA || '月收入', leftNames.line1 || '月同比']);
+        (left.xLabels || []).forEach(function(label, i){
+          rows.push([
+            label,
+            left.barsA && left.barsA[i] != null ? left.barsA[i] : '',
+            left.line && left.line[i] != null ? left.line[i] : ''
+          ]);
+        });
+        rows.push([]);
+
+        rows.push(['右图', srExportState.rightTitle]);
+        rows.push(['维度', '到达用户', '月同比']);
+        (right.xLabels || []).forEach(function(label, i){
+          rows.push([
+            label,
+            right.bars && right.bars[i] != null ? right.bars[i] : '',
+            right.line && right.line[i] != null ? right.line[i] : ''
+          ]);
+        });
+
+        var safeCardName = (srExportState.cardTitle || '汇总').replace(/[\\/:*?"<>|]/g, '_');
+        var filename = '套餐收入导出_' + srExportState.tabName + '_' + safeCardName + '_' + yyyy + mm + dd + '_' + hh + mi + ss + '.csv';
+        triggerCsvDownload(filename, rows);
+      });
+    }
+  })();
+</script>
+</body>
+</html>

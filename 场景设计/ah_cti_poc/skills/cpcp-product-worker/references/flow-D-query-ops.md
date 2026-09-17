@@ -11,6 +11,10 @@
 | CONFIRM_ONLINE | 确认上线（审批通过后的上线动作）/监控运维方案 | D-3 |
 | （dispatcher 未命中则 needs_llm） | 表述含两诉求（如"查一下审批和运营情况"） | 规则命中其一，先输出命中的支线 |
 
+## 输出标题头（九环节总表，演示防误判为未实现）
+- 本程序覆盖全局**环节9监控运维**（支线D-2 运行监控 / D-3 确认上线与监控运维方案），其正式输出必须以 `【环节9/9·监控运维】✅ 执行成功` 标题头开头（序号/全名取 SKILL.md 九环节总表；监控异常告警或取数失败等场景用 `【环节9/9·监控运维】❌ 执行失败`或按异常矩阵引导）；
+- 支线D-1（审批进度查询）是**环节8 上线审批**的状态查询入口，非独立环节，输出文字摘要即可（如需凸显可为该查询回复冠 `【环节8/9·上线审批】` 查询回显，属可选）；确认上线（D-3）动作仍归环节9 监控运维标题头下。
+
 ## 支线D-1：审批进度查询（wf_sub_08）
 
 ### 触发条件
@@ -31,6 +35,12 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 按固定格式归纳输出（仅依据接口出参，禁止编造）：
 ```
 审批单号 {{approval_id}}｜状态：{{status}}｜当前环节：{{current_node}}（审批人 {{approver}}）｜最近意见：{{opinion}}｜更新时间：{{update_time}}
+
+**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**
+| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| {{node_seq}} | {{node_name}} | {{approver}} | {{status}} | {{opinion，无则留空}} | {{update_time，无则留空}} |
+（逐行展开全部节点；出参无 approval_matrix 时省略本表，不得补造）
 ```
 - status=驳回 时附驳回原因，并提示"可修改执行方案后重新发起"；
 - **status=通过（上架完成）时**：改为输出"审批已通过，销售品上架完成 ✅"，并提示"**建议处理：可输入'确认上线'进入【监控运维】。**"（衔接支线D-3）；
@@ -60,8 +70,8 @@ python scripts/cpcp_api.py query_monitor --product-id "<product_id>" --date-rang
    - 接口失败 → 按异常矩阵 E17 处理（传输层重试由脚本内置共尝试 3 次，仍失败即 E29 终止询问）："监控查询失败"，终止本轮；
    - `offer_name` 为空时照实输出"产品名称：未登记"，禁止编造名称。
 2. **异常判定**（原节点3，程序 if 判定）：
-   - `error_count > 0` 或 `fee_error_rate > 0.1` → 推送告警；
-   - 否则 → 直接输出正常摘要。
+   - `error_count > 0` 或 `fee_error_rate > 0.1` → 推送告警，并在输出摘要/可视化 URL 后执行**第6步 异动根因本体推理与优化闭环**；
+   - 否则 → 直接输出正常摘要（不进入根因推理）。
 3. **异常告警**（原节点4，仅异常时）：
 ```bash
 python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level "<high/middle/low，按异常程度>" --content "<告警正文：含产品、环节、异常指标摘要、建议>"
@@ -69,16 +79,62 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
    - 告警文案须含产品与异常摘要，不得空泛。
 4. **输出摘要**：
 ```
+【环节9/9·监控运维】✅ 执行成功
+
 【销售品运行监控】{{product_id}}（{{date_range}}）
 - 产品名称：{{offer_name，为空显示"未登记"}}
 - 订单量：{{order_count}}（{{order_trend}}）　异常量：{{error_count}}（{{error_trend}}）　计费差错率：{{fee_error_rate}}（{{fee_trend}}）
 - 告警列表：{{alarm_list 摘要，为空显示"无"}}
 {{异常时附加：已推送告警，告警单号 {{alert_id}}}}
 ```
+5. **输出单品运营可视化页面 URL（第3层组装，确定性拼接，禁止 LLM 自行渲染/改写 HTML）**：文本摘要之后在同一回复中输出，供外部 AI 应用平台 iframe 嵌入的独立页面（`frontend/public/ops-web/` 静态页，无登录、无 SPA 壳）：
+```
+**单品运营可视化：** `/ops-web/product-detail.html?product_id={{product_id}}`
+```
+   - 拼接规则：固定路径 `/ops-web/product-detail.html` + `?product_id={{product_id}}`（product_id 用出参 offer_id/product_id；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选，用于未收录商品回退画像）；
+   - 页面内容：商品头 + 健康度主卡 + 四维度图表（效益/市场/运营质量/生命周期）+ 异动预警，**仅单品下钻详情，不含大盘列表**；
+   - 渲染纪律：页面渲染为 `detail.js` 纯前端确定性代码（数据层 `mock-data.js`），POC 阶段为归档画像数据，后续替换为后端出参映射，**LLM 禁止手写/改写 JSON 或 HTML 载荷**；
+   - **iframe 完整地址**：外部平台若需绝对路径，拼接部署基址 `http://10.86.13.201:31280`（前端云部署网关，nginx 容器内 listen 6173）→ 完整 URL 为 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}`（同源 iframe 可省协议主机用相对路径）。
+6. **异动根因本体推理与优化闭环（V8.1，仅步骤2判定异常时执行）**——复用现有 CPCP 本体推理平台（backend-app Java，具 `product-ops.ttl` 产商品运营归因与风险本体 + `ops_rules.json` R-A01~A06），**禁止新造本体/自拍 TTL**；本体推理**必须输出推理链**：
+   ① **根因推理**（确定性调后端，第2层执行）：
+   ```bash
+   python scripts/cpcp_api.py ops_root_cause --product-id "<product_id>"
+   ```
+   - 接口失败 → 按异常矩阵 E34-ops 提示型处理（不阻断，输出"根因推理暂不可用"）；出参 JSON **逐字引用不加工**。
+   - 出参含**推理链字段**：`anomalies[]`（R-A01 异动确认）、`paths[]`（R-A02~A05 归因排名，含 rootCauseType/name/weight/ruleId/evidence[]/path[]/isPrimary）、`evidenceTriples[]`（本体 {s,p,o} 证据三元组）、`swrlFiredRules[]`（命中的 SWRL 规则）、`appliedRules[]`、`reasonEngine`（openllet-swrl / java-rules）、`actionList[]`（优化建议）。
+   ② **输出根因推理链（第3层组装，逐字引用出参；模型禁止改写/补造证据）**：
+   ```
+   **异动根因推理链路（{{reasonEngine}}）**
+   - 异动确认：{{anomalies 摘要：指标 code、delta、message，逐字引用}}
+   - 归因路径（按 paths 排名）：
+   | 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |
+   | :--: | :-- | :-- | :-- | :-- | :-- |
+   | {{rank}} | {{rootCauseType 渠道/促销/竞品/行为}} | {{name}} | {{weight}} | {{ruleId}} | {{evidence 逐字引用}} |
+   （逐行展开 topN；paths 为空 → 照实引用出参 message"已确认异动但未命中归因规则"，禁止编造根因）
+   - 命中规则：{{swrlFiredRules / appliedRules，逗号分隔，空则照实省略}}
+   - 证据三元组：{{evidenceTriples 逐字摘要}}
+   ```
+   ③ **优化方案（规则/图数据驱动，第3层组装）**并**建工单闭环**：
+   ```bash
+   python scripts/cpcp_api.py create_work_order --product-id "<product_id>" --source ops_assistant \
+     --session-id "<会话 session_id，有则传>" --title "{{产品名}}异动根因处置工单" \
+     --summary "<异动摘要+根因链路摘要>" --actions '<actionList 的优化动作 JSON 数组，逐字引用>' \
+     --root-causes '<paths 的根因 JSON 数组，逐字引用>'
+   ```
+   - 建单返回 `workOrder.workOrderId`（WO 开头）即工单号；失败按异常矩阵 E34-ops 提示型处理（不阻断根因结论输出）。
+   - 输出：
+   ```
+   **优化方案（规则驱动）**
+   {{actionList 逐条引用；无则引用出参 message，禁止编造}}
+   **处置工单已建立（持续闭环）**：工单号 {{workOrderId}}｜状态 open｜来源 {{source}}
+   回检方式：后续可输入"查询工单 / 关闭工单"进行状态跟踪与闭环回检。
+   ```
+   - **闭环纪律**：告警→根因→方案→工单 形成持续闭环；`actionList`/`workOrder.draft` 为规则/图数据驱动（`graph.actionSuggestions`/`disposition.defaultAction`），**LLM 禁止在证据与出参之外编造优化建议**；根因/优化全部依据 `ops_root_cause` 出参逐字引用。
 
 ### 禁止事项
 - 缺 product_id 且会话内无产出值时禁止调用（先追问）；
-- 禁止瞒报异常（error_count>0 必须推送告警并明示）。
+- 禁止瞒报异常（error_count>0 必须推送告警并明示）；
+- 根因决策/优化建议一律以 `ops_root_cause`/工单后端出参为准，**禁止 LLM 在证据链之外自行推断根因或编造优化方案**。
 
 ## 支线D-3：确认上线与监控运维方案（审批通过后）
 
@@ -92,6 +148,8 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 1. 校验审批状态：先运行支线D-1 确认 status=通过（未通过 → 中断提示"审批尚未通过，暂不能上线"）；
 2. **输出监控运维方案（固定模板，数据逐字引用会话上下文，不虚构指标值）**：
 ```
+【环节9/9·监控运维】✅ 执行成功
+
 **{{套餐名称}}监控运维方案已生成**
 
 **一、销售情况监控**

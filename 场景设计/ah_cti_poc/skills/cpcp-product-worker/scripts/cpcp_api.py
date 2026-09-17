@@ -1028,6 +1028,117 @@ def cmd_derive_flat24(args):
                      ensure_ascii=False))
 
 
+def cmd_validate_nested(args):
+    payload = _load_json_arg(_read_arg(args, "payload_json", "_json_file"), "payload_json")
+    if not payload:
+        _err("PARAM_MISSING", "payload_json must be provided (merge_nested nested packet, use --payload-json-file)")
+    body = {"payload": payload}
+    if args.template:
+        body["template"] = args.template
+    if args.similar_offer_file:
+        with open(args.similar_offer_file, "r", encoding="utf-8-sig") as f:
+            body["similar_offer"] = json.load(f)
+    elif args.similar_offer:
+        try:
+            body["similar_offer"] = json.loads(args.similar_offer)
+        except json.JSONDecodeError:
+            body["similar_offer"] = {"raw": args.similar_offer}
+    out = _http("POST", "/api/v1/product-ontology/config/validate-nested", body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_explain_nested(args):
+    if not args.trace_id:
+        _err("PARAM_MISSING", "trace_id must be provided (from validate_nested output)")
+    if args.field:
+        from urllib.parse import quote
+        field_path = quote(args.field, safe="")
+        out = _http("GET", "/api/v1/product-ontology/config/provenance/" + field_path)
+        print(json.dumps(out, ensure_ascii=False))
+        return
+    body = {"trace_id": args.trace_id, "audience": args.audience or "business"}
+    out = _http("POST", "/api/v1/product-ontology/config/explain", body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+# ---------------- 监控运营闭环（V8.1：异动根因本体推理 + 优化工单闭环） ----------------
+# 转发现有 CPCP 本体推理平台（backend-app Java，与 validate_nested/explain_nested 同一基址），
+# 禁止新造本体：复用具 product-ops.ttl（产商品运营归因与风险本体）+ ops_rules.json（R-A01~A06）
+
+def cmd_ops_root_cause(args):
+    """异动根因分析（R-A01 异动确认 → R-A02~A05 渠道/促销/竞品/行为归因 → R-A06 持续下滑）。
+    出参含推理链 swrlFiredRules[]/appliedRules[]/paths[]/evidenceTriples[] + 优化 actionList[]/workOrder.draft。"""
+    if not args.offering_id and not args.product_id and not args.text:
+        _err("PARAM_MISSING", "缺少商品ID或异动描述，请提供 --offering-id/--product-id 或 --text")
+    body = {}
+    oid = args.offering_id or args.product_id
+    if oid:
+        body["offeringId"] = oid
+    if args.text:
+        body["text"] = args.text
+    out = _http("POST", "/api/v1/product-ontology/ops/root-cause", body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_create_work_order(args):
+    """创建处置工单（告警→根因→方案→工单，持续闭环）。出参 workOrder.workOrderId 为工单号。"""
+    if not args.offering_id and not args.product_id:
+        _err("PARAM_MISSING", "缺少商品ID，请提供 --offering-id/--product-id")
+    body = {"offeringId": args.offering_id or args.product_id}
+    if args.source:
+        body["source"] = args.source
+    if args.session_id:
+        body["sessionId"] = args.session_id
+    if args.title:
+        body["title"] = args.title
+    if args.summary:
+        body["summary"] = args.summary
+    if args.actions:
+        try:
+            body["actions"] = json.loads(args.actions)
+        except json.JSONDecodeError:
+            _err("PARSE_ERROR", "actions 不是合法 JSON，请用 JSON 数组或省略")
+    if args.root_causes:
+        try:
+            body["rootCauses"] = json.loads(args.root_causes)
+        except json.JSONDecodeError:
+            _err("PARSE_ERROR", "root_causes 不是合法 JSON，请用 JSON 数组或省略")
+    if args.offering_name:
+        body["offeringName"] = args.offering_name
+    out = _http("POST", "/api/v1/product-ontology/ops/work-orders", body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_query_work_order(args):
+    """查询处置工单（按状态/会话/关键词，分页）。"""
+    params = {}
+    if args.status:
+        params["status"] = args.status
+    if args.session_id:
+        params["session_id"] = args.session_id
+    if args.q:
+        params["q"] = args.q
+    if args.page:
+        params["page"] = str(args.page)
+    if args.size:
+        params["size"] = str(args.size)
+    out = _http("GET", "/api/v1/product-ontology/ops/work-orders", params or None)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_update_work_order(args):
+    """处置工单状态流转：open → in_progress → done / cancelled（回检闭环）。"""
+    if not args.work_order_id:
+        _err("PARAM_MISSING", "缺少工单号，请提供 --work-order-id")
+    if args.status not in ("open", "in_progress", "done", "cancelled"):
+        _err("PARAM_MISSING", "工单状态枚举非法（open/in_progress/done/cancelled）")
+    body = {"status": args.status}
+    if args.remark:
+        body["remark"] = args.remark
+    out = _http("PUT", "/api/v1/product-ontology/ops/work-orders/" + args.work_order_id, body)
+    print(json.dumps(out, ensure_ascii=False))
+
+
 # ---------------- CLI ----------------
 
 def main():
@@ -1120,6 +1231,7 @@ def main():
     s = sub.add_parser("render_table")
     s.add_argument("--schema-file", required=True)
     s.add_argument("--json-file", required=True)
+    s.add_argument("--meta-file", default="")
     s.add_argument("--title", default="")
     s.set_defaults(fn=cmd_render_table)
     s = sub.add_parser("derive_flat24")
@@ -1127,6 +1239,46 @@ def main():
     s.add_argument("--payload-json"); s.add_argument("--payload-json-file")
     s.add_argument("--mapping-file", default="")
     s.set_defaults(fn=cmd_derive_flat24)
+    s = sub.add_parser("validate_nested")
+    s.add_argument("--template", default="")
+    s.add_argument("--payload-json"); s.add_argument("--payload-json-file")
+    s.add_argument("--similar-offer"); s.add_argument("--similar-offer-file")
+    s.set_defaults(fn=cmd_validate_nested)
+    s = sub.add_parser("explain_nested")
+    s.add_argument("--trace-id", default="")
+    s.add_argument("--audience", default="business")
+    s.add_argument("--field", default="")
+    s.set_defaults(fn=cmd_explain_nested)
+
+    # V8.1 监控运营闭环：异动根因本体推理 + 优化工单
+    s = sub.add_parser("ops_root_cause")
+    s.add_argument("--offering-id", default="")
+    s.add_argument("--product-id", default="")
+    s.add_argument("--text", default="")
+    s.set_defaults(fn=cmd_ops_root_cause)
+    s = sub.add_parser("create_work_order")
+    s.add_argument("--offering-id", default="")
+    s.add_argument("--product-id", default="")
+    s.add_argument("--source", default="ops_assistant")
+    s.add_argument("--session-id", default="")
+    s.add_argument("--title", default="")
+    s.add_argument("--summary", default="")
+    s.add_argument("--actions", default="")
+    s.add_argument("--root-causes", default="")
+    s.add_argument("--offering-name", default="")
+    s.set_defaults(fn=cmd_create_work_order)
+    s = sub.add_parser("query_work_order")
+    s.add_argument("--status", default="")
+    s.add_argument("--session-id", default="")
+    s.add_argument("--q", default="")
+    s.add_argument("--page", default="")
+    s.add_argument("--size", default="")
+    s.set_defaults(fn=cmd_query_work_order)
+    s = sub.add_parser("update_work_order")
+    s.add_argument("--work-order-id", required=True)
+    s.add_argument("--status", required=True)
+    s.add_argument("--remark", default="")
+    s.set_defaults(fn=cmd_update_work_order)
 
     args = p.parse_args()
     args.fn(args)

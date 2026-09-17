@@ -10,6 +10,12 @@
 - 模型不得自行判断是否进入本程序，一律以 dispatcher 出参为准（四层架构第0层）；
 - 修改场景重新分析，覆盖写同 req_id。
 
+## 输出标题头（九环节总表，演示防误判为未实现）
+- 本程序覆盖全局**环节1需求提报**与**环节2需求分析**两个环节，输出时按下列标题头显性成节（序号/全名取 SKILL.md 九环节总表，禁止缩写、禁止漏标题头）：
+  - **需求提报**：`【环节1/9·需求提报】✅ 执行成功`——接收到完整需求、进入分析前回显（含需求摘要回显，1~2 句需求理解）；
+  - **需求分析**：`【环节2/9·需求分析】✅ 执行成功`——六步流程完成后，在出口A/出口B 文案前输出，标题头下空一行再接 render_table 分节多表；
+- 需求提报后若直接进入分析，两标题头连续输出（中间以 `---` 分隔），保证演示一眼可辨"需求提报→需求分析"两步均已实现；出口A（待补充未保存）同样输出两标题头，结论按出口A 文案。
+
 ## 前置检查
 - `requirement_text`（必填）：需求原文或文档内容摘要。缺失时追问："请提供销售品需求描述或上传需求文档。"
 
@@ -92,12 +98,27 @@ python -X utf8 "scripts\cpcp_api.py" merge_nested --schema-file "scripts\templat
 - 出参：`payload`（嵌套实例化报文）+ `_meta`（逐叶子 source 溯源 + enum_violation 标记）+ `pending_required`；
 - `_meta` 中 enum_violation 条目 = 非空告警清单，须在第⑧步输出附【枚举确认提示】小节逐条列出（人工确认，不阻断）。
 
+### 步骤⑤.5：嵌套本体校验闸（工具，确定性，V7.0+推理接入）
+逐产品执行（**入参必须是 merge_nested 出参 payload 本体，与第⑥步同源**）：
+```bash
+python -X utf8 "scripts\cpcp_api.py" validate_nested --template "<templateId>" --payload-json-file "<merge 出参 payload 工件路径>" [--similar-offer-file "<相似品报文路径（可选，供冲突比对）>"]
+```
+- 转发 Java `POST /api/v1/product-ontology/config/validate-nested`（backend-app 端口 6174）；技术链路=normalizeNested 归一层 → ConfigMessageProjector.fromMessage 反投影为扁平 draft → TemplateDeriveEngine.derive 补全 → TemplateComplianceService.checkCompliance（含 SHACL delegate R-C06/R-C03/R-C05），**复用现有 CPCP 本体/platform，禁止新造本体或自拍 TTL**；
+- 出参：`pass`（bool，门禁判定）、`violations[]`（item 含 ruleId/issueType/issueLevel=HIGH|WARN/field/message/engine）、`defaulted[]`、`rule_ids[]`（命中的校验规则）、`trace_id`（本次校验审计号）、`can_submit`（==pass）、`explain_hint`；
+- **处置（四层架构铁律，结果逐字节引用不加工）**：
+  - `pass=false`（存在 `issueLevel=HIGH` 或 `ruleId=R-C06` 违反）→ **按 E33 中断**，附违规项与建议，禁止强行产出执行方案；禁止 LLM 自行"改数据绕过"；
+  - 仅 `level=WARN`/low 或校验通过 → **不阻断**，继续第⑥步；WARN 项随第⑧步输出附【风险提示】小节（非必填字段冲突，供用户知悉，不强制）；
+  - **价格字段（档位/月费/月租/固定费）违反/待禁推仍走已有 pending_required 纪律**（第⑤步已强制留空，⑤.5 不另补价，禁止从相似品照搬或跨成员推导）；
+- **推理可见性**：用户追问"为什么这么判/依据哪条规则/字段来源"时，用出参 `trace_id` 调 `explain_nested --trace-id <trace_id> [--audience <engineer|sales>] [--field <字段路径>]`——field 时 GET /config/provenance/{field}（PROV-O 溯源），否则 POST /config/explain；**复用 Java 已有 explain/provenance，Python 侧重造 reason_trace**（禁止）；取数失败按 E34 提示型处置（不中断主干，输出"推理依据暂不可用"）；
+- 一次性校验失败/后端未启动（HTTP 连接失败）→ **不阻断主干**，按 E34 提示"本体校验暂不可用，已跳过（配置仍可生成，建议后续补校验）"，继续第⑥步（防校验服务抖动卡死需求分析）。
+
 ### 步骤⑥：分节表格渲染（工具，确定性）
 逐产品执行（**入参必须是 merge_nested 出参的 payload 本体（嵌套报文），不是 merge 全出参**）：
 ```bash
-python -X utf8 "scripts\cpcp_api.py" render_table --schema-file "scripts\templates\<templateId>.schema.json" --json-file "<merge 出参 payload 工件路径>" --title "<套餐名称>"
+python -X utf8 "scripts\cpcp_api.py" render_table --schema-file "scripts\templates\<templateId>.schema.json" --json-file "<merge 出参 payload 工件路径>" --meta-file "<merge 出参 _meta 工件路径>" --title "<套餐名称>"
 ```
-- 渲染形态（V2.0，业务人员可读）：概览卡片置顶（资费名称/套餐月费/包含资源）+ "1. 基础信息 / 2. 发布信息 / 3. 可选配置…" 独立小节 + 小节内二级分组加粗子标题，三列表格（字段名称|字段值|备注），**纯 x-label 中文，无技术键名、无层级标记列**；
+- 渲染形态（V2.1，业务人员可读）：概览卡片置顶（资费名称/套餐月费/包含资源）+ "1. 基础信息 / 2. 发布信息 / 3. 免填单 / 4. 月租…" 独立小节（可选配置下组件与 发布信息 同级）+ 更深容器为小节内二级分组加粗子标题，**四列表格（字段名称|字段值|取值来源|备注），纯 x-label 中文，无技术键名、无层级标记列**；
+- **取值来源列（V3.0）**：`--meta-file` 传入 merge_nested 出参 `_meta`（逐叶子溯源，path→{source}），render_table 确定性映射为业务标签——`原始需求`→**原始需求提取**、`AI补全`→**复用相似产品**、`本体推理`→**本体推理**、`默认值`→**默认值**；`本体推理`仅标注来源（validate_nested defaulted 补全的口径），**不回写 payload 值**；
 - 仅渲染有值段；必填缺失进文末【待补充字段】（与 merge `pending_required` 同源）；
 - 同输入输出逐字节稳定（幂等），渲染失败/输出为空 → E32 中断（先核对入参是否误传 merge 全出参）。
 
@@ -121,6 +142,13 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 ### 步骤⑧：输出（二选一）
 **出口A（有待补充，未保存）：**
 ```
+【环节1/9·需求提报】✅ 执行成功
+
+{{需求理解 1~2 句}}
+
+---
+【环节2/9·需求分析】✅ 执行成功
+
 已识别并生成《{{套餐名称}}》销售品需求单。系统根据历史相似产品自动补全缺失字段，形成完整《加载方案》如下：
 
 {{render_table 分节多表，逐字引用}}
@@ -132,6 +160,13 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 ```
 **出口B（无待补充，已保存）：**
 ```
+【环节1/9·需求提报】✅ 执行成功
+
+{{需求理解 1~2 句}}
+
+---
+【环节2/9·需求分析】✅ 执行成功
+
 已识别并生成《{{套餐名称}}》销售品需求单。系统根据历史相似产品自动补全缺失字段，形成完整《加载方案》如下：
 
 {{render_table 分节多表，逐字引用}}
@@ -145,10 +180,10 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 - 如需调整方案：提示"请直接说明修改意见（仅价格、资源类字段须由您补充，其余字段已按相似产品补全）"；
 - **输出纪律**：只输出 render_table 表格 + 出口文案；禁止额外生成文档文件/下载链接（除非用户明确要求导出文件）；禁止输出内部推理过程（提取细节、合并推导、_meta 全文、任务清单等）。
 
-来源说明：备注列固定形态——【原始需求】/【AI补全】/【默认值】/条件提示/默认值标记（render_table 自动生成）。
+来源说明：取值来源列固定形态——【原始需求提取】/【复用相似产品】/【本体推理】/【默认值】（render_table 依 merge `_meta` 逐叶子确定性映射；`本体推理`仅标注不写值）；备注列保留条件提示/默认值标记（render_table 自动生成）。
 
 ## 多产品并存口径
-- 步骤① 识别出 N 个产品（N≥2）时，步骤②~⑥ **逐产品独立执行**（各自检索相似品/取模板/提取/合并/渲染），禁止跨产品混用模板或报文；
+- 步骤① 识别出 N 个产品（N≥2）时，步骤②~⑥/⑤.5 **逐产品独立执行**（各自检索相似品/取模板/提取/合并/校验/渲染），禁止跨产品混用模板或报文；
 - 任一产品在任一步骤异常 → 整体中断按对应 E 码处置（不做部分输出）；
 - 步骤⑦ 保存时 plan_json_v2 以产品数组组织：`{req_id, products: [{name, template, payload, _meta, pending_required}], flat_fields}`；
 - 待补充判定逐产品独立，任一产品存在 pending_required → 整体出口A。
@@ -156,8 +191,9 @@ python -X utf8 "scripts\cpcp_api.py" save_node_result --req-id "<req_id>" --node
 ## 禁止事项
 - 禁止生成或修改 req_id（以系统时钟生成结果为准，禁止臆造）；
 - **禁止对"待补充"的价格字段做任何推理或从相似产品照搬**（normal 模式 merge_nested 已强制，模型不得绕过脚本手工补价）；
-- 禁止 LLM 参与合并/校验/渲染/路由（第②③⑤⑥⑦步一律工具执行，LLM 只在①④做翻译）；
+- 禁止 LLM 参与合并/校验/渲染/路由/本体推理判定（第②③⑤⑥⑦步与步骤⑤.5 一律工具执行，LLM 只在①④做翻译；⑤.5 校验结果逐字节引用，禁止改数据绕过违反项）；
 - 禁止模型手工把 24 字段逆投影为嵌套报文（远端 offerTemplate 缺席时按 E1 降级口径走，禁止自造映射）；
+- **禁止在 Python 侧重造 reason_trace/推理 trace**（⑤.5 可见性一律复用 Java 已实装的 `/config/explain` 与 `/config/provenance/{field}`，只传 trace_id 取数，禁止自行发明推理链路）；
 - 禁止在提取输出中输出模板叶子清单外的路径（validate_elements 会剔除，重跑浪费）；
 - 禁止未读 `extract-prompt-template.md` 提示词模板就直接提取（先读后提）；
 - 出口A 场景禁止保存执行方案或产出 req_id；

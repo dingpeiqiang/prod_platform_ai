@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>单品监控运营 · 详情</title>
+<link rel="stylesheet" href="./assets/css/common.css">
+<link rel="stylesheet" href="./assets/css/detail.css">
+</head>
+<body>
+<main class="ops-main">
+
+  <a class="back-link" id="back-link" href="./index.html">← 返回运营视图</a>
+
+  <!-- ===== 产品信息头 ===== -->
+  <div class="card" style="padding:16px 20px;">
+    <div class="prod-head">
+      <div>
+        <div class="prod-name">
+          <span id="hd-name">—</span>
+          <span id="hd-code" class="prod-code"></span>
+          <span id="hd-type" class="prod-type pt-single" style="margin-bottom:0;"></span>
+          <span id="hd-status" class="status-pill st-ok" style="margin-left:4px;"><span class="status-dot"></span></span>
+        </div>
+        <div style="font-size:11.5px;color:var(--text-lt);margin-top:6px;">数据更新：<span id="hd-updated"></span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <a class="btn btn-sm" href="./metrics-dictionary.html">指标口径与预警规则</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 健康度主卡 ===== -->
+  <div class="health-hero">
+    <div class="hero-score" id="hd-score">—</div>
+    <div class="hero-body">
+      <div class="hero-tagline" id="hd-tagline" style="background:var(--green-bg);color:var(--green);">—</div>
+      <div class="hero-desc" id="hd-desc"></div>
+      <div class="hero-metrics" id="hd-metrics"></div>
+    </div>
+  </div>
+
+  <!-- ===== 四维度 ===== -->
+  <div class="dim-grid">
+
+    <!-- ① 效益维度 -->
+    <div class="ops-mod">
+      <div class="ops-mod-head">
+        <div class="ops-mod-title"><span class="bar"></span>效益维度<span class="q">赚了多少 · 赚得怎么样</span></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="ops-tabs" id="opsEffectTabs">
+            <button type="button" class="active" data-effect="income">收入趋势</button>
+            <button type="button" data-effect="profit">利润率</button>
+            <button type="button" data-effect="crm">营销费用占比</button>
+          </div>
+          <div class="ops-mod-score" id="score-effect">—<small> 分</small></div>
+        </div>
+      </div>
+      <div class="ops-tabpane active" id="opsEffectIncomePane">
+        <div class="ops-sub-toggle" id="opsEffectIncomeRate">
+          <button type="button" class="active" data-rate="yoy">同比</button>
+          <button type="button" data-rate="mom">环比</button>
+        </div>
+        <div class="ops-chartbox" id="opsEffectIncome" style="height:225px;"></div>
+        <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>当月收入(万元)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>累计收入(万元)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>同/环比(%)</span></div>
+      </div>
+      <div class="ops-tabpane" id="opsEffectProfitPane">
+        <div class="ops-chartbox" id="opsEffectProfit" style="height:225px;"></div>
+        <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>利润率(%)</span></div>
+      </div>
+      <div class="ops-tabpane" id="opsEffectCrmPane">
+        <div class="ops-chartbox" id="opsEffectCrm" style="height:225px;"></div>
+        <div class="ops-legend"><span><i class="ops-dot" style="background:var(--yellow);"></i>营销费用占比(%)</span></div>
+      </div>
+    </div>
+
+    <!-- ② 市场维度 -->
+    <div class="ops-mod">
+      <div class="ops-mod-head">
+        <div class="ops-mod-title"><span class="bar" style="background:var(--green);"></span>市场维度<span class="q">有多少人 · 增长怎么样 · 人从哪里来</span></div>
+        <div class="ops-mod-score" id="score-market">—<small> 分</small></div>
+      </div>
+      <div class="ops-mkt-2col">
+        <div class="ops-mkt-block ops-mkt-users">
+          <div class="ops-mkt-block-head">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span class="ops-mkt-block-title">用户</span>
+              <div class="ops-tabs" id="opsUserTabs">
+                <button type="button" class="active" data-utab="scale">规模</button>
+                <button type="button" data-utab="active">活跃</button>
+              </div>
+            </div>
+          </div>
+          <div class="ops-utabpane active" id="opsUserScalePane">
+            <div class="ops-rate-row">
+              <span class="ops-mkt-sub">到达用户 · 月净增</span>
+              <div class="ops-sub-toggle" id="opsMktScaleRate">
+                <button type="button" class="active" data-grate="yoy">同比</button>
+                <button type="button" data-grate="mom">环比</button>
+              </div>
+            </div>
+            <div class="ops-chartbox" id="opsMktScale" style="height:195px;"></div>
+            <div class="ops-legend"><span><i class="ops-dot" style="background:#1d8bff;"></i>到达用户(万)</span><span><i class="ops-dot" style="background:#0a4eb0;"></i>月净增(万)</span><span><i class="ops-dot" style="background:#F59E0B;"></i>同/环比(%)</span></div>
+          </div>
+          <div class="ops-utabpane" id="opsUserActivePane">
+            <div class="ops-chartbox" id="opsActiveTrend" style="height:195px;"></div>
+            <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>活跃用户率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>付费活跃率(%)</span></div>
+          </div>
+        </div>
+        <div class="ops-mkt-block ops-mkt-channel">
+          <div class="ops-mkt-block-head">
+            <span class="ops-mkt-block-title">渠道划分</span>
+            <select class="ops-mkt-month" id="opsChannelMonth"></select>
+          </div>
+          <div class="ops-chartbox" id="opsChannelPie" style="height:245px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 运营质量维度 -->
+    <div class="ops-mod">
+      <div class="ops-mod-head">
+        <div class="ops-mod-title"><span class="bar" style="background:var(--yellow);"></span>运营质量维度<span class="q">运营有没有问题 · 哪里有问题</span></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div class="ops-tabs" id="opsQualityTabs">
+            <button type="button" class="active" data-qt="retain">留存</button>
+            <button type="button" data-qt="service">服务</button>
+          </div>
+          <div class="ops-mod-score" id="score-quality">—<small> 分</small></div>
+        </div>
+      </div>
+      <div class="ops-tabpane active" id="opsQRetainPane">
+        <div class="ops-q-chips" id="q-retain-chips"></div>
+        <div class="ops-chartbox" id="opsQRetain" style="height:225px;"></div>
+        <div class="ops-legend"><span><i class="ops-dot" style="background:var(--green);"></i>T+1活跃率(%)</span><span><i class="ops-dot" style="background:var(--yellow);"></i>T+3退订率(%)</span><span><i class="ops-dot" style="background:var(--blue);"></i>T+6退订率(%)</span></div>
+      </div>
+      <div class="ops-tabpane" id="opsQServicePane">
+        <div class="ops-q-chips" id="q-service-chips"></div>
+        <div class="ops-chartbox" id="opsQService" style="height:225px;"></div>
+        <div class="ops-legend"><span><i class="ops-dot" style="background:var(--blue);"></i>业务办理成功率(%)</span><span><i class="ops-dot" style="background:var(--red);"></i>资费投诉率(%)</span></div>
+      </div>
+    </div>
+
+    <!-- ④ 生命周期维度 -->
+    <div class="ops-mod">
+      <div class="ops-mod-head">
+        <div class="ops-mod-title"><span class="bar" style="background:var(--purple);"></span>生命周期维度<span class="q">用户处在哪个阶段 · 新增质量怎么样</span></div>
+        <div class="ops-mod-score" id="score-life">—<small> 分</small></div>
+      </div>
+      <div class="ops-life" id="life-nodes"></div>
+      <div class="ops-flow">
+        <div class="ops-flow-head">
+          <div class="ops-flow-title"><i></i>存量结构 · 阶段占比</div>
+        </div>
+        <div class="ops-flow-track" id="life-flow"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== 异动预警 ===== -->
+  <div class="card">
+    <div class="card-head"><div class="card-title" style="font-size:13px;"><span style="width:3px;height:14px;background:var(--red);border-radius:2px;display:inline-block;"></span>异动预警</div></div>
+    <div id="hd-alert" class="alert alert-green" style="margin-bottom:0;"><div class="alert-icon">✓</div><div class="alert-text">—</div></div>
+  </div>
+
+</main>
+
+<script src="./lib/echarts/echarts.min.js"></script>
+<script src="./assets/js/mock-data.js"></script>
+<script src="./assets/js/detail.js"></script>
+</body>
+</html>

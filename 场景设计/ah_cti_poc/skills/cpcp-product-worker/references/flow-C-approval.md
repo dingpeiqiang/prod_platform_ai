@@ -9,6 +9,9 @@
 ## 前置检查
 - `req_id`（必填）：以会话最近一次值为准。缺失时中断："缺少执行方案key，请先完成执行主干。"
 
+## 输出标题头（九环节总表，演示防误判为未实现）
+- 本程序对应全局**环节8上线审批**，审批推送成功后的输出必须以 `【环节8/9·上线审批】✅ 执行成功` 标题头开头（序号/全名取 SKILL.md 九环节总表，禁止缩写、禁止漏标题头）；标题头下空一行再接《上线审批建议》正文；审批被拒/推送失败等异常场景标题头用 `【环节8/9·上线审批】❌ 执行失败`。
+
 ## 执行程序
 
 ### 步骤1：串行自查五类环节结果（原节点501q1~q5，链式顺序，非并行）
@@ -62,12 +65,22 @@ python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node report --
 python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<product_id>" --report-url "<report>" --approval-flow standard
 ```
 - 后端硬校验：approve_confirmed（脚本内置 true，以"用户明确回复上线审批"为前提）+ req_id 四环节（config/spec/fee/test）结果齐全才放行，缺失即拒绝（跳步无法推送）；
-- 判定：返回 approval_id → 步骤6；`status=NOT_CONFIRMED` 且无 approval_id → 按 E16 中断（不应出现，出现即脚本/文档缺陷）；推送失败（含网络异常）→ 传输层重试由脚本内置（共尝试 3 次），耗尽后按 E16/E29 **直接中断询问**（禁止智能体自行叠加业务重试；幂等：同 product_id 重复提交返回原 approval_id）。
+- 判定：返回 approval_id → 步骤6；`status=NOT_CONFIRMED` 且无 approval_id → 按 E16 中断（不应出现，出现即脚本/文档缺陷）；推送失败（含网络异常）→ 传输层重试由脚本内置（共尝试 3 次），耗尽后按 E16/E29 **直接中断询问**（禁止智能体自行叠加业务重试；幂等：同 product_id 重复提交返回原 approval_id）；
+- 出参 `approval_matrix[]`（四节点审批矩阵）由 submit_approval 返回，步骤6 审批矩阵逐字引用（出参无则省略，禁止补造）。
 
 ### 步骤6：输出
 ```
+【环节8/9·上线审批】✅ 执行成功
+
 《{{套餐名称}}上线审批建议》已提交审批：
 - 审批单号：{{approval_id}}，状态：{{status}}
+
+**审批矩阵（审批节点逐项展示，逐字引用出参 approval_matrix[]，禁止编造）：**
+| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| {{node_seq}} | {{node_name}} | {{approver}} | {{status}} | {{opinion，无则留空}} | {{update_time，无则留空}} |
+（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造） 
+
 - **建议处理：可输入"查询审批进度"查看当前审批环节与意见。**
 ```
 
