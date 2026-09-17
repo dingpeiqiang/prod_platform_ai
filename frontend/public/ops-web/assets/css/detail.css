@@ -137,3 +137,29 @@
 .ops-flow-track{display:flex;width:100%;height:40px;border-radius:8px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.04);}
 .ops-flow-seg{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:12px;font-weight:700;white-space:nowrap;min-width:0;}
 .ops-flow-seg small{font-size:10px;font-weight:400;opacity:.92;}
+
+/* ===== 自适应：随 iframe/容器宽度动态适配 ===== */
+.ops-main{width:100%;min-width:0;max-width:var(--ops-max,1280px);margin:0 auto;padding:20px 24px 60px;}
+.status-pill{white-space:nowrap;}
+.prod-name{flex-wrap:wrap;line-height:1.4;min-width:0;}
+
+/* 健康度主卡在窄屏下改为纵向排布，分数居中 */
+@media(max-width:720px){
+  .health-hero{gap:14px;justify-content:center;text-align:center;}
+  .hero-body{min-width:0;flex-basis:100%;}
+  .hero-metrics{justify-content:center;}
+  .hero-metrics b{font-size:15px;}
+  .ops-main{padding:16px 14px 48px;}
+  .ops-mod-head{flex-direction:column;align-items:flex-start;}
+  .ops-mod-title .q{display:block;border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:4px;margin-top:4px;width:100%;}
+}
+
+/* 生命周期节点在超窄屏下单列 */
+@media(max-width:560px){
+  .ops-life{grid-template-columns:1fr 1fr;gap:10px;}
+  .ops-q-chip{min-width:100%;}
+  .hero-metrics{gap:16px;}
+}
+
+/* 生命周期 5 节点箭头在自适应布局下隐藏，避免越界 */
+@media(max-width:1180px){ .ops-life-node::after{display:none;} }

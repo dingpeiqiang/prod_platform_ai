@@ -334,6 +334,10 @@
     return m ? decodeURIComponent(m[1]) : '';
   }
 
+  function resizeAll() {
+    charts.forEach(function (c) { if (c) c.resize(); });
+  }
+
   function main() {
     var code = getParam('product_id') || getParam('productId') || getParam('offer_id') || getParam('offerId');
     var data = window.OPS_MOCK[code] || window.OPS_MOCK_DEFAULT(code, getParam('name'), getParam('type'));
@@ -344,7 +348,12 @@
     renderAll(data);
     var back = document.getElementById('back-link');
     if (back && !getParam('back')) back.style.display = 'none';
-    window.addEventListener('resize', function () { charts.forEach(function (c) { if (c) c.resize(); }); });
+    window.addEventListener('resize', resizeAll);
+    if (typeof ResizeObserver !== 'undefined') {
+      var root = document.querySelector('.ops-main') || document.body;
+      var ro = new ResizeObserver(function () { resizeAll(); });
+      ro.observe(root);
+    }
   }
 
   if (document.readyState === 'loading') {
