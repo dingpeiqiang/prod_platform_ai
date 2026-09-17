@@ -64,6 +64,12 @@ def is_descriptive_enum(enum):
     return False
 
 
+def _today_str():
+    """系统默认规则用的当前日期（YYYY-MM-DD）。"""
+    import datetime
+    return datetime.date.today().strftime("%Y-%m-%d")
+
+
 def is_price(label, key):
     """价格字段判定：优先 x-label（档位/月功能费/月租…），路径尾段名兜底。
     含"有效期/周期/时长/间隔"的字段是时间维度非资费金额，不按价格拦截。"""
@@ -151,9 +157,13 @@ def merge(schema, elements_map, offer_map, meta, path="", pending=None, mode="no
             oval = offer_map.get(cur)
             if oval is not None:
                 val, source = oval, "AI补全"
-        # 3) 兜底：schema default
+        # 3) 兜底：schema default → x-default-rule（系统默认规则：effDate=系统时间、expDate=2099-12-31）
         if val is None and sub.get("default") is not None:
             val, source = sub["default"], "默认值"
+        if val is None and sub.get("x-default-rule"):
+            rule = sub["x-default-rule"]
+            val = _today_str() if rule == "system_date" else rule
+            source = "默认值"
         # 4) 仍缺：留空，必填进待补充
         if val is None:
             val, source = "", ""

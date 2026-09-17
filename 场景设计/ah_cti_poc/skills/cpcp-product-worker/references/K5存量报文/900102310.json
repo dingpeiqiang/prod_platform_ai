@@ -13,8 +13,8 @@
   },
   "releaseInfo": {
    "chnClassLimit": "实体渠道、电子渠道、直销渠道",
-   "groupId": "",
-   "groupIdMessage": ""
+   "groupId": "全省",
+   "groupIdMessage": "22个地市"
   },
   "optionalInfo": {
    "printContent": {
@@ -34,7 +34,7 @@
    "acctMonth": {
     "calcMode": "首月按天折算，一次性收取，次月按月收取",
     "fixFee": 299,
-    "acctItem": "",
+    "acctItem": "月租费",
     "isSplitRate": "使用默认税率",
     "splitRate9": "",
     "splitRate6": "",

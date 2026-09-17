@@ -36,7 +36,8 @@
      "x-element": "文本框",
      "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
      "x-hint": "默认当前时间",
-     "x-required": true
+     "x-required": true,
+     "x-default-rule": "system_date"
     },
     "expDate": {
      "type": "string",
@@ -44,7 +45,8 @@
      "x-element": "文本框",
      "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
      "x-hint": "默认20991231",
-     "x-required": true
+     "x-required": true,
+     "x-default-rule": "2099-12-31"
     },
     "prodId": {
      "type": "string",
@@ -174,7 +176,7 @@
        "x-label": "短信内容",
        "x-element": "多选框",
        "description": "可选配置勾选“短信提醒”才展示",
-       "x-required": true,
+       "x-required": false,
        "x-show-when": "可选配置勾选“短信提醒”才展示"
       },
       "sysNoteNow": {
@@ -312,7 +314,7 @@
         "优惠月末生效",
         "仅入网首月优惠"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favItemType": {
        "type": "string",
@@ -322,7 +324,7 @@
        "enum": [
         "全科目(不包含特殊科目）"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favGroup": {
        "type": "string",
@@ -339,7 +341,7 @@
         "送费",
         "打折"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favDiscount": {
        "type": "number",
@@ -349,7 +351,7 @@
        "enum": [
         "并验证是小于1的2位小时"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favFee": {
        "type": "number",
@@ -359,7 +361,7 @@
        "enum": [
         "并验证优惠费用为数字，最多2位小数"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favValidity": {
        "type": "string",
@@ -371,7 +373,7 @@
         "订购后，前N个月有效",
         "订购N个月后开始有效"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favValidityVAlue": {
        "type": "number",
@@ -409,14 +411,14 @@
         "实时报保底",
         "月末保底"
        ],
-       "x-required": true
+       "x-required": false
       },
       "fav1Fee": {
        "type": "number",
        "x-label": "保底费用（元）",
        "x-element": "数字框",
        "description": "提示：最多保留两位小数，并验证",
-       "x-required": true
+       "x-required": false
       },
       "fav1ItemType": {
        "type": "string",
@@ -426,7 +428,7 @@
        "enum": [
         "全科目(不包含特殊科目）"
        ],
-       "x-required": true
+       "x-required": false
       },
       "fav1Group": {
        "type": "string",
@@ -444,7 +446,7 @@
         "订购后，前N个月有效",
         "订购N个月后开始有效"
        ],
-       "x-required": true
+       "x-required": false
       },
       "fav1ValidityVAlue": {
        "type": "number",
@@ -641,14 +643,14 @@
        "enum": [
         "国内主叫"
        ],
-       "x-required": true
+       "x-required": false
       },
       "theshold": {
        "type": "number",
        "x-label": "资源量",
        "x-element": "文本框",
        "description": "提示并校验为正整数数字。赠送单位：分钟",
-       "x-required": true
+       "x-required": false
       },
       "adjust": {
        "type": "string",
@@ -661,14 +663,14 @@
         "赠送流量按天折算"
        ],
        "default": "全额赠送流量",
-       "x-required": true
+       "x-required": false
       },
       "outCharge": {
        "type": "number",
        "x-label": "套外计费费率",
        "x-element": "文本框",
        "description": "校验为正数，浮点数。费率单位：元/分钟",
-       "x-required": true
+       "x-required": false
       },
       "remindFlag": {
        "type": "string",
@@ -680,7 +682,7 @@
         "是（剩余10分钟,用完提醒)"
        ],
        "default": "否",
-       "x-required": true
+       "x-required": false
       }
      },
      "x-label": "语音资源配置",
@@ -740,7 +742,7 @@
         "彩信",
         "短信+彩信"
        ],
-       "x-required": true
+       "x-required": false
       },
       "theshold": {
        "type": "number",
@@ -752,7 +754,7 @@
         "0.1",
         "0.5"
        ],
-       "x-required": true
+       "x-required": false
       },
       "adjust": {
        "type": "string",
@@ -765,7 +767,7 @@
         "赠送流量区分上下半月",
         "赠送流量按天折算"
        ],
-       "x-required": true
+       "x-required": false
       },
       "outCharge": {
        "type": "number",
@@ -777,7 +779,7 @@
         "0.1",
         "0.5"
        ],
-       "x-required": true
+       "x-required": false
       },
       "remindFlag": {
        "type": "string",
@@ -789,7 +791,7 @@
         "是（剩余10分钟,用完提醒)"
        ],
        "default": "否",
-       "x-required": true
+       "x-required": false
       }
      },
      "x-label": "短信资源配置",

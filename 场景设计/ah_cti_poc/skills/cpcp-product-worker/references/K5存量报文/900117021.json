@@ -43,14 +43,14 @@
    },
    "acctMonth": {
     "calcMode": "首月全额收取，次月按月收取",
-    "fixCircle": "",
+    "fixCircle": 0,
     "fixFee": 19.9,
-    "acctItem": "",
+    "acctItem": "月租费",
     "isSplitRate": "使用默认税率",
     "splitRate9": "",
     "splitRate6": "",
     "fixValidity": "长期有效",
-    "fixValidityVAlue": ""
+    "fixValidityVAlue": 0
    },
    "acctFav": {
     "favCondition": "",

@@ -82,7 +82,8 @@
      "x-label": "资费有效期",
      "x-element": "文本框",
      "description": "1、“资费有效周期”选择绝对时间展示\n2、右侧有时间选择组件，选择后按yyyymmdd带入文本框",
-     "x-required": true
+     "x-required": false,
+     "x-show-when": "资费有效周期选择\"绝对时间\"时展示并必填"
     },
     "effDate": {
      "type": "string",
@@ -90,7 +91,8 @@
      "x-element": "文本框",
      "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
      "x-hint": "默认当前时间",
-     "x-required": true
+     "x-required": true,
+     "x-default-rule": "system_date"
     },
     "expDate": {
      "type": "string",
@@ -98,7 +100,8 @@
      "x-element": "文本框",
      "description": "右侧有时间选择组件，选择后按yyyymmdd带入文本框",
      "x-hint": "默认20991231",
-     "x-required": true
+     "x-required": true,
+     "x-default-rule": "2099-12-31"
     },
     "payFlag": {
      "type": "string",
@@ -434,7 +437,7 @@
        "x-label": "短信内容",
        "x-element": "多选框",
        "description": "可选配置勾选“短信提醒”才展示",
-       "x-required": true,
+       "x-required": false,
        "x-show-when": "可选配置勾选“短信提醒”才展示"
       },
       "sysNoteNow": {
@@ -572,7 +575,7 @@
         "家庭手机优惠",
         "家庭宽带优惠"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favCondition": {
        "type": "string",
@@ -583,7 +586,7 @@
         "无条件优惠（实时优惠）",
         "优惠月末生效"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favItemType": {
        "type": "string",
@@ -593,7 +596,7 @@
        "enum": [
         "全科目(不包含特殊科目）"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favGroup": {
        "type": "string",
@@ -610,7 +613,7 @@
         "送费",
         "打折"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favDiscount": {
        "type": "number",
@@ -620,7 +623,7 @@
        "enum": [
         "并验证是小于1的2位小时"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favFee": {
        "type": "number",
@@ -630,7 +633,7 @@
        "enum": [
         "并验证优惠费用为数字，最多2位小数"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favValidity": {
        "type": "string",
@@ -642,7 +645,7 @@
         "订购后，前N个月有效",
         "订购N个月后开始有效"
        ],
-       "x-required": true
+       "x-required": false
       },
       "favValidityVAlue": {
        "type": "number",
@@ -677,7 +680,7 @@
        "x-label": "保底费用（元）",
        "x-element": "数字框",
        "description": "提示：最多保留两位小数，并验证",
-       "x-required": true
+       "x-required": false
       },
       "fav1ItemType": {
        "type": "string",
@@ -687,7 +690,7 @@
        "enum": [
         "全科目(不包含特殊科目）"
        ],
-       "x-required": true
+       "x-required": false
       },
       "fav1Group": {
        "type": "string",
@@ -705,7 +708,7 @@
         "订购后，前N个月有效",
         "订购N个月后开始有效"
        ],
-       "x-required": true
+       "x-required": false
       },
       "fav1ValidityVAlue": {
        "type": "number",
@@ -898,7 +901,7 @@
        "x-label": "资源量",
        "x-element": "文本框",
        "description": "提示并校验为正整数数字。赠送单位：分钟",
-       "x-required": true
+       "x-required": false
       },
       "adjust": {
        "type": "string",
@@ -911,7 +914,7 @@
         "赠送分钟数区分上下半月，订购时间>15号，订购生效首月资源量折半;",
         "赠送分钟数按天折算,  订购生效首月资源量= 当月有效天数*(（赠送总量*12）/365)"
        ],
-       "x-required": true
+       "x-required": false
       },
       "remindFlag": {
        "type": "string",
@@ -923,7 +926,7 @@
         "是（剩余10分钟,用完提醒)"
        ],
        "default": "否",
-       "x-required": true
+       "x-required": false
       },
       "shareFlag": {
        "type": "string",
@@ -933,7 +936,7 @@
        "enum": [
         "是"
        ],
-       "x-required": true
+       "x-required": false
       }
      },
      "x-label": "语音资源配置",

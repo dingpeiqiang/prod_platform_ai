@@ -8,13 +8,13 @@
    "template": "familyBasePrc",
    "status": "dup",
    "validate_result": "PASS_WITH_WARNINGS",
-   "extractable_hit_rate": 0.5102,
+   "extractable_hit_rate": 0.6765,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 34,
-   "filled_fields": 36,
-   "render_lines": 68
+   "pending_required": 20,
+   "filled_fields": 38,
+   "render_lines": 70
   },
   {
    "offer_id": "900102307",
@@ -22,13 +22,13 @@
    "template": "familyBasePrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3878,
+   "extractable_hit_rate": 0.5294,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
-   "filled_fields": 26,
-   "render_lines": 62
+   "pending_required": 25,
+   "filled_fields": 28,
+   "render_lines": 64
   },
   {
    "offer_id": "900102308",
@@ -36,13 +36,13 @@
    "template": "personMainPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3939,
+   "extractable_hit_rate": 0.6923,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 23,
-   "filled_fields": 21,
-   "render_lines": 48
+   "pending_required": 8,
+   "filled_fields": 23,
+   "render_lines": 50
   },
   {
    "offer_id": "900102310",
@@ -50,13 +50,13 @@
    "template": "personMainPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3939,
+   "extractable_hit_rate": 0.6923,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 23,
-   "filled_fields": 21,
-   "render_lines": 48
+   "pending_required": 8,
+   "filled_fields": 23,
+   "render_lines": 50
   },
   {
    "offer_id": "900102312",
@@ -64,13 +64,13 @@
    "template": "personMainPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3939,
+   "extractable_hit_rate": 0.6923,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 23,
-   "filled_fields": 21,
-   "render_lines": 48
+   "pending_required": 8,
+   "filled_fields": 23,
+   "render_lines": 50
   },
   {
    "offer_id": "900102313",
@@ -78,13 +78,13 @@
    "template": "familyBasePrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3878,
+   "extractable_hit_rate": 0.5294,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
-   "filled_fields": 26,
-   "render_lines": 62
+   "pending_required": 25,
+   "filled_fields": 28,
+   "render_lines": 64
   },
   {
    "offer_id": "900113043",
@@ -92,13 +92,13 @@
    "template": "personMainPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3939,
+   "extractable_hit_rate": 0.6923,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 23,
-   "filled_fields": 21,
-   "render_lines": 48
+   "pending_required": 8,
+   "filled_fields": 23,
+   "render_lines": 50
   },
   {
    "offer_id": "900113044",
@@ -106,13 +106,13 @@
    "template": "familyBasePrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3878,
+   "extractable_hit_rate": 0.5294,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 40,
-   "filled_fields": 26,
-   "render_lines": 62
+   "pending_required": 25,
+   "filled_fields": 28,
+   "render_lines": 64
   },
   {
    "offer_id": "900113045",
@@ -120,13 +120,13 @@
    "template": "personMainPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.3939,
+   "extractable_hit_rate": 0.6923,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 23,
-   "filled_fields": 21,
-   "render_lines": 48
+   "pending_required": 8,
+   "filled_fields": 23,
+   "render_lines": 50
   },
   {
    "offer_id": "900113046",
@@ -134,13 +134,13 @@
    "template": "familyBasePrc",
    "status": "active",
    "validate_result": "PASS_WITH_WARNINGS",
-   "extractable_hit_rate": 0.5102,
+   "extractable_hit_rate": 0.6765,
    "threshold": 0.3,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 34,
-   "filled_fields": 36,
-   "render_lines": 68
+   "pending_required": 20,
+   "filled_fields": 38,
+   "render_lines": 70
   },
   {
    "offer_id": "900117020",
@@ -148,13 +148,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117021",
@@ -162,13 +162,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117022",
@@ -176,13 +176,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117023",
@@ -190,13 +190,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117024",
@@ -204,13 +204,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117025",
@@ -218,13 +218,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117026",
@@ -232,13 +232,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   },
   {
    "offer_id": "900117027",
@@ -246,13 +246,13 @@
    "template": "personAddPrc",
    "status": "active",
    "validate_result": "PASS",
-   "extractable_hit_rate": 0.25,
+   "extractable_hit_rate": 0.5,
    "threshold": 0.2,
    "quality_gate": "PASS",
    "merge_resultCode": "0",
-   "pending_required": 39,
-   "filled_fields": 17,
-   "render_lines": 44
+   "pending_required": 15,
+   "filled_fields": 19,
+   "render_lines": 46
   }
  ]
 }
