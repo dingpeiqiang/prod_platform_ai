@@ -142,13 +142,21 @@
 .ops-main{width:100%;min-width:0;max-width:var(--ops-max,1280px);margin:0 auto;padding:20px 24px 60px;}
 .status-pill{white-space:nowrap;}
 .prod-name{flex-wrap:wrap;line-height:1.4;min-width:0;}
+.prod-head{min-width:0;}
+.prod-head > div:first-child{min-width:0;flex:1 1 auto;}
+.prod-head > div:last-child{flex-shrink:0;}
+.health-hero{min-width:0;}
 
 /* 健康度主卡在窄屏下改为纵向排布，分数居中 */
 @media(max-width:720px){
-  .health-hero{gap:14px;justify-content:center;text-align:center;}
-  .hero-body{min-width:0;flex-basis:100%;}
+  .health-hero{gap:14px;justify-content:center;text-align:center;flex-direction:column;}
+  .hero-score{width:76px;height:76px;}
+  .hero-score b{font-size:24px;}
+  .hero-body{min-width:0;flex-basis:auto;width:100%;}
   .hero-metrics{justify-content:center;}
   .hero-metrics b{font-size:15px;}
+  .hero-metrics{gap:20px;}
+  .prod-head{gap:10px;}
   .ops-main{padding:16px 14px 48px;}
   .ops-mod-head{flex-direction:column;align-items:flex-start;}
   .ops-mod-title .q{display:block;border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:4px;margin-top:4px;width:100%;}
