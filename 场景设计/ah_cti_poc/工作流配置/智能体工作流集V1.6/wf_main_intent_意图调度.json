@@ -1424,6 +1424,7 @@
           "description": "意图澄清/应答",
           "title": "意图澄清/应答"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

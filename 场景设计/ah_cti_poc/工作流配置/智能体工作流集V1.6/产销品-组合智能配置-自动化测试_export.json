@@ -524,6 +524,7 @@
           "description": "执行结果报告(全部通过)",
           "title": "执行结果报告(全部通过)"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
@@ -646,6 +647,7 @@
           "description": "执行结果报告(存在异常)",
           "title": "执行结果报告(存在异常)"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

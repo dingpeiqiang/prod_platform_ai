@@ -872,6 +872,7 @@
           "description": "上线审批建议生成",
           "title": "上线审批建议生成"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
@@ -1379,6 +1380,7 @@
           "description": "监控运维方案生成",
           "title": "监控运维方案生成"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

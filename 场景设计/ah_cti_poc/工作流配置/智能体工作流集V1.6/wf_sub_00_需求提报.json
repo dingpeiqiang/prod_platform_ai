@@ -82,6 +82,7 @@
           "description": "需求字段抽取",
           "title": "需求字段抽取"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

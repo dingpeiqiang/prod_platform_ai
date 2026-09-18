@@ -214,6 +214,7 @@
           "description": "产品识别与模板选择",
           "title": "产品识别与模板选择"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
@@ -415,6 +416,7 @@
           "description": "配置要素提取",
           "title": "配置要素提取"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

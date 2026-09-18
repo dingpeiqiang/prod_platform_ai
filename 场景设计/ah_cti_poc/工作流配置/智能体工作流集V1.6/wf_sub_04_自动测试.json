@@ -1229,6 +1229,7 @@
           "description": "测试报告生成(正式版9章节)",
           "title": "测试报告生成(正式版9章节)"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

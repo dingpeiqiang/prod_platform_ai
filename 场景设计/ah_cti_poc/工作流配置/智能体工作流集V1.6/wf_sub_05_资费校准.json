@@ -307,6 +307,7 @@
           "description": "风险解读",
           "title": "风险解读"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

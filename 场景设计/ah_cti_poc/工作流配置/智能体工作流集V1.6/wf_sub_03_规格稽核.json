@@ -384,6 +384,7 @@
           "description": "整改建议生成",
           "title": "整改建议生成"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

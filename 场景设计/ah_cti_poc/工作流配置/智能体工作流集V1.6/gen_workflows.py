@@ -170,7 +170,7 @@ def end_node(seq, title, inputs, out_content, pos=(1030, 135)):
         "id": nid(seq), "dependencyData": []
     }
 
-def llm_node(seq, title, prompt, in_refs, outputs, pos=(390, 135), sys_prompt=""):
+def llm_node(seq, title, prompt, in_refs, outputs, pos=(390, 135), sys_prompt="", model="qwen3-30b-a3b"):
     inputs = {"llmParam": [{"name": "prompt", "type": "string", "content": prompt}],
               "inputParameters": in_refs}
     return {
@@ -178,6 +178,7 @@ def llm_node(seq, title, prompt, in_refs, outputs, pos=(390, 135), sys_prompt=""
         "inputs": inputs, "checkErr": False,
         "prompt_system": sys_prompt,
         "nodeMeta": {"description": title, "title": title},
+        "model": model,
         "temperature": 0.2, "top_p": 0.5,
         "position": {"x": pos[0], "y": pos[1]},
         "id": nid(seq), "dependencyData": [], "type": 1

@@ -347,6 +347,7 @@
           "description": "状态摘要归纳",
           "title": "状态摘要归纳"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

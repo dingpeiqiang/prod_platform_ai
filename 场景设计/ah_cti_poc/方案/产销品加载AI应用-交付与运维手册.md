@@ -324,7 +324,7 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 | # | 部署项 | 配置值 | 核对要点 |
 | --- | --- | --- | --- |
 | 1 | 后端网关 | `BASE_URL=http://10.86.13.201:31281/api/v1/appstore/*` | 指向后端模拟服务（代理到 6174 需确认）；替换真实实现仅改此值，工作流零改动 |
-| 2 | 模型纪律 | 温度 0.2（严谨输出） | 出参逐字引用不加工；仅依据出参字段（status/pass/valid/test_passed/backend_pending）判成败 |
+| 2 | 模型纪律 | 温度 0.2（严谨输出）；**LLM 节点默认模型 `qwen3-30b-a3b`**（由 `llm_node` 生成器统一写入各工作流 JSON 的 `model` 字段，平台按此模型执行） | 出参逐字引用不加工；仅依据出参字段（status/pass/valid/test_passed/backend_pending）判成败；LLM 节点 `model` 字段值与明示默认模型一致 |
 
 ---
 

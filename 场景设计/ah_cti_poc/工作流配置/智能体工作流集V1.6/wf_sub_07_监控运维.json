@@ -426,6 +426,7 @@
           "description": "告警文案生成",
           "title": "告警文案生成"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
@@ -730,6 +731,7 @@
           "description": "根因推理链+优化方案",
           "title": "根因推理链+优化方案"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
@@ -1140,6 +1142,7 @@
           "description": "运营摘要生成(正常分支)",
           "title": "运营摘要生成(正常分支)"
         },
+        "model": "qwen3-30b-a3b",
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {

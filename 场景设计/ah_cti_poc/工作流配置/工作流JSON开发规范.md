@@ -74,7 +74,7 @@
 | type | 含义 | 生成器函数 | 必带字段 |
 |---|---|---|---|
 | 0 | 开始节点 | `start_node(seq, inputs)` | `inputs`（工作流入参） |
-| 1 | LLM 节点 | `llm_node(seq, title, prompt, in_refs, outputs, sys_prompt)` | `outputs`、`inputs.llmParam[].content`（prompt）、`inputs.inputParameters`、`max_tokens/temperature/top_p/prompt_system` |
+| 1 | LLM 节点 | `llm_node(seq, title, prompt, in_refs, outputs, sys_prompt, model)` | `outputs`、`inputs.llmParam[].content`（prompt）、`inputs.inputParameters`、`max_tokens/temperature/top_p/prompt_system/model` |
 | 2 | 条件分支节点 | `selector_node2(seq, title, deps, branches)` | `inputs.condition`（conditions 数组）、`dependencyData`（dep_node） |
 | 3 | HTTP 插件节点 | `plugin_node(seq, title, code, desc, url, inputs, outputs, method)` | `url`、`submit_way`（post/get）、`outputs`（含 sechema item 树）、`nodeMeta.code` |
 | 6 | 代码节点 | `code_node(seq, title, code, in_refs, outputs)` | `code`（Python 源码字符串，`async def main(args)`）、`language=1` |
@@ -237,12 +237,13 @@ CODE_XXX = (
 ## 十、LLM 节点规范
 
 ```python
-llm_node(seq, title, prompt, in_refs, outputs, sys_prompt="")
+llm_node(seq, title, prompt, in_refs, outputs, sys_prompt="", model="qwen3-30b-a3b")
 ```
 
 - `inputs.llmParam[].content` 为完整提示词；`{}` 为引用占位（如 `{elements_json}`），平台运行时以对应出参替换。
 - `inputs.inputParameters` 为引用入参数组（`inp(...,ref_block=nid(上游), ref_rel=...)`）。
 - 固定参数：`temperature=0.2`、`top_p=0.5`、`max_tokens=2048`、`prompt_system`。
+- **模型字段**：`model`（LLM 节点默认模型，固定 `qwen3-30b-a3b`；由 `llm_node` 生成器统一写入，平台运行时按此模型执行 LLM 节点）。
 - 提示词末尾约定"输出要求：仅输出…对应出参…，不输出其他多余文字"，保证单出参/多出参隔离（对齐现有所有 LLM 节点）。
 
 ---
