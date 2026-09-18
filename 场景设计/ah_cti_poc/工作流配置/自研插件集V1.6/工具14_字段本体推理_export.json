@@ -1,0 +1,245 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/ontology/fields",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"field-ontology-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"action\", \"description\": \"推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"fields_json\", \"description\": \"字段数组JSON字符串：[{\\\"field\\\":\\\"字段名称\\\",\\\"value\\\":\\\"字段值\\\",\\\"source\\\":\\\"原始需求或AI推理\\\"}]；action=ontology 时可空\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"field_ontology_reason\", \"description\": \"自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；action=validate 仅校验（非法返回 violations 供重填）；action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证\", \"title\": \"字段本体推理\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"code\", \"cname\": \"统一状态码，0 成功 / 5101 非法action\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"msg\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"pass\", \"cname\": \"validate 出参：1 全部合法 / 0 存在违规\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"violations\", \"cname\": \"validate/reason 出参：无法自动修正的违规明细，pass=0 时非空\", \"sechema\": [{\"name\": \"item\", \"cname\": \"validate/reason 出参：无法自动修正的违规明细\", \"sechema\": [{\"name\": \"field\", \"cname\": \"违规字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"违规值\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"期望规则（本体定义）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"fixed\", \"cname\": \"reason 出参：修正/补全明细\", \"sechema\": [{\"name\": \"item\", \"cname\": \"reason 出参：修正/补全明细\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"原值（补全/修正前）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"action\", \"cname\": \"defaulted=默认值补全 / fallback=兜底待补充 / corrected=修正回写 / none=维持\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"corrected\", \"cname\": \"修正后值（corrected 动作时非空）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"处理依据（本体规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"completed\", \"cname\": \"complete 出参：逐字段补全/兜底标记\", \"sechema\": [{\"name\": \"item\", \"cname\": \"complete 出参：逐字段补全/兜底标记\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"补全值（兜底口径字段为\\\"待补充\\\"）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"defaulted\", \"cname\": \"1=本体默认值补全 / 0=未补全\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"补全依据（本体规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"fields_json\", \"cname\": \"reason/complete 出参：推理后的完整字段数组JSON（工作流从该结果闭环取值组装方案）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"fields\", \"cname\": \"ontology 出参：字段本体定义清单\", \"sechema\": [{\"name\": \"item\", \"cname\": \"ontology 出参：字段本体定义清单\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"category\", \"cname\": \"字段分类（A基础信息/B资源配置/C营销资源/D销售规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"enums\", \"cname\": \"枚举值（顿号分隔，无枚举为空）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"rule\", \"cname\": \"格式/口径规则\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"default_value\", \"cname\": \"本体默认值\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"fallback\", \"cname\": \"1=兜底口径字段（不默认补全）/ 0=普通字段\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"post\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/ontology/fields\"}",
+  "userScope": 2,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；action=validate 仅校验（非法返回 violations 供重填）；action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；action=validate 仅校验（非法返回 violations 供重填）；action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证",
+      "title": "字段本体推理",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/ontology/fields": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "default": "",
+                  "description": "根节点",
+                  "type": "object",
+                  "enum": "",
+                  "properties": {
+                    "action": {
+                      "default": "",
+                      "description": "推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101",
+                      "type": "string",
+                      "enum": "reason,validate,complete,ontology",
+                      "required": true
+                    },
+                    "fields_json": {
+                      "default": "",
+                      "description": "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI推理\"}]；action=ontology 时可空",
+                      "type": "string",
+                      "enum": ""
+                    }
+                  },
+                  "required": []
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "description": "根节点",
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "description": "统一状态码，0 成功 / 5101 非法action",
+                        "type": "string"
+                      },
+                      "msg": {
+                        "description": "状态描述",
+                        "type": "string"
+                      },
+                      "pass": {
+                        "description": "validate 出参：1 全部合法 / 0 存在违规",
+                        "type": "string"
+                      },
+                      "violations": {
+                        "description": "validate/reason 出参：无法自动修正的违规明细，pass=0 时非空",
+                        "type": "array",
+                        "properties": {
+                          "item": {
+                            "description": "明细项",
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "description": "违规字段名",
+                                "type": "string"
+                              },
+                              "value": {
+                                "description": "违规值",
+                                "type": "string"
+                              },
+                              "reason": {
+                                "description": "期望规则（本体定义）",
+                                "type": "string"
+                              }
+                            },
+                            "required": []
+                          }
+                        }
+                      },
+                      "fixed": {
+                        "description": "reason 出参：修正/补全明细",
+                        "type": "array",
+                        "properties": {
+                          "item": {
+                            "description": "明细项",
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "description": "字段名",
+                                "type": "string"
+                              },
+                              "value": {
+                                "description": "原值（补全/修正前）",
+                                "type": "string"
+                              },
+                              "action": {
+                                "description": "defaulted=默认值补全 / fallback=兜底待补充 / corrected=修正回写 / none=维持",
+                                "type": "string"
+                              },
+                              "corrected": {
+                                "description": "修正后值（corrected 动作时非空）",
+                                "type": "string"
+                              },
+                              "reason": {
+                                "description": "处理依据（本体规则）",
+                                "type": "string"
+                              }
+                            },
+                            "required": []
+                          }
+                        }
+                      },
+                      "completed": {
+                        "description": "complete 出参：逐字段补全/兜底标记",
+                        "type": "array",
+                        "properties": {
+                          "item": {
+                            "description": "明细项",
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "description": "字段名",
+                                "type": "string"
+                              },
+                              "value": {
+                                "description": "补全值（兜底口径字段为\"待补充\"）",
+                                "type": "string"
+                              },
+                              "defaulted": {
+                                "description": "1=本体默认值补全 / 0=未补全",
+                                "type": "string"
+                              },
+                              "reason": {
+                                "description": "补全依据（本体规则）",
+                                "type": "string"
+                              }
+                            },
+                            "required": []
+                          }
+                        }
+                      },
+                      "fields_json": {
+                        "description": "reason/complete 出参：推理后的完整字段数组JSON（工作流从该结果闭环取值组装方案）",
+                        "type": "string"
+                      },
+                      "fields": {
+                        "description": "ontology 出参：字段本体定义清单",
+                        "type": "array",
+                        "properties": {
+                          "item": {
+                            "description": "明细项",
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "description": "字段名",
+                                "type": "string"
+                              },
+                              "category": {
+                                "description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）",
+                                "type": "string"
+                              },
+                              "enums": {
+                                "description": "枚举值（顿号分隔，无枚举为空）",
+                                "type": "string"
+                              },
+                              "rule": {
+                                "description": "格式/口径规则",
+                                "type": "string"
+                              },
+                              "default_value": {
+                                "description": "本体默认值",
+                                "type": "string"
+                              },
+                              "fallback": {
+                                "description": "1=兜底口径字段（不默认补全）/ 0=普通字段",
+                                "type": "string"
+                              }
+                            },
+                            "required": []
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "knowledgeCategory": null,
+  "id": "field-ontology-0001",
+  "toolAuthenticInfo": "null",
+  "ontology": null,
+  "toolName": "字段本体推理",
+  "usedBySceneNum": null,
+  "updateTime": null,
+  "versionInfo": null,
+  "toolType": 1,
+  "version": "1",
+  "isDefault": 1,
+  "toolCode": "field_ontology_reason",
+  "observationField": "",
+  "submit_way": "post",
+  "createTime": null,
+  "knowledgeCategoryName": null,
+  "pluginName": null,
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；action=validate 仅校验（非法返回 violations 供重填）；action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-action\": \"\", \"ROOT-fields_json\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"字段本体推理\", \"name_for_model\": \"field_ontology_reason\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"code\", \"cname\": \"统一状态码，0 成功 / 5101 非法action\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"msg\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"pass\", \"cname\": \"validate 出参：1 全部合法 / 0 存在违规\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"violations\", \"cname\": \"validate/reason 出参：无法自动修正的违规明细，pass=0 时非空\", \"sechema\": [{\"name\": \"item\", \"cname\": \"validate/reason 出参：无法自动修正的违规明细\", \"sechema\": [{\"name\": \"field\", \"cname\": \"违规字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"违规值\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"期望规则（本体定义）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"fixed\", \"cname\": \"reason 出参：修正/补全明细\", \"sechema\": [{\"name\": \"item\", \"cname\": \"reason 出参：修正/补全明细\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"原值（补全/修正前）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"action\", \"cname\": \"defaulted=默认值补全 / fallback=兜底待补充 / corrected=修正回写 / none=维持\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"corrected\", \"cname\": \"修正后值（corrected 动作时非空）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"处理依据（本体规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"completed\", \"cname\": \"complete 出参：逐字段补全/兜底标记\", \"sechema\": [{\"name\": \"item\", \"cname\": \"complete 出参：逐字段补全/兜底标记\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"value\", \"cname\": \"补全值（兜底口径字段为\\\"待补充\\\"）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"defaulted\", \"cname\": \"1=本体默认值补全 / 0=未补全\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"reason\", \"cname\": \"补全依据（本体规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}, {\"name\": \"fields_json\", \"cname\": \"reason/complete 出参：推理后的完整字段数组JSON（工作流从该结果闭环取值组装方案）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"fields\", \"cname\": \"ontology 出参：字段本体定义清单\", \"sechema\": [{\"name\": \"item\", \"cname\": \"ontology 出参：字段本体定义清单\", \"sechema\": [{\"name\": \"field\", \"cname\": \"字段名\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"category\", \"cname\": \"字段分类（A基础信息/B资源配置/C营销资源/D销售规则）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"enums\", \"cname\": \"枚举值（顿号分隔，无枚举为空）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"rule\", \"cname\": \"格式/口径规则\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"default_value\", \"cname\": \"本体默认值\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"fallback\", \"cname\": \"1=兜底口径字段（不默认补全）/ 0=普通字段\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"9dd76cc1417a7efd3fa409c5981fe71c\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101\", \"dict_list\": \"\", \"id\": \"85a7046766eaa74cf42e51dc8708f1e2\", \"isParameter\": 1, \"name\": \"action\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"9dd76cc1417a7efd3fa409c5981fe71c\", \"upNodeName\": \"ROOT\"}, {\"description\": \"字段数组JSON字符串：[{\\\"field\\\":\\\"字段名称\\\",\\\"value\\\":\\\"字段值\\\",\\\"source\\\":\\\"原始需求或AI推理\\\"}]；action=ontology 时可空\", \"dict_list\": \"\", \"id\": \"fe4051cdb1b1512738caf3b3aa3a1b4d\", \"isParameter\": 1, \"name\": \"fields_json\", \"required\": false, \"schema\": {\"type\": \"string\"}, \"upId\": \"9dd76cc1417a7efd3fa409c5981fe71c\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"post\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/ontology/fields\"}",
+  "pluginsId": null,
+  "prompt": "",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "status": 0,
+  "wsHeads": ""
+}

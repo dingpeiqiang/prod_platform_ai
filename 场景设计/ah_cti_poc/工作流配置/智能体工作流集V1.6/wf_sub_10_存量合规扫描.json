@@ -1,0 +1,186 @@
+{
+  "flowName": "产销品-存量合规扫描",
+  "flowRemark": "子工作流10（阶段5 新增(可选)：shelf_compliance 批量 R-C* 合规+整改引导）。CODE_OP_SHELF_COMPLIANCE 占位(阶段1.1 Java 插件待就绪)→LLM 合规报告渲染（R-C* 合规结论+整改引导）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001001",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          [
+            "backend_pending",
+            "合规插件是否就绪(1=占位)"
+          ],
+          [
+            "note",
+            "占位说明"
+          ]
+        ],
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nSHELF_URL = 'http://10.86.13.201:31281/api/v1/appstore/shelf-compliance'\n\ndef _fetch():\n    req = urllib.request.Request(SHELF_URL, data=b'{}', method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    try:\n        info = _fetch()\n    except Exception:\n        info = None\n    if not info:\n        ret: Output = {\n            'backend_pending': '1',\n            'note': '存量合规扫描(shelf_compliance)端点暂不可达，当前无合规结论',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0' if info.get('rows') or info.get('results') else '1',\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
+        "flowJson": null,
+        "inputs": [],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "存量合规扫描"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000001002",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "compliance_report",
+            "description": "合规报告正文",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品存量合规扫描智能体。基于 shelf_compliance 出参（backend_pending={backend_pending}，note={note}），按 R-C* 合规口径输出存量合规报告：批量对存量在架产品执行合规检查（字段完整性/本体约束/资费规则等），输出合规结论与整改引导。\n约束：当前 backend_pending={backend_pending}（shelf_compliance 待后端接入，阶段1.1），本报告须以占位说明（{note}）呈现，禁止编造合规结论/违规项。\n输出要求：仅输出合规报告正文（对应出参 compliance_report），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000001002",
+              "relName": "backend_pending",
+              "name": "backend_pending",
+              "description": "合规插件占位标记（节点1002）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000001002",
+                "a1b2c3d4-0000-4000-8000-000000001002,backend_pending"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000001002,backend_pending"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000001002",
+              "relName": "note",
+              "name": "note",
+              "description": "占位说明（节点1002）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000001002",
+                "a1b2c3d4-0000-4000-8000-000000001002,note"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000001002,note"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "合规报告渲染",
+          "title": "合规报告渲染"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001003",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{compliance_report}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001003",
+            "relName": "compliance_report",
+            "name": "compliance_report",
+            "description": "合规报告正文",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001003",
+              "a1b2c3d4-0000-4000-8000-000000001003,compliance_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001003,compliance_report"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(合规扫描)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001004",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001002",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001001"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001002"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001004",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001003"
+      }
+    ],
+    "flowId": "wf_sub_10",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

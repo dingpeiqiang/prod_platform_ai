@@ -1,0 +1,675 @@
+# -*- coding: utf-8 -*-
+# 生成产销品加载AI应用 V1.6 自研插件集导出JSON（14个工具：13个自研+复用2个中存储查询）
+# 依据：《产销品加载AI应用开发方案.md》V2.1、《产销品加载AI应用-细化设计方案.md》
+# 口径：工具1~6、7~11、13 全部自研实现+模拟结果输出；工具14 字段本体推理（V2.1 本体推理引擎）；模拟数据兼容《产品信息.txt》18个销售品
+import json, os, io
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+BASE_URL = "http://10.86.13.201:31281"
+CREATE_USER = "oncon100000000556_10000"
+CREATE_USER_NAME = "丁培强"
+
+def merge(base, extra):
+    out = dict(base)
+    out.update(extra)
+    return out
+
+def schema_param(name, ptype, desc, required=False, default="", enum=""):
+    return merge({"default": default, "description": desc, "type": ptype, "enum": enum},
+                 {"required": True} if required else {})
+
+def schema_obj_props(props, required=None):
+    d = {"properties": props, "required": required or []}
+    return d
+
+def build_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, req_required,
+                 resp_props, induction, llm_type=1):
+    """构建与平台导出格式一致的插件JSON。
+    对齐平台真实样例《产品相似度匹配》核心契约：
+      1. flowJson.inputs = 单一 ROOT 节点（type=object），参数树挂在 sechema 嵌套链（每层含 UpNodeName，叶子 string 带 content）
+      2. flowJson.outputs = 单一 ROOT 节点，输出结构全在 sechema 树（BODY→OUT_DATA→业务节点，array 节点 sechema 内为 item object）
+      3. toolJson.input_parameters 键为全路径 'ROOT-BODY-BUSI_INFO-PROD_INFO-XXX'
+      4. toolJson.parameters 平铺全部节点（容器 isParameter=0，叶子=1），带 id/upId/upNodeName
+      5. schemaJson 请求/响应均从 ROOT(object) 展开 properties
+    业务参数统一挂载在固定容器 ROOT→BODY→BUSI_INFO→PROD_INFO 下；输出容器为 ROOT→BODY→OUT_DATA 下。"""
+    url = BASE_URL + path
+    leaves_in = [schema_param(n, p.get("type", "string"), p["description"], n in req_required,
+                              p.get("default", ""), p.get("enum", "")) for n, p in req_props.items()]
+    # ---------- flowJson.inputs：ROOT→业务叶子（无BODY/BUSI_INFO/PROD_INFO容器） ----------
+    def in_node(name, desc, uptype, children, ptype="object", required=False):
+        return {
+            "blockID": "", "filedType": ptype, "relName": "",
+            "UpNodeName": uptype, "name": name, "description": desc,
+            "sechema": children, "type": ptype, "required": required, "content": ""
+        }
+    in_leaves = [
+        {"blockID": "", "filedType": p.get("type", "string"), "relName": "",
+         "UpNodeName": "ROOT", "name": n, "description": p["description"],
+         "sechema": [], "type": p.get("type", "string"),
+         "required": n in req_required, "content": ""}
+        for n, p in req_props.items()
+    ]
+    root_in = in_node("ROOT", "根节点", "", in_leaves)
+    flow_inputs = [root_in]
+
+    # ---------- flowJson.outputs：ROOT→业务叶子（无BODY/OUT_DATA容器） ----------
+    def out_node(name, cname, children, ptype="object"):
+        return {"name": name, "cname": cname, "sechema": children,
+                "type": ptype, "required": False}
+    out_children = [out_node(n, o["description"], build_out_sechema(o), o.get("type", "string"))
+                    for n, o in resp_props.items()]
+    root_out = out_node("ROOT", "根节点", out_children)
+    flow_outputs = [root_out]
+
+    flow_json = {
+        "authentic_info": "",
+        "authentic_info_new": {"auth_type": "1", "auth_info": "null"},
+        "id": tool_id,
+        "inputs": flow_inputs,
+        "nodeMeta": {"code": tool_code, "description": desc, "title": tool_name, "version": "1"},
+        "ontologyValidation": 0,
+        "outputs": flow_outputs,
+        "position": {"x": 0, "y": 0},
+        "submit_way": method.lower(),
+        "type": 3,
+        "url": url
+    }
+
+    # ---------- schemaJson：请求/响应从 ROOT(object) 展开 ----------
+    def schema_tree(props):
+        root = {"default": "", "description": "根节点", "type": "object", "enum": "",
+                "properties": props, "required": []}
+        return root
+
+    req_schema = schema_tree({n: schema_param(n, p.get("type", "string"), p["description"],
+                                              n in req_required, p.get("default", ""), p.get("enum", ""))
+                              for n, p in req_props.items()})
+
+    def schema_resp_tree(children):
+        def node(o):
+            d = {"description": o["description"], "type": o.get("type", "string")}
+            if o.get("type") == "array" and o.get("items"):
+                item_props = o["items"].get("properties") or {}
+                d["properties"] = {"item": {"description": "明细项", "type": "object",
+                                            "properties": {n: node(p) for n, p in item_props.items()},
+                                            "required": []}}
+            return d
+        return {"description": "根节点", "type": "object", "properties": {
+            n: node(o) for n, o in resp_props.items()
+        }, "required": []}
+
+    schema_json = {
+        "openapi": "3.1.0",
+        "info": {"observationField": "", "description": desc, "title": tool_name, "version": "v1.6.0"},
+        "servers": [{"url": BASE_URL}],
+        "paths": {
+            path: {
+                method.lower(): {
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": req_schema}}
+                    },
+                    "responses": {
+                        "200": {
+                            "content": {"application/json": {"schema": schema_resp_tree(resp_props)}}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # ---------- toolJson：input_parameters 用全路径键；parameters 平铺含容器节点 ----------
+    input_parameters = {"ROOT": ""}
+    for n in req_props:
+        input_parameters["ROOT-" + n] = ""
+
+    def pseudo_id(prefix, name):
+        import hashlib
+        return hashlib.md5((prefix + name).encode("utf-8")).hexdigest()[:32]
+
+    outparameters = [{
+        "name": "ROOT", "cname": "根节点", "type": "object", "required": False,
+        "sechema": [out_node(n, o["description"], build_out_sechema(o), o.get("type", "string"))
+                    for n, o in resp_props.items()]
+    }]
+    tool_json = {
+        "authentic_info": "",
+        "authentic_info_new": {"auth_type": "1", "auth_info": "null"},
+        "candidate": 1,
+        "description_for_model": desc,
+        "flow_is_placeholder": False,
+        "input_parameters": input_parameters,
+        "is_llm": "N",
+        "llm_type": llm_type,
+        "name_for_human": tool_name,
+        "name_for_model": tool_code,
+        "observationField": "",
+        "outparameters": outparameters,
+        "parameters": [
+            {"description": "根节点", "dict_list": "", "id": pseudo_id(tool_id, "ROOT"),
+             "isParameter": 0, "name": "ROOT", "required": False,
+             "schema": {"type": "object"}, "upId": "", "upNodeName": ""},
+        ] + [
+            {"description": p["description"], "dict_list": "", "id": pseudo_id(tool_id, n),
+             "isParameter": 1, "name": n, "required": n in req_required,
+             "schema": {"type": p.get("type", "string")}, "upId": pseudo_id(tool_id, "ROOT"),
+             "upNodeName": "ROOT"}
+            for n, p in req_props.items()
+        ],
+        "prompt_template": "",
+        "submit_way": method.lower(),
+        "type_for_tool": "url",
+        "type_for_url": "http",
+        "url_for_model": url
+    }
+
+    export = {
+        "createUserId": CREATE_USER,
+        "interfaceAddress": url,
+        "releaseTime": None,
+        "sequ": 0,
+        "flowJson": json.dumps(flow_json, ensure_ascii=False),
+        "userScope": 2,
+        "createUserName": CREATE_USER_NAME,
+        "releaseUser": None,
+        "toolAuthenticType": "1",
+        "ontologyValidation": 0,
+        "orgId": "10000",
+        "toolProto": 1,
+        "toolDesc": desc,
+        "induction": induction,
+        "llmType": llm_type,
+        "toolIco": None,
+        "schemaJson": schema_json,
+        "knowledgeCategory": None,
+        "id": tool_id,
+        "toolAuthenticInfo": "null",
+        "ontology": None,
+        "toolName": tool_name,
+        "usedBySceneNum": None,
+        "updateTime": None,
+        "versionInfo": None,
+        "toolType": 1,
+        "version": "1",
+        "isDefault": 1,
+        "toolCode": tool_code,
+        "observationField": "",
+        "submit_way": method.lower(),
+        "createTime": None,
+        "knowledgeCategoryName": None,
+        "pluginName": None,
+        "toolJson": json.dumps(tool_json, ensure_ascii=False),
+        "pluginsId": None,
+        "prompt": "",
+        "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+        "status": 0,
+        "wsHeads": ""
+    }
+    return export
+
+def arr(name, desc, item_props=None):
+    d = {"description": desc, "type": "array"}
+    if item_props:
+        d["items"] = {"type": "object", "properties": item_props}
+    return d
+
+
+def build_out_sechema(o):
+    """由 openapi 出参定义生成 flowJson.outputs[].sechema：
+    array → sechema=[{name:item, cname:描述, sechema:[叶子字段], type:object, required:False}]（对齐平台样例 SIMILAR_PRODS 写法）；
+    叶子字段若仍为 array（嵌套数组，如工具6 testScenes→testCasePointResults），递归生成内层 item 节点；
+    其余类型 → sechema=[]"""
+    if o.get("type") != "array":
+        return []
+    item_props = (o.get("items") or {}).get("properties") or {}
+    leaves = [{"name": n, "cname": p.get("description", n),
+               "sechema": build_out_sechema(p),
+               "type": p.get("type", "string"), "required": False}
+              for n, p in item_props.items()]
+    return [{"name": "item", "cname": o.get("description", "明细项").split("，")[0],
+             "sechema": leaves, "type": "object", "required": False}]
+
+
+# ---------------- 出参结构辅助 ----------------
+# 出参按接口实际类型如实声明（string/array/object），不包装ROOT树形；
+# array 出参的 sechema 内放单个 item object 节点（对齐平台样例 SIMILAR_PRODS 写法）
+
+plugins = []
+
+# ---------------- 工具1 相似度分析 ----------------
+plugins.append(build_plugin(
+    "similar-offer-0001", "相似度分析", "query_similar_offer",
+    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo——与需求要素解析同构的 fields 四类18字段数组，整合即同构键值合并），支撑需求分析环节匹配历史产品与AI推理",
+    "/api/v1/appstore/similar/offer/query", "POST",
+    {
+        "businessDesc": schema_param("businessDesc", "string",
+            "业务需求描述文本，≤5000字符，超出由工作流节点先做摘要压缩；空返回 PARAM_MISSING", True),
+    },
+    ["businessDesc"],
+    {
+        "resultCode": {"description": "0 成功 / 1 失败 / PARAM_MISSING / PARSE_ERROR", "type": "string"},
+        "resultMsg": {"description": "处理结果描述", "type": "string"},
+        "similarOffer": {
+            "description": "相似度最高的产品（仅返回1个），含相似度评分与完整产品配置信息；未命中时为空对象",
+            "type": "object",
+            "properties": {
+                "similarOfferId": {"description": "相似销售品ID（如 900102308）", "type": "string"},
+                "similarOfferName": {"description": "相似销售品名称", "type": "string"},
+                "similarityScore": {"description": "相似度评分（0~1）", "type": "string"},
+                "similarityDesc": {"description": "相似原因描述（命中字段/资费结构说明）", "type": "string"},
+                "offerInfo": {
+                    "description": "完整产品配置信息（与需求要素解析同构：fields 四类18字段数组，field/category/value，字段名与本体注册表一致）",
+                    "type": "object",
+                    "properties": {
+                        "similarOfferId": {"description": "销售品ID", "type": "string"},
+                        "similarOfferName": {"description": "销售品名称", "type": "string"},
+                        "series": {"description": "系列（5g_a/rights）", "type": "string"},
+                        "sub_type": {"description": "子类型（套餐/权益）", "type": "string"},
+                        "fields": {
+                            "description": "四类18字段数组（与需求要素 elements_json.fields 同构，整合即同构键值合并）",
+                            "type": "array",
+                            "items": {
+                                "field": {"description": "字段名（与本体注册表18字段一致）", "type": "string"},
+                                "category": {"description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）", "type": "string"},
+                                "value": {"description": "字段值", "type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+    "N"))
+
+# ---------------- 工具2 实时规格稽核 ----------------
+plugins.append(build_plugin(
+    "realtime-audit-0001", "实时规格稽核", "realtime_spec_audit",
+    "自研模拟实现（V1.6）：按销售品ID与配置JSON对照《产品信息.txt》规则库实时稽核，同步返回稽核结果（通过/驳回+问题明细+整改建议）；无文件上传、无异步轮询；svcCode=5012010056/appKey=eOrder1/dstSysId=OrderCenter",
+    "/api/v1/appstore/audit/realtime", "POST",
+    {
+        "offer_id": schema_param("offer_id", "string",
+            "配置落地返回的销售品ID（save_product_config 出参 offer_id）；缺失返回 PARAM_MISSING", True),
+        "config_json": schema_param("config_json", "string",
+            "落地配置JSON原文（来自执行方案JSON落地后的配置快照），工作流变量引用不提参；缺失或非法JSON返回 5001", True),
+        "audit_scene": schema_param("audit_scene", "string",
+            "稽核场景枚举：spec（规格）/fee（资费）/all（全量），默认 all", False, "all", "spec,fee,all"),
+    },
+    ["offer_id", "config_json"],
+    {
+        "pass": {"description": "1 通过 / 0 不通过", "type": "string"},
+        "error_list": arr("error_list", "问题明细，pass=0 时非空", {
+            "item": {"description": "问题项（对应配置字段/规则）", "type": "string"},
+            "level": {"description": "严重级别：error 阻断 / warning 提示", "type": "string"},
+            "desc": {"description": "问题描述，含实际值与期望规则", "type": "string"},
+            "suggest": {"description": "整改建议", "type": "string"},
+        }),
+        "audit_summary": {"description": "稽核总结（一句话）", "type": "string"},
+        "resultCode": {"description": "0 成功 / 1 失败 / NET_ERROR / TIMEOUT / PARAM_MISSING", "type": "string"},
+    },
+    "Y"))
+
+# ---------------- 工具3 销售品测试发起 ----------------
+plugins.append(build_plugin(
+    "offer-test-0001", "销售品测试发起", "offer_test",
+    "自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）",
+    "/api/v1/appstore/test/offer/start", "POST",
+    {
+        "offerId": schema_param("offerId", "string",
+            "被测销售品ID（offer表主键，如 900102308）；须为《产品信息.txt》18个销售品之一，未收录返回 4001", True),
+    },
+    ["offerId"],
+    {
+        "resultCode": {"description": "0 处理成功 / 1 处理失败", "type": "string"},
+        "resultMsg": {"description": "处理结果描述", "type": "string"},
+        "globalId": {"description": "测试流水号，格式 50+yyyyMMddHHmmss+10位随机数，后续三个查询接口必传", "type": "string"},
+    },
+    "N"))
+
+# ---------------- 工具4 查询测试场景 ----------------
+plugins.append(build_plugin(
+    "test-scenes-0001", "查询测试场景", "get_test_scenes",
+    "自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）",
+    "/api/v1/appstore/test/offer/scenes", "POST",
+    {
+        "globalId": schema_param("globalId", "string",
+            "测试流水号（offer_test 出参）；缺失或查无返回 4002", True),
+    },
+    ["globalId"],
+    {
+        "resultCode": {"description": "0 成功 / 1 失败", "type": "string"},
+        "testScenes": arr("testScenes", "测试场景列表", {
+            "testSceneId": {"description": "场景ID", "type": "string"},
+            "testSceneName": {"description": "场景名称（套餐新装/副卡加装/套餐退订）", "type": "string"},
+            "testSceneNbr": {"description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC", "type": "string"},
+            "testSceneDesc": {"description": "场景描述", "type": "string"},
+            "sort": {"description": "排序", "type": "string"},
+        }),
+    },
+    "Y"))
+
+# ---------------- 工具5 查询测试进度 ----------------
+plugins.append(build_plugin(
+    "test-progress-0001", "查询测试进度", "get_test_progress",
+    "自研模拟实现（V1.6）：按 globalId 推进模拟测试进度状态机（总步骤=场景数+2，前2步固定为智能匹配测试场景&用例、智能匹配测试资源），支持工作流循环节点轮询（间隔5s，超时30分钟）",
+    "/api/v1/appstore/test/offer/progress", "POST",
+    {
+        "globalId": schema_param("globalId", "string",
+            "测试流水号（offer_test 出参）；缺失或查无返回 4002", True),
+    },
+    ["globalId"],
+    {
+        "totalSteps": {"description": "总步骤数=场景数+2", "type": "string"},
+        "activeIndex": {"description": "当前步骤下标（从0计）", "type": "string"},
+        "done": {"description": "测试是否全部完成", "type": "string"},
+        "failed": {"description": "是否存在失败/中止（RESULT_CODE=1/2）场景", "type": "string"},
+        "failIndex": {"description": "第一个失败场景步骤下标，无失败为-1", "type": "string"},
+        "totalSceneCount": {"description": "场景总数", "type": "string"},
+        "finishedSceneCount": {"description": "已完成场景数", "type": "string"},
+        "failedSceneCount": {"description": "失败（含中止）场景数", "type": "string"},
+    },
+    "N"))
+
+# ---------------- 工具6 查询测试结果 ----------------
+plugins.append(build_plugin(
+    "test-result-0001", "查询测试结果", "get_test_result",
+    "自研模拟实现（V1.6）：按 globalId 生成逐场景测点比对明细，预期值 presetValue 取自该销售品在《产品信息.txt》中的规则值，testValue 模拟生成（默认与预期一致，可构造不一致用例）；受理凭证 orderId/offerInstId 模拟生成，作为受理验证结论依据",
+    "/api/v1/appstore/test/offer/result", "POST",
+    {
+        "globalId": schema_param("globalId", "string",
+            "测试流水号；须在测试进度全部完成后查询（done=true），否则返回 4003", True),
+    },
+    ["globalId"],
+    {
+        "resultCode": {"description": "0 成功 / 1 失败", "type": "string"},
+        "resultMsg": {"description": "处理结果描述", "type": "string"},
+        "testRequestId": {"description": "测试请求ID（auto_test_request 表主键）", "type": "string"},
+        "testRequestName": {"description": "测试名称（销售品系统名+_测试验证）", "type": "string"},
+        "offerName": {"description": "被测销售品名称", "type": "string"},
+        "orderId": {"description": "实际受理生成的订单号（受理验证依据）", "type": "string"},
+        "offerInstId": {"description": "实际受理生成的销售品实例ID（受理验证依据）", "type": "string"},
+        "testScenes": arr("testScenes", "逐场景结果", {
+            "testSceneNbr": {"description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC", "type": "string"},
+            "testSceneName": {"description": "场景名称", "type": "string"},
+            "testSceneDesc": {"description": "场景描述", "type": "string"},
+            "testCaseCount": {"description": "测点总数", "type": "string"},
+            "successTestCaseCount": {"description": "成功数", "type": "string"},
+            "failTestCaseCount": {"description": "失败数", "type": "string"},
+            "testCasePointResults": arr("testCasePointResults", "测点明细", {
+                "testPointNbr": {"description": "测点编码：P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE", "type": "string"},
+                "presetValue": {"description": "规格规定值（预期值，取自《产品信息.txt》该销售品规则值）", "type": "string"},
+                "testValue": {"description": "实测值（模拟CRM实际生成结果）", "type": "string"},
+                "resultCode": {"description": "0 一致 / 1 不一致", "type": "string"},
+                "resultMsg": {"description": "比对结论", "type": "string"},
+            }),
+            "objTestSceneRel": {"description": "AI场景总结：resultMsg 场景测试总结/summaryDesc 汇总描述/suggestion 优化建议", "type": "string"},
+        }),
+    },
+    "Y"))
+
+# ---------------- 工具7 配置落地 ----------------
+plugins.append(build_plugin(
+    "save-config-0001", "配置落地", "save_product_config",
+    "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
+    "/api/v1/appstore/product/config/save", "POST",
+    {
+        "req_id": schema_param("req_id", "string",
+            "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087）；缺失返回 PARAM_MISSING", True),
+        "plan_json": schema_param("plan_json", "string",
+            "执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成；方案key由后端从 plan_json 的 req_id 键提取", True),
+        "confirmed": schema_param("confirmed", "string",
+            "用户确认标志 true/false，由工作流从会话上下文传入；非 true 返回 NOT_CONFIRMED", True, "true"),
+        "operator": schema_param("operator", "string", "操作人（从会话上下文取），可空", False),
+    },
+    ["req_id", "plan_json", "confirmed"],
+    {
+        "product_id": {"description": "CRM 产品ID", "type": "string"},
+        "offer_id": {"description": "销售品ID（后续稽核/测试入参）", "type": "string"},
+        "save_result": {"description": "各字段分类写入结果：基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因", "type": "string"},
+        "status": {"description": "SUCCESS / PARTIAL / FAIL / NOT_CONFIRMED", "type": "string"},
+        "product_config": {"description": "完整落地配置JSON（V2.4：含 product_id/offer_id编码/offer_name/资费与销售规则及 plan_json 原文，供环节结果存储整体落库）", "type": "string"},
+    },
+    "N"))
+
+# ---------------- 工具8 计费规则校验 ----------------
+plugins.append(build_plugin(
+    "billing-verify-0001", "计费规则校验", "check_billing_rule",
+    "自研模拟实现（V1.6）：内置规则引擎按该销售品《产品信息.txt》资费/叠加/互斥规则校验配置JSON，输出模拟风险清单（默认通过，支持构造冲突用例验证驳回分支）",
+    "/api/v1/appstore/billing/rules/verify", "POST",
+    {
+        "config_json": schema_param("config_json", "string",
+            "落地配置JSON，工作流变量引用不提参；缺失或非法JSON返回 3001", True),
+        "check_scene": schema_param("check_scene", "string",
+            "校验场景枚举：fee（计费）/overlay（叠加）/superposition（互斥叠加）/all（全量），默认 all", False, "all", "fee,overlay,superposition,all"),
+    },
+    ["config_json"],
+    {
+        "pass": {"description": "1 通过 / 0 不通过", "type": "string"},
+        "risk_list": arr("risk_list", "风险清单，pass=0 时非空", {
+            "risk_type": {"description": "风险类型：overlap_conflict/negative_fee/boundary_price_gap/overlay_limit_exceeded/custom_rule", "type": "string"},
+            "risk_desc": {"description": "风险描述，含冲突/异常明细", "type": "string"},
+            "suggest": {"description": "处置建议", "type": "string"},
+        }),
+    },
+    "Y"))
+
+# ---------------- 工具9 上线审批推送 ----------------
+plugins.append(build_plugin(
+    "approval-submit-0001", "上线审批推送", "submit_release_approval",
+    "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id",
+    "/api/v1/appstore/approval/submit", "POST",
+    {
+        "req_id": schema_param("req_id", "string",
+            "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING", True),
+        "product_id": schema_param("product_id", "string",
+            "CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING", True),
+        "report_url": schema_param("report_url", "string",
+            "上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）", True),
+        "approve_confirmed": schema_param("approve_confirmed", "string",
+            "审批发起确认标志，非 true 返回 NOT_CONFIRMED", True, "true"),
+        "approval_flow": schema_param("approval_flow", "string",
+            "审批流枚举：standard/urgent，默认 standard", False, "standard", "standard,urgent"),
+    },
+    ["req_id", "product_id", "report_url", "approve_confirmed"],
+    {
+        "approval_id": {"description": "审批单号", "type": "string"},
+        "status": {"description": "提交状态", "type": "string"},
+    },
+    "N"))
+
+# ---------------- 工具10 监控查询 ----------------
+plugins.append(build_plugin(
+    "monitor-query-0001", "监控查询", "query_product_monitor",
+    "自研模拟实现（V1.6）：按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），可构造 error_count>0 演示告警分支；模拟数据兼容18个销售品",
+    "/api/v1/appstore/product/monitor", "GET",
+    {
+        "product_id": schema_param("product_id", "string",
+            "要查询的销售品ID；缺失返回 PARAM_MISSING", True),
+        "metric": schema_param("metric", "string",
+            "指标枚举：order/error/fee/all，默认 all", False, "all", "order,error,fee,all"),
+    },
+    ["product_id"],
+    {
+        "offer_name": {"description": "产品名称（按product_id回读种子库）", "type": "string"},
+        "order_count": {"description": "订单量", "type": "string"},
+        "order_trend": {"description": "订单量趋势：上升/下降/持平", "type": "string"},
+        "error_count": {"description": "异常量", "type": "string"},
+        "error_trend": {"description": "异常量趋势：上升/下降/持平", "type": "string"},
+        "fee_error_rate": {"description": "计费差错率", "type": "string"},
+        "fee_trend": {"description": "计费差错率趋势：上升/下降/持平", "type": "string"},
+        "alarm_list": arr("alarm_list", "已产生告警列表", {
+            "alarm_id": {"description": "告警单号", "type": "string"},
+            "alarm_level": {"description": "告警级别：high/middle/low", "type": "string"},
+            "content": {"description": "告警内容", "type": "string"},
+            "alarm_time": {"description": "告警时间", "type": "string"},
+        }),
+    },
+    "Y"))
+
+# ---------------- 工具11 异常告警 ----------------
+plugins.append(build_plugin(
+    "alert-send-0001", "异常告警", "send_alert",
+    "自研模拟实现（V1.6）：生成模拟告警单号 alert_id 并返回推送成功状态；告警记录写入模拟库供监控查询回显闭环",
+    "/api/v1/appstore/alert/send", "POST",
+    {
+        "product_id": schema_param("product_id", "string",
+            "告警关联销售品ID；缺失返回 PARAM_MISSING", True),
+        "alarm_level": schema_param("alarm_level", "string",
+            "告警级别枚举：high/middle/low；缺失返回 PARAM_MISSING", True, "", "high,middle,low"),
+        "content": schema_param("content", "string",
+            "告警正文（含环节、问题描述、建议），由大模型节点生成，工作流变量引用", True),
+    },
+    ["product_id", "alarm_level", "content"],
+    {
+        "alert_id": {"description": "告警单号", "type": "string"},
+        "status": {"description": "推送状态", "type": "string"},
+    },
+    "N"))
+
+# ---------------- 工具13 审批进度查询 ----------------
+plugins.append(build_plugin(
+    "approval-status-0001", "审批进度查询", "query_approval_status",
+    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 product_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+    "/api/v1/appstore/approval/status", "GET",
+    {
+        "product_id": schema_param("product_id", "string",
+            "产品ID，按其查最新审批单；为空返回 PARAM_MISSING", True),
+    },
+    ["product_id"],
+    {
+        "approval_id": {"description": "审批单号", "type": "string"},
+        "status": {"description": "审批状态：审批中 / 通过 / 驳回", "type": "string"},
+        "current_node": {"description": "当前审批环节（如：产品经理审核/部门主管审批）", "type": "string"},
+        "approver": {"description": "当前审批人", "type": "string"},
+        "opinion": {"description": "审批意见（最近一条）", "type": "string"},
+        "submit_time": {"description": "提交时间", "type": "string"},
+        "update_time": {"description": "最近更新时间", "type": "string"},
+    },
+    "Y"))
+
+# ---------------- 节点结果存储（平台复用，重新导出对齐V1.6口径） ----------------
+def build_storage_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, req_required, resp_props, induction):
+    export = build_plugin(tool_id, tool_name, tool_code, desc, path, method,
+                          req_props, req_required, resp_props, induction)
+    export["pluginName"] = "节点结果存储查询插件"
+    export["remarks"] = "平台已有通用插件，直接挂载，不自研；本导出对齐 req_id+node_name 存取契约"
+    return export
+
+plugins.append(build_storage_plugin(
+    "node-result-save-0001", "节点结果存储", "save_node_result",
+    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.8 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并，由 wf_sub_01 拆分代码节点以系统时钟生成，每次分析重新生成，LLM 不参与生成），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test；后端硬校验 req_id 格式（非法返回 5002）与 requirement 环节同键不同内容冲突（返回 5006）",
+    "/api/v1/appstore/result/save", "POST",
+    {
+        "req_id": schema_param("req_id", "string",
+            "需求唯一标识（V1.8 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识，取自执行方案 plan_json 的 req_id 键，由代码节点生成）；非法格式返回 5002；requirement 环节同键不同内容返回 5006", True),
+        "node_name": schema_param("node_name", "string",
+            "环节名：requirement/config/spec/fee/test；为空返回 5003", True),
+        "result_json": schema_param("result_json", "string",
+            "本环节结果JSON字符串，最大64KB，超限返回 5004", True),
+        "status": schema_param("status", "string",
+            "本环节状态，默认 ok", False, "ok"),
+    },
+    ["req_id", "node_name", "result_json"],
+    {
+        "code": {"description": "统一状态码，0 成功", "type": "string"},
+        "msg": {"description": "状态描述", "type": "string"},
+        "record_id": {"description": "存储记录ID", "type": "string"},
+    },
+    "N"))
+
+plugins.append(build_storage_plugin(
+    "node-result-query-0001", "节点结果查询", "query_node_result",
+    "平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。V1.8 统一键：智能配置环节按 req_id+node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按同键 req_id 回放已成功环节结果；req_id 由 wf_sub_01 拆分代码节点以系统时钟生成（LLM 不参与），非法格式返回 5002",
+    "/api/v1/appstore/result/query", "GET",
+    {
+        "req_id": schema_param("req_id", "string",
+            "需求唯一标识（V1.8 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识，由 wf_sub_01 代码节点生成）；非法格式返回 5002", True),
+        "node_name": schema_param("node_name", "string",
+            "环节名（可选）：requirement/config/spec/fee/test；为空返回该需求单号下全部环节最新记录", False),
+        "latest_only": schema_param("latest_only", "string",
+            "1=只返回每个环节最新一条（默认）；0=返回历史全部版本", False, "1", "0,1"),
+    },
+    ["req_id"],
+    {
+        "code": {"description": "统一状态码，0 成功", "type": "string"},
+        "msg": {"description": "状态描述", "type": "string"},
+        "total": {"description": "命中记录数", "type": "string"},
+        "list": {"description": "记录数组JSON（每条含 record_id/req_id/node_name/result_json/status/create_time/update_time；执行方案取 list[0].result_json）", "type": "string"},
+    },
+    "Y"))
+
+# ---------------- 工具14 字段本体推理（V2.1 本体推理引擎） ----------------
+plugins.append(build_plugin(
+    "field-ontology-0001", "字段本体推理", "field_ontology_reason",
+    "自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，"
+    "action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；"
+    "action=validate 仅校验（非法返回 violations 供重填）；"
+    "action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；"
+    "action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证",
+    "/api/v1/appstore/ontology/fields", "POST",
+    {
+        "action": schema_param("action", "string",
+            "推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101", True, "", "reason,validate,complete,ontology"),
+        "fields_json": schema_param("fields_json", "string",
+            "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI推理\"}]；action=ontology 时可空", False),
+    },
+    ["action"],
+    {
+        "code": {"description": "统一状态码，0 成功 / 5101 非法action", "type": "string"},
+        "msg": {"description": "状态描述", "type": "string"},
+        "pass": {"description": "validate 出参：1 全部合法 / 0 存在违规", "type": "string"},
+        "violations": arr("violations", "validate/reason 出参：无法自动修正的违规明细，pass=0 时非空", {
+            "field": {"description": "违规字段名", "type": "string"},
+            "value": {"description": "违规值", "type": "string"},
+            "reason": {"description": "期望规则（本体定义）", "type": "string"},
+        }),
+        "fixed": arr("fixed", "reason 出参：修正/补全明细", {
+            "field": {"description": "字段名", "type": "string"},
+            "value": {"description": "原值（补全/修正前）", "type": "string"},
+            "action": {"description": "defaulted=默认值补全 / fallback=兜底待补充 / corrected=修正回写 / none=维持", "type": "string"},
+            "corrected": {"description": "修正后值（corrected 动作时非空）", "type": "string"},
+            "reason": {"description": "处理依据（本体规则）", "type": "string"},
+        }),
+        "completed": arr("completed", "complete 出参：逐字段补全/兜底标记", {
+            "field": {"description": "字段名", "type": "string"},
+            "value": {"description": "补全值（兜底口径字段为\"待补充\"）", "type": "string"},
+            "defaulted": {"description": "1=本体默认值补全 / 0=未补全", "type": "string"},
+            "reason": {"description": "补全依据（本体规则）", "type": "string"},
+        }),
+        "fields_json": {"description": "reason/complete 出参：推理后的完整字段数组JSON（工作流从该结果闭环取值组装方案）", "type": "string"},
+        "fields": arr("fields", "ontology 出参：字段本体定义清单", {
+            "field": {"description": "字段名", "type": "string"},
+            "category": {"description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）", "type": "string"},
+            "enums": {"description": "枚举值（顿号分隔，无枚举为空）", "type": "string"},
+            "rule": {"description": "格式/口径规则", "type": "string"},
+            "default_value": {"description": "本体默认值", "type": "string"},
+            "fallback": {"description": "1=兜底口径字段（不默认补全）/ 0=普通字段", "type": "string"},
+        }),
+    },
+    "N"))
+
+filenames = {
+    "query_similar_offer": "工具1_相似度分析_export.json",
+    "realtime_spec_audit": "工具2_实时规格稽核_export.json",
+    "offer_test": "工具3_销售品测试发起_export.json",
+    "get_test_scenes": "工具4_查询测试场景_export.json",
+    "get_test_progress": "工具5_查询测试进度_export.json",
+    "get_test_result": "工具6_查询测试结果_export.json",
+    "save_product_config": "工具7_配置落地_export.json",
+    "check_billing_rule": "工具8_计费规则校验_export.json",
+    "submit_release_approval": "工具9_上线审批推送_export.json",
+    "query_product_monitor": "工具10_监控查询_export.json",
+    "send_alert": "工具11_异常告警_export.json",
+    "query_approval_status": "工具13_审批进度查询_export.json",
+    "save_node_result": "节点结果存储_export_V1.6.json",
+    "query_node_result": "节点结果查询_export_V1.6.json",
+    "field_ontology_reason": "工具14_字段本体推理_export.json",
+}
+
+for p in plugins:
+    fn = filenames[p["toolCode"]]
+    with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
+        json.dump(p, f, ensure_ascii=False, indent=2)
+    print("written:", fn)
+
+print("total:", len(plugins))

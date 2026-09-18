@@ -1,0 +1,134 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/approval/submit",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"approval-submit-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"req_id\", \"description\": \"执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"product_id\", \"description\": \"CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"report_url\", \"description\": \"上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"approve_confirmed\", \"description\": \"审批发起确认标志，非 true 返回 NOT_CONFIRMED\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"approval_flow\", \"description\": \"审批流枚举：standard/urgent，默认 standard\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"submit_release_approval\", \"description\": \"自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id\", \"title\": \"上线审批推送\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"提交状态\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"post\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/approval/submit\"}",
+  "userScope": 2,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id",
+      "title": "上线审批推送",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/approval/submit": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "default": "",
+                  "description": "根节点",
+                  "type": "object",
+                  "enum": "",
+                  "properties": {
+                    "req_id": {
+                      "default": "",
+                      "description": "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "product_id": {
+                      "default": "",
+                      "description": "CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "report_url": {
+                      "default": "",
+                      "description": "上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "approve_confirmed": {
+                      "default": "true",
+                      "description": "审批发起确认标志，非 true 返回 NOT_CONFIRMED",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "approval_flow": {
+                      "default": "standard",
+                      "description": "审批流枚举：standard/urgent，默认 standard",
+                      "type": "string",
+                      "enum": "standard,urgent"
+                    }
+                  },
+                  "required": []
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "description": "根节点",
+                    "type": "object",
+                    "properties": {
+                      "approval_id": {
+                        "description": "审批单号",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "提交状态",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "knowledgeCategory": null,
+  "id": "approval-submit-0001",
+  "toolAuthenticInfo": "null",
+  "ontology": null,
+  "toolName": "上线审批推送",
+  "usedBySceneNum": null,
+  "updateTime": null,
+  "versionInfo": null,
+  "toolType": 1,
+  "version": "1",
+  "isDefault": 1,
+  "toolCode": "submit_release_approval",
+  "observationField": "",
+  "submit_way": "post",
+  "createTime": null,
+  "knowledgeCategoryName": null,
+  "pluginName": null,
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-req_id\": \"\", \"ROOT-product_id\": \"\", \"ROOT-report_url\": \"\", \"ROOT-approve_confirmed\": \"\", \"ROOT-approval_flow\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"上线审批推送\", \"name_for_model\": \"submit_release_approval\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"提交状态\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING\", \"dict_list\": \"\", \"id\": \"94014c36019434a7420a40de6d637a0a\", \"isParameter\": 1, \"name\": \"req_id\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"upNodeName\": \"ROOT\"}, {\"description\": \"CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING\", \"dict_list\": \"\", \"id\": \"05fd56d62d2ae0c6a96dd7bf18643835\", \"isParameter\": 1, \"name\": \"product_id\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"upNodeName\": \"ROOT\"}, {\"description\": \"上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）\", \"dict_list\": \"\", \"id\": \"86bee28091a87078d9b302166cf0f035\", \"isParameter\": 1, \"name\": \"report_url\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"upNodeName\": \"ROOT\"}, {\"description\": \"审批发起确认标志，非 true 返回 NOT_CONFIRMED\", \"dict_list\": \"\", \"id\": \"52de1519d1e3d3bea799d74b8ad415a6\", \"isParameter\": 1, \"name\": \"approve_confirmed\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"upNodeName\": \"ROOT\"}, {\"description\": \"审批流枚举：standard/urgent，默认 standard\", \"dict_list\": \"\", \"id\": \"2bda72275f7abc65f9859733005efc9b\", \"isParameter\": 1, \"name\": \"approval_flow\", \"required\": false, \"schema\": {\"type\": \"string\"}, \"upId\": \"59a7a957ca99e06ff5a2a5e8cd6fbd1d\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"post\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/approval/submit\"}",
+  "pluginsId": null,
+  "prompt": "",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "status": 0,
+  "wsHeads": ""
+}
