@@ -1,5 +1,6 @@
 package com.sitech.prodai.controller;
 
+import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.appstore.FieldOntologyService;
 import com.sitech.prodai.service.appstore.NodeResultService;
 import com.sitech.prodai.service.appstore.OfferSimV16Service;
@@ -31,12 +32,15 @@ public class AppStoreV16Controller {
     private final OfferSimV16Service sim;
     private final NodeResultService nodeResultService;
     private final FieldOntologyService fieldOntologyService;
+    private final ProductOntologyService productOntologyService;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
-                                 FieldOntologyService fieldOntologyService) {
+                                 FieldOntologyService fieldOntologyService,
+                                 ProductOntologyService productOntologyService) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
+        this.productOntologyService = productOntologyService;
     }
 
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
@@ -254,6 +258,208 @@ public class AppStoreV16Controller {
         }
         String fieldsJson = MapOps.str(req.get("fields_json"));
         return fieldsJson.isBlank() ? "[]" : fieldsJson;
+    }
+
+    /* ================= 接口15：异动根因本体推理（ops_root_cause） ================= */
+
+    /**
+     * 对接 work-flow 阶段1.1 wf_sub_07 节点706 CODE_OP_ROOT_CAUSE：
+     * 由 {product_id} 调 productOntologyService.analyzeRootCause(offeringId)，
+     * 并把 camelCase 字段适配为 workflow 契约的 snake_case 出参
+     * （reason_engine/evidence_triples/swrl_fired/applied_rules/action_list）。
+     */
+    @Operation(summary = "异动根因本体推理", description = "由 product_id 对异动一指定位根因并推理处置动作，输出归因路径/证据三元组/命中规则/动作清单（契约出参 snake_case）")
+    @PostMapping("/ops/root-cause")
+    public Map<String, Object> opsRootCause(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String productId = MapOps.str(safe.get("product_id"));
+        Map<String, Object> r = productOntologyService.analyzeRootCause(productId, null);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        boolean ok = Boolean.TRUE.equals(r.get("success"))
+                && (r.get("paths") instanceof List<?> list && !list.isEmpty());
+        if (!ok) {
+            out.put("backend_pending", "1");
+            out.put("note", r.get("message") == null ? "根因本体推理未命中归因规则" : String.valueOf(r.get("message")));
+            return out;
+        }
+        out.put("backend_pending", "0");
+        out.put("reason_engine", MapOps.str(r.get("reasonEngine")));
+        out.put("anomalies", r.get("anomalies"));
+        out.put("paths", r.get("paths"));
+        out.put("evidence_triples", r.get("evidenceTriples"));
+        out.put("swrl_fired", r.get("swrlFiredRules") == null ? "" : toJson(r.get("swrlFiredRules")));
+        out.put("applied_rules", r.get("appliedRules") == null ? "" : toJson(r.get("appliedRules")));
+        out.put("action_list", r.get("actionList"));
+        out.put("message", r.get("message") == null ? "" : String.valueOf(r.get("message")));
+        return out;
+    }
+
+    /* ================= 接口16：创建工单闭环（create_work_order） ================= */
+
+    /**
+     * 对接 wf_sub_07 节点708 CODE_OP_CREATE_WO：
+     * 由 {product_id} 建处置工单，取嵌套 workOrder.workOrderId 显影为 work_order_id 契约出参。
+     */
+    @Operation(summary = "创建运维工单", description = "由 product_id 建立处置工单并回写本体，返回 work_order_id（契约 snake_case）")
+    @PostMapping("/ops/work-orders")
+    public Map<String, Object> opsCreateWorkOrder(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String productId = MapOps.str(safe.get("product_id"));
+        Map<String, Object> r = productOntologyService.createWorkOrder(Map.of("offeringId", productId, "source", "workflow"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        Object woRaw = r.get("workOrder");
+        String woId = null;
+        if (woRaw instanceof Map<?, ?> wo) {
+            Object wid = wo.get("workOrderId");
+            woId = wid == null ? null : String.valueOf(wid);
+        }
+        if (Boolean.TRUE.equals(r.get("success")) && woId != null && !woId.isBlank()) {
+            out.put("backend_pending", "0");
+            out.put("work_order_id", woId);
+            out.put("message", r.get("message") == null ? "工单已建立" : String.valueOf(r.get("message")));
+        } else {
+            out.put("backend_pending", "1");
+            out.put("work_order_id", "");
+            out.put("note", "建工单服务端点异常，工单未建立");
+        }
+        return out;
+    }
+
+    /* ================= 接口17：存量合规扫描（shelf_compliance） ================= */
+
+    /**
+     * 对接 wf_sub_10 节点1002 CODE_OP_SHELF_COMPLIANCE：
+     * auditShelfCompliance 返回 items，适配为 workflow 读取的 rows / results，并带 message。
+     */
+    @Operation(summary = "存量合规扫描", description = "批量扫描在架存量产品执行 R-C* 规则校验，输出违规清单（items 适配为 rows/results）")
+    @PostMapping("/shelf-compliance")
+    public Map<String, Object> shelfCompliance(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        if (safe.get("offering_ids") instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null) {
+                    ids.add(String.valueOf(o));
+                }
+            }
+        }
+        Map<String, Object> r = productOntologyService.auditShelfCompliance(ids);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        Object rows = r.get("items");
+        if (Boolean.TRUE.equals(r.get("success")) && rows instanceof List<?> l && !l.isEmpty()) {
+            out.put("backend_pending", "0");
+            out.put("rows", rows);
+            out.put("results", rows);
+            out.put("total", String.valueOf(r.get("total")));
+            out.put("message", (r.get("failedCount") instanceof Number n && n.intValue() > 0)
+                    ? "存量合规扫描完成，存在待整改项" : "存量合规扫描完成，全部通过");
+        } else {
+            out.put("backend_pending", "1");
+            out.put("note", "存量合规扫描端点暂无可输出结论");
+        }
+        return out;
+    }
+
+    /* ================= 接口18：嵌套报文本体校验（validate_nested） ================= */
+
+    /**
+     * 对接 wf_sub_01 节点109 CODE_OP_VALIDATE_NESTED：
+     * 入参 {template_id, payload} → validateNested；契约出参 valid/error_list/explain/message。
+     */
+    @Operation(summary = "嵌套报文本体校验", description = "模板轨本体校验闸：payload + template_id，出参 valid/error_list/explain/message")
+    @PostMapping("/validate-nested")
+    public Map<String, Object> validateNested(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String templateId = MapOps.str(safe.get("template_id"));
+        Object payload = safe.get("payload");
+        Map<String, Object> call = new java.util.LinkedHashMap<>();
+        call.put("template", templateId);
+        call.put("payload", payload == null ? Map.of() : payload);
+        Map<String, Object> r = productOntologyService.validateNested(call);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        boolean pass = Boolean.TRUE.equals(r.get("pass")) || Boolean.TRUE.equals(r.get("can_submit"));
+        out.put("backend_pending", "0");
+        out.put("valid", pass ? "1" : "0");
+        out.put("error_list", r.get("violations") == null ? "[]" : toJson(r.get("violations")));
+        out.put("explain", r.get("explain_hint") == null ? "" : toJson(r.get("explain_hint")));
+        out.put("message", r.get("message") == null ? (pass ? "本体校验通过" : "本体校验未通过，见 error_list") : String.valueOf(r.get("message")));
+        return out;
+    }
+
+    /* ================= 接口19：配置解释（explain） ================= */
+
+    /**
+     * 对接本体推理可见性（flow-A explain）：按 trace_id 生成业务视角解释，出参 explain/explanation。
+     */
+    @Operation(summary = "配置解释", description = "按 trace_id 生成业务视角配置解释，出参 explain")
+    @PostMapping("/explain")
+    public Map<String, Object> explain(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String traceId = safe.get("trace_id") != null ? String.valueOf(safe.get("trace_id"))
+                : safe.get("traceId") != null ? String.valueOf(safe.get("traceId")) : "";
+        Map<String, Object> r = productOntologyService.explainConfig(traceId, "business");
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("backend_pending", "0");
+        out.put("trace_id", r.get("trace_id") == null ? traceId : String.valueOf(r.get("trace_id")));
+        out.put("explain", r.get("explanation") == null ? "" : String.valueOf(r.get("explanation")));
+        out.put("message", r.get("message") == null ? "OK" : String.valueOf(r.get("message")));
+        return out;
+    }
+
+    /* ================= 接口20：测试报告下载（download_test_report） ================= */
+
+    /**
+     * 对接 wf_sub_04 节点316 CODE_DOWNLOAD_TEST_REPORT：
+     * 入参 {record_id, kind}；record_id 即测试 global_id，回退到既有 GET /test/offer/report 附件，
+     * 但此处返回 download_url（+message）契约出参，与 workflow 读取一致。
+     */
+    @Operation(summary = "测试报告下载", description = "按 record_id(globalId) 返回正式版测试报告下载链接 download_url + message")
+    @PostMapping("/report/download")
+    public Map<String, Object> reportDownload(@RequestBody(required = false) Map<String, Object> req,
+                                              jakarta.servlet.http.HttpServletRequest httpRequest) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String recordId = MapOps.str(safe.get("record_id"));
+        String report = sim.testReportOf(recordId);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        if (report == null || recordId.isBlank()) {
+            out.put("backend_pending", "1");
+            out.put("download_url", "");
+            out.put("note", "无该测试任务或报告未生成，暂无下载链接");
+            return out;
+        }
+        out.put("backend_pending", "0");
+        out.put("download_url", externalBaseUrl(httpRequest)
+                + "/api/v1/appstore/test/offer/report?global_id=" + recordId.trim());
+        out.put("message", "正式版测试报告已生成，可点击链接下载");
+        return out;
+    }
+
+    /* ================= 接口21：配置/上线脚本下载（download_launch_script） ================= */
+
+    /**
+     * 对接 wf_sub_06 节点621 CODE_DOWNLOAD_LAUNCH_SCRIPT：
+     * 入参 {offer_id, approval_id, kind}；offer_id 即 product_id，回退到既有 GET /product/config/script 附件，
+     * 此处返回 download_url（+message）契约出参。
+     */
+    @Operation(summary = "配置/上线脚本下载", description = "按 offer_id(product_id) 返回上线加载脚本下载链接 download_url + message")
+    @PostMapping("/script/download")
+    public Map<String, Object> scriptDownload(@RequestBody(required = false) Map<String, Object> req,
+                                              jakarta.servlet.http.HttpServletRequest httpRequest) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        String offerId = MapOps.str(safe.get("offer_id"));
+        String script = sim.launchScriptOf(offerId);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        if (script == null || offerId.isBlank()) {
+            out.put("backend_pending", "1");
+            out.put("download_url", "");
+            out.put("note", "无该销售品上线脚本，暂无下载链接");
+            return out;
+        }
+        out.put("backend_pending", "0");
+        out.put("download_url", externalBaseUrl(httpRequest)
+                + "/api/v1/appstore/product/config/script?product_id=" + offerId.trim());
+        out.put("message", "配置/上线脚本已生成，可点击链接下载");
+        return out;
     }
 
     /* ---------------- 工具 ---------------- */
