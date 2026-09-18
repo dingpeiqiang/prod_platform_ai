@@ -1,0 +1,11 @@
+[
+ {
+  "success": true,
+  "trace_id": "cfg-validate-1789699512841",
+  "audience": "sales",
+  "explanation": "配置审计说明（技术视角）：\n- project\n- derive\n- compliance\n- r-c04\n\n规则引擎说明：配置侧使用 Java R-C*（方案别名见 proposalMapping），非 Drools；Openllet SWRL 仅用于运营归因。",
+  "demoMode": false,
+  "dataSource": "empty",
+  "dataSourceMode": "classpath"
+ }
+]

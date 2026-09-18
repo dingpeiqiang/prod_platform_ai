@@ -48,8 +48,8 @@ import argparse
 import datetime
 import io
 import json
+import random
 import sys
-import uuid
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -108,9 +108,13 @@ def _norm(v):
 
 
 def _gen_req_id():
-    """需求单号：PLAN + 时间戳 + 随机（与 flow-A req_id 生成规则一致）。"""
+    """需求单号：PLAN + 14位时间戳 + 3位数字随机（与 cpcp_api.build_plan 规则一致）。
+
+    后端 /api/v1/appstore/result/save 硬校验格式为 PLAN+yyyyMMddHHmmss+3位随机数，
+    随机段必须是数字；此前用 uuid hex（6位、含字母）会导致 save_node_result 5002、
+    四环节结果无法落库、上线审批被拒。"""
     ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    rand = uuid.uuid4().hex[:6].upper()
+    rand = "%03d" % random.randint(0, 999)
     return "PLAN%s%s" % (ts, rand)
 
 

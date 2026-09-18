@@ -19,7 +19,7 @@ python scripts/dispatcher.py --message "<用户最新消息>" [--session-file "<
 ## 执行程序
 
 ### 步骤0：意图澄清（当 dispatcher 出参 intent=ASK_INTENT 时）
-- dispatcher 出参 `intent=ASK_INTENT`（matched_rule=product-desc-ask / product-doc-ask）时，**不执行任何业务**，先向用户澄清：
+- dispatcher 出参 `intent=ASK_INTENT`（matched_rule=product-desc-ask / product-doc-ask）时，**不执行任何业务**，先向用户澄清；此为**需要用户选择下一步操作的决策点**，用 **Markdown 文本**列出【查询 / 配置】两个选项及回复指令（禁止调用 `render_a2ui`/表单组件）：
 ```
 您提供的是一段产品描述，请确认您的意图：
 ① 查询 —— 查询该产品/销售品信息（存量、资费、测试等）
@@ -41,7 +41,7 @@ python scripts/dispatcher.py --message "<用户最新消息>" [--session-file "<
 - 逐字引用用户表述，**未提及的字段留空**（空/占位标记），交渲染脚本判定待补充；**禁止从相似产品照搬或臆造值**（价格纪律延用），**禁止 LLM 自行渲染成中文文档**；
 - 需求原文为整篇文档时，先归纳 need_summary（1~2 句）作为 `--need-summary` 注入。
 
-### 步骤2：生成《销售品需求提报单》（确定性脚本判定 + render_a2ui 展示，禁止纯文本拼凑）
+### 步骤2：生成《销售品需求提报单》（确定性脚本判定 + 纯文本展示）
 - 待补充判定与落盘由确定性脚本完成（禁止 LLM 手工判定/渲染）：
 ```bash
 python -X utf8 "scripts\render_requirement_report.py" \
@@ -50,12 +50,19 @@ python -X utf8 "scripts\render_requirement_report.py" \
 ```
 - 出参 JSON（逐字引用）：`req_id/report_date/pending_fields/pending_count/report_text/artifact`；
    成败**仅以 resultCode=0 与否判定**，禁止语义猜测；`pending_count>0` → 出参 pending_fields 即【待补充字段】清单（**仅必要字段=资费价格+资费免费资源 缺失进入**；含价格字段"待补充"则整体待补充）；**单/融合品分支与待补充口径由渲染脚本按 product_type 与 REQUIRED_FIELDS 确定**，模型禁止手工增删待补充字段；
-- **《销售品需求提报单》展示用 render_a2ui（不是把 report_text 当纯文本粘贴）**：调用 `render_a2ui`，组件取自官方 `references/a2ui_forms.md`（信息展示→Card+List【模板5】、表格→DataGrid【模板16 #22】），填充出参/需求字段值（req_id/need_summary/product_name/product_type/price/resources/out_price/billing_cycle/effective_way/validity/change_rule/cancel_rule/待补充清单 pending_summary）；禁止用纯文本拼凑替代表单；
+- **《销售品需求提报单》以 Markdown 文本输出脚本出参 `report_text`**（**禁止调用 `render_a2ui`/表单组件、禁止手工改写模板结构**）；出参 `pending_fields` 非空时在文本下方并列输出【待补充字段】清单并提示补充；
 - 输出以 `【环节1/9·需求提报】✅ 执行成功` 标题头开头（九环节总表，禁止缩写）；
-- 脚本自动落盘工件 `requirement_report_<req_id>.json`（会话工作区，供需求工单审批与后续流程引用），req_id 沿用 flow-A 生成规则（PLAN + 时间戳 + 随机；缺省时由脚本生成）。
+- **环节1 收尾固定块（V11.0 强制，SKILL.md 纪律5.1）**：正文末尾（**待补充清单之后**，整条回复的最后一个内容块）必须输出下一步建议块；`pending_count==0` 与 `pending_count>0` 两种口径如下，**禁止以单据表格或"待补充字段：无"收尾**：
+  ```
+  > **建议处理：** {{pending_count==0→"需求提报单已生成，建议发起【需求工单审批】以进入后续配置流程"；pending_count>0→"请先补齐待补充字段（{{pending_fields 逐项 x-label}}）后重新生成需求提报单"}}（可回复【{{发起需求审批|补充需求字段}}】{{pending_count==0→"，或回复【跳过审批】经授权直接进入需求分析"}}）
+  > 等待您明确回复后我才会继续，不会自动发起审批或进入需求分析。
+  ```
+  触发词只用本 flow 已定义的环节衔接词（【发起需求审批】/【跳过审批】/【补充需求字段】），禁止自造；【发起需求审批】由 dispatcher 规则直接命中 APPROVAL、【跳过审批】与【补充需求字段】由本 flow 门禁/补提条款（步骤3、步骤5、E31 增量补提）承接，**不得替换为 dispatcher 未定义、且本 flow 也未定义的词**；
+- **环节1 动作建议须与步骤3 决策点完全一致**：本收尾块只是把步骤3 的选项**提前显性化**，**不得因此擅自发起审批或进入需求分析**（门禁纪律不变，仍以用户明确回复为前提）；
+- 脚本自动落盘工件 `requirement_report_<req_id>.json`（会话工作区，供需求工单审批与后续流程引用），req_id 唯一权威口径 = **`PLAN + yyyyMMddHHmmss + 3 位随机`（须满足后端 `PLAN\d{17}` 强校验，由脚本生成，禁止手工拼接非数字后缀）**；该 req_id 一经产生即作为本需求单号**贯穿需求分析/智能配置/审核/测试/上线等后续全部环节**，各环节保存一律沿用，禁止换号。
 
 ### 步骤3：提示发起需求工单审批（门禁）
-- 需求提报单生成后，**必须输出提示**：
+- 需求提报单生成后，**必须输出提示**；此为**需要用户选择下一步操作的决策点**，用 **Markdown 文本**列出【发起需求审批 / 跳过审批】两个选项及回复指令（禁止调用 `render_a2ui`/表单组件）：
 ```
 是否发起【需求工单审批】？可回复"发起需求审批"提交审批；或回复【跳过审批】直接进入需求分析（需授权）。
 ```
@@ -77,7 +84,8 @@ python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<re
 - 需求单号：{{req_id}}
 - 需求工单审批单号：{{approval_id}}，状态：{{status}}
 
-建议处理：可输入"查询审批进度"查看需求工单审批状态；审批通过后回复"开始配置"进入【需求分析】。
+> **建议处理：** 需求工单审批已提交，建议查询审批进度确认是否通过；审批通过后即可进入【需求分析】（可回复【查询审批进度】查状态，审批通过后回复【开始配置】）
+> 等待您的明确回复后我才会继续，不会自动进入需求分析。
 ```
 - 推送失败/网络异常 → 按异常矩阵引导（传输层重试由 cpcp_api 内置共 3 次，仍失败按 E16/E29 中断询问），需求提报单保留。
 
@@ -96,6 +104,7 @@ python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<re
 - 禁止擅自发起需求工单审批（须用户明确"发起需求审批"）；
 - 禁止在需求提报单中臆造/照搬价格与规则值（价格纪律延用）；
 - **禁止 LLM 手工渲染《销售品需求提报单》中文文档或改写模板结构**（待补充判定/落盘一律由 `render_requirement_report.py` 确定性完成，LLM 只输出结构化需求字段 JSON）；
-- **《销售品需求提报单》展示必须走 `render_a2ui`（组件取官方 `references/a2ui_forms.md`：Card+List/DataGrid），禁止纯文本拼凑替代表单**；
+- **《销售品需求提报单》以 Markdown 文本输出脚本出参 `report_text`，全流程禁用 `render_a2ui`**（一切提示与选项一律用 Markdown 文本，禁止表单/组件渲染）；
 - 禁止生成执行方案/调配置落库接口（需求提报只在会话层，不落地）；
-- 禁止需求工单审批未通过时进入需求分析（门禁硬校验）。
+- 禁止需求工单审批未通过时进入需求分析（门禁硬校验）；
+- **禁止省略环节1 收尾固定块**：需求提报单/审批结果输出后必须以"**建议处理：**"收尾块结束（SKILL.md 纪律5.1），禁止以单据表格、"待补充字段：无"或空行收尾；收尾块仅为建议，**不得据此擅自发起审批或进入需求分析**。

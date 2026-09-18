@@ -19,7 +19,10 @@
 6. 待补充标记（"待补充"/"系统待生成"）视为空值，不参与合并；
 7. 输出附 _meta：每个叶子路径的 source 标注 + 待补充必填清单；
 8. **V9.2 枚举全放开为自由文本**：schema 枚举（enum）仅作展示/参考，不做命中校验、不产 enum_violation，
-   提取到的任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）。
+   提取到的任意原文原样入库（含 5G-A 阶梯计费 3元/1GB 等非模板枚举的合法值）；
+9. **V10.1 同源派生**：同一业务参数不同表达（套餐月费 prcMonthFee ↔ 套餐固定费 fixFee）视为
+   同一参数、仅表达形式不同（R-C06 按数值从两处派生 fixedFeeAmount，要求两处同为数值且一致），
+   merge 后双向确定性回填，消除本参数的重复确认。
 
 向后兼容：--flat-elements 旧扁平字段数组（[{field,value}]，field=x-label）仍可合并（按 x-label 对位）。
 """
@@ -28,7 +31,9 @@ import io
 import json
 import sys
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if not (isinstance(sys.stdout, io.TextIOWrapper) and getattr(sys.stdout, "encoding", "") and
+        "utf" in sys.stdout.encoding.lower()):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 # 价格字段判别关键词（与 cpcp_api._is_price_field 口径一致，嵌套语境按 x-label/路径尾段判定）
 PRICE_KEYWORDS = ("档位", "月功能费", "月租", "月费", "固定费", "费用")
@@ -44,6 +49,13 @@ EMPTY_MARKS = ("", "待补充", "系统待生成")
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")
 # 系统自动生成字段（智能配置环节生成，需求/相似品均无值，不计入待补充清单）
 SYSTEM_GEN_KEYS = ("orderNo",)
+# 同一业务参数不同表达（V10.1，同源派生对）：(路径A, 路径B, A业务标签, B业务标签)。
+# R-C06 按数值从两处派生 fixedFeeAmount，要求两处同为数值且一致；二者视为同一参数、仅表达形式不同，
+# merge 后双向回填，消除本参数的重复确认。
+SAME_PARAMETER_PAIRS = (
+    ("optionalInfo.printContent.prcMonthFee", "optionalInfo.acctMonth.fixFee",
+     "套餐月费", "套餐固定费"),
+)
 
 
 def _today_str():
@@ -92,6 +104,79 @@ def _charge_desc_covers(prop, cur, elements_map):
         if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):
             return True
     return False
+
+
+def _num(v):
+    """数值归一：数字/可转数字字符串 → float；否则 None。"""
+    if isinstance(v, bool) or v is None:
+        return None
+    try:
+        return float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _src(meta, path):
+    m = meta.get(path) or {}
+    return m.get("source", "")
+
+
+def _path_get(node, path):
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _path_set(node, path, value):
+    parts = path.split(".")
+    cur = node
+    for part in parts[:-1]:
+        if not isinstance(cur, dict):
+            return
+        cur = cur.setdefault(part, {})
+    if isinstance(cur, dict):
+        cur[parts[-1]] = value
+
+
+def reconcile_same_parameter(merged, meta, pending):
+    """同源派生（V10.1）：同一业务参数不同表达，merge 后确定性双向回填。
+
+    套餐月费 prcMonthFee（免填单/宣传展示）与 套餐固定费 fixFee（月租计费固定费）本质是
+    同一业务参数、仅表达形式不同；后端 R-C06 按数值从两处派生 fixedFeeAmount，要求两处
+    同为数值且一致。本函数消除该参数的重复确认：
+    - 一侧有值、另一侧空 → 用有值侧派生出空侧（source=同源派生(权威侧标签)），并从 pending 移除；
+    - 两侧有值但不一致 → 以 source=原始需求/存量提取 侧为权威，弱侧对齐到同一金额；
+    - 两侧有值且一致 → 不动。
+    返回是否发生派生/回填。"""
+    changed = False
+    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:
+        na, nb = _num(_path_get(merged, path_a)), _num(_path_get(merged, path_b))
+        src_a, src_b = _src(meta, path_a), _src(meta, path_b)
+        # 权威侧：原始需求/存量提取优先，其次任一有值侧；两侧均有值则取权威源更高者破平。
+        def _authority():
+            if na is None and nb is None:
+                return None
+            pri = {"原始需求": 0, "存量提取": 0, "AI补全": 1, "同源派生": 2, "默认值": 2}
+            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)
+            if na is not None and nb is not None:
+                if na == nb:
+                    return None
+                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)
+            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)
+        auth = _authority()
+        if auth is None:
+            continue
+        value, apath, alabel = auth
+        for path, label in ((path_a, label_a), (path_b, label_b)):
+            if _num(_path_get(merged, path)) != value:
+                _path_set(merged, path, value)
+                meta[path] = {"label": label, "value": value, "source": "同源派生(%s)" % alabel}
+                if path in pending:
+                    pending.remove(path)
+                changed = True
+    return changed
 
 
 def flatten_elements(node, prefix="", out=None):
@@ -220,6 +305,8 @@ def main():
     offer_map = {} if args.mode == "legacy" else flatten_offer(offer)
     meta, pending = {}, []
     merged = merge(schema, elements_map, offer_map, meta, pending=pending, mode=args.mode)
+    # V10.1 同源派生：同一业务参数不同表达（套餐月费↔套餐固定费）双向回填，消除重复确认
+    reconcile_same_parameter(merged, meta, pending)
 
     result = {"resultCode": "0",
               "resultMsg": "success（存量实例化）" if args.mode == "legacy" else "success",

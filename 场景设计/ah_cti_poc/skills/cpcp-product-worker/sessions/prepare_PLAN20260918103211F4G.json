@@ -1,0 +1,13 @@
+[
+ {
+  "index": 0,
+  "prodName": "5G-A套餐199元",
+  "prodType": "个人主套餐",
+  "members": [],
+  "similar_source": "local",
+  "offer_id": "900102308",
+  "offer_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\similar_offer_PLAN20260918103211F4G_0.json",
+  "template": "personMainPrc",
+  "prompt_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\extract_prompt_PLAN20260918103211F4G_0.json"
+ }
+]

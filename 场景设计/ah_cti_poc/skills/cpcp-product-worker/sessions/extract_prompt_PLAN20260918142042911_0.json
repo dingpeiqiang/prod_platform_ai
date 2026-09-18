@@ -1,0 +1,693 @@
+{
+ "index": 0,
+ "prodName": "5G-A套餐199元",
+ "prodType": "个人主套餐",
+ "template": "personMainPrc",
+ "similar": {
+  "similarOfferId": "900102308",
+  "similarOfferName": "5G-A套餐199元"
+ },
+ "leaf_list": [
+  {
+   "path": "baseInfo.prodPrcName",
+   "label": "资费名称",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.effRuleId",
+   "label": "订购生效方式",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.cancelRuleId",
+   "label": "退订生效方式",
+   "type": "string",
+   "enum": "立即生效、预约生效",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.effDate",
+   "label": "销售开始日期",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.expDate",
+   "label": "销售终止日期",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.prodId",
+   "label": "产品代码",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.pricingId",
+   "label": "拆分代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.prodPrcId",
+   "label": "资费代码",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "baseInfo.orderNo",
+   "label": "工单编号",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "releaseInfo.chnClassLimit",
+   "label": "发布渠道",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "releaseInfo.groupId",
+   "label": "发布地市",
+   "type": "string",
+   "enum": "全省、非全省",
+   "required": true,
+   "cond": "选择非全省时下方展示22个地市多选框，勾选后实时展示已勾选数量"
+  },
+  {
+   "path": "releaseInfo.groupIdMessage",
+   "label": "发布地市明细",
+   "type": "string",
+   "enum": "22个地市",
+   "required": true,
+   "cond": "选择非全省时展示"
+  },
+  {
+   "path": "optionalInfo.printContent.prcMonthFee",
+   "label": "套餐月费",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.printContent.containResource",
+   "label": "包含资源",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.printContent.chargeStandard",
+   "label": "超套收费标准",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.printContent.limitCondition",
+   "label": "限定条件",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.printContent.otherEquity",
+   "label": "其他权益",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.prcSmsCfg.opType",
+   "label": "短信内容",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": "可选配置勾选“短信提醒”才展示"
+  },
+  {
+   "path": "optionalInfo.prcSmsCfg.sysNoteNow",
+   "label": "成功短信（立即）",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": "勾选“成功短信”才展示，根据数据模型限制长度"
+  },
+  {
+   "path": "optionalInfo.prcSmsCfg.sysNoteNext",
+   "label": "成功短信（预约）",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.prcSmsCfg.sysNoteCancle",
+   "label": "退订短信",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": "勾选“退订短信”才展示，根据数据模型限制长度"
+  },
+  {
+   "path": "optionalInfo.prcSmsCfg.sysNoteErke",
+   "label": "前台二确短信",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": "勾选“前台二确短信”才展示，根据数据模型限制长度"
+  },
+  {
+   "path": "optionalInfo.acctMonth.calcMode",
+   "label": "收费方式",
+   "type": "string",
+   "enum": "首月按天折算，一次性收取，次月按月收取、首月免费，次月按月收取-2、首月区分上下半月，次月按月收取-1、首月全额收取，次月按月收取-R",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.fixFee",
+   "label": "套餐固定费（元）",
+   "type": "number",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.acctItem",
+   "label": "收费科目",
+   "type": "string",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.isSplitRate",
+   "label": "税率",
+   "type": "number",
+   "enum": "使用默认税率、拆分税率",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.splitRate9",
+   "label": "税率9%占比（语音）",
+   "type": "number",
+   "enum": "并验证4位小数",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.splitRate6",
+   "label": "税率6%占比（数据）",
+   "type": "number",
+   "enum": "（语音）的值",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.fixValidity",
+   "label": "月租有效期",
+   "type": "string",
+   "enum": "长期有效、长期有效 0、订购后，前N个月收费 1、订购N个月后开始收费 2",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctMonth.fixValidityVAlue",
+   "label": "月租有效期值",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": "在月租有效期不是长期有效时显示"
+  },
+  {
+   "path": "optionalInfo.acctFav.favCondition",
+   "label": "优惠条件",
+   "type": "string",
+   "enum": "无条件优惠（实时优惠）、优惠月末生效、仅入网首月优惠",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favItemType",
+   "label": "优惠科目类型",
+   "type": "string",
+   "enum": "全科目(不包含特殊科目）",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favGroup",
+   "label": "导入",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favType",
+   "label": "优惠类型",
+   "type": "string",
+   "enum": "送费、打折",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favDiscount",
+   "label": "折扣",
+   "type": "number",
+   "enum": "并验证是小于1的2位小时",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favFee",
+   "label": "优惠费用（元）",
+   "type": "number",
+   "enum": "并验证优惠费用为数字，最多2位小数",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favValidity",
+   "label": "优惠有效期",
+   "type": "string",
+   "enum": "长期有效、订购后，前N个月有效、订购N个月后开始有效",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.acctFav.favValidityVAlue",
+   "label": "优惠有效期值",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": "在优惠有效期不是长期有效时显示，并验证为正整数"
+  },
+  {
+   "path": "optionalInfo.acctFav.favDesc",
+   "label": "优惠说明",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1Method",
+   "label": "保底方式",
+   "type": "string",
+   "enum": "实时报保底、月末保底",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1Fee",
+   "label": "保底费用（元）",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1ItemType",
+   "label": "保底科目类型",
+   "type": "string",
+   "enum": "全科目(不包含特殊科目）",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1Group",
+   "label": "导入",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1Validity",
+   "label": "保底有效期",
+   "type": "string",
+   "enum": "长期有效、订购后，前N个月有效、订购N个月后开始有效",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.dlowFavFee.fav1ValidityVAlue",
+   "label": "保底有效期值",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": "在优惠有效期不是长期有效时显示，并验证为正整数"
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.prodPrc",
+   "label": "拆分资费代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.billPrcId",
+   "label": "二批代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.subBillPrcIds",
+   "label": "子记账资费",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.conditionCode",
+   "label": "附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.subConditionCodes",
+   "label": "子附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.resourceType",
+   "label": "流量类型",
+   "type": "string",
+   "enum": "国内-通用-单月、内容定向国内单月",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.theshold",
+   "label": "资源量",
+   "type": "number",
+   "enum": "",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.unit",
+   "label": "流量单位",
+   "type": "string",
+   "enum": "GB、MB",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.sid",
+   "label": "定向流量编码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.adjust",
+   "label": "首月资源赠送方式",
+   "type": "string",
+   "enum": "全额赠送流量、赠送流量区分上下半月、赠送流量按天折算",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.carryFlag",
+   "label": "是否结转到次月",
+   "type": "string",
+   "enum": "是、否",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.outChargeMode",
+   "label": "套外计费标准",
+   "type": "string",
+   "enum": "10+5(前3个G按10元/GB计费，从第4个G开始按5元/GB计费)、5+3(前3个G按5元/GB计费，从第4个G开始按3元/GB计费)、0.29元/MB",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billGprsCfg.remindFlag",
+   "label": "流量提醒",
+   "type": "string",
+   "enum": "提醒",
+   "required": true,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.prodPrc",
+   "label": "拆分资费代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.billPrcId",
+   "label": "二批代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.subBillPrcIds",
+   "label": "子记账资费",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.conditionCode",
+   "label": "附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.subConditionCodes",
+   "label": "子附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.resourceType",
+   "label": "资源类型",
+   "type": "string",
+   "enum": "国内主叫",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.theshold",
+   "label": "资源量",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.adjust",
+   "label": "首月资源赠送方式",
+   "type": "string",
+   "enum": "全额赠送流量、赠送流量区分上下半月、赠送流量按天折算",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.outCharge",
+   "label": "套外计费费率",
+   "type": "number",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billVoiceCfg.remindFlag",
+   "label": "是否提醒",
+   "type": "string",
+   "enum": "否、是（剩余10分钟,用完提醒)",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.prodPrc",
+   "label": "拆分资费代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.billPrcId",
+   "label": "二批代码",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.subBillPrcIds",
+   "label": "子记账资费",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.conditionCode",
+   "label": "附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.subConditionCodes",
+   "label": "子附件条件ID",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.resourceType",
+   "label": "资源类型",
+   "type": "string",
+   "enum": "短信、彩信、短信+彩信",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.theshold",
+   "label": "资源量",
+   "type": "number",
+   "enum": "连带、0.1、0.5",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.adjust",
+   "label": "首月资源赠送方式",
+   "type": "string",
+   "enum": "账务固费首月收费方式连带、全额赠送流量、赠送流量区分上下半月、赠送流量按天折算",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.outCharge",
+   "label": "套外计费费率",
+   "type": "number",
+   "enum": "连带、0.1、0.5",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.billSmsCfg.remindFlag",
+   "label": "是否提醒",
+   "type": "string",
+   "enum": "否、是（剩余10分钟,用完提醒)",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.SvcName",
+   "label": "业务指令名称",
+   "type": "string",
+   "enum": "业务指令名称",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.SmsInst",
+   "label": "短信指令内容",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.SmsContent",
+   "label": "二确提示短信内容",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.SmsCity",
+   "label": "地市信息",
+   "type": "string",
+   "enum": "地市信息，多地市以‘|’间隔、甘孜洲 32、成都市 11、擎枝花市 14、自贡市 13、南充市 28",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.AccessNO",
+   "label": "业务端口",
+   "type": "string",
+   "enum": "",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.ProdPrcType",
+   "label": "资费类型",
+   "type": "string",
+   "enum": "资费类型",
+   "required": false,
+   "cond": ""
+  },
+  {
+   "path": "optionalInfo.SmsInstCfg.ProdPrcid",
+   "label": "资费ID",
+   "type": "string",
+   "enum": "资费ID",
+   "required": false,
+   "cond": ""
+  }
+ ],
+ "requirement_text": "5G-A套餐199元，个人主套餐（单品，不包含宽带/天翼高清等融合成员）。\n\n一、套内资费\n套餐内资费档位：199元；计费周期：周期型缴费：月；\n国内通用流量：120GB（仅限中国内地使用，不含港澳台和国际，不含WLAN上网）；\n国内语音拨打：1000分钟；国内语音接听：免费（仅限中国内地使用）；\n网络权益（上下行峰值速率）：最高下行2Gbps，最高上行200Mbps；\n卫星权益：10分钟、10条短信（仅限中国内地使用，主被叫均需扣除卫星通话时长，不足1分钟按1分钟计）；\n应用权益：漏话提醒、智能应答、视频彩铃、天翼云盘（个人版）、谢绝来电_天翼防骚扰。\n\n二、套外资费\n套外流量：阶梯模式，前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB流量（即3元/1GB），流量超过1GB仍按每超出1GB按3元/1GB收费；\n套外语音：国内通话超出套餐档位所包含分钟数后按国内0.15元/分钟计收，不足1分钟按1分钟计；\n套外短彩信：0.1元/条；\n套外卫星网络资费：拨打国内电话9元/分钟，国际长途20元/分钟，国内接听9元/分钟，发送短信5元/条接收免费。\n\n三、过渡期资费\n订购当月套餐月基本费按日（当月实际天数）计扣，费用四舍五入到分，套餐内容按天折算向上取整。\n\n四、副卡\n允许办理副卡，副卡可共享主卡套餐内的语音、流量、网速权益和卫星权益；应用权益主副卡不共享。\n\n五、流量结转\n流量结转规则：结转。\n\n六、断网授权\n为避免产生超额话单，允许中国电信代替用户在套外流量使用至600元时暂停当月上网服务，次月初自动开通。\n\n七、计费周期与付费方式\n计费周期：自然月；付费方式：后付费、预付费；支付方式：账单支付。\n\n八、销售渠道\n实体渠道、电子渠道、直销渠道。\n\n九、套餐订购\n新老用户均可订购；新入网用户订购立即生效，老用户订购次月1日生效；套餐有效期为2年；到期处理方式为自动续订。\n\n十、套餐变更\n可变更至中国电信其他在售套餐；变更生效方式与老用户订购生效方式一致，次月1号生效。\n\n十一、退订拆机携出\n允许退订（次月生效，退订当月费用不退还）；允许拆机（次月生效，拆机当月费用不退还）；无携出限制。\n"
+}

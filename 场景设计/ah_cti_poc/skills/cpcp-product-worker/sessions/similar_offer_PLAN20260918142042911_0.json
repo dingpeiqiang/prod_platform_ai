@@ -1,0 +1,113 @@
+{
+ "personMainPrc": {
+  "baseInfo": {
+   "prodPrcName": "5G-A套餐199元",
+   "effRuleId": "立即生效",
+   "cancelRuleId": "预约生效",
+   "effDate": "",
+   "expDate": "",
+   "prodId": "",
+   "pricingId": "",
+   "prodPrcId": "",
+   "orderNo": ""
+  },
+  "releaseInfo": {
+   "chnClassLimit": "实体渠道、电子渠道、直销渠道",
+   "groupId": "全省",
+   "groupIdMessage": "22个地市"
+  },
+  "optionalInfo": {
+   "printContent": {
+    "prcMonthFee": 199,
+    "containResource": "120GB国内通用流量、1000分钟国内语音拨打、国内语音接听免费、最高下行1Gbps最高上行200Mbps、卫星权益10分钟10条短信、应用权益漏话提醒、智能应答、视频彩铃、天翼云盘（个人版）、谢绝来电_天翼防骚扰",
+    "chargeStandard": "套外流量前100MB按0.03元/MB收费，达到100MB（3元）时额外赠送924MB（即3元/1GB），流量超过1GB按每超出1GB 3元收费；套外语音国内0.15元/分钟；套外短彩信0.1元/条；套外卫星拨打国内电话9元/分钟，拨打国际长途20元/分钟，拨打国际卫星电话50元/分钟，国内接听9元/分钟，发送短信5元/条",
+    "limitCondition": "国内通用流量仅限中国内地（不含港澳台和国际）使用，不含WLAN；套餐内语音仅限中国内地使用；5G-A网络权益需终端支持且在5G-A网络覆盖良好环境下享受",
+    "otherEquity": ""
+   },
+   "prcSmsCfg": {
+    "opType": "",
+    "sysNoteNow": "",
+    "sysNoteNext": "",
+    "sysNoteCancle": "",
+    "sysNoteErke": ""
+   },
+   "acctMonth": {
+    "calcMode": "首月按天折算，一次性收取，次月按月收取",
+    "fixFee": 199,
+    "acctItem": "月租费",
+    "isSplitRate": "使用默认税率",
+    "splitRate9": "",
+    "splitRate6": "",
+    "fixValidity": "长期有效",
+    "fixValidityVAlue": ""
+   },
+   "acctFav": {
+    "favCondition": "",
+    "favItemType": "",
+    "favGroup": "",
+    "favType": "",
+    "favDiscount": "",
+    "favFee": "",
+    "favValidity": "",
+    "favValidityVAlue": "",
+    "favDesc": ""
+   },
+   "dlowFavFee": {
+    "fav1Method": "",
+    "fav1Fee": "",
+    "fav1ItemType": "",
+    "fav1Group": "",
+    "fav1Validity": "",
+    "fav1ValidityVAlue": ""
+   },
+   "billGprsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内-通用-单月",
+    "theshold": 120,
+    "unit": "GB",
+    "sid": "",
+    "adjust": "全额赠送流量",
+    "carryFlag": "是",
+    "outChargeMode": "5+3(前3个G按5元/GB计费，从第4个G开始按3元/GB计费)",
+    "remindFlag": "提醒"
+   },
+   "billVoiceCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "国内主叫",
+    "theshold": 1000,
+    "adjust": "全额赠送流量",
+    "outCharge": "",
+    "remindFlag": "否"
+   },
+   "billSmsCfg": {
+    "prodPrc": "",
+    "billPrcId": "",
+    "subBillPrcIds": "",
+    "conditionCode": "",
+    "subConditionCodes": "",
+    "resourceType": "短信",
+    "theshold": "",
+    "adjust": "",
+    "outCharge": 0.1,
+    "remindFlag": "否"
+   },
+   "SmsInstCfg": {
+    "SvcName": "",
+    "SmsInst": "",
+    "SmsContent": "",
+    "SmsCity": "",
+    "AccessNO": "",
+    "ProdPrcType": "",
+    "ProdPrcid": ""
+   }
+  }
+ }
+}

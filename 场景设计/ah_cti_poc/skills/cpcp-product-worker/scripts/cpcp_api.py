@@ -1139,9 +1139,10 @@ def cmd_shelf_compliance(args):
 
 # ---------------- 存量产品信息查询（flow-D 支线D-4，本地只读，确定性查询） ----------------
 # 查询存量在架产品信息：按产品 ID（9 位编码）或按名称/描述关键词。数据源=本地存量目录
-# `方案/存量产品目录_清洗后.json` + `references/K4存量/`（K4 存量销售品资料库逐 ID 档案）。
+# `references/存量产品目录_清洗后.json` + `references/K4存量/`（K4 存量销售品资料库逐 ID 档案）。
+# 数据源全部收在 skill 包内 references/ 下，打包导入第三方平台后无需外部路径即可解析。
 # 纯只读，不改写任何数据；LLM 不参与检索判定（第2层执行，结果逐字引用）。
-CATALOG_REL = os.path.join("..", "..", "..", "方案", "存量产品目录_清洗后.json")
+CATALOG_REL = os.path.join("..", "references", "存量产品目录_清洗后.json")
 K4_DIR_REL = os.path.join("..", "references", "K4存量")
 
 # 存量产品名称关键词归一：剥离常见句首助词/动词（查/查看/请/帮我…），避免把"我查XX套餐"当名称比对

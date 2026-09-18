@@ -29,8 +29,25 @@
 用法：
   python run_pipeline.py --req-id PLANxxx --workdir <会话可写目录> --confirmed
   python run_pipeline.py --req-id PLANxxx --workdir <会话可写目录> --resume --fail-node STAGE3_FEE
+
+同步调用契约（勿当后台任务，防"等通知"陷阱）：
+  - V12.3 分段执行（推荐，根治长命令被工具转后台）：
+      ① python run_pipeline.py --req-id <id> --workdir <dir> --confirmed --stage prepare
+         → config→spec→fee→发起测试后【立即返回】（秒级），next_action=POLL, globalId=...
+      ② python run_pipeline.py --req-id <id> --workdir <dir> --confirmed --stage poll
+         → 单次查询进度（秒级）：未完成 next_action=POLL（模型再调一次）；完成则续跑
+           结果判定+报告下载，next_action=APPROVAL_GATE（或失败码）。
+      每条命令都是秒级返回，不会触发工具的"长命令转后台"，模型只需循环②直到 next_action != POLL。
+  - --stage all（默认，兼容旧调用）：一次调用串行跑完 config→spec→fee→test（含内部整段轮询，
+    最长约 33 分钟），仅在【结束】时 print 一行最终 stdout JSON 并 sys.exit；
+    调用方须【阻塞等待返回并读取该最终 stdout JSON】，不得半途终止/转后台。
+  - 两种模式出参均为 stdout 单行 JSON；完成信号 = next_action（APPROVAL_GATE / POLL / 异常码）。
+  - 期间落盘的 config_result_<req_id>.json/result_<node>_<req_id>.json/pipeline_state_<req_id>.json
+    只是内部中间状态，【不等于完成信号】。
 """
 import argparse
+import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -43,6 +60,86 @@ NODES = ["config", "spec", "fee", "test"]
 # 续跑 fail_node 映射（flow-B 触发条件口径）
 FAIL_NODE_MAP = {"STAGE1_CONFIG": "config", "STAGE2_AUDIT": "spec",
                  "STAGE3_FEE": "fee", "STAGE4_TEST": "test"}
+
+
+def _load_cpcp_api():
+    """优先进程内 import cpcp_api（同目录）。返回模块对象或 None。
+    cpcp_api 的 cmd_* 出参经 print 写 stdout，_err 内部 sys.exit(2) 抛 SystemExit，
+    均可由调用方统一捕获隔离，无需每次派生 Python 子进程（消除次生子进程启动开销）。"""
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "cp_pipeline_cpcp_api", os.path.join(SCRIPT_DIR, "cpcp_api.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+_cpcp_api = _load_cpcp_api()
+
+
+def _build_ns(args_list):
+    """把 ['--key', value, ...] 解析为 argparse.Namespace（cpcp_api cmd_* 入参）。
+    支持 --xxx 与 --xxx-file 两类文件名后缀（_read_arg 同判）。"""
+    ns = argparse.Namespace()
+    if not args_list:
+        return ns
+    keys = args_list[::2]
+    vals = args_list[1::2]
+    for i, k in enumerate(keys):
+        name = k.lstrip("-").replace("-", "_")
+        v = vals[i] if i < len(vals) else ""
+        setattr(ns, name, v)
+    return ns
+
+
+def _api(args_list):
+    """调用 cpcp_api.py 子命令，返回 (ok, out_dict)。出参恒为 dict（解析失败也归一）。
+    V12.1 进程内直调：不走 subprocess 派生，捕获 cmd_* 打印到 stdout 的 JSON 与
+    _err 抛出的 SystemExit；import 失败或执行异常时回退子进程方式。"""
+    fn = None
+    cpcp_mod = _cpcp_api
+    if cpcp_mod is not None and args_list:
+        fn = getattr(cpcp_mod, "cmd_" + args_list[0], None)
+    if fn is not None:
+        try:
+            ns = _build_ns(args_list[1:])
+            buf = io.StringIO()
+            old_out, old_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = buf, buf
+            try:
+                fn(ns)
+            except SystemExit:
+                pass  # _err 内部 sys.exit：其 JSON 已写入 buf
+            finally:
+                sys.stdout, sys.stderr = old_out, old_err
+            raw = buf.getvalue().strip()
+            if not raw:
+                return False, {"resultCode": "SCRIPT_ERROR",
+                               "resultMsg": "cpcp_api cmd_%s 无输出" % args_list[0]}
+            return True, json.loads(raw)
+        except json.JSONDecodeError:
+            return False, {"resultCode": "PARSE_ERROR",
+                           "resultMsg": "cpcp_api 出参不是合法 JSON"}
+        except Exception as e:  # E24 口径：环境异常不静默，回退子进程
+            pass
+    # 回退：子进程方式（保持原语义/边界隔离）
+    cmd = [sys.executable, os.path.join(SCRIPT_DIR, "cpcp_api.py")] + args_list
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                           cwd=SCRIPT_DIR, encoding="utf-8", errors="replace")
+        raw = (r.stdout or "").strip()
+        if not raw:
+            return False, {"resultCode": "SCRIPT_ERROR",
+                           "resultMsg": "cpcp_api 无输出（stderr=%s）" % (r.stderr or "")[:200]}
+        return True, json.loads(raw)
+    except subprocess.TimeoutExpired:
+        return False, {"resultCode": "TIMEOUT", "resultMsg": "cpcp_api 调用超时"}
+    except json.JSONDecodeError:
+        return False, {"resultCode": "PARSE_ERROR", "resultMsg": "cpcp_api 出参不是合法 JSON"}
+    except Exception as e:  # E24 口径：环境异常不静默
+        return False, {"resultCode": "SCRIPT_ERROR", "resultMsg": str(e)}
 
 
 def _force_utf8_stdio():
@@ -60,23 +157,19 @@ def _emit(obj, exit_code=0):
     sys.exit(exit_code)
 
 
-def _api(args_list):
-    """调用 cpcp_api.py 子命令，返回 (ok, out_dict)。出参恒为 dict（解析失败也归一）。"""
-    cmd = [sys.executable, os.path.join(SCRIPT_DIR, "cpcp_api.py")] + args_list
+def _stage_progress(text):
+    """阶段进度心跳，写 stderr 并 flush。
+
+    单次 run_pipeline 调用最长需在测试环节轮询约 30 分钟，若期间 stdout/stderr
+    全程静默，Agent 的 bash 工具会把命令判定为卡死并转后台，模型随之误报
+    "等待系统通知"。阶段切换与轮询期间持续输出心跳可避免该误判；
+    心跳走 stderr，最终结果 JSON 仍独占 stdout，契约不变。
+    """
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
-                           cwd=SCRIPT_DIR, encoding="utf-8", errors="replace")
-        raw = (r.stdout or "").strip()
-        if not raw:
-            return False, {"resultCode": "SCRIPT_ERROR",
-                           "resultMsg": "cpcp_api 无输出（stderr=%s）" % (r.stderr or "")[:200]}
-        return True, json.loads(raw)
-    except subprocess.TimeoutExpired:
-        return False, {"resultCode": "TIMEOUT", "resultMsg": "cpcp_api 调用超时"}
-    except json.JSONDecodeError:
-        return False, {"resultCode": "PARSE_ERROR", "resultMsg": "cpcp_api 出参不是合法 JSON"}
-    except Exception as e:  # E24 口径：环境异常不静默
-        return False, {"resultCode": "SCRIPT_ERROR", "resultMsg": str(e)}
+        sys.stderr.write("[pipeline] %s\n" % text)
+        sys.stderr.flush()
+    except Exception:
+        pass
 
 
 def _read_json(path):
@@ -168,6 +261,7 @@ def upstream_ok(state, node):
 
 
 def step_config(state, workdir, req_id, messages):
+    _stage_progress("环节3/9 销售品智能配置：开始执行")
     plan_file = os.path.join(workdir, "plan_json_%s.json" % req_id)
     if not os.path.exists(plan_file):
         _emit({"resultCode": "PARAM_MISSING", "e_code": "E5",
@@ -198,11 +292,23 @@ def step_config(state, workdir, req_id, messages):
 
 
 def _save_node(req_id, node, result_file):
-    _api(["save_node_result", "--req-id", req_id, "--node", node,
-          "--result-json-file", result_file])
+    """将环节结果写回后端存储；落库失败即中断（E6）。
+
+    此前静默忽略出参，导致 req_id 格式非法（5002）时四环节结果未落库却仍报
+    "主干成功"，最终上线审批被后端"四环节结果缺失"拒绝。现改为非 0 即中断，
+    使落库失败在发生环节即暴露。"""
+    ok, out = _api(["save_node_result", "--req-id", req_id, "--node", node,
+                    "--result-json-file", result_file])
+    code = str((out or {}).get("code", ""))
+    if not ok or code not in ("0", ""):
+        _emit({"resultCode": "SAVE_FAIL", "e_code": "E6", "req_id": req_id,
+               "fail_node": node,
+               "resultMsg": "环节 %s 结果落库失败（save_node_result code=%s）：%s"
+                            % (node, code, (out or {}).get("msg", ""))}, 3)
 
 
 def step_spec(state, workdir, req_id, offer_id, messages):
+    _stage_progress("环节4/9 配置规格稽核：开始执行")
     plan_file = os.path.join(workdir, "plan_json_%s.json" % req_id)
     ok, out = _api(["spec_audit", "--offer-id", offer_id,
                     "--config-json-file", plan_file, "--audit-scene", "all"])
@@ -225,6 +331,7 @@ def step_spec(state, workdir, req_id, offer_id, messages):
 
 
 def step_fee(state, workdir, req_id, messages):
+    _stage_progress("环节5/9 资费校准：开始执行")
     plan_file = os.path.join(workdir, "plan_json_%s.json" % req_id)
     ok, out = _api(["billing_verify", "--config-json-file", plan_file, "--check-scene", "all"])
     result_file = os.path.join(workdir, "result_fee_%s.json" % req_id)
@@ -245,7 +352,9 @@ def step_fee(state, workdir, req_id, messages):
     return rec
 
 
-def step_test(state, workdir, req_id, offer_id, messages):
+def test_start(state, workdir, req_id, offer_id, messages):
+    """环节4 第一阶段：发起测试 + 取场景清单（秒级）。返回 globalId。失败即 _emit 中断。"""
+    _stage_progress("环节6/9 销售品自动测试：发起测试")
     ok, out = _api(["offer_test", "--offer-id", offer_id])
     if not ok or str(out.get("resultCode", "1")) != "0" or not out.get("globalId"):
         state["fail_node"] = "test"
@@ -262,23 +371,32 @@ def step_test(state, workdir, req_id, offer_id, messages):
         _emit({"resultCode": "VALIDATE_FAIL", "req_id": req_id, "fail_node": "test",
                "e_code": "E11", "next_action": "FIX_PLAN",
                "messages": messages + ["该销售品未匹配到测试场景，请检查配置"]}, 1)
-    # 轮询（poll_test_progress.py 长驻命令，5s 循环、连续 2 次失败转人工、30 分钟超时）
-    poll = subprocess.run(
-        [sys.executable, os.path.join(SCRIPT_DIR, "poll_test_progress.py"),
-         "--global-id", global_id, "--max-consecutive-fail", "2"],
-        capture_output=True, text=True, timeout=2000, cwd=SCRIPT_DIR,
-        encoding="utf-8", errors="replace")
-    try:
-        poll_out = json.loads((poll.stdout or "{}").strip() or "{}")
-    except json.JSONDecodeError:
-        poll_out = {"done": False, "failed": True, "fail_reason": "轮询输出解析失败"}
-    if not poll_out.get("done"):
-        state["fail_node"] = "test"
-        save_state(workdir, state)
-        ecode = "E13" if "超时" in str(poll_out.get("fail_reason", "")) else "E12"
-        _emit({"resultCode": "VALIDATE_FAIL", "req_id": req_id, "fail_node": "test",
-               "e_code": ecode, "next_action": "RESUME", "globalId": global_id,
-               "messages": messages + [str(poll_out.get("fail_reason", "轮询未完成"))]}, 1)
+    state["test_global_id"] = global_id
+    save_state(workdir, state)
+    return global_id
+
+
+def _test_poll_once(cpcp_mod, global_id):
+    """单次进度查询（秒级，进程内直调 _http；import 失败回退子进程）。返回 (done, failed, info)。"""
+    if cpcp_mod is not None:
+        try:
+            resp = cpcp_mod._http("POST", "/api/v1/appstore/test/offer/progress",
+                                  {"globalId": global_id},
+                                  timeout=cpcp_mod.TIMEOUT_ASYNC, retries=0)
+        except Exception:
+            resp = None
+    else:
+        ok, resp = _api(["test_progress", "--global-id", global_id])
+        resp = resp if ok else None
+    if not resp or resp.get("resultCode") not in (None, "0", 0):
+        return False, True, {"fail_reason": "查询失败"}
+    done = str(resp.get("done")).lower() == "true"
+    failed = str(resp.get("failed")).lower() == "true"
+    return done, failed, resp
+
+
+def test_finish(state, workdir, req_id, global_id, messages):
+    """环节4 第三阶段：done 后取完整结果 + E26 预校验 + 判定 + 报告下载（秒级）。"""
     ok, out = _api(["test_result", "--global-id", global_id])
     result_file = os.path.join(workdir, "result_test_%s.json" % req_id)
     _write_json(result_file, out)
@@ -315,6 +433,32 @@ def step_test(state, workdir, req_id, offer_id, messages):
     return rec
 
 
+def step_test(state, workdir, req_id, offer_id, messages):
+    """--stage all 兼容路径：发起→内部整段轮询→结果判定（单次调用内串行跑完）。"""
+    global_id = test_start(state, workdir, req_id, offer_id, messages)
+    # 轮询（poll_test_progress.py，5s 循环、连续 2 次失败转人工、30 分钟超时）
+    # 单进程同步阻塞，仅用于兼容 --stage all；推荐 --stage prepare/poll 分段规避长命令。
+    _stage_progress("环节6/9 销售品自动测试：已发起，正在轮询测试进度（globalId %s）" % global_id)
+    poll = subprocess.Popen(
+        [sys.executable, os.path.join(SCRIPT_DIR, "poll_test_progress.py"),
+         "--global-id", global_id, "--max-consecutive-fail", "2"],
+        stdout=subprocess.PIPE, stderr=None, text=True, cwd=SCRIPT_DIR,
+        encoding="utf-8", errors="replace")
+    poll_stdout, _ = poll.communicate(timeout=2100)
+    try:
+        poll_out = json.loads((poll_stdout or "{}").strip() or "{}")
+    except json.JSONDecodeError:
+        poll_out = {"done": False, "failed": True, "fail_reason": "轮询输出解析失败"}
+    if not poll_out.get("done"):
+        state["fail_node"] = "test"
+        save_state(workdir, state)
+        ecode = "E13" if "超时" in str(poll_out.get("fail_reason", "")) else "E12"
+        _emit({"resultCode": "VALIDATE_FAIL", "req_id": req_id, "fail_node": "test",
+               "e_code": ecode, "next_action": "RESUME", "globalId": global_id,
+               "messages": messages + [str(poll_out.get("fail_reason", "轮询未完成"))]}, 1)
+    return test_finish(state, workdir, req_id, global_id, messages)
+
+
 def _plan_offer_name(plan):
     fields = []
     if isinstance(plan.get("main_offer"), dict):
@@ -337,6 +481,12 @@ def main():
     p.add_argument("--resume", action="store_true", help="从失败环节续跑（已成功环节回放）")
     p.add_argument("--fail-node", default="", help="STAGE1_CONFIG~STAGE4_TEST（续跑映射）")
     p.add_argument("--operator", default="")
+    p.add_argument("--stage", default="all",
+                   choices=["all", "prepare", "poll"],
+                   help="执行分段（V12.3，规避长命令被工具转后台）："
+                        "all=一次跑完四环节（默认/兼容）；"
+                        "prepare=跑 config→spec→fee→发起测试后立即返回 next_action=POLL；"
+                        "poll=单次查询测试进度，未完成返回 POLL，完成则续跑结果判定后返回 APPROVAL_GATE")
     args = p.parse_args()
 
     if not args.confirmed:
@@ -346,6 +496,37 @@ def main():
     req_id, workdir = args.req_id, os.path.abspath(args.workdir)
     os.makedirs(workdir, exist_ok=True)
     state = load_state(workdir, req_id)
+
+    # --stage poll：单次查询测试进度（秒级返回，规避长命令被工具转后台）。
+    # done=false → 返回 next_action=POLL 让模型再调一次；done=true → 续跑结果判定+报告。
+    if args.stage == "poll":
+        global_id = state.get("test_global_id") or ""
+        if not global_id:
+            _emit({"resultCode": "PARAM_MISSING", "e_code": "E18",
+                   "resultMsg": "缺少 test_global_id（请先执行 --stage prepare）"}, 2)
+        done, failed, info = _test_poll_once(_cpcp_api, global_id)
+        if failed:
+            state["fail_node"] = "test"
+            save_state(workdir, state)
+            _emit({"resultCode": "VALIDATE_FAIL", "req_id": req_id, "fail_node": "test",
+                   "e_code": "E12", "next_action": "RESUME", "globalId": global_id,
+                   "messages": [str(info.get("fail_reason", "测试进度查询失败"))]}, 1)
+        if not done:
+            _emit({"resultCode": "0", "req_id": req_id, "fail_node": None,
+                   "next_action": "POLL", "globalId": global_id,
+                   "progress": {"done": False,
+                                "doneCount": info.get("doneCount"),
+                                "testCaseCount": info.get("testCaseCount")},
+                   "messages": ["测试进行中，请稍后再次执行 --stage poll"]}, 0)
+        rec = test_finish(state, workdir, req_id, global_id, [])
+        state["nodes"]["test"] = rec
+        save_state(workdir, state)
+        _emit({"resultCode": "0", "req_id": req_id, "fail_node": None,
+               "next_action": "APPROVAL_GATE",
+               "nodes": [{"node": n, "status": node_record(state, n).get("status"),
+                          "result_file": node_record(state, n).get("result_file"),
+                          "summary": node_record(state, n).get("summary")} for n in NODES],
+               "messages": ["四环节串行执行全部成功，等待用户明确发起上线审批"]}, 0)
 
     # 续跑：定位起始环节，已成功环节标记 REPLAYED（不重复调用写接口）
     start = 0
@@ -413,6 +594,17 @@ def main():
                 rec = step_spec(state, workdir, req_id, offer_id, messages)
             elif node == "fee":
                 rec = step_fee(state, workdir, req_id, messages)
+            elif args.stage == "prepare":
+                # 分段模式：发起测试后立即返回，交模型循环 --stage poll（防长命令被转后台）
+                global_id = test_start(state, workdir, req_id, offer_id, messages)
+                state["nodes"]["test"] = {"status": "PENDING", "globalId": global_id}
+                save_state(workdir, state)
+                _emit({"resultCode": "0", "req_id": req_id, "fail_node": None,
+                       "next_action": "POLL", "globalId": global_id,
+                       "nodes": [{"node": n["node"], "status": n["status"],
+                                  "result_file": n.get("result_file"), "summary": n.get("summary")}
+                                 for n in executed],
+                       "messages": ["环节3/4/5 已完成，测试已发起，请执行 --stage poll 查询进度"]}, 0)
             else:
                 rec = step_test(state, workdir, req_id, offer_id, messages)
         executed.append(rec)

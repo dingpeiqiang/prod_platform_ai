@@ -1,0 +1,60 @@
+{
+  "req_id": "PLAN20260918142042911",
+  "fail_node": null,
+  "nodes": {
+    "config": {
+      "node": "config",
+      "status": "SUCCESS",
+      "result_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\config_result_PLAN20260918142042911.json",
+      "summary": {
+        "status": "SUCCESS",
+        "product_id": "PPLAN20260918142042911",
+        "offer_id": "981032114",
+        "script_url": "http://10.86.13.201:31281/api/v1/appstore/product/config/script?product_id=PPLAN20260918142042911",
+        "group": null
+      }
+    },
+    "spec": {
+      "node": "spec",
+      "result_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\result_spec_PLAN20260918142042911.json",
+      "summary": {
+        "pass": "1",
+        "error_count": 0
+      },
+      "status": "SUCCESS"
+    },
+    "fee": {
+      "node": "fee",
+      "result_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\result_fee_PLAN20260918142042911.json",
+      "summary": {
+        "pass": "1",
+        "risk_count": 0,
+        "compare_total": 8
+      },
+      "status": "SUCCESS"
+    },
+    "test": {
+      "node": "test",
+      "status": "SUCCESS",
+      "result_file": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\result_test_PLAN20260918142042911.json",
+      "globalId": "50202609181419031155103849",
+      "summary": {
+        "test_passed": null,
+        "globalId": null,
+        "offerName": "新增销售品981032114",
+        "orderId": "ORD20260918141903",
+        "offerInstId": "OI20260918141903",
+        "report_url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/report?global_id=50202609181419031155103849",
+        "scene_count": 3,
+        "case_total": 30
+      },
+      "report_download": {
+        "resultCode": "0",
+        "resultMsg": "success",
+        "saved_path": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\skills\\cpcp-product-worker\\sessions\\test_report_50202609181419031155103849.md",
+        "file_size": 6237
+      }
+    }
+  },
+  "test_global_id": "50202609181419031155103849"
+}

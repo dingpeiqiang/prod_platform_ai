@@ -26,7 +26,9 @@ import json
 import re
 import sys
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if not (isinstance(sys.stdout, io.TextIOWrapper) and getattr(sys.stdout, "encoding", "") and
+        "utf" in sys.stdout.encoding.lower()):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 # 不可提取必填白名单（P0 复盘：K4 md 是需求单语料，编码/日期/短信文案类字段正文天然没有）
 # 命名形态匹配：effDate/expDate 生效失效日期、*RuleId 规则编码、*Id 平台编码、groupId 群组、
@@ -156,6 +158,17 @@ def validate(schema, elements, mode="legacy", threshold=0.30):
                             "note": "套餐月费与固定费不一致，请人工确认（不阻断）"})
 
     result = "FAIL" if gate == "FAIL" else ("PASS_WITH_WARNINGS" if removed else "PASS")
+    # 增量重跑清单（V10.0，方案B）：质量门禁 FAIL 时精确列出"可提取必填但未命中"的路径，
+    # 供 run_requirement 状态机把增量缺口回喂 LLM，只补缺项、避免整段重跑（E31 增量重跑）。
+    missing_required = []
+    if gate == "FAIL":
+        missing_required = [
+            {"path": p, "label": (leaves[p].get("x-label") or p),
+             "type": (leaves[p].get("type") or ""),
+             "enum": (leaves[p].get("enum") or [])[:6],
+             "hint": ("原文是否提到该字段（可同义改写）；类型=%s" % (leaves[p].get("type") or ""))}
+            for p in extractable_required if p not in valid_paths
+        ]
     return {
         "resultCode": "0",
         "result": result,
@@ -172,6 +185,7 @@ def validate(schema, elements, mode="legacy", threshold=0.30):
             "threshold": threshold,
         },
         "quality_gate": gate,
+        "missing_required": missing_required,
         "removed": removed,
         "enum_violations": enum_violations,
         "yes_norm_hints": yes_norm_hints,

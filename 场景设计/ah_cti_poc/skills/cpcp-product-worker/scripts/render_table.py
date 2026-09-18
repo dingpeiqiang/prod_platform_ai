@@ -30,7 +30,9 @@ import io
 import json
 import sys
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if not (isinstance(sys.stdout, io.TextIOWrapper) and getattr(sys.stdout, "encoding", "") and
+        "utf" in sys.stdout.encoding.lower()):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 SKIP_KEYS = ("templateId", "prodId", "prodPrcId", "pricingId", "opType")  # 技术字段不出现在业务表格
 SYSTEM_GEN_KEYS = ("orderNo",)  # 系统自动生成字段（智能配置环节生成），不计入待补充

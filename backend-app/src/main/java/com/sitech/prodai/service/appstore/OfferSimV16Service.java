@@ -1125,13 +1125,7 @@ public class OfferSimV16Service {
                     config.get("offer_id"), config.get("similarOfferId"),
                     config.get("相似产品ID"), plan.get("offer_id"), plan.get("similarOfferId"));
         }
-        Map<String, String> req = new LinkedHashMap<>();
-        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
-            String value = blankIfPlaceholder(MapOps.str(f.get("value")));
-            if (!value.isEmpty()) {
-                req.putIfAbsent(MapOps.str(f.get("field")), value);
-            }
-        }
+        Map<String, String> req = planFieldValues(plan);
         if (resolvedOfferId != null && !resolvedOfferId.isBlank() && !resolvedOfferId.equals(offerId)) {
             offerId = resolvedOfferId;
         }
@@ -1146,8 +1140,10 @@ public class OfferSimV16Service {
         // "无"为本体默认占位值，非真实资费，视同空值处理（防占位值污染比对结果）
         String monthFee = firstNonEmptyText(req.get("套餐档位"), blankIfPlaceholder(inFee.get("档位")));
         String flow = firstNonEmptyText(req.get("国内通用流量"), blankIfPlaceholder(inFee.get("国内通用流量")));
-        String voice = firstNonEmptyText(req.get("国内语音拨打"), req.get("本地语音"), blankIfPlaceholder(inFee.get("国内语音拨打")));
-        String sms = firstNonEmptyText(req.get("短信"), blankIfPlaceholder(inFee.get("国内语音接听")));
+        String voice = firstNonEmptyText(req.get("国内语音拨打"), req.get("本地语音"),
+                req.get("语音赠送量"), blankIfPlaceholder(inFee.get("国内语音拨打")));
+        String sms = firstNonEmptyText(req.get("短信"), req.get("短信赠送量"),
+                smsQuotaFromText(req.get("国内通用流量")), blankIfPlaceholder(inFee.get("国内语音接听")));
         String outFlow = firstNonEmptyText(req.get("套外流量-计费标准"), blankIfPlaceholder(outFee.get("套外流量")));
         String outVoice = firstNonEmptyText(req.get("套外语音-国内通话"), blankIfPlaceholder(outFee.get("套外语音")));
         String outSms = firstNonEmptyText(req.get("套外短彩信-短/彩信"), blankIfPlaceholder(outFee.get("套外短彩信")));
@@ -1169,6 +1165,90 @@ public class OfferSimV16Service {
     private String blankIfPlaceholder(Object value) {
         String v = MapOps.str(value).trim();
         return (v.isEmpty() || "无".equals(v) || "待补充".equals(v) || "系统待生成".equals(v)) ? "" : v;
+    }
+
+    /**
+     * plan 字段值平面映射（V2.8 兼容真实 plan_json 工件形态）：
+     * 依次合并 ①顶层 fields[]（旧形态）②顶层 flat_fields[]（run_requirement 落盘形态）
+     * ③嵌套 payload.optionalInfo 计费叶子（需求分析模板轨权威值）。同名键以先出现者为准。
+     * 目的：消除"plan 无 fields 键 → 比对两侧全空 → E27 假阳性"根因。
+     */
+    private Map<String, String> planFieldValues(Map<String, Object> plan) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
+            String field = MapOps.str(f.get("field"));
+            if (!field.isBlank()) {
+                values.putIfAbsent(field, blankIfPlaceholder(f.get("value")));
+            }
+        }
+        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("flat_fields"))) {
+            String field = MapOps.str(f.get("field"));
+            if (!field.isBlank()) {
+                values.putIfAbsent(field, blankIfPlaceholder(f.get("value")));
+            }
+        }
+        collectPayloadFeeValues(castMap(castMap(plan.get("payload")).get("optionalInfo")), values);
+        return values;
+    }
+
+    /** 嵌套 payload.optionalInfo 计费叶子 → 平面字段（仅补齐未出现键，键名对齐本体注册表口径） */
+    private void collectPayloadFeeValues(Map<String, Object> optionalInfo, Map<String, String> values) {
+        if (optionalInfo.isEmpty()) {
+            return;
+        }
+        Map<String, Object> print = castMap(optionalInfo.get("printContent"));
+        Map<String, Object> acctMonth = castMap(optionalInfo.get("acctMonth"));
+        Map<String, Object> gprs = castMap(optionalInfo.get("billGprsCfg"));
+        Map<String, Object> voice = castMap(optionalInfo.get("billVoiceCfg"));
+        Map<String, Object> sms = castMap(optionalInfo.get("billSmsCfg"));
+        putIfAbsentVal(values, "套餐档位", blankIfPlaceholder(acctMonth.get("fixFee")));
+        putIfAbsentVal(values, "套餐档位", blankIfPlaceholder(print.get("prcMonthFee")));
+        putIfAbsentVal(values, "套餐有效期", blankIfPlaceholder(acctMonth.get("fixValidity")));
+        putIfAbsentVal(values, "国内通用流量", blankIfPlaceholder(print.get("containResource")));
+        putIfAbsentVal(values, "套外流量-计费标准", blankIfPlaceholder(gprs.get("outChargeMode")));
+        putIfAbsentVal(values, "套外流量-计费标准", blankIfPlaceholder(print.get("chargeStandard")));
+        putIfAbsentVal(values, "套外语音-国内通话", outChargeText(voice.get("outCharge")));
+        putIfAbsentVal(values, "套外短彩信-短/彩信", outChargeText(sms.get("outCharge")));
+        putIfAbsentVal(values, "语音赠送量", thresholdText(voice.get("theshold"), voice.get("resourceType")));
+        putIfAbsentVal(values, "短信赠送量", thresholdText(sms.get("theshold"), sms.get("resourceType")));
+    }
+
+    /** 占位辅助：仅在值为非空且键未出现时写入 */
+    private void putIfAbsentVal(Map<String, String> values, String key, String val) {
+        if (val != null && !val.isBlank()) {
+            values.putIfAbsent(key, val);
+        }
+    }
+
+    /** 套外资费文本：数字→"X元"；已含"元/计费/阶梯"等描述则原样 */
+    private String outChargeText(Object outCharge) {
+        String v = blankIfPlaceholder(outCharge);
+        if (v.isEmpty()) {
+            return "";
+        }
+        return v.matches("\\d+(\\.\\d+)?") ? v + "元" : v;
+    }
+
+    /** 从国内通用流量描述中提取短信赠送额度（如"10分钟、10条短信"→"10条"）；无则空串 */
+    private String smsQuotaFromText(Object flowText) {
+        String t = blankIfPlaceholder(flowText);
+        if (t.isEmpty()) {
+            return "";
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d+)\\s*条\\s*短信").matcher(t);
+        return m.find() ? m.group(1) + "条短信" : "";
+    }
+
+    /** 赠送量文本：阈值+单位（如 1000 分钟 / 120GB）；resourceType 作语义补充 */
+    private String thresholdText(Object threshold, Object resourceType) {
+        String t = blankIfPlaceholder(threshold);
+        if (t.isEmpty()) {
+            return "";
+        }
+        String unit = MapOps.str(resourceType).contains("流量") ? "GB"
+                : MapOps.str(resourceType).contains("语音") || MapOps.str(resourceType).contains("主叫") ? "分钟" : "";
+        return unit.isEmpty() ? t : t + unit;
     }
 
     /** 商品有效期系统侧括注：需求侧含"续展/续订"时原样，否则追加（自动续展） */
@@ -1785,15 +1865,12 @@ public class OfferSimV16Service {
         return profile != null ? profile : seed.findOffer(offerId);
     }
 
-    /** plan.fields 值提取：按字段名取首个非空 value（键名对齐本体注册表 24 字段） */
+    /** plan 字段值提取：按字段名取首个非空 value（键名对齐本体注册表 24 字段；兼容 fields/flat_fields/payload 三形态，V2.8） */
     private String fieldOf(Map<String, Object> plan, String... names) {
-        Map<String, String> req = new LinkedHashMap<>();
-        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
-            req.putIfAbsent(MapOps.str(f.get("field")), MapOps.str(f.get("value")));
-        }
+        Map<String, String> req = planFieldValues(plan);
         for (String name : names) {
-            String v = req.get(name);
-            if (v != null && !v.isBlank() && !"待补充".equals(v)) {
+            String v = MapOps.str(req.get(name));
+            if (!v.isBlank() && !"待补充".equals(v)) {
                 return v;
             }
         }

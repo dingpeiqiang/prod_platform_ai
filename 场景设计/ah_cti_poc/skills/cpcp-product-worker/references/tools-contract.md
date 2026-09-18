@@ -95,7 +95,7 @@
 - GET `/api/v1/appstore/product/monitor`
 - 入参：`product_id`(必填,"缺少产品ID，请提供要查询的销售品")、`date_range`(选填,默认最近1天)、`metric`(选填,order/error/fee/all,默认all)
 - 出参：`order_count`(int)、`error_count`(int)、`fee_error_rate`(float)、`alarm_list[]`
-- **单品运营可视化 iframe 出口（V8.0；V9.3 强制 iframe 标签+绝对地址，供外部 AI 应用平台嵌入）**：D-2 文本摘要后**必须输出完整 iframe 标签** `<iframe src="http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}" width="800" height="400" title="单品运营可视化"></iframe>`（`src` 用**绝对地址**：部署基址 `http://10.86.13.201:31280` = 前端云部署网关（nginx 容器内 listen 6173）+ 固定路径 `/ops-web/product-detail.html`；**禁止仅输出相对路径或纯 URL**，否则缺失 http/ip/端口 无法 iframe 加载；产物为 `frontend/public/ops-web/` 纯静态页，第3层组装固定拼接，非平台接口；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选用于未收录商品回退画像；页面渲染由 detail.js 纯代码完成，LLM 仅输出固定 iframe 标签、禁止手写页面 JSON/HTML 载荷）
+- **单品运营可视化 iframe 出口（V8.0；V9.3 强制 iframe 标签+绝对地址，供外部 AI 应用平台嵌入）**：D-2 文本摘要后**必须输出完整 iframe 标签** `<iframe src="http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}&name={{offer_name}}" width="800" height="400" title="单品运营可视化"></iframe>`（`src` 用**绝对地址**：部署基址 `http://10.86.13.201:31280` = 前端云部署网关（nginx 容器内 listen 6173）+ 固定路径 `/ops-web/product-detail.html`；**禁止仅输出相对路径或纯 URL**，否则缺失 http/ip/端口 无法 iframe 加载；产物为 `frontend/public/ops-web/` 纯静态页，第3层组装固定拼接，非平台接口；页面兼容 product_id/productId/offer_id/offerId 任一参数名，name/type 可选用于未收录商品回退画像，`name` 取 `dispatcher.py` 出参 `entities.offer_name`、缺失省略；页面渲染由 detail.js 纯代码完成，LLM 仅输出固定 iframe 标签、禁止手写页面 JSON/HTML 载荷）
 
 ## 工具11 异常告警 `send_alert`
 - POST `/api/v1/appstore/alert/send`
@@ -122,6 +122,8 @@
 ### `save_node_result`
 - POST `/api/v1/appstore/result/save`
 - 入参：`req_id`(必填,须匹配 `PLAN\d{17}`，非法返回 5002)、`node_name`(必填,requirement/config/spec/fee/test/report，空返回 5003)、`result_json`(≤64KB,超限 5004)、`status`(默认 ok)
+- **node_name 语义对齐（九环节）**：节点名与九环节并非一一对应——**需求分析（环节2）的存储节点名固定为 `requirement`**（与需求提报共用该键；同一 req_id 下环节2 首次写入，不触发 5006 覆盖拦截）；config/spec/fee/test 分别对应智能配置/规格稽核/资费校准/自动测试。**模型不得因"环节叫需求分析"就改用 stage2/demand_analysis 等非注册名**（非注册 node_name 会被后端按非法处理）
+- **req_id 唯一权威贯穿（V9.4）**：req_id 唯一权威口径=`PLAN + yyyyMMddHHmmss + 3 位随机`（须满足 `PLAN\d{17}`）；自环节1 需求提报生成后贯穿后续全部环节，保存一律沿用同号，**禁止换号 / 拼接非数字后缀**（换号将割裂各环节关联、续跑回放失效）
 - 同键（req_id+node_name）覆盖写；requirement 环节同键不同内容拦截（5006）
 
 ### `query_node_result`
@@ -140,7 +142,7 @@
 ## 工具18 入口调度器 `dispatcher`（V6.0 新增，本地脚本，四层架构第0/1层）
 - 本地代码节点（非平台接口）：`scripts/dispatcher.py`，规则优先做意图归类/确认门禁/实体抽取；LLM 仅在 `needs_llm` 时做封闭枚举兜底（禁止自由文本）。
 - 入参：`--message`(必填) / `--message-file`(>1KB 消息走文件)、`--session-file`(选填，会话上下文 JSON：req_id/offer_id/product_id/approval_id/offer_name 等)
-- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/QUERY_OFFER/CONFIRM_ONLINE/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(ASK/A/B/C/D1/D2/D3/D4/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
+- 出参：`resultCode`(0/PARAM_MISSING/FILE_ERROR)、`intent`（封闭枚举：ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/QUERY_OFFER/ACCEPTANCE_PLAYBACK/QNA/REJECT/OUT_OF_SCOPE）、`route`(ASK/A/B/C/D1/D2/D4/QNA/NONE)、`confirmed`(bool，确认门禁)、`resume`(bool)、`needs_llm`(bool，规则未命中时 true)、`llm_prompt`(仅 needs_llm 时的最小兜底 schema)、`entities`(req_id/offer_id/product_id/approval_id/offer_name)、`kb_target`(K1~K5)、`matched_rule`
 - **ASK_INTENT（V9.1 新增）**：产品描述（产品/套餐/资费规格）但未表明意图（非问句、无查询/配置/确认词）时返回；route=ASK，SKILL 先澄清"查询 or 配置"，明确【配置】后再次运行 dispatcher 转 REQ_REPORT（触发需求提报），【查询】则走查询类意图；完整产品规格文档同理（product-doc-ask）
 - 行为保证：意图封闭枚举（任何输入必归类）；确认语义词表 + 否定词表（REJECT）；实体抽取消息优先、会话兜底；规则未命中 → needs_llm=true 交 LLM 单选归类
 - 判定规则：确认门禁由本脚本 `confirmed` 决定（对应 run_pipeline `--confirmed` 与 SKILL.md 纪律3），模型禁止自行判断确认语义
@@ -186,6 +188,7 @@
 - **取值来源列（V3.0）**：依 `--meta-file` `_meta` 逐叶子 source 确定性映射——`原始需求`→**原始需求提取**、`AI补全`→**复用相似产品**、`本体推理`→**本体推理**、`默认值`→**默认值**；`本体推理`仅标注来源不写值（value 仍以 payload 为准）；无 `_meta` 时该列留空
 - 出参：markdown 分节多表文本（stdout；备注列含"满足条件时展示"标注，取值来源独立成列）
 - 行为保证：同输入输出逐字节稳定（幂等可回归）；技术字段（templateId/prodId/prodPrcId/pricingId/opType）不出现在业务表格；渲染失败/空输出 → flow-A 按 E32 中断（先核对入参是否误传 merge 全出参）
+- **输出形态（消除疑虑）**：本工具出参即 **markdown 表格正文（非 JSON）**，作为环节2 出口正文直接展示即可——**无需再落盘为 JSON 再读**；"文件为空/不是 JSON"属正常（stdout 本来就不是 JSON 文件），只需确认渲染有业务分节即可。
 
 ## 工具24 flat24 派生 `derive_flat24`（V7.0 新增，本地脚本，下游过渡兼容层，评审结论#1/#5）
 - 本地代码节点（非平台接口）：`scripts/cpcp_api.py derive_flat24`，模板轨嵌套报文 → V3.0 flat24 字段数组**单向投影**（方向仅 v2→flat，flat→v2 有损禁止），供环节2/3 后端按 24 字段校验继续可用（后端零改动）。
@@ -240,10 +243,13 @@
 - 出参：`success`、`workOrder`（含更新后 status）
 - 行为保证：闭环状态机 open → in_progress → done/cancelled；失败 → E34 提示型
 
-## 工具31 存量产品信息查询 `query_offer`（flow-D 支线D-4，本地只读）
-- 本地代码节点（非平台接口）：`scripts/cpcp_api.py query_offer`，读取本地存量目录 `方案/存量产品目录_清洗后.json` + `references/K4存量/`（K4 存量销售品资料库，按产品 ID 单文件）做确定性检索，纯只读不改写；LLM 不参与检索判定。
+## 工具31 存量产品信息查询 `query_offer`（flow-D 支线D-4 与 flow-A 步骤②，本地只读）
+- 本地代码节点（非平台接口）：`scripts/cpcp_api.py query_offer`，读取 skill 包内置存量目录 `references/存量产品目录_清洗后.json`（**随 skill 打包内置在 `references/` 下，脚本已按 skill 相对路径正确解析，模型禁止自行重寻该 JSON**，CTRL 见 flow-A 步骤②）+ `references/K4存量/`（K4 存量销售品资料库，按产品 ID 单文件）做确定性检索，纯只读不改写；LLM 不参与检索判定。
 - 入参：`--product-id`（9 位编码）/ `--name`（产品名称）/ `--keyword`（描述关键词），三者至少一个（缺少 → PARAM_MISSING："缺少查询入参，请提供 --product-id 或 --name/--keyword"）。
 - 出参：`resultCode`(0)、`matched[]`（逐条含 `offer_id`/`name`/`product_type`/`biz_series`/`tier`/`template`/`members[]` + `k4_text`（K4 档案原文）+ `k4_path`）；`status=dup` 的目录条目按 `duplicate_of` 自动透传到 active 品；目录未收录但 K4 档案存在时按 ID 直接读档；未命中 → `matched=[]`。
-- 处置：命中 → 按出参结构化回显存量产品信息（逐字引用，禁止编造字段）；`matched=[]` → 追问核对名称/ID或引导"存量合规扫描"查看全部；只读查询不生成 req_id、不进需求分析/配置流水线。
+- **用途（两处，均只读）**：
+  - **flow-A 步骤② 相似产品本地主源**：`--keyword` 命中后由该脚本确定性返回相似品候选，步骤② 再按 product_type/tier 最接近/members 取 top1 并挂接 `references/K5存量报文/<offer_id>.json` 为相似品报文（不做任何写入）；
+  - **flow-D 支线D-4 存量产品信息查询**。
+- 处置：命中 → 按出参结构化回显存量产品信息（逐字引用，禁止编造字段）；`matched=[]` → 追问核对名称/ID或引导"存量合规扫描"查看全部；只读查询不生成 req_id、不推进需求分析/配置流水线状态（D-4 仅查询；flow-A 步骤② 仅作相似品检索参照，流程推进仍由后续步骤完成）。
 
 

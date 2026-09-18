@@ -1,0 +1,449 @@
+{
+  "resultCode": "0",
+  "resultMsg": "测试完成，共 3 个场景",
+  "testRequestId": "TR202609181419031155103849",
+  "testRequestName": "新增销售品981032114_测试验证",
+  "offerName": "新增销售品981032114",
+  "orderId": "ORD20260918141903",
+  "offerInstId": "OI20260918141903",
+  "testScenes": [
+    {
+      "testSceneId": "TS1",
+      "testSceneNbr": "S_O_TC",
+      "testSceneName": "套餐新装",
+      "testSceneDesc": "销售品 新增销售品981032114 新装订购受理验证（生效规则：新老用户均可订购；新用户立即生效）",
+      "sort": "1",
+      "testCaseCount": "10",
+      "successTestCaseCount": "10",
+      "failTestCaseCount": "0",
+      "testCasePointResults": [
+        {
+          "testPointNbr": "P_EFF_DATE",
+          "presetValue": "新老用户均可订购；新用户立即生效",
+          "testValue": "新老用户均可订购；新用户立即生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_EXP_DATE",
+          "presetValue": "长期有效",
+          "testValue": "长期有效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_STATUS",
+          "presetValue": "生效",
+          "testValue": "生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MAIN_PROD",
+          "presetValue": "新增销售品981032114（主产品，单产品构成）",
+          "testValue": "新增销售品981032114（主产品，单产品构成）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_RELY_REL",
+          "presetValue": "无前项依赖",
+          "testValue": "无前项依赖",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MUTEX_REL",
+          "presetValue": "无互斥限制",
+          "testValue": "无互斥限制",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_ORD_CNT",
+          "presetValue": "同一用户累计订购1次",
+          "testValue": "同一用户累计订购1次",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_NAME",
+          "presetValue": "新增销售品981032114",
+          "testValue": "新增销售品981032114",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_TYPE",
+          "presetValue": "新增销售品981032114（新增销售品类）",
+          "testValue": "新增销售品981032114（新增销售品类）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_PAY_MODE",
+          "presetValue": "后付费、账单支付",
+          "testValue": "后付费、账单支付",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        }
+      ],
+      "objTestSceneRel": "resultMsg=场景测试通过; summaryDesc=销售品 新增销售品981032114 新装订购受理验证（生效规则：新老用户均可订购；新用户立即生效）; suggestion=无"
+    },
+    {
+      "testSceneId": "TS2",
+      "testSceneNbr": "S_ADD_CARD",
+      "testSceneName": "副卡加装",
+      "testSceneDesc": "该销售品不支持副卡加装",
+      "sort": "2",
+      "testCaseCount": "10",
+      "successTestCaseCount": "10",
+      "failTestCaseCount": "0",
+      "testCasePointResults": [
+        {
+          "testPointNbr": "P_EFF_DATE",
+          "presetValue": "新老用户均可订购；新用户立即生效",
+          "testValue": "新老用户均可订购；新用户立即生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_EXP_DATE",
+          "presetValue": "长期有效",
+          "testValue": "长期有效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_STATUS",
+          "presetValue": "生效",
+          "testValue": "生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MAIN_PROD",
+          "presetValue": "新增销售品981032114（主产品，单产品构成）",
+          "testValue": "新增销售品981032114（主产品，单产品构成）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_RELY_REL",
+          "presetValue": "无前项依赖",
+          "testValue": "无前项依赖",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MUTEX_REL",
+          "presetValue": "无互斥限制",
+          "testValue": "无互斥限制",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_ORD_CNT",
+          "presetValue": "同一用户累计订购1次",
+          "testValue": "同一用户累计订购1次",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_NAME",
+          "presetValue": "新增销售品981032114",
+          "testValue": "新增销售品981032114",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_TYPE",
+          "presetValue": "新增销售品981032114（新增销售品类）",
+          "testValue": "新增销售品981032114（新增销售品类）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_PAY_MODE",
+          "presetValue": "后付费、账单支付",
+          "testValue": "后付费、账单支付",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        }
+      ],
+      "objTestSceneRel": "resultMsg=场景测试通过; summaryDesc=该销售品不支持副卡加装; suggestion=无"
+    },
+    {
+      "testSceneId": "TS3",
+      "testSceneNbr": "S_U_TC",
+      "testSceneName": "套餐退订",
+      "testSceneDesc": "退订规则：允许退订，次月生效",
+      "sort": "3",
+      "testCaseCount": "10",
+      "successTestCaseCount": "10",
+      "failTestCaseCount": "0",
+      "testCasePointResults": [
+        {
+          "testPointNbr": "P_EFF_DATE",
+          "presetValue": "新老用户均可订购；新用户立即生效",
+          "testValue": "新老用户均可订购；新用户立即生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_EXP_DATE",
+          "presetValue": "长期有效",
+          "testValue": "长期有效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_STATUS",
+          "presetValue": "生效",
+          "testValue": "生效",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MAIN_PROD",
+          "presetValue": "新增销售品981032114（主产品，单产品构成）",
+          "testValue": "新增销售品981032114（主产品，单产品构成）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_RELY_REL",
+          "presetValue": "无前项依赖",
+          "testValue": "无前项依赖",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_MUTEX_REL",
+          "presetValue": "无互斥限制",
+          "testValue": "无互斥限制",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_ORD_CNT",
+          "presetValue": "同一用户累计订购1次",
+          "testValue": "同一用户累计订购1次",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_NAME",
+          "presetValue": "新增销售品981032114",
+          "testValue": "新增销售品981032114",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_OFFER_TYPE",
+          "presetValue": "新增销售品981032114（新增销售品类）",
+          "testValue": "新增销售品981032114（新增销售品类）",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        },
+        {
+          "testPointNbr": "P_PAY_MODE",
+          "presetValue": "后付费、账单支付",
+          "testValue": "后付费、账单支付",
+          "resultCode": "0",
+          "resultMsg": "比对一致"
+        }
+      ],
+      "objTestSceneRel": "resultMsg=场景测试通过; summaryDesc=退订规则：允许退订，次月生效; suggestion=无"
+    }
+  ],
+  "testCases": [
+    {
+      "caseId": "ACC-001",
+      "caseName": "销售品基础准入规则校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-002",
+      "caseName": "产品互斥规则校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-003",
+      "caseName": "产品依赖规则校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-004",
+      "caseName": "订购操作能力校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-005",
+      "caseName": "变更操作能力校验",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "ACC-006",
+      "caseName": "退订操作能力校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-007",
+      "caseName": "受理表单必填字段完整性",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-008",
+      "caseName": "限购数量规则校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-009",
+      "caseName": "地域受理范围校验",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "ACC-010",
+      "caseName": "受理时段生效校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-011",
+      "caseName": "模拟订购接口预测试",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "ACC-012",
+      "caseName": "模拟退订接口预测试",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-001",
+      "caseName": "基础资费金额合法性校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-002",
+      "caseName": "计费周期类型校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-003",
+      "caseName": "计费起算时间规则校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-004",
+      "caseName": "资源扣减规则校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-005",
+      "caseName": "阶梯/按量批价规则校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-006",
+      "caseName": "优惠叠加/捆绑减免校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "BILL-007",
+      "caseName": "账单展示项配置校验",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "BILL-008",
+      "caseName": "模拟订购账单试算",
+      "level": "P0",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "BILL-009",
+      "caseName": "退订费用结算试算",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "BILL-010",
+      "caseName": "资费生效失效联动校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-001",
+      "caseName": "客服产品基础视图完整性",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-002",
+      "caseName": "客户订单查询能力校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-003",
+      "caseName": "客服侧产品操作权限校验",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    },
+    {
+      "caseId": "CUST-004",
+      "caseName": "产品资费对外说明话术校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-005",
+      "caseName": "产品生效失效规则话术校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-006",
+      "caseName": "产品退订规则话术校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-007",
+      "caseName": "产品限制规则话术校验",
+      "level": "P1",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-008",
+      "caseName": "对外展示信息合规校验",
+      "level": "P0",
+      "result": "✅"
+    },
+    {
+      "caseId": "CUST-009",
+      "caseName": "客服常见问题FAQ完备性",
+      "level": "P1",
+      "result": "本销售品未覆盖"
+    }
+  ],
+  "report_url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/report?global_id=50202609181419031155103849"
+}

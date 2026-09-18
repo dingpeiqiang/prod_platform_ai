@@ -22,7 +22,7 @@ LLM 仅在规则未命中/歧义时做**最小化意图归类**（封闭枚举�
 5. 大报文经 --session-file / --message-file 传递，命令行不内联（纪律8）。
 
 出参（stdout 单行 JSON，模型仅按 route 加载对应流程、按 needs_llm 决定是否套用 llm_prompt）：
-  {"resultCode":"0","intent":...,"route":"A|B|C|D1|D2|D3|D4|QNA|NONE",
+   {"resultCode":"0","intent":...,"route":"A|B|C|D1|D2|D4|QNA|NONE",
    "confirmed":bool,"needs_llm":bool,"llm_prompt":str,
    "entities":{"req_id":...,"offer_id":...,"product_id":...,"approval_id":...,"offer_name":...},
    "kb_target":"K1|K2|K3|K4|K5|", "resume":bool, "fail_node_hint":str,
@@ -64,7 +64,6 @@ INTENTS = [
     "QUERY_APPROVAL",    # 查询审批进度 → flow-D D-1
     "QUERY_MONITOR",     # 查询监控/运营 → flow-D D-2
     "QUERY_OFFER",       # 查询存量产品信息（按名称/描述或产品ID）→ flow-D D-4
-    "CONFIRM_ONLINE",    # 确认上线/监控运维方案 → flow-D D-3
     "ACCEPTANCE_PLAYBACK",  # 受理验证单独询问 → flow-B 环节4 回放
     "QNA",               # 业务知识问答 → K1~K5
     "REJECT",            # 否定/取消确认（不执行，不归任何流程）
@@ -95,9 +94,6 @@ INTENT_RULES = [
     ("QUERY_MONITOR",
      [r"(查询|查看|查).{0,20}(监控|运营|运行监控|运行情况|上线后表现|运营情况)", r"监控.{0,6}(情况|结果|告警)"],
      "运行监控"),
-    ("CONFIRM_ONLINE",
-     [r"确认上线", r"监控运维方案", r"生成.{0,3}运维方案"],
-     "确认上线/运维方案"),
     ("ACCEPTANCE_PLAYBACK",
      [r"(受理|验收)(验证|测试|结果)", r"查询受理验证", r"受理验证"],
      "受理验证回放"),
@@ -360,7 +356,6 @@ def _build_route(intent):
         "QUERY_APPROVAL": "D1",
         "QUERY_MONITOR": "D2",
         "QUERY_OFFER": "D4",
-        "CONFIRM_ONLINE": "D3",
         "ACCEPTANCE_PLAYBACK": "B",
         "QNA": "QNA",
         "REJECT": "NONE",

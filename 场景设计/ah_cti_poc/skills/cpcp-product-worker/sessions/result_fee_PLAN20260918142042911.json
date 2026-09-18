@@ -1,0 +1,56 @@
+{
+  "resultCode": "0",
+  "resultMsg": "success",
+  "pass": "1",
+  "risk_list": [],
+  "compare_list": [
+    {
+      "project_name": "套餐月租",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "流量赠送量",
+      "requirement_desc": "",
+      "billing_desc": "（国内）",
+      "result": "一致"
+    },
+    {
+      "project_name": "语音赠送量",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "短信赠送量",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "流量超出资费",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "语音超出资费",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "短信超出资费",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    },
+    {
+      "project_name": "商品有效期",
+      "requirement_desc": "",
+      "billing_desc": "",
+      "result": "一致"
+    }
+  ]
+}

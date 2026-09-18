@@ -2,14 +2,15 @@
 
 > 对应原子工作流 wf_sub_02→03→05→04。用户确认配置后**一次跑完四个环节（智能配置→配置规格稽核→资费校准→自动测试），中途不停顿**；仅环节失败时中断。**受理验证是自动测试的子集**（测试平台自动执行受理类场景即完成受理验证，数据源=环节4 测试结果，不新增接口调用、不设独立环节）。各环节共用 req_id；每环节成功后存储（node_name=config/spec/fee/test）并立即打印结果。
 > V4.0 融合组扩展：plan_json 为组结构（offer_type=融合）时，各环节输出增加成员维度（成员回显行/成员分组比对/组场景/组一致性核对）；单商品 plan_json 行为零变化。全部成员维度数据逐字引用出参（`group`/`member_role`/`offer_group_check`），禁止自行推理。
-> **V5.0 编排收敛**：四环节串行编排、成败判定、存储落盘、续跑回放、轮询等待由确定性状态机脚本 `scripts/run_pipeline.py` 执行（串行铁律/确认门禁/幂等回放内置，见 SKILL.md 脚本调用约定）；**模型不再逐步调用单环节脚本自行编排**，职责收敛为：①按 dispatcher 出参 `confirmed` 决定是否传 `--confirmed`（确认门禁以 `dispatcher.py` 判定为准，见 SKILL.md 四层架构第0层）；②按 run_pipeline 出参 state + 各环节出参工件渲染下方输出模板；③按 e_code 对照异常矩阵引导。下方各环节的命令序列保留为**状态机内部实现说明**（供排查与文档追溯），非模型执行指令。
+> **V5.0 编排收敛**：四环节串行编排、成败判定、存储落盘、续跑回放、轮询等待由确定性状态机脚本 `scripts/run_pipeline.py` 执行（串行铁律/确认门禁/幂等回放内置，见 SKILL.md 脚本调用约定）；**模型不再逐步调用单环节脚本自行编排**，职责收敛为：①按 dispatcher 出参 `confirmed` 决定是否传 `--confirmed`（确认门禁以 `dispatcher.py` 判定为准，见 SKILL.md 四层架构第0层）；②按 `--stage prepare`/`--stage poll` 两段式循环驱动（V12.3：prepare 秒级返回 POLL+globalId，随后循环 poll 直到 APPROVAL_GATE），再按 run_pipeline 出参 state + 各环节出参工件**一次性渲染**下方输出模板（环节3/4/5/6 + 环节7 + 汇总块同一段输出，仅一次 validate_output `--node all`）；③按 e_code 对照异常矩阵引导。下方各环节的命令序列保留为**状态机内部实现说明**（供排查与文档追溯），非模型执行指令。
+> **V12.0 输出收敛（去多余 LLM 渲染）**：执行主干四环节全部由脚本串行跑完后，模型对最终结果**只渲染一次、校验一次、输出一次**完整文档（含环节3/4/5/6/7 + 汇总块，环节间 `---` 分隔）；**禁止逐环节独立渲染/独立校验/独立输出**（SKILL.md 纪律1 的 `validate_output` 改为 `--node all` 单次全量校验）。
 
 ## 术语速查（参数取值唯一依据，禁止临场重新推理）
 | 术语 | 定义 | 生成环节 | 使用环节 |
 | --- | --- | --- | --- |
 | **环节1 配置原文** | requirement 存储 `list[0].result_json` 中的 plan_json **原文**（含 req_id/fields/pending_fields），全程原样透传、禁止任何加工 | 程序A | 环节1（--plan-json）、环节2/3（--config-json） |
 | **环节1 出参** | save_product_config 的完整出参 JSON（含 product_id/offer_id/save_result/status/script_url） | 环节1 | 各环节存储（result_json=原文）、环节2 取 offer_id |
-| **会话工件** | 环节1 成功后落盘的两个工作区文件：`plan_json_<req_id>.json`（配置原文）与 `config_result_<req_id>.json`（环节1 出参原文），大报文一律经 `--xxx-file` 引用，禁止内联 | 环节1 | 环节1 存储、环节2/3 调用与存储、续跑回放 |
+| **会话工件** | 配置原文 `plan_json_<req_id>.json`（需求分析环节2 落盘，run_pipeline 消费）与 `config_result_<req_id>.json`（环节1 出参原文，run_pipeline 落盘）、`result_<node>_<req_id>.json`（各环节出参原文），大报文一律经 `--xxx-file` 引用，禁止内联 | 环节1/需求分析 | 环节1 存储、环节2/3 调用与存储、续跑回放 |
 
 ## 触发条件
 - 用户对执行方案回复确认类语句（**确认配置**/确认执行/同意/可以/执行吧等）——**由 `dispatcher.py` 出参 `intent=CONFIRM_EXEC` 且 `confirmed=true` 触发**（入口第一动作必是运行 dispatcher，禁止模型自行判断确认语义）；
@@ -26,6 +27,11 @@ python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目�
 - 出参 state JSON：`resultCode`/`fail_node`/`e_code`/`next_action`/`nodes[]`（node/status/result_file/summary）；`e_code` 直接对照 `references/exception-matrix.md` 引导；`nodes[].result_file` 指向各环节出参工件（输出模板数据逐字引用工件原文）；
 - `next_action` 语义：APPROVAL_GATE=四环节全部成功等待审批确认；RESUME=可回复【重新执行】；FIX_PLAN=引导【修改执行方案】；CHECK_PLATFORM=E26 核查测试平台后【重新执行】/【继续】。
 
+**同步运行纪律（V10.2；V12.0 单次渲染，防"逐环节重复渲染"；防"结构化丢失"；V12.3 分段执行根治长命令转后台）**：`run_pipeline.py` 是**同步进程状态机**，**禁止把它当后台长任务、以"等通知"结束回合、或半途终止**。为避免"最长约 30 分钟的测试轮询"触发 Agent 工具的长命令超时（超时即强制转后台，无论是否有心跳输出），**执行主干改为两段式秒级命令循环（V12.3）**：
+  1. `run_pipeline.py --req-id <id> --workdir <dir> --confirmed --stage prepare` —— 串行跑完 config→spec→fee→**发起测试**后**立即返回**（秒级），出参 `next_action=POLL` + `globalId`；
+  2. `run_pipeline.py --req-id <id> --workdir <dir> --confirmed --stage poll` —— **单次**查询测试进度（秒级）：未完成返回 `next_action=POLL`（**模型据此再调一次 poll**）；完成则自动续跑结果判定+报告下载，返回 `next_action=APPROVAL_GATE`（或失败码）。
+  **模型循环调用②直到 `next_action != POLL`**（每次都是秒级命令，永不触发工具转后台）。全部环节跑完后，读取最终 stdout JSON（`resultCode` + 各节点 status），随后**一次性渲染**完整输出（环节3/4/5/6 + 受理验证 + 汇总块，或异常引导），**仅一次** `validate_output.py --node all` 校验后一次性输出；**禁止**逐环节独立渲染/校验/输出。**"一次性渲染"仅指渲染/校验/输出各一次，各环节必须仍按其模板完整分块呈现（标题头+明细表+下一步引导，`---` 分隔）**，禁止因"合并渲染"而丢失环节结构化分块。期间落盘的 `config_result_<req_id>.json`/`result_<node>_<req_id>.json`/`pipeline_state_<req_id>.json` 只是中间状态，**不等于完成信号**——完成信号=`next_action=APPROVAL_GATE`（或异常码）。`--stage all`（一次跑完含内部整段轮询）仅作旧调用兼容保留，**新流程一律走 prepare/poll 两段式**。
+
 ## 前置检查
 - `req_id`（必填）：执行方案存储键，以 `dispatcher.py` 出参 `entities.req_id`（会话最近一次值）为准，禁止重新生成；新会话未知时先运行 `python scripts/cpcp_api.py query_node_result` 检索，检索不到提示用户重新提报需求；
 - **确认门禁**：`dispatcher.py` 出参 `confirmed` 必须为 true 才允许进入本程序（对应 run_pipeline `--confirmed`）；被否定/REJECT 场景不得进入（防跳步由 dispatcher 判定保证，后端不重复校验）。
@@ -34,14 +40,14 @@ python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目�
 四环节的**自查上游→调用→判定→存储→打印**已全部收敛进 `scripts/run_pipeline.py`（自查/存储/续跑/幂等回放内置），以下是内部实现说明，非模型执行指令：
 - 判定字段：config=status(SUCCESS/PARTIAL)、spec/fee=pass、test=全场景 successTestCaseCount==testCaseCount 且受理凭证非空；融合组另看 `offer_group_check`；
 - 存储：本环节出参**原文**写入 `result_<node>_<req_id>.json` 工件并 `save_node_result`（el（失败/超时也存储，供续跑）；
-- 工件：`plan_json_<req_id>.json`/`config_result_<req_id>.json`/`result_<node>_<req_id>.json` 由 run_pipeline 落盘，>1KB 一律 `--xxx-file` 引用，禁止内联/精简/重排（SKILL.md 纪律8）。
+- 工件：`plan_json_<req_id>.json`（**配置原文，由需求分析环节2 落盘供本程序读取**，见 flow-A 步骤⑦ V10.2 规范别名；run_pipeline 不生成仅消费）/`config_result_<req_id>.json`（环节1 出参原文，run_pipeline 落盘）/`result_<node>_<req_id>.json`（各环节出参原文，run_pipeline 落盘），>1KB 一律 `--xxx-file` 引用，禁止内联/精简/重排（SKILL.md 纪律8）。
 
 ## 输出结构总纪律（四环节统一，防输出结构混乱）
 > **编号口径说明**：正文/实现说明中的"环节1~4"指**执行主干内部步骤**（config/spec/fee/test，对应 run_pipeline STAGE1~STAGE4 与存储 node 名）；**输出标题头**一律用 SKILL.md 九环节总表的**全局编号+全名**，二者一一对应：内部环节1=全局环节3销售品智能配置、内部环节2=全局环节4配置规格稽核、内部环节3=全局环节5资费校准、内部环节4=全局环节6销售品自动测试（受理验证=全局环节7，为环节6 子集，独立成节）。
 - 每个环节输出**必须以统一环节标题头开头**，格式固定为：`【环节{全局序号}/9·{环节全名}】✅ 执行成功` 或 `【环节{全局序号}/9·{环节全名}】❌ 执行失败`——**全名与全局序号一律取自 SKILL.md 九环节总表**（环节3销售品智能配置/4配置规格稽核/5资费校准/6销售品自动测试/7受理验证；**禁止回退用旧"环节1/4·智能配置"短名**，防止演示被误判环节未实现），标题头下空一行再输出环节详情；
 - **标题头形态封闭（仅两种，禁止自造）**：全流程任何场景下环节标题头只允许"✅ 执行成功"与"❌ 执行失败"两种形态。环节失败/异常中断（E6~E13/E20/E26 等）时标题头**一律用 `❌ 执行失败`**，禁止输出"执行中断/执行异常/部分成功"等自造第三形态；中断详情放正文【异常】块，不写进标题头；
 - 环节与环节之间用 `---` 分隔线隔开，确保各环节结果在视觉上独立成块、一眼可辨；
-- 串行执行时各环节结果**逐环节即时输出**（环节3 输出完接分隔线再输出环节4，以此类推），禁止把四个环节结果揉成一段连续文字；
+- **一次性渲染（V12.0 收敛，替代"逐环节即时输出"；防"结构化丢失"）**：执行主干四环节（config→spec→fee→test）由 run_pipeline **一次跑完**后，模型**只做一次 LLM 渲染、一次 `validate_output.py --node all` 校验、一次输出**（消除逐环节多次独立渲染/校验的多余 LLM 与子进程开销）。但**这一次渲染必须一次性生成【完整的、各环节各自独立成块的结构化文档】**——同一段回复中，按顺序完整渲染【环节3/4/5/6】+【环节7 受理验证】+【执行主干全部完成】汇总块，**每一环节都按其下方输出模板逐字完整呈现**（环节标题头 + 关键数据/比对表/测试表 + 下一步引导行），环节与环节之间用 `---` 分隔线隔开、在视觉上独立成块。**禁止把多个环节揉成一个无标题的平铺段落、禁止省略任一环节的结构化标题头、禁止以"一次性/合并"为由压缩或略去各环节的表格与明细、禁止用一段连续文字替代分块展示**——"一次性渲染"仅指"渲染/校验/输出各一次"，**不改变各环节结构化分块呈现的要求**；
 - **受理验证（环节7/9）不得被"吞进"自动测试标题头一笔带过**：随环节6 同块展示，但须以下方"环节7/9·受理验证"独立小节标题头单独成节输出（数据源=环节4 test 出参受理子集，见环节4 输出模板），保证九环节之一可见可辨；
 - 末尾统一输出【执行主干全部完成】汇总块（见文末模板）；**任一环节失败/中断时改输出【异常】统一模板（见文末），禁止输出任何形式的汇总表格**（汇总表仅在四环节全部成功后输出，异常中断时表格中会夹带未经完整校验的"通过"判定语境，属模板误用）。
 
@@ -71,7 +77,7 @@ python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目�
 ```
 - script_url 引用纪律：链接逐字引用出参 `script_url` 原文（后端已返回绝对 URL，直接引用即可；若为相对路径则拼接 BASE_URL 前缀），禁止自行构造或改写参数；**对话输出禁止裸露 URL，统一渲染为 Markdown 下载图标 `[📄 配置脚本下载](script_url)`**；脚本内容为后端生成的 CRM/billing 落库 SQL（模拟），仅在用户要求查看时按下载文件内容原文回显，禁止转述加工；
 - 脚本文件下载纪律：download_launch_script 出参 `resultCode=="0"` 时按模板输出"脚本文件已下载"行；非 0（未落地 404/网络异常）时**省略该行、不中断主干**（下载图标行仍在，用户可手动下载）；禁止虚构 saved_path/file_size；
-- **建议处理引导行（固定输出）**：`**建议处理：可输入"查看稽核"或等待自动进入【配置规格稽核】。**`（串行连续执行时用户无需操作，该行照常输出）；
+- **建议处理引导行（固定输出，SKILL.md 纪律5.1 统一措辞）**：`> **建议处理：** 无需操作，将自动进入【配置规格稽核】（无需回复，串行自动推进；如需中止可回复【修改执行方案】）`（串行连续执行时用户无需操作，该行照常输出，且须为整条回复最后一个内容块）；
 - PARTIAL 时改为：`**配置状态：部分成功**`，附失败分类明细（此时同样须显性展示 offer_id/product_id 行），结尾改为"请根据失败明细说明修改意见，或回复【重新执行】。"（不显示下一环节引导）。
 
 ## 环节[4] 配置规格稽核（环节4/9，实时，无轮询）
@@ -102,7 +108,7 @@ python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目�
 - **组维度稽核（V4.0 新增）**：plan_json 为组结构时，稽核对象行下追加一行：`> 组维度：主 offer_id {{环节1 offer_id}} + 成员 {{role}}（offer_id）/...（逐字引用环节1 出参 group）`；error_list 含 `group` 类目（item 形如 `group:<role>`）→ 对应成员所在行标 ❌ 并附明细（item 中的 role 定位成员），七项检查项结构不变；
 - pass==0 时整体结论改为"**稽核结果：不通过**"，仅列出 ❌ 项及明细，未告警项不输出，结尾按 E8 引导【重新执行】/【修改执行方案】（不显示下一环节引导）；
 - 禁止补 ✅ 凑数：七项清单与出参告警分类核对后方可输出，出参结构不含分类信息时以 error_list 为空=全通过处理；
-- **建议处理引导行（固定输出）**：`**建议处理：可输入"资费校准"或等待自动进入【资费校准】。**`（串行连续执行时用户无需操作，该行照常输出）。
+- **建议处理引导行（固定输出，SKILL.md 纪律5.1 统一措辞）**：`> **建议处理：** 无需操作，将自动进入【资费校准】（无需回复，串行自动推进；如需中止可回复【修改执行方案】）`（串行连续执行时用户无需操作，该行照常输出，且须为整条回复最后一个内容块）。
 
 ## 环节[5] 资费校准（环节5/9，8 项比对）
 > 内部实现（run_pipeline 已内置，供排查）：`billing_verify`，config_json 复用同一 plan_json 工件（与环节2 完全一致，禁止换源）。
@@ -134,16 +140,16 @@ python scripts/run_pipeline.py --req-id "<req_id>" --workdir "<会话可写目�
 ---
 ```
 - 存在不一致（result≠一致）或 risk_list 非空 → 整体结论改"**校准结论：存在不一致/风险**"，仅列不一致项与 risk_list 明细，结尾按 E9 引导【修改执行方案】（不显示下一环节引导）；
-- **建议处理引导行（固定输出）**：`**建议处理：可输入"自动测试"或等待自动进入【销售品自动测试】。**`（串行连续执行时用户无需操作，该行照常输出）。
+- **建议处理引导行（固定输出，SKILL.md 纪律5.1 统一措辞）**：`> **建议处理：** 无需操作，将自动进入【销售品自动测试】（无需回复，串行自动推进；如需中止可回复【修改执行方案】）`（串行连续执行时用户无需操作，该行照常输出，且须为整条回复最后一个内容块）。
 
 ## 环节[6] 销售品自动测试（环节6/9，含受理验证）
-> 内部实现（run_pipeline 已内置，供排查）：① `offer_test` 取 globalId（resultCode 非 0 → E10）→ ② `test_scenes`（空 → E11）→ ③ 轮询进度（poll_test_progress 长驻或单查+等待原语，`--max-consecutive-fail 2`，连续失败 → E12、30 分钟未 done → E13）→ ④ `test_result`（须 done=true 后查询）→ ⑤ `download_test_report`（`--save-path` 指向会话可写目录绝对路径，规避 E28）。
+> 内部实现（run_pipeline 已内置，供排查）：① `offer_test` 取 globalId（resultCode 非 0 → E10）→ ② `test_scenes`（空 → E11）→ ③ 轮询进度（`poll_test_progress`，**V12.1 进程内直调 `cpcp_api._http`，不再每轮询派生一个 cpcp_api.py 子进程**；`--max-consecutive-fail 2`，连续失败 → E12、30 分钟未 done → E13）→ ④ `test_result`（须 done=true 后查询）→ ⑤ `download_test_report`（`--save-path` 指向会话可写目录绝对路径，规避 E28）。
 - 判定：test_passed==通过（全部场景全部测点 resultCode==0 且受理凭证非空）→ 通过；否则 E14/E15 中断；
 - **环节4 内部执行顺序（编号步骤伪代码，必须严格按序执行，禁止提前校验/跳序）**：
 ```
 ① 发起测试 offer_test            # 取 globalId
 ② 查询场景 test_scenes           # 仅记录场景清单（是否含 S_ADD_CARD 留待⑥核对），此时禁止做覆盖核对推理
-③ 轮询进度（5s 循环直至 done）    # 等待期间静默（见 SKILL.md 纪律7），禁止输出推理文本
+③ 轮询进度（5s 循环直至 done）    # 进程内同步轮询，run_pipeline 期间持续输出 [pipeline]/[poll] 进度心跳到 stderr，模型随命令输出实时可见；无需转后台/等待通知，直接等本次调用返回
 ④ 查询结果 test_result           # done=true 后执行
 ⑤ 被测一致性预校验（E26）         # 输出前第一道校验；不一致 → 立即中断输出（走下方 E26 中断模板），⑤之后所有步骤全部不执行
 ⑥ 场景覆盖核对                   # 仅在 ⑤ 通过后执行（依据 K3 用例设计规范第5章）

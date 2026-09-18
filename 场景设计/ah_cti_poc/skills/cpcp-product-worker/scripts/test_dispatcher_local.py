@@ -56,8 +56,6 @@ def main():
     check("发起上线审批", "APPROVAL", {"route": "C"})
     check("查询审批进度", "QUERY_APPROVAL", {"route": "D1"})
     check("查询销售品运行监控", "QUERY_MONITOR", {"route": "D2"})
-    check("确认上线", "CONFIRM_ONLINE", {"route": "D3"})
-    check("生成监控运维方案", "CONFIRM_ONLINE")
     check("查询受理验证结果", "ACCEPTANCE_PLAYBACK")
     check("销售品命名有什么规范", "QNA", {"kb_target": "K1"})
     check("这个套餐资费怎么收费", "QNA", {"kb_target": "K2"})

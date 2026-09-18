@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""输出前程序化校验脚本（SKILL.md 纪律1 强制兜底，validate_output V1.1）。
+"""输出前程序化校验脚本（SKILL.md 纪律1 强制兜底，validate_output V1.2）。
 
-在环节1~4 正式输出给用户前运行，核对输出内容与出参工件的一致性：
-  - 标题头形态封闭（仅 ✅ 执行成功 / ❌ 执行失败 两种，禁止自造"执行中断"等）；
+在环节3~7 正式输出给用户前运行，核对输出内容与出参工件的一致性：
+  - 标题头形态封闭（仅 ✅ 执行成功 / ❌ 执行失败 两种，禁止自造"执行中断"等；
+    V1.2 对齐九环节全局编号 3/4/5/6/7）；
   - 禁止虚构全局统计值（跨场景加总"10/10 通过"等出参不存在的数字）；
   - E26 中断场景禁止输出通过性明细（用例统计/三大验证/受理凭证/上线结论/汇总表格）；
   - 异常中断场景禁止输出汇总表格；
@@ -12,7 +13,10 @@
   - V1.1 融合组扩展：六列 plan_md 表头白名单；compare_list 按 member_role 分组核对，
     E27 阈值逐成员内计算；E26 组核对（主 offerName + 成员角色集合与 plan_json 组结构一致）。
 
-用法：
+用法（V1.2 单次全量校验 --node all，执行主干四环节跑完后一次性渲染全文并一次校验，
+不再逐环节独立渲染/校验，减少 LLM 渲染与校验子进程调用）：
+  python validate_output.py --node all --workdir <会话可写目录> --req-id PLANxxx --output-file draft.md
+单环节兼容（错误定位/细分场景，V1.1 行为不变）：
   python validate_output.py --node test --result-file result_test_PLANxxx.json --output-file draft.md [--plan-file plan_json_PLANxxx.json]
   python validate_output.py --node fee  --result-file result_fee_PLANxxx.json  --output-file draft.md
 
@@ -25,6 +29,7 @@
 """
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -41,13 +46,14 @@ def _force_utf8_stdio():
 
 _force_utf8_stdio()
 
-# 合法标题头形态（flow-B 输出结构总纪律：封闭两种）
+# 合法标题头形态（SKILL.md 九环节总表 + flow-B 输出结构总纪律：封闭两种）
+# V1.2 对齐九环节全局编号：环节3/4/5/6/7（旧"环节1/4"短名头已废弃）
 HEADER_OK = [
-    "【环节1/4·智能配置】✅ 执行成功", "【环节1/4·智能配置】❌ 执行失败",
-    "【环节2/4·配置规格稽核】✅ 执行成功", "【环节2/4·配置规格稽核】❌ 执行失败",
-    "【环节3/4·资费校准】✅ 执行成功", "【环节3/4·资费校准】❌ 执行失败",
-    "【环节4/4·销售品自动测试（含受理验证）】✅ 执行成功",
-    "【环节4/4·销售品自动测试（含受理验证）】❌ 执行失败",
+    "【环节3/9·销售品智能配置】✅ 执行成功", "【环节3/9·销售品智能配置】❌ 执行失败",
+    "【环节4/9·配置规格稽核】✅ 执行成功", "【环节4/9·配置规格稽核】❌ 执行失败",
+    "【环节5/9·资费校准】✅ 执行成功", "【环节5/9·资费校准】❌ 执行失败",
+    "【环节6/9·销售品自动测试】✅ 执行成功", "【环节6/9·销售品自动测试】❌ 执行失败",
+    "【环节7/9·受理验证】✅ 执行成功", "【环节7/9·受理验证】❌ 执行失败",
 ]
 
 # E26 中断场景禁止出现的通过性明细特征（环节4 标题头为 ❌ 时）
@@ -118,6 +124,35 @@ def check_header(node, text, errors, checklist):
         if bad in text:
             errors.append("出现自造标题形态黑名单词：%s" % bad)
     checklist.append("标题头形态封闭")
+
+
+# V12.1 全量文档结构化完整性：full-success 输出必须包含全部 5 个结构化环节标题头（3/4/5/6/7），
+# 防"一次性渲染"被误读为合并/平铺而丢失各环节结构化分块。
+EXPECTED_SUCCESS_HEADERS = [
+    "【环节3/9·销售品智能配置】✅ 执行成功",
+    "【环节4/9·配置规格稽核】✅ 执行成功",
+    "【环节5/9·资费校准】✅ 执行成功",
+    "【环节6/9·销售品自动测试】✅ 执行成功",
+    "【环节7/9·受理验证】✅ 执行成功",
+]
+
+
+def check_full_structure_all(text, errors, checklist):
+    """仅用于 --node all 且为 full-success 场景：必须完整呈现 5 个环节标题头。
+    任一环节 ❌（走【异常】模板，无汇总块）或非全量输出时不强制。"""
+    is_full_success = ("【执行主干全部完成】" in text
+                       and "❌ 执行失败" not in text
+                       and "✅ 执行成功" in text)
+    if not is_full_success:
+        checklist.append("非 full-success 场景，跳过全环节结构完整性校验")
+        return
+    missing = [h for h in EXPECTED_SUCCESS_HEADERS if h not in text]
+    if missing:
+        names = "、".join(h.split("】")[0] + "】" for h in missing)
+        errors.append("full-success 输出缺少结构化环节标题头（防环节结构化丢失）：%s" % names)
+    else:
+        checklist.append("全环节结构化标题头完整（环节3/4/5/6/7）")
+
 
 
 def check_no_summary_table_when_failed(node, text, errors, checklist):
@@ -310,39 +345,97 @@ def _check_e27_per_member(text, role, items, errors):
                       % (role, both_empty, len(items)))
 
 
+def _run_node_checks(node, text, result, plan, errors, checklist):
+    """执行单环节相关校验（node 为实际业务环节名，用于各 check 内部分支）。
+    公共/形态类校验（header/plan 表头/失败禁汇总表）另由调用方统一执行一次。
+    仅调用本环节专属校验项，避免无关校验的空跑与清单噪音。
+    若 result 为 None（该环节出参缺失）则跳过该环节专属校验，避免误报。"""
+    if result is None:
+        checklist.append("环节 %s 出参缺失，跳过其专属校验（仅形态校验）" % node)
+        return
+    if node == "fee":
+        check_fee_rows("fee", text, result, errors, checklist)
+    elif node == "test":
+        check_no_invented_stats("test", text, result, errors, checklist)
+        check_scene_rows("test", text, result, errors, checklist)
+        check_e26_mute("test", text, result, plan, errors, checklist)
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--node", required=True, choices=["config", "spec", "fee", "test"])
-    p.add_argument("--result-file", required=True, help="本环节出参工件路径")
+    p.add_argument("--node", required=True, choices=["config", "spec", "fee", "test", "all"])
+    p.add_argument("--result-file", default="", help="单环节模式：本环节出参工件路径")
     p.add_argument("--output-file", required=True, help="拟输出给用户的文本草稿路径")
-    p.add_argument("--plan-file", default="", help="plan_json 工件路径（环节4 E26 校验用）")
+    p.add_argument("--plan-file", default="", help="单环节模式：plan_json 工件路径（环节4 E26 校验用）")
+    p.add_argument("--workdir", default="", help="all 模式：会话可写目录（自动读取 result_<node>_<req_id>.json）")
+    p.add_argument("--req-id", default="", help="all 模式：需求单号（工件命名 result_<node>_<req_id>.json）")
     args = p.parse_args()
 
     errors, checklist = [], []
-    try:
-        result = _read_json(args.result_file)
-    except Exception as e:
-        print(json.dumps({"resultCode": "FILE_ERROR", "resultMsg": "出参工件读取失败：%s" % e}, ensure_ascii=False))
-        sys.exit(2)
     try:
         text = _read_text(args.output_file)
     except Exception as e:
         print(json.dumps({"resultCode": "FILE_ERROR", "resultMsg": "输出草稿读取失败：%s" % e}, ensure_ascii=False))
         sys.exit(2)
-    plan = None
-    if args.plan_file:
+
+    if args.node == "all":
+        if not args.workdir or not args.req_id:
+            print(json.dumps({"resultCode": "PARAM_MISSING",
+                              "resultMsg": "--node all 需同时提供 --workdir 与 --req-id"},
+                             ensure_ascii=False))
+            sys.exit(2)
+        results = {}
+        # 环节工件命名：config 用 config_result_<req_id>.json（run_pipeline 唯一写入口），
+        # spec/fee/test 用 result_<node>_<req_id>.json
+        node_result_file = {
+            "config": "config_result_%s.json",
+            "spec": "result_spec_%s.json",
+            "fee": "result_fee_%s.json",
+            "test": "result_test_%s.json",
+        }
+        for n in ("config", "spec", "fee", "test"):
+            rp = os.path.join(args.workdir, node_result_file[n] % args.req_id)
+            try:
+                results[n] = _read_json(rp)
+            except Exception as e:
+                print(json.dumps({"resultCode": "FILE_ERROR",
+                                  "resultMsg": "出参工件读取失败（%s）：%s" % (rp, e)}, ensure_ascii=False))
+                sys.exit(2)
+        plan_path = os.path.join(args.workdir, "plan_json_%s.json" % args.req_id)
+        plan = None
         try:
-            plan = _read_json(args.plan_file)
+            plan = _read_json(plan_path)
         except Exception:
             plan = None  # plan 缺失时跳过 E26 深校验，仅做形态校验
-
-    check_header(args.node, text, errors, checklist)
-    check_plan_header(args.node, text, errors, checklist)
-    check_no_summary_table_when_failed(args.node, text, errors, checklist)
-    check_no_invented_stats(args.node, text, result, errors, checklist)
-    check_scene_rows(args.node, text, result, errors, checklist)
-    check_fee_rows(args.node, text, result, errors, checklist)
-    check_e26_mute(args.node, text, result, plan, errors, checklist)
+        # 公共/形态校验一次；各环节专属校验逐环节合并到同一全量文档上
+        check_header("all", text, errors, checklist)
+        check_plan_header("all", text, errors, checklist)
+        check_full_structure_all(text, errors, checklist)
+        check_no_summary_table_when_failed("all", text, errors, checklist)
+        for n in ("fee", "test"):
+            _run_node_checks(n, text, results.get(n), plan, errors, checklist)
+        # config/spec 无专属校验项，仅需存在有效标题头（已由 check_header 覆盖）
+        checklist.append("环节 config/spec 无专属校验项（标题头由 check_header 覆盖）")
+    else:
+        if not args.result_file:
+            print(json.dumps({"resultCode": "PARAM_MISSING",
+                              "resultMsg": "单环节模式需提供 --result-file"}, ensure_ascii=False))
+            sys.exit(2)
+        try:
+            result = _read_json(args.result_file)
+        except Exception as e:
+            print(json.dumps({"resultCode": "FILE_ERROR", "resultMsg": "出参工件读取失败：%s" % e}, ensure_ascii=False))
+            sys.exit(2)
+        plan = None
+        if args.plan_file:
+            try:
+                plan = _read_json(args.plan_file)
+            except Exception:
+                plan = None  # plan 缺失时跳过 E26 深校验，仅做形态校验
+        check_header(args.node, text, errors, checklist)
+        check_plan_header(args.node, text, errors, checklist)
+        check_no_summary_table_when_failed(args.node, text, errors, checklist)
+        _run_node_checks(args.node, text, result, plan, errors, checklist)
 
     if errors:
         print(json.dumps({"resultCode": "VALIDATE_FAIL", "checklist": checklist, "errors": errors},
