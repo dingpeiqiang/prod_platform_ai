@@ -1,19 +1,21 @@
 # 本体推理接入 CPCP 模板轨——设计（R2·对接 backend-app Java 推理平台）
 
-> 版本：R2（v1.0 草稿）
+> 版本：R2（V2.0 对齐标高）
 > 日期：2026-09-17
 > 范围：只出设计，不改代码
 > 决策前提（经评审确认）：
 > 1. **不新造本体、不自拍 TTL**——`backend-app` Java 工程已实装完整的 CPCP 本体推理平台（TTL 本体 + OWLAPI/Openllet/RDF4J 推理机 + SWRL + SHACL + explain/provenance 可见性），本设计是**对接与接线**。
 > 2. Java 推理能力优先接入 **flow-A 模板轨步骤⑤ merge_nested 之后 → 步骤⑥ 之前**新增确定性校验闸。
 > 3. 推理过程可见性**复用 Java 已有 `config/explain` + `config/provenance/{field}`**（PROV-O），不在 Python 侧重造。
+>
+> **V2.0 履历（工作流重塑）**：本设计核心功能**已被 V2.0 采用**——后端 **AppStoreV16Controller** 已新增 `POST /api/v1/appstore/validate-nested` 与 `POST /api/v1/appstore/explain` 两端点；`wf_sub_01` 模板轨已插入 `CODE_OP_VALIDATE_NESTED`（节点110）调用网关端点（网关 BASE_URL=http://10.86.13.201:31281，由 gen_workflows_v2.py 生成）。因此本设计由"建议新增端点 / 未实现 / 技能脚本调用"口径改为"**对接已被 V2.0 采用**"，路径对齐 `/api/v1/appstore/validate-nested` + `/api/v1/appstore/explain`；原 SKILL.md / `cpcp_api.py validate_nested` 子命令表述已删（确定性逻辑落为代码节点）；知识库迁至 `knowledge/`（原 `references/` 废弃）。
 
 ---
 
 ## 1. 背景与结论摘要
 
 ### 1.1 现状（实测核实，非假设）
-- CPCP 技能（`cpcp-product-worker`）V7.0 已切换模板轨：产物是 **6 个逻辑模型模板 schema 驱动的嵌套报文**（`merge_nested` 输出 `payload`）。
+- CPCP 技能（`cpcp-product-worker`）V7.0 已切换模板轨：产物是 **6 个逻辑模型模板 schema 驱动的嵌套报文**（`merge_nested` 输出 `payload`）。V2.0 起该模板轨由 `wf_sub_01` 代码节点承载（get_template 节点106 → validate_elements 节点108 → merge_nested 节点109 → validate_nested 节点110 → render_table 节点111）。
 - `backend-app` Java 工程**已具备** CPCP 产商品本体推理平台：
   - 本体：`src/main/resources/ontology/product-config.ttl`（v2.2，含 `ConfigScheme/PricingProduct/ChargePlan/PreferentialPlan/ResourceEntitlement/ComplianceRule` 等全套业务类与对象属性）。
   - 推理机：pom.xml 已声明 RDF4J（Sail+SHACL）、OWLAPI、Openllet。
@@ -27,21 +29,24 @@
 - 复用既有 TTL 本体 + Openllet/SWRL/SHACL，不重复造轮子；
 - 补上模板轨目前缺失的**嵌套跨字段一致性 / 合规 / 归一**判定维度（`validate_elements` 只做④提取质量门禁，`merge_nested` 只做骨架对位）。
 
+> **V2.0 采用落地**：上述校验闸已由后端 **AppStoreV16Controller** 的 `POST /api/v1/appstore/validate-nested` 实现，`wf_sub_01` 节点110 `CODE_OP_VALIDATE_NESTED` 直接调用该网关端点；可见性可解释项由 `POST /api/v1/appstore/explain` 承接。本设计的端点协议与 Python 工具表述为**已被实现**的前置依据，而非待新增项。
+
 ---
 
-## 2. 落点：flow-A 步骤⑤.5 新增「嵌套本体校验闸」
+## 2. 落点：flow-A 步骤⑤.5「嵌套本体校验闸」（V2.0 已采用落为 wf_sub_01 节点110）
 
-### 2.1 位置
+### 2.1 位置（wf_sub_01 模板轨）
 ```
-步骤④ 模板化提取 → validate_elements（质量闸）→ 步骤⑤ merge_nested（合并）→ 【步骤⑤.5 新增】
-    → 步骤⑥ render_table → 步骤⑦ flat24 派生 + 保存
+产品识别 → get_template 节点106 → 要素提取 → validate_elements 节点108（质量闸）
+  → merge_nested 节点109（合并）→ 【CODE_OP_VALIDATE_NESTED 节点110（①⑤.5 校验闸）】
+  → render_table 节点111 → ⑦ flat24 派生 + 保存
 ```
 
-### 2.2 新增 REST 端点（Java 侧，复用既有服务）
-建议在 `ProductOntologyController` 新增（或复用 `config/infer` + `config/compliance` 组合，二选一，见 §2.4）：
+### 2.2 已实现的网关端点（AppStoreV16Controller）
+V2.0 已定稿：校验闸由后端 **AppStoreV16Controller** 暴露 `POST /api/v1/appstore/validate-nested`（网关 BASE_URL=http://10.86.13.201:31281），本体一致性/合规/归一判定在此承载；可解释性由 `POST /api/v1/appstore/explain` 承接。历史设计曾提出在 `ProductOntologyController` 新增 `/api/v1/product-ontology/config/validate-nested`，该路径现由 `/api/v1/appstore/validate-nested` 对齐（对应 `config/infer` + `config/compliance` + `config/explain` 组合的聚合）。
 
 ```
-POST /api/v1/product-ontology/config/validate-nested
+POST /api/v1/appstore/validate-nested
 入参：{ template, payload, similar_offer }
   template     模板 id（personMainPrc/broadBandMainPrc/...）
   payload      merge_nested 出参 payload 本体（嵌套报文）
@@ -58,23 +63,20 @@ POST /api/v1/product-ontology/config/validate-nested
 3. `TemplateComplianceService.checkComplianceByTemplate(draft, graph)` → 模板合规 + 跨字段约束。
 4. 融合组：对成员 payload 重复 1-3，再走组级互斥/依赖/共享判定（对应旧 `group_check`）。
 
-### 2.3 Python 侧工具（`cpcp_api.py` 新增命令，复用 `_http`/`_unwrap`/`--xxx-file` 模式）
+### 2.3 代码节点拓扑（wf_sub_01 节点110 CODE_OP_VALIDATE_NESTED）
 ```
-python -X utf8 "scripts\cpcp_api.py" validate_nested \
-    --template <templateId> \
-    --payload-json-file <merge 出参 payload 工件> \
-    [--similar-offer-file <相似品报文>]
+CODE_OP_VALIDATE_NESTED（type=6 代码节点）
+  --template <templateId>
+  --payload-json-file <merge 节点109 出参 payload 工件>
+  [--similar-offer-file <相似品报文>]
+  内部调用网关 POST /api/v1/appstore/validate-nested
 ```
 - 出参 `violations` 非空且含 `severity=high` → 按 **E33** 中断引导（异常矩阵新增）。
-- `severity=warn` → 不阻断，随第⑥步输出放到【风险提示】小节。
-- `trace_id` 落盘工件，供 `explain_nested` 引用。
+- `severity=warn` → 不阻断，随 render_table 节点111 输出放到【风险提示】小节。
+- `trace_id` 落盘工件，供 `/api/v1/appstore/explain` 引用。
 
-### 2.4 可选：不新增端点，直接组合现有端点
-为最小改动，也可不新增 Java 端点，CPCP 侧依序调：
-1. `POST /config/infer`（slots+payload）→ 补全结果
-2. `POST /config/compliance`（draft=payload）→ 合规 violations
-3. `POST /config/explain`（trace_id）→ 可见性
-优点：零 Java 改动；缺点：两次调用、trace 链割裂。**推荐新增单一 `validate-nested` 端点**（聚合 + 一次出 trace_id），性价比更高。
+### 2.4 端点方案取舍（评审结论已定）
+历史设计曾评估"不新增端点，直接组合现有 `config/infer` + `config/compliance` + `config/explain`"以最小改动（优点零 Java 改动；缺点两次调用、trace 链割裂）。**评审已定：采用聚合单一 `validate-nested` 端点**（聚合 + 一次出 trace_id，性价比更高），V2.0 以 `/api/v1/appstore/validate-nested` 落地。
 
 ---
 
@@ -87,12 +89,7 @@ python -X utf8 "scripts\cpcp_api.py" validate_nested \
 
 ### 3.2 接线
 - `validate-nested` 出参 `trace_id` 落盘（随 `plan_json_v2` 工件，不入 render_table，纪律12）。
-- 需要向用户/业务解释时，CPCP 侧新增命令（复用 `_http`）：
-```
-python -X utf8 "scripts\cpcp_api.py" explain_nested \
-    --trace-id <trace_id> [--audience business|technical] [--field <路径>]
-```
-内部调 Java `POST /config/explain` + `GET /config/provenance/{field}`。出参**逐字引用不加工**（纪律1）。
+- 需要向用户/业务解释时，走网关 `POST /api/v1/appstore/explain`（按 `--audience business|technical`/`--field <路径>` 取数；内部对应 `config/explain` + `config/provenance/{field}`）。出参**逐字引用不加工**（纪律1）。
 
 ### 3.3 与现有纪律的边界
 | 纪律 | 影响 |

@@ -1,8 +1,15 @@
 # 产销品加载 AI 应用 · 融合商品（多成员）加载落地实现方案
 > 场景：安徽电信 CPCP 产销品域 · 数字员工 · 融合套餐 = 1 个主商品 + N 个成员商品
-> 版本：V1.0　日期：2026-09-16
+> 版本：V2.0　日期：2026-09-16（最新口径对齐 V2.0 工作流重塑）
 > 依据：《产销品加载AI应用-细化设计方案.md》V2.7、《产销品加载AI应用开发方案.md》V3.0、K4 存量融合品文档（900102306/900102307/900102313/900113046）、K2 叠加优惠约束说明 V1.0
 > 实现原则：**分组式 plan_json 最小侵入**——成员商品复用现有 24 字段注册表，单商品链路行为零变化（向后兼容）；接口路径/入出参契约零改动，仅出参内嵌 `offer_group` 扩展结构；模型只引用数据源、禁止自行推理成员关系（E26 同款纪律）。
+>
+> **V2.0 履历（工作流重塑）**：本方案功能已倒灌进 V2.0 工作流——
+> - 智能配置融合成员回显 → `wf_sub_02` `CODE_FUSION_GROUP_ECHO`（环节1 offer_id 回显融合成员清单）；
+> - 规格稽核新组维度 → `wf_sub_03`（error_list `group` 类目）；
+> - 资费校准按成员分组 → `wf_sub_05`（compare_list `member_role` 键）；
+> - 自动测试融合组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对 → `wf_sub_04` `CODE_MAP_FIXED_CASES`（31 条固定用例口径正确）。
+> - 确定性逻辑由 `skills/cpcp-product-worker` 技能包脚本内嵌为 `type=6` 代码节点（`CODE_*`）；知识库迁至 `knowledge/`（原 `references/`、`skills/` 废弃）。文档沿用 K4/K2/K3 数据源口径与 E26/E27、31 条固定用例、`seed_offer_groups` 既定设定。
 
 ---
 
@@ -17,32 +24,34 @@
 
 ---
 
-## 1. 总体结构（改动总览）
+## 1. 总体结构（改动总览 · V2.0 工作流）
 
 ```
-skills/cpcp-product-worker/
-  ├── SKILL.md                          # 改：目录导航/意图路由/纪律8~9 扩展组口径（V3.0）
-  ├── scripts/
-  │   ├── cpcp_api.py                   # 改：build_plan 组结构识别（V3.1）
-  │   ├── validate_output.py            # 改：融合输出校验（成员行/E26 组核对）
-  │   └── test_cpcp_api_local.py        # 改：新增融合分组断言 2 项（8→10 项）
-  └── references/
-      ├── ontology-fields.md            # 改：V4.0 组结构注册表（成员角色枚举 + group_rules）
-      ├── flow-A-requirement.md         # 改：步骤1 前置"商品拆分"、步骤3 组级合并、出口模板加成员行
-      ├── flow-B-execution.md           # 改：环节1/2/3/4 输出模板加成员维度；E26 扩展组核对
-      ├── flow-C-approval.md            # 改：看板"自动测试"行含成员组合验证结论
-      └── K2资费/ K3测试/               # 改：K2 补组级约束判定口径；K3 补融合场景编码
+场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/     # 12 个工作流 JSON（gen_workflows_v2.py 生成）
+  ├── wf_main_intent.json               # 总流程编排
+  ├── wf_sub_00 ~ wf_sub_10.json        # 各子流程
+  │   ├── wf_sub_02 CODE_FUSION_GROUP_ECHO   # 智能配置融合成员回显（环节1 offer_id 回显成员清单）
+  │   ├── wf_sub_03                       # 规格稽核组维度（error_list group 类目）
+  │   ├── wf_sub_04 CODE_MAP_FIXED_CASES  # 自动测试融合组场景 + E26 组核对（节点315，31 条固定用例）
+  │   └── wf_sub_05                       # 资费校准成员分组（compare_list member_role 键）
+  └── 确定性逻辑内嵌为 type=6 代码节点（CODE_*）：融合组种子/组级稽核/组场景编码等逻辑代码化
 
-后端模拟服务（新增/扩展）
-  ├── seed_offer_groups.json            # 新：融合组种子（4 组）
-  ├── /similar/offer/query              # 改：命中融合品时出参内嵌 offer_group
-  ├── /product/config/save              # 改：出参内嵌 group（主 offer_id + members[]）
-  ├── /audit/realtime                   # 改：组级稽核项（error_list 增 group 类目）
-  ├── /billing/rules/verify             # 改：compare_list 按成员分组（member_role 键）
-  └── /test/offer/*                     # 改：组场景编码 + 成员组合测点
+knowledge/                                # 知识库（原 references/、skills/ 废弃）
+  ├── ontology-fields.json                # 组件结构注册表（成员角色枚举 + group_rules，迁自 ontology-fields.md）
+  └── seed_offer_groups.json              # 融合组种子（4 组）
+
+后端适配端点
+  ├── POST /api/v1/appstore/ops/root-cause
+  ├── POST /api/v1/appstore/ops/work-orders
+  ├── POST /api/v1/appstore/shelf-compliance
+  ├── POST /api/v1/appstore/validate-nested
+  ├── POST /api/v1/appstore/explain
+  ├── POST /api/v1/appstore/report/download
+  └── POST /api/v1/appstore/script/download
+  （网关 BASE_URL=http://10.86.13.201:31281，AppStoreV16Controller 提供）
 ```
 
-**兼容性铁律**：入参不传组结构 = 单商品模式，行为与 V2.7 完全一致；所有新增字段均为"可缺席"（`offer_group`/`members[]`/`member_role` 缺失时按单商品回退），后端 mock 与脚本层零破坏升级。
+**兼容性铁律**：入参不传组结构 = 单商品模式，行为与 V2.7 完全一致；所有新增字段均为"可缺席"（`offer_group`/`members[]`/`member_role` 缺失时按单商品回退），后端与脚本层零破坏升级。
 
 ---
 
@@ -81,7 +90,7 @@ skills/cpcp-product-worker/
 
 ---
 
-## 3. 本体层：`ontology-fields.md` V4.0（组结构注册表）
+## 3. 本体层：`knowledge/ontology-fields.json`，组件结构注册表（原 `references/ontology-fields.md`，V4.0 组结构注册表已迁 knowledge/）
 
 ### 3.1 plan_json 组结构（V4.0）
 
@@ -123,77 +132,76 @@ skills/cpcp-product-worker/
 
 ---
 
-## 4. 脚本层：`cpcp_api.py` V3.1
+## 4. 工作流层：确定性逻辑落为 `type=6` 代码节点（原技能脚本 `cpcp_api.py` V3.1 / `validate_output.py` V1.1 已代码化）
 
-### 4.1 `build_plan` 组结构识别（零破坏）
+> 原技能包脚本（`build_plan` 组结构识别、`spec_audit` 组类目、`billing_verify` 成员分组、`map_fixed_cases` 组结论透出、`validate_output` 成员行/E26 组核对）均已内嵌为工作流 `type=6` 代码节点（`CODE_*`）。
+
+### 4.1 融合成员回显代码节点（`CODE_FUSION_GROUP_ECHO`，wf_sub_02）
 
 ```
-入参 fields_json：
-├─ 扁平 fields 数组（现口径）        → 单商品：行为与 V2.7 逐字节一致
-└─ 组结构 {offer_type, main_offer, member_offers}（新口径）
+入参 offer_group / plan_json 组结构：
+├─ 扁平 fields（单商品）           → 单商品：行为与 V2.7 一致
+└─ 组结构 {offer_type, main_offer, member_offers}
      → plan_md 增"商品"列（六列：商品/模块/分类/字段名称/字段值/备注）
      → 主商品行 role="主卡套餐" 加粗展示；成员分组展示，成员名独立成块
      → pending_fields 由 {role, field} 组成
      → req_id 生成规则不变（PLAN+14时间戳+3随机）
 ```
 
-### 4.2 其余子命令改动
+### 4.2 各子流程代码节点改动
 
-| 子命令 | 改动 |
+| 子流程/节点 | 改动 |
 | --- | --- |
-| `ontology_reason` | 识别组结构入参 → 逐成员推理 + 组级校验；出参新增 `group_violations[]`；`remark_excluded` 剔除逻辑按成员内生效 |
-| `spec_audit` | `config_json` 组结构原文透传（不变）；出参 `error_list[]` 新增 `group` 类目（item=`group:<role>`） |
-| `billing_verify` | 出参 `compare_list[]` 每项新增 `member_role` 键（单商品时缺省="主卡套餐"） |
-| `save_product_config` | 出参新增 `group`（main_offer_id/main_offer_id 对应 offer_id + members[]{role, offer_id, product_id}）；单商品时无 group 键 |
-| `test_result` | `testScenes[]` 组场景照列（见 §6）；`offer_group_check`（组一致性结果）出参透出 |
-| `map_fixed_cases` | 后端 `testCases[]` 优先透出不变；组维度结论由后端生成，脚本不自行聚合（纪律不变） |
+| wf_sub_02（融合成员回显） | 识别组结构入参 → 逐成员推理 + 组级校验；出参新增 `group_violations[]`；`remark_excluded` 剔除逻辑按成员内生效 |
+| wf_sub_03（规格稽核） | `config_json` 组结构原文透传（不变）；出参 `error_list[]` 新增 `group` 类目（item=`group:<role>`） |
+| wf_sub_05（资费校准） | 出参 `compare_list[]` 每项新增 `member_role` 键（单商品时缺省="主卡套餐"） |
+| wf_sub_04 `CODE_MAP_FIXED_CASES` | `testScenes[]` 组场景照列（见 §6）；`offer_group_check`（组一致性结果）出参透出；后端 `testCases[]` 优先透出不变；组维度结论由后端生成，节点不自行聚合（纪律不变） |
 
-### 4.3 `validate_output.py` V1.1
+### 4.3 输出校验（`validate_output` 逻辑代码化）
 
-- `check_scene_rows`：组场景名（套餐新装/副卡加装/套餐退订/**成员加装/成员退订**等出参实际返回）逐行核对；
-- `check_fee_rows`：按 `member_role` 分组核对行存在性与空值省略；E27 阈值改为**逐成员内**计算（防多成员稀释误判）；
-- `check_e26_mute`：扩展核对"主 offerName + 成员角色清单"与 plan_json 组结构一致；
-- 融合 plan_md 六列表头 `| 商品 | 模块 |` 纳入白名单。
+- 组场景名（套餐新装/副卡加装/套餐退订/**成员加装/成员退订**等出参实际返回）逐行核对；
+- 按 `member_role` 分组核对行存在性与空值省略；E27 阈值改为**逐成员内**计算（防多成员稀释误判）；
+- E26 组核对扩展：核对"主 offerName + 成员角色清单"与 plan_json 组结构一致；
+- 融合 plan_md 六列表头 `| 商品 | 模块 |` 纳入校验白名单。
 
-### 4.4 本地自测 `test_cpcp_api_local.py`（8→10 项）
+### 4.4 回归验证
 
-新增断言：
-1. **#9 组结构 build_plan**：组结构入参 → 六列表格 + pending_fields 携带 role + 主成员加粗；
-2. **#10 单商品回归**：扁平入参 → 输出与 V2.7 逐字段一致（防回归）。
+- 融合组场景断言（组结构入参 → 六列表格 + pending_fields 携带 role + 主成员加粗）；
+- 单商品回归：扁平入参 → 输出与 V2.7 逐字段一致（防回归）。
 
 ---
 
-## 5. 流程层：flow-A/B/C/D 改动点
+## 5. 流程层：融合口径接入 V2.0 工作流（原 flow-A/B/C/D 文档故有改动点）
 
-### 5.1 程序A（`flow-A-requirement.md`）
-
-| 步骤 | 改动 |
-| --- | --- |
-| 步骤0（新增，并入步骤1 首动作） | **商品拆分**：需求原文识别成员商品（宽带/高清/副卡/权益包关键词同义词表）；未明确成员 → 按相似融合品 offer_group 补全（source=AI补全）；拆分结果内嵌于 elements 组结构 |
-| 步骤2 | `similar_offer` 出参含 `offer_group` → 直接作为成员补全与组规则来源（禁止模型重推）；未命中融合组 → 按 E1 中断询问（口径不变） |
-| 步骤3 | 同构合并逐**成员**执行（主+N 成员各自对齐 offerInfo/offer_group），价格字段禁止跨成员照搬 |
-| 步骤4 | 两轮推理：逐成员 reason → 组级校验；`group_violations` 非空时与 violations 同流程处置（仅名称类不中断，其余中断引导） |
-| 步骤6 | pending_fields 判定按成员独立；任一成员有待补充 → 出口A（不保存不产 req_id） |
-| 步骤8 | 出口A/B 文案增加"融合成员构成"行（主+N 成员名清单）；出口B 表格为六列 |
-
-### 5.2 程序B（`flow-B-execution.md`）
+### 5.1 需求分析轨（原程序A，`wf_sub_01` 模板轨）
 
 | 环节 | 改动 |
 | --- | --- |
-| 环节1 | 出参 `group`（主 offer_id + members[]）随 offer_id 显性回显纪律同步展示：模板新增"融合成员：宽带（offer_id xxx）/天翼高清（xxx）/副卡功能费（xxx）"行，逐字引用出参，禁止省略成员行；**组内任一成员 PARTIAL → 整体按 PARTIAL 口径处置（失败分类明细含成员定位）** |
-| 环节2 | 稽核对象行增加"组维度：主 offer_id + N 成员"；error_list 含 group 类目 → 对应成员行标 ❌ 并附明细；七项检查项结构不变 |
-| 环节3 | 比对表按成员分组输出（组间空行分隔或独立小表），行数=Σ各成员有值行；空值行省略规则与 E27 判定**逐成员内**计算；8 项比对项目名不变 |
-| 环节4 | 场景表输出组场景（出参实际返回为准）；受理验证小节新增"成员组合验证"小节（数据源=出参 offer_group_check，逐字引用）；E26 预校验扩展为组核对（主 offerName 一致 + 出参成员角色与 plan_json member_offers 角色集合一致；不一致 → E26 中断，铁律不变：禁止输出任何通过性明细） |
+| 商品拆分（产品识别） | 需求原文识别成员商品（宽带/高清/副卡/权益包关键词同义词表）；未明确成员 → 按相似融合品 offer_group 补全（source=AI补全）；拆分结果内嵌于 elements 组结构 |
+| 相似查询 | `similar_offer` 出参含 `offer_group` → 直接作为成员补全与组规则来源（禁止模型重推）；未命中融合组 → 按 E1 中断询问（口径不变） |
+| 合并（merge 节点） | 同构合并逐**成员**执行（主+N 成员各自对齐 offerInfo/offer_group），价格字段禁止跨成员照搬 |
+| validate_nested 本体闸 | 两轮推理：逐成员 reason → 组级校验；`group_violations` 非空时与 violations 同流程处置（仅名称类不中断，其余中断引导） |
+| 待补充判定 | pending_fields 判定按成员独立；任一成员有待补充 → 出口A（不保存不产 req_id） |
+| 出口 | 出口A/B 文案增加"融合成员构成"行（主+N 成员名清单）；出口B 表格为六列 |
+
+### 5.2 执行轨（原程序B，`wf_sub_02` 融合成员回显 + `wf_sub_03` 规格稽核 + `wf_sub_05` 资费校准）
+
+| 环节 | 改动 |
+| --- | --- |
+| 智能配置（wf_sub_02 CODE_FUSION_GROUP_ECHO） | 出参 `group`（主 offer_id + members[]）随 offer_id 显性回显纪律同步展示：模板新增"融合成员：宽带（offer_id xxx）/天翼高清（xxx）/副卡功能费（xxx）"行，逐字引用出参，禁止省略成员行；**组内任一成员 PARTIAL → 整体按 PARTIAL 口径处置（失败分类明细含成员定位）** |
+| 规格稽核（wf_sub_03） | 稽核对象行增加"组维度：主 offer_id + N 成员"；error_list 含 group 类目 → 对应成员行标 ❌ 并附明细；七项检查项结构不变 |
+| 资费校准（wf_sub_05） | 比对表按成员分组输出（组间空行分隔或独立小表），行数=Σ各成员有值行；空值行省略规则与 E27 判定**逐成员内**计算；8 项比对项目名不变 |
+| 自动测试（wf_sub_04 CODE_MAP_FIXED_CASES） | 场景表输出组场景（出参实际返回为准）；受理验证新增"成员组合验证"（数据源=出参 offer_group_check，逐字引用）；E26 预校验扩展为组核对（主 offerName 一致 + 出参成员角色与 plan_json member_offers 角色集合一致；不一致 → E26 中断于 wf_sub_04 节点 315，铁律不变：禁止输出任何通过性明细） |
 | 汇总块 | 关键数据列增加"融合成员 N 个全部成功/部分失败"；其余结构不变 |
 
-### 5.3 程序C/D
+### 5.3 审批/监控轨
 
-- flow-C 看板"自动测试（三大验证）"行结论引用含成员组合验证结果；报告归档口径不变（正式版 9 章节模板增加成员构成基础信息项）；
-- flow-D：D-2 监控 `product_id` 可传主 offer_id（组维度指标）或成员 offer_id（成员维度），前置检查不强制区分（出参为准）；D-3 方案模板不变。
+- 审批轨（原 flow-C）：看板"自动测试（三大验证）"行结论引用含成员组合验证结果；报告归档口径不变（正式版 9 章节模板增加成员构成基础信息项）；
+- 监控轨（原 flow-D)：D-2 监控 `product_id` 可传主 offer_id（组维度指标）或成员 offer_id（成员维度），前置检查不强制区分（出参为准）；D-3 方案模板不变。
 
 ---
 
-## 6. 测试规范层：K3 增补（V2.1 增补版）
+## 6. 自动测试规范：融合组场景（原 K3 增补，V2.1 增补版 → 落 wf_sub_04 `CODE_MAP_FIXED_CASES`）
 
 ### 6.1 组场景编码（新增 2 个，与现有 3 个并存）
 
@@ -207,29 +215,34 @@ skills/cpcp-product-worker/
 
 ### 6.2 固定用例映射（31 条不变，组级结论由后端出参）
 
-- 31 条固定用例清单**不增删**（判定依据出参映射表在组场景下自然覆盖：如 ACC-004 引用 S_O_TC 场景不变）；
-- 组维度通过性：后端按组场景结果生成 `overallConclusion`，脚本/模型只透出，禁止聚合改判；
+- 31 条固定用例清单**不增删**（判定依据出参映射表在组场景下自然覆盖：如 ACC-004 引用 S_O_TC 场景不变）；31 条口径由 `wf_sub_04 CODE_MAP_FIXED_CASES` 承载并核对正确；
+- 组维度通过性：后端按组场景结果生成 `overallConclusion`，代码节点/模型只透出，禁止聚合改判；
 - 受理凭证核验扩展：主订单 orderId/offerInstId + 成员实例清单（offer_group_check.members[].inst_id）。
 
 ---
 
-## 7. 后端模拟服务改造清单（✅ 已全部完成并通过 F1~F8 联调验证 24/24 PASS）
+## 7. 后端适配端点（AppStoreV16Controller · 网关 BASE_URL=http://10.86.13.201:31281）
 
-| # | 路由 | 改动 | 兼容策略 | 状态 |
-| --- | --- | --- | --- | --- |
-| 1 | `/similar/offer/query` | 命中融合品（组定义内 offer_id 或相似描述）时出参内嵌 `offer_group`；**仅主推荐（第 1 位）命中融合组才下发**，副推荐命中不影响单品模式 | 单品命中时无 offer_group 键 | ✅ |
-| 2 | `/product/config/save` | 识别组结构 plan_json → 生成主 offer_id + 成员 offer_id 列表；`group` 出参；主 offer_id 顶层溯源键缺席时回退取 `main_offer.offer_id`；SQL 模板按成员循环展开 | 单品入参行为不变 | ✅ |
-| 3 | `/audit/realtime` | 组结构 config_json → 组级检查项（互斥/依赖/共享/退订联动），error_list item=`group:<role>`；**pass/驳回话术仅按 error 级判定，warning（OPTIONAL_DEPEND）不阻断** | 单品无组检查 | ✅ |
-| 4 | `/billing/rules/verify` | compare_list 逐成员生成（member_role 键）；组级叠加校验入 risk_list | 单品 member_role 缺省 | ✅ |
-| 5 | `/test/offer/start|scenes|progress|result` | 融合品发起 → 场景含组场景；result 增 offer_group_check | 单品不变 | ✅ |
-| 6 | 种子数据 | `seed_offer_groups.json`（4 组）+ preset 扩展 | 现有 18 品种子不动 | ✅ |
+融合加载相关能力经 V2.0 后端统一适配端点暴露于 `/api/v1/appstore/*`：
+
+| 端点 | 融合组相关语义 |
+| --- | --- |
+| `POST /api/v1/appstore/ops/root-cause` | 组合故障/失败根因定位（根因审计） |
+| `POST /api/v1/appstore/ops/work-orders` | 操作工单（融合配置落地执行） |
+| `POST /api/v1/appstore/shelf-compliance` | 货架/合规类判定 |
+| `POST /api/v1/appstore/validate-nested` | 嵌套校验（组级一致性，见本体推理接入方案） |
+| `POST /api/v1/appstore/explain` | 可解释性/溯源（offer_group_check 结论解释） |
+| `POST /api/v1/appstore/report/download` | 报告下载 |
+| `POST /api/v1/appstore/script/download` | 脚本下载 |
+
+融合组成员构成以 `seed_offer_groups.json`（knowledge/）种子为准，**仅主推荐命中融合组才下发 offer_group**，副推荐命中不影响单品模式；单品入参行为不变。
 
 ---
 
-## 8. SKILL.md / 知识库同步
+## 8. 知识库同步（原 SKILL.md / 知识库 → knowledge/）
 
-- SKILL.md：纪律1 判定字段补充"组场景"（offer_group_check）；纪律8 offer_id 回显扩展为"主 offer_id + 成员清单"；纪律9（新增）**成员关系纪律：成员构成以 offer_group/plan_json 组结构为准，禁止模型增删成员或自行推理组规则**；
-- K2：补"组级约束判定口径"小节（互斥/依赖/共享/退订联动的校验动作与告警级别映射，引用现有第 3 节级别表）；
+- `${GLOBAL}knowledge/ontology-fields.json`：纪律1 判定字段补充"组场景"（offer_group_check）；纪律8 offer_id 回显扩展为"主 offer_id + 成员清单"；**成员关系纪律：成员构成以 offer_group/plan_json 组结构为准，禁止模型增删成员或自行推理组规则**（码入 wf_sub_02 CODE_FUSION_GROUP_ECHO）；
+- `${GLOBAL}knowledge/`：K2 补"组级约束判定口径"小节（互斥/依赖/共享/退订联动的校验动作与告警级别映射，引用现有第 3 节级别表）；
 - K4：不新增文档（融合成员字段参照=各成员对应 K4 单文件 + seed preset）；
 - K5：Q11（副卡）答案补一句组结构口径；新增 Q14"融合套餐需求怎么提报"。
 
@@ -254,10 +267,10 @@ skills/cpcp-product-worker/
 
 | 阶段 | 内容 | 交付物 | 估量 |
 | --- | --- | --- | --- |
-| ① 数据 | K4 融合品抽取种子 | seed_offer_groups.json | 0.5d |
-| ② 后端 mock | 7 项接口组扩展 | 模拟服务 V2.0 | 2d |
-| ③ 脚本 | build_plan/ontology/validate 组逻辑 + 本地自测 10 项 | cpcp_api.py V3.1 | 1.5d |
-| ④ 文档 | ontology-fields V4.0 / flow-A/B/C/D / SKILL.md / K2/K3/K5 | 技能包 V3.0 | 2d |
+| ① 数据 | K4 融合品抽取种子 | knowledge/seed_offer_groups.json | 0.5d |
+| ② 工作流 | 融合组逻辑落为 wf_sub_02/03/04/05 `type=6` 代码节点（gen_workflows_v2.py） | 智能体工作流集V1.6 | 2d |
+| ③ 后端适配 | AppStoreV16Controller 融合相关端点适配 | /api/v1/appstore/* | 1.5d |
+| ④ 知识库 | ontology-fields.json 组结构注册表 + K2/K3/K5 组口径 | knowledge/ | 1d |
 | ⑤ 联调 | F1~F8 用例 + 单商品回归 + 演示剧本融合幕更新 | 验收报告 | 1d |
 
-**总估量约 7 人日**。风险点：① K4 融合品描述非结构化，抽取需人工核对资费值逐字一致；② E26 组核对依赖后端 offer_group_check 出参质量（先出①再联调⑤）；③ 六列表格与现有 validate 白名单需同步，防校验误报。
+**总估量约 6~7 人日**。风险点：① K4 融合品描述非结构化，抽取需人工核对资费值逐字一致；② E26 组核对（wf_sub_04 节点 315）依赖后端 offer_group_check 出参质量（先出①再联调⑤）；③ 六列表格与既有 validate 白名单需同步，防校验误报。
