@@ -67,14 +67,17 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 
 **当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。
 
-**单品运营可视化：** 经 `xsbot-panel` 外链加载外部运营页（`mode:"external"`，右侧面板），URL：`http://10.86.13.201:31280/ops-web/product-detail.html?product_id={{product_id}}&chatId={{chat_id}}&name={{套餐名称}}`
+**单品运营可视化：** 经 `xsbot-panel` 外链片段（输出结果必须是 JSON，且以 ` ```xsbot-panel ` 代码围栏包裹）加载外部运营页（`mode:"external"`，右侧面板）：
+```xsbot-panel
+{"version":"1.0","message_id":"{{chat_id}}","panels":[{"panel":"right","mode":"external","url":"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={{chat_id}}","title":"实名激活"}]}
+```
 
 {{套餐名称}}已成功上线，运营视图已开启。
 
 > **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）
 ```
    - 监控运维方案为固定模板（阈值/推送时间为平台标准口径），禁止自行改写阈值；
-   - 该可视化面板与 D-2 第5步同一 `xsbot-panel` 外链结构（`mode:"external"`、`panel:"right"`，URL 用 `http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&chatId={chat_id}&name={offer_name}`，`name` 取 `dispatcher.py` 出参 `entities.offer_name`，缺失省略），禁止省略面板、禁止用纯文本/纯 URL/纯表格拼凑替代表单渲染、禁止手写页面 HTML/图表载荷、禁止内联监控数据；
+   - 该可视化面板与 D-2 第5步同一 `xsbot-panel` 外链结构（输出结果必须是 JSON，且以 ` ```xsbot-panel ` 代码围栏包裹：`{"version":"1.0","message_id":"{chat_id}","panels":[{"panel":"right","mode":"external","url":"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={chat_id}","title":"实名激活"}]}`），禁止省略面板、禁止用纯文本/纯 URL/纯表格拼凑替代表单渲染、禁止手写页面 HTML/图表载荷、禁止内联监控数据；
    - 用户后续发送"查询监控" → 转支线D-2 执行真实监控查询与异常告警。
 - 模拟服务行为说明：审批提交 10s 后查询即自动流转为"通过"，不会一直停留在"审批中"。
 
@@ -119,12 +122,15 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 - 告警列表：{{alarm_list 摘要，为空显示"无"}}
 {{异常时附加：已推送告警，告警单号 {{alert_id}}}}
 ```
-5. **输出单品运营可视化（xsbot-panel 外链，禁止纯文本/纯表格拼凑）**：文本摘要之后在同一回复中**输出 `xsbot-panel` 外链面板**，由前端右面板以 `mode:"external"` 加载外部运营看板 URL（前端 `panel:"right"`），LLM **禁止手写页面 HTML/图表载荷、禁止用纯文本/纯 URL/纯表格拼凑替代表单渲染**：
+5. **输出单品运营可视化（xsbot-panel 外链，输出结果必须是 JSON，禁止纯文本/纯表格拼凑）**：文本摘要之后在同一回复中**以 `xsbot-panel` 代码围栏输出 JSON 外链片段**，由前端右面板以 `mode:"external"` 加载外部运营看板 URL（前端 `panel:"right"`），LLM **禁止手写页面 HTML/图表载荷、禁止用纯文本/纯 URL/纯表格拼凑替代表单渲染**：
 
-`xsbot-panel` 外链——按本片段构造（`version/message_id/panels[{panel,mode,url,title}]`），`message_id` 用会话 `chat_id`，`url` 用运营看板基址拼接 `product_id`、`chatId` 与可选 `name`（取 `dispatcher.py` 出参 `entities.offer_name`，缺失省略）：
+`xsbot-panel` 外链 JSON——**整段逐字输出以下结构**（`version/message_id/panels[{panel,mode,url,title}]`），`message_id` 用会话 `chat_id`：
 ```text
+```xsbot-panel
+{"version":"1.0","message_id":"{chat_id}","panels":[{"panel":"right","mode":"external","url":"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={chat_id}","title":"实名激活"}]}
 ```
-   - **必须经 xsbot-panel 外链渲染**，禁止仅输出纯 URL/纯文本/表格拼凑；`product_id` 取 `dispatcher.py` 出参 `entities.product_id`、`chat_id` 取会话消息 ID（会话未出现过时不允许臆造为 0/占位）、`name` 取 `dispatcher.py` 出参 `entities.offer_name`（缺失省略），外部页面渲染完全由前端完成，LLM 禁止手写页面 HTML/图表载荷；
+```
+   - **xsbot-panel 输出结果必须是 JSON，且必须用 ` ```xsbot-panel ` 代码围栏包裹**（上述片段），禁止仅输出纯 URL/纯文本/表格拼凑、禁止改写成非 JSON 结构；`message_id` 与 `url` 中 `chatId` 均取会话消息 ID（会话未出现过时不允许臆造为 0/占位），`busiId` 固定为 `SHI_MING_JI_HUO`、`title` 固定为「实名激活」、`panel` 固定 `right`、`mode` 固定 `external`，外部页面渲染完全由前端完成，LLM 只负责将 `{chat_id}` 替换为会话消息 ID，禁止手写页面 HTML/图表载荷；
    - 数据契约：外部运营页所需数据来自 `query_monitor` 出参（offer_name/order_count/order_trend/error_count/error_trend/fee_error_rate/fee_trend/alarm_list），由前端页面自行拉取渲染，LLM 只负责拼外链 URL，不内联监控数据；
    - **环节9 收尾固定块（V11.0 强制，SKILL.md 纪律5.1）**：可视化面板之后（**整条回复的最后一个内容块**）必须输出下一步建议块，禁止以摘要或面板收尾：
      - 正常（error_count==0 且 fee_error_rate≤0.1）：
