@@ -110,7 +110,9 @@
 | 3 | 代码节点·校验/提取 | CODE_VALIDATE_ELEMENTS（字段要素校验）、CODE_EXTRACT_RECORD（取 list[0].result_json，空报 E5）；对应原 extract_record | ✅ 已内嵌 |
 | 4 | 代码节点·轮询/汇总 | CODE_POLL_PROGRESS（测试进度轮询，对应原 poll_test_progress）、CODE_APPROVAL_POLL（审批轮询）、CODE_SUMMARY_APPROVAL（审批汇总）、CODE_FUSION_GROUP_ECHO（融合/单品分组回显） | ✅ 已内嵌 |
 | 5 | 代码节点·运维/下载（OP_*） | CODE_OP_ROOT_CAUSE（根因分析）、CODE_OP_CREATE_WO（工单创建）、CODE_OP_SHELF_COMPLIANCE（上架合规）、CODE_OP_QUERY_OFFER（产品查询）、CODE_OP_VALIDATE_NESTED（嵌套校验）、CODE_DOWNLOAD_TEST_REPORT（测试报告下载）、CODE_DOWNLOAD_LAUNCH_SCRIPT（上线脚本下载） | ✅ 已内嵌 |
-| 6 | 网关联调 | 网关 BASE_URL 代理至后端 6174 确认；11 个子工作流内代码节点调用 7 个新增适配端点与 14 条既有路由逐一连通 | ⏳ 待后端重启与联调 |
+| 6 | 网关联调 | 网关 BASE_URL 代理至后端 6174 确认；11 个子工作流内代码节点调用 7 个新增适配端点与 14 条既有路由逐一连通 | ✅ 主链路已连通（2026-09-19 实跑验证，见下方注） |
+
+> **2026-09-19 真实执行验证**：以 `wf_runner.py`（strict 模式，真实 LLM + 真实网关端点）从「需求提报」串行跑通 8 个子工作流（需求提报→需求分析→智能配置→规格稽核→自动测试→资费校准→上线审批→监控运维），**零回退零错误**。实测确认以下端点已 **live 生效**：`result/save`、`result/query`、`audit/realtime`、`product/config/save`、`billing/rules/verify`、`test/offer/start`、`test/offer/result`、`approval/submit`、`product/monitor`、`similar/offer/query`。实测实体 ID：`req_id=PLAN20260919182810908`、`req 审批单=AP202609191828100018`、`offer_id=982810908`、`测试 globalId=50202609191828404195108786`、`上线审批单=AP202609191829100019`（通过）。仍为**占位/回退**的端点：配置/上线脚本下载（`backend_pending=1`）；`test/offer/scenes` 本轮未调用，受理验证凭证为空。逐节点 I/O 日志见 `工作流配置/wf_runner/logs/*.log.md`。整改差异点见《产销品加载AI应用-端到端演示剧本.md》1.5.4。
 
 ---
 
@@ -131,8 +133,13 @@
 ## 1.5 开发自测 Checklist（V2.0 工作流重塑版）
 
 - [ ] 14 条既有路由 + 7 条新增适配端点单元/契约测试通过（curl/Postman/JUnit，参照《产销品加载AI应用-接口说明书.md》5 节方法）
+- [x] **端到端真跑连通性（2026-09-19）**：8 子工作流串行实跑零回退零错误；主链路端点（result/save、result/query、audit/realtime、product/config/save、billing/rules/verify、test/offer/start、test/offer/result、approval/submit、product/monitor、similar/offer/query）已 live
 - [ ] 后端 7 个新增适配端点已编译通过、git 提交（commit ee6f5a8）确认
 - [ ] **后端重新部署完成，端口 6174 生效**；网关 BASE_URL=http://10.86.13.201:31281/api/v1/appstore/* 确认代理到 6174
+- [ ] `test/offer/scenes` 连调补齐：受理场景（S_O_TC/S_ADD_CARD/S_U_TC）实际执行并返回 orderId/offerInstId（本轮为空，见剧本 1.5.4 差异点 3）
+- [ ] wf_runner 串行顺序整改：恢复"资费校准先于自动测试"，或 wf_sub_04 对 fee 结果缺失做显式容错（本轮顺序 04→05 导致受理类场景未覆盖，整体结论退化为「⚠️ 评估风险后上线」）
+- [ ] 渠道映射整改：需求「APP 渠道可办理」显性落地（本轮渠道来源标注"模型推测"，未显式含 APP，见剧本 1.5.4 差异点 1）
+- [ ] 配置/上线脚本下载端点连通（本轮 `backend_pending=1` 回退占位）
 - [ ] 18 销售品一致性自测全绿（任一套餐返回结构化结果、资费规则值一致、无写死单一样例回退）
 - [ ] presetValue 抽查：900102308（5G-A）与 900117022（权益随心选）两类套餐与《产品信息.txt》逐项一致
 - [ ] 未收录销售品 ID 输入：接口 4 返回 4001，接口 1 返回空列表或明确降级提示，不返回伪造数据
