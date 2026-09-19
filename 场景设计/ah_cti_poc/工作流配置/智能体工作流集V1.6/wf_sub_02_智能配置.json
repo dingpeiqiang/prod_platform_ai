@@ -159,13 +159,6 @@
       {
         "outputs": [
           {
-            "name": "product_id",
-            "cname": "CRM产品ID",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "offer_id",
             "cname": "销售品ID",
             "sechema": [],
@@ -188,7 +181,14 @@
           },
           {
             "name": "product_config",
-            "cname": "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文及可选group）",
+            "cname": "完整落地配置JSON（含offer_id/offer_name等与plan_json原文及可选group）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "script_url",
+            "cname": "配置脚本下载地址（后端生成，GET即返回可执行脚本）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -422,7 +422,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}"
+          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"
         },
         "settings": {
           "stream": false,
@@ -431,20 +431,6 @@
         "terminatePlan": "useAnswerContent",
         "flowJson": null,
         "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
-            "relName": "product_id",
-            "name": "product_id",
-            "description": "CRM产品ID",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,product_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_id"
-          },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
             "relName": "offer_id",
@@ -514,6 +500,20 @@
               "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "script_url",
+            "name": "script_url",
+            "description": "配置脚本下载地址（节点103出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,script_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,script_url"
           }
         ],
         "checkErr": false,

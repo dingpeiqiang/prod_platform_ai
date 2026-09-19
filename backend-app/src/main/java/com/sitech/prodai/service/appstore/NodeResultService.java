@@ -265,7 +265,7 @@ public class NodeResultService {
         return "REC" + LocalDateTime.now().format(DATE) + String.format("%06d", seqRecord.incrementAndGet());
     }
 
-    /** 统一成功响应：{code:0, msg:"success", ...业务字段}，与 AppMockStore 契约一致 */
+    /** 统一成功响应：{code:0, msg:"success", ...业务字段}，与节点执行结果契约一致 */
     private static Map<String, Object> ok(String key, Object value) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", 0);

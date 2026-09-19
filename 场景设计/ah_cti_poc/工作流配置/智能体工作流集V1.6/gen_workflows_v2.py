@@ -460,7 +460,7 @@ s00.append(plugin_node(5, "保存需求工单", "save_node_result",
 s00.append(plugin_node(6, "需求工单审批", "submit_release_approval",
     "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）；req_id=需求单号，report_url=需求提报单文本；插件层按 approval-type 路由双轨门禁",
     BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("product_id", "产品ID（需求阶段未落地，传需求单号 req_id 占位）", ref_block=nid(3), ref_rel="req_id"),
+    [inp("offer_id", "销售品ID（需求阶段未落地，传需求单号 req_id 占位）", ref_block=nid(3), ref_rel="req_id"),
      inp("report_url", "需求提报单（代码节点渲染 report_text）", ref_block=nid(3), ref_rel="report_text"),
      inp("req_id", "需求单号（=代码节点生成 req_id）", ref_block=nid(3), ref_rel="req_id"),
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
@@ -883,7 +883,7 @@ CODE_EXTRACT_MERGE = (
     "                            if prop.get('x-required') and not _is_non_extractable(p)]\n"
     "    hit = [p for p in extractable_required if p in valid_paths]\n"
     "    rate = (len(hit) / len(extractable_required)) if extractable_required else 1.0\n"
-    "    gate = 'PASS' if rate >= threshold else 'FAIL'\n"
+    "    gate = '通过' if rate >= threshold else '不通过'\n"
     "    pmf = _to_number(valid_paths.get('optionalInfo.printContent.prcMonthFee', (None,))[0]) \\\n"
     "        if 'optionalInfo.printContent.prcMonthFee' in valid_paths else None\n"
     "    ff = _to_number(valid_paths.get('optionalInfo.acctMonth.fixFee', (None,))[0]) \\\n"
@@ -893,17 +893,11 @@ CODE_EXTRACT_MERGE = (
     "                                      'optionalInfo.acctMonth.fixFee'],\n"
     "                            'values': [pmf, ff],\n"
     "                            'note': '套餐月费与固定费不一致，请人工确认（不阻断）'})\n"
-    "    ve_result = 'FAIL' if gate == 'FAIL' else ('PASS_WITH_WARNINGS' if removed else 'PASS')\n"
-    "    ve_stats = json.dumps({\n"
-    "        'extracted_total': len(flat),\n"
-    "        'valid_total': len(valid_paths),\n"
-    "        'removed_total': len(removed),\n"
-    "        'required_total': sum(1 for x in leaves.values() if x.get('x-required')),\n"
-    "        'extractable_required_total': len(extractable_required),\n"
-    "        'extractable_required_hit': len(hit),\n"
-    "        'extractable_hit_rate': round(rate, 4),\n"
-    "        'threshold': threshold,\n"
-    "    }, ensure_ascii=False)\n"
+    "    ve_result = '不通过' if gate == '不通过' else ('通过（含提示）' if removed else '通过')\n"
+    "    ve_stats = '提取字段总数 %d，有效 %d，无效剔除 %d；必填字段 %d（可提取 %d，命中 %d，可提取命中率 %.1f%%）；门禁阈值 %.2f' % (\n"
+    "        len(flat), len(valid_paths), len(removed),\n"
+    "        sum(1 for x in leaves.values() if x.get('x-required')),\n"
+    "        len(extractable_required), len(hit), rate * 100.0, threshold)\n"
     "    # ② 报文合并（merge_nested：schema 骨架 + 需求要素优先 + 相似品补全 + 同源派生）\n"
     "    offer = unwrap_offer(_load(p.get('offer_json') or ''))\n"
     "    template_id = schema.get('x-template', '')\n"
@@ -982,7 +976,7 @@ s01.append(llm_node(107, "配置要素提取",
     "【硬性约束】输出 JSON 的 key 必须**逐字复制模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources/effective_way/out_price 等一律禁止），**严禁**改写成中文键；对位靠 x-label 语义理解，但落键必须是 schema 英文键。\n"
     "步骤：①读 schema 的顶层容器（baseInfo/releaseInfo/optionalInfo 等）与其下各级 properties；②逐个叶子，取其 x-label 语义，在需求原文中查找对应信息（含同义改写，如「套餐名称/资费名称」→prodPrcName、「月费/199元」→套餐月费相关叶子、「包含资源/流量通话」→containResource）；③命中则写入该叶子路径，值为需求原文表述；未命中则不输出该键。\n"
     "示例（仅示键路径与嵌套，非值）：需求「5G-A套餐199元，含120GB流量」→ {\"baseInfo\":{\"prodPrcName\":\"5G-A套餐\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199元\",\"containResource\":\"120GB流量\"}}}。\n"
-    "禁止臆造值；价格类字段只取需求原文，不得照搬相似产品。\n"
+    "禁止臆造值；价格类字段只取需求原文，不得照搬相似产品；值一律沿用需求原文中文表述，单位禁止中英混写（如「0.15 元/分钟」不得写成「0.15 元/minute」）。\n"
     "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素 JSON 的**字符串**（形如 {\"elements_json\":\"{\\\"baseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json"),
      inp("schema_json", "引用节点106模板 schema", ref_block=nid(106), ref_rel="schema_json")],
@@ -1133,9 +1127,10 @@ s2f.append(plugin_node(103, "配置落地", "save_product_config",
      inp("plan_json", "执行方案JSON原文（节点106提取的 result_json）", ref_block=nid(106), ref_rel="record_json"),
      inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
-    [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
+    [("offer_id", "销售品ID", "string"),
      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
-     ("product_config", "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文及可选group）", "string")]))
+     ("product_config", "完整落地配置JSON（含offer_id/offer_name等与plan_json原文及可选group）", "string"),
+     ("script_url", "配置脚本下载地址（后端生成，GET即返回可执行脚本）", "string")]))
 # 融合成员回显代码节点（V4.0 新增）：出参含 group 时生成融合成员行；无 group 路径零变化
 s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
     [inp("group_json", "落地配置JSON（节点103出参 product_config，含可选 group）", ref_block=nid(103), ref_rel="product_config"),
@@ -1151,13 +1146,14 @@ s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")], pos=(1060, 135)))
 s2f.append(end_node(104, "结束(配置落地完成)",
-    [inp("product_id", "CRM产品ID", ref_block=nid(103), ref_rel="product_id"),
-     inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
      inp("save_result", "四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status"),
      inp("fusion_echo", "融合成员回显（V4.0，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo"),
-     inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note")],
-    "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}"))
+     inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note"),
+     inp("script_url", "配置脚本下载地址（节点103出参）", ref_block=nid(103), ref_rel="script_url")],
+    "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}\n"
+    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
     [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,105), edge(105,104)])
@@ -1172,7 +1168,7 @@ s3f.append(start_node(201, [
     inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s3f.append(plugin_node(206, "读取配置环节结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 product_id/offer_id 及可选 group）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id 及可选 group）",
     BASE_URL + "/api/v1/appstore/result/query",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
@@ -1531,39 +1527,44 @@ CODE_MAP_FIXED_CASES = (
 )
 
 # ---------------- CODE_DOWNLOAD_TEST_REPORT：测试报告下载（阶段1.2） ----------------
-# 后端暴露下载端点后返回下载地址；端点不可达时回退为下载引导文本（offline Demo 口径），
-# download_url 空、note 给出离线引导。对齐 urllib POST + 优雅回退模式。
+# 下载地址=文档化正式端点 GET /api/v1/appstore/test/offer/report?global_id={globalId}，
+# 由代码节点按 global_id 确定性组装（不伪造 example.invalid 假链接）；随后做一次真实探活：
+# 200 且返回体非空置 backend_pending=0，否则置 1 并在 note 给出引导（download_url 仍保留
+# 正确地址供后端就绪后直接下载）。
 CODE_DOWNLOAD_TEST_REPORT = (
-    "import json, urllib.request, urllib.parse\n"
+    "import urllib.request, urllib.parse\n"
     "from typing import Any, Dict\n"
     "\n"
-    "DL_URL = 'BASE_URL/api/v1/appstore/report/download'\n"
-    "\n"
-    "def _fetch(record_id):\n"
-    "    body = json.dumps({'record_id': record_id, 'kind': 'test_report'}).encode('utf-8')\n"
-    "    req = urllib.request.Request(DL_URL, data=body, method='POST',\n"
-    "                                 headers={'Content-Type': 'application/json'})\n"
-    "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
-    "        return json.loads(resp.read().decode('utf-8'))\n"
+    "REPORT_URL = 'BASE_URL/api/v1/appstore/test/offer/report'\n"
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    record_id = str(p.get('record_id') or '').strip()\n"
-    "    try:\n"
-    "        info = _fetch(record_id)\n"
-    "    except Exception:\n"
-    "        info = None\n"
-    "    if not info or not (info.get('download_url') or info.get('url')):\n"
-    "        ret: Output = {\n"
+    "    global_id = str(p.get('global_id') or p.get('globalId') or '').strip()\n"
+    "    if not global_id:\n"
+    "        return {\n"
     "            'backend_pending': '1',\n"
     "            'download_url': '',\n"
-    "            'note': '测试报告下载端点暂不可达，报告正文见上方输出，可复制保存；后端就绪后可直接下载正式版报告',\n"
+    "            'note': '未获取到测试流水号，无法生成报告下载地址；报告正文见上方输出，可复制保存',\n"
+    "        }\n"
+    "    url = REPORT_URL + '?global_id=' + urllib.parse.quote(global_id)\n"
+    "    backend_ok = False\n"
+    "    try:\n"
+    "        req = urllib.request.Request(url)\n"
+    "        with urllib.request.urlopen(req, timeout=20) as resp:\n"
+    "            backend_ok = resp.status == 200 and bool(resp.read())\n"
+    "    except Exception:\n"
+    "        backend_ok = False\n"
+    "    if backend_ok:\n"
+    "        ret: Output = {\n"
+    "            'backend_pending': '0',\n"
+    "            'download_url': url,\n"
+    "            'note': '正式版测试报告已生成，可点击链接下载',\n"
     "        }\n"
     "    else:\n"
     "        ret: Output = {\n"
-    "            'backend_pending': '0',\n"
-    "            'download_url': str(info.get('download_url') or info.get('url') or ''),\n"
-    "            'note': str(info.get('message') or '正式版测试报告已生成，可点击链接下载'),\n"
+    "            'backend_pending': '1',\n"
+    "            'download_url': url,\n"
+    "            'note': '报告下载端点暂不可达或报告未生成，可复制上方报告正文保存；后端就绪后点击链接下载正式版报告',\n"
     "        }\n"
     "    return ret"
 )
@@ -1670,10 +1671,9 @@ s4f.append(plugin_node(308, "环节结果存储", "save_node_result",
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")],
     pos=(1380, 135)))
-# 下载测试报告（阶段1.2）：调用下载端点，不可达回退为下载引导
+# 下载测试报告（阶段1.2）：按测试流水号组装正式下载端点地址，探活失败回退为下载引导
 s4f.append(code_node(316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
-    [inp("record_id", "环节存储记录ID（节点308）", ref_block=nid(308), ref_rel="record_id"),
-     inp("offer_id", "被测销售品ID（节点310）", ref_block=nid(310), ref_rel="offer_id")],
+    [inp("global_id", "测试流水号（节点302出参，报告下载端点检索键）", ref_block=nid(302), ref_rel="globalId")],
     [code_out("download_url", 316), code_out("note", 316)],
     pos=(1520, 300)))
 s4f.append(end_node(307, "结束(测试完成)",
@@ -1708,12 +1708,12 @@ CODE_APPROVAL_POLL = (
     "MAX_RETRY = 12\n"
     "INTERVAL = 2\n"
     "\n"
-    "def _fetch(approval_id, product_id):\n"
+    "def _fetch(approval_id, offer_id):\n"
     "    params = {}\n"
     "    if approval_id:\n"
     "        params['approval_id'] = approval_id\n"
-    "    if product_id:\n"
-    "        params['product_id'] = product_id\n"
+    "    if offer_id:\n"
+    "        params['offer_id'] = offer_id\n"
     "    url = STATUS_URL + '?' + urllib.parse.urlencode(params)\n"
     "    with urllib.request.urlopen(url, timeout=30) as resp:\n"
     "        return json.loads(resp.read().decode('utf-8'))\n"
@@ -1721,12 +1721,12 @@ CODE_APPROVAL_POLL = (
     "async def main(args):\n"
     "    p = args.params\n"
     "    approval_id = str(p.get('approval_id') or '')\n"
-    "    product_id = str(p.get('product_id') or '')\n"
+    "    offer_id = str(p.get('offer_id') or '')\n"
     "    out_status = '待审'\n"
     "    info = {}\n"
     "    for i in range(MAX_RETRY):\n"
     "        try:\n"
-    "            info = _fetch(approval_id, product_id)\n"
+    "            info = _fetch(approval_id, offer_id)\n"
     "        except Exception:\n"
     "            await asyncio.sleep(INTERVAL)\n"
     "            continue\n"
@@ -1782,14 +1782,14 @@ CODE_OP_QUERY_OFFER = (
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    product_id = str(p.get('product_id') or '').strip()\n"
+    "    offer_id = str(p.get('offer_id') or '').strip()\n"
     "    name = str(p.get('name') or '').strip()\n"
     "    keyword = str(p.get('keyword') or '').strip()\n"
     "    matched = []\n"
     "    for rec in CATALOG:\n"
     "        oid, nm, ptype, series, tier, tmpl, members, status, dup = rec\n"
     "        target = dup if (status == 'dup' and dup) else oid\n"
-    "        if product_id and product_id == target:\n"
+    "        if offer_id and offer_id == target:\n"
     "            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n"
     "                            'biz_series': series, 'tier': tier, 'template': tmpl,\n"
     "                            'members': members, 'status': status})\n"
@@ -1833,8 +1833,8 @@ CODE_OP_ROOT_CAUSE = (
     "\n"
     "ROOT_URL = 'BASE_URL/api/v1/appstore/ops/root-cause'\n"
     "\n"
-    "def _fetch(product_id):\n"
-    "    body = json.dumps({'product_id': product_id}).encode('utf-8')\n"
+    "def _fetch(offer_id):\n"
+    "    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n"
     "    req = urllib.request.Request(ROOT_URL, data=body, method='POST',\n"
     "                                 headers={'Content-Type': 'application/json'})\n"
     "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
@@ -1842,9 +1842,9 @@ CODE_OP_ROOT_CAUSE = (
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    product_id = str(p.get('product_id') or '')\n"
+    "    offer_id = str(p.get('offer_id') or '')\n"
     "    try:\n"
-    "        info = _fetch(product_id)\n"
+    "        info = _fetch(offer_id)\n"
     "    except Exception:\n"
     "        info = None\n"
     "    if not info or not info.get('paths'):\n"
@@ -1882,8 +1882,8 @@ CODE_OP_CREATE_WO = (
     "\n"
     "WO_URL = 'BASE_URL/api/v1/appstore/ops/work-orders'\n"
     "\n"
-    "def _fetch(product_id):\n"
-    "    body = json.dumps({'product_id': product_id}).encode('utf-8')\n"
+    "def _fetch(offer_id):\n"
+    "    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n"
     "    req = urllib.request.Request(WO_URL, data=body, method='POST',\n"
     "                                 headers={'Content-Type': 'application/json'})\n"
     "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
@@ -1891,9 +1891,9 @@ CODE_OP_CREATE_WO = (
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    product_id = str(p.get('product_id') or '')\n"
+    "    offer_id = str(p.get('offer_id') or '')\n"
     "    try:\n"
-    "        info = _fetch(product_id)\n"
+    "        info = _fetch(offer_id)\n"
     "    except Exception:\n"
     "        info = None\n"
     "    wo_id = str((info or {}).get('work_order_id') or '')\n"
@@ -1999,7 +1999,7 @@ s6f.append(start_node(601, [
     inp("chat_id", "会话消息ID（用于 xsbot-panel 外链 message_id 与 url 中 chatId，由调度层传入；缺失时输出占位需在渲染前回填）", required=False),
 ]))
 s6f.append(plugin_node(602, "自查配置结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 product_id/offer_id）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 offer_id）",
     BASE_URL + "/api/v1/appstore/result/query",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
@@ -2064,7 +2064,7 @@ s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
      inp("fee_result", "资费环节原文（节点607提取）", ref_block=nid(607), ref_rel="record_json"),
      inp("test_result", "测试环节原文（节点609提取）", ref_block=nid(609), ref_rel="record_json"),
      inp("requirement_result", "执行方案原文（节点611提取）", ref_block=nid(611), ref_rel="record_json")],
-    [code_out("summary_json", 612), code_out("product_id", 612), code_out("offer_id", 612)],
+    [code_out("summary_json", 612), code_out("offer_id", 612)],
     pos=(540, 385)))
 # 613 LLM：按 flow-C 模板生成《上线审批建议》（环节8 标题头 + 校验看板 + 风险 + 整体结论）
 s6f.append(llm_node(613, "上线审批建议生成",
@@ -2085,7 +2085,6 @@ s6f.append(llm_node(613, "上线审批建议生成",
     "约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n"
     "输出要求：仅输出审批建议正文（对应出参 approval_suggest），不输出其他多余文字。",
     [inp("summary_json", "结构化汇总（节点612）", ref_block=nid(612), ref_rel="summary_json"),
-     inp("product_id", "CRM产品ID（节点612）", ref_block=nid(612), ref_rel="product_id"),
      inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id")],
     [out("approval_suggest", "《上线审批建议》正文（环节8标题头）")], pos=(690, 385)))
 # 614 报告存储 node=report
@@ -2099,9 +2098,9 @@ s6f.append(plugin_node(614, "报告存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(840, 385)))
 # 615 审批推送 approval-type=launch
 s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
-    "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id；product_id=节点612从config提取，report_url=节点613审批建议",
+    "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；offer_id=节点612从config提取，report_url=节点613审批建议",
     BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("product_id", "CRM产品ID（节点612从config提取）", ref_block=nid(612), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID（节点612从config提取）", ref_block=nid(612), ref_rel="offer_id"),
      inp("report_url", "上线审批建议（节点613正文）", ref_block=nid(613), ref_rel="approval_suggest"),
      inp("req_id", "执行批次号（四环节结果门禁校验依据，=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
@@ -2112,7 +2111,7 @@ s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
 # 616 轮询审批状态（V13.0 审批通过即自动上线，无需二次确认）
 s6f.append(code_node(616, "轮询审批状态", CODE_APPROVAL_POLL,
     [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id"),
-     inp("product_id", "CRM产品ID（节点612）", ref_block=nid(612), ref_rel="product_id")],
+     inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id")],
     [code_out("status", 616), code_out("approval_id", 616), code_out("approval_type", 616), code_out("current_node", 616), code_out("approver", 616), code_out("opinion", 616), code_out("update_time", 616), code_out("approval_matrix", 616)],
     pos=(1140, 385)))
 # 617 分流：status=通过 → 自动衔接环节9；否则 → 环节8 收尾块
@@ -2128,14 +2127,13 @@ s6f.append(llm_node(618, "监控运维方案生成",
     "**二、受理运行监控**\n- 受理成功率、订购失败率、变更失败率、退订失败率\n\n"
     "**三、推送规则**\n- **定时推送：** 每日09:00推送前一日销售及受理情况；每周一09:00推送近7日趋势；每月1日09:00推送上月运营报告。\n- **异常推送：** 订购成功率低于95%、受理成功率低于95%、失败率超过5%、核心指标波动超过30%时立即推送。\n\n"
     "**当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。\n\n"
-    "**单品运营可视化：** 经 `xsbot-panel` 外链片段（必须是 JSON，且以 ```xsbot-panel 代码围栏包裹）：\n"
-     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&offer_id={offer_id}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "**单品运营可视化：** 经 `xsbot-panel` 外链片段（必须是 JSON，且以 ```xsbot-panel 代码围栏包裹）：\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
      "**产品已成功上线，运营视图已开启。**\n\n"
      "> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n"
-     "约束：xsbot-panel 必须整段输出上述 JSON 结构并逐字替换入参：{chat_id} 用于 message_id 与 url 的 chatId 参数，{product_id}/{offer_id} 替换为对应入参；url 基址固定 http://10.86.13.201:31280/ops-web/product-detail.html，title 固定「单品运营可视化」，禁止拼凑其他地址；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n"
-    "输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。",
+     "约束：xsbot-panel 必须整段输出上述 JSON 结构并逐字替换入参：{chat_id} 用于 message_id 与 url 的 chatId 参数，{offer_id} 替换为对应入参；url 基址固定 http://10.86.13.201:31280/ops-web/product-detail.html，title 固定「单品运营可视化」，禁止拼凑其他地址；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n"
+     "输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。",
     [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id"),
-     inp("product_id", "CRM产品ID（节点612）", ref_block=nid(612), ref_rel="product_id"),
      inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
      inp("chat_id", "会话消息ID（节点601）", ref_block=nid(601), ref_rel="chat_id")],
     [out("monitor_plan", "监控运维方案正文（环节9标题头+xsbot-panel）")], pos=(1590, 260)))
@@ -2163,7 +2161,7 @@ s6f.append(end_node(620, "结束(审批轮询中)",
     "审批通过后将自动上线并衔接监控运维方案输出。\n\n"
     "> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含product_id/offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
      edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,616),
@@ -2171,21 +2169,21 @@ files6f = workflow(
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
-#   开始(product_id) → query_product_monitor → 异常判定(error_count≠0) →
+#   开始(offer_id) → query_product_monitor → 异常判定(error_count≠0) →
 #     异常分支：告警文案→send_alert→ops_root_cause(待后端占位)→LLM 根因推理链+优化方案→create_work_order(占位)→结束(异常闭环)
 #     正常分支：LLM 运营摘要 → 结束(正常)
 #   两分支结束节点输出环节9标题头 + 摘要/结论 + xsbot-panel + 环节9 收尾固定块
 # ============================================================
 s7f = []
 s7f.append(start_node(701, [
-    inp("product_id", "销售品ID（9位存量编码或配置落地返回的 P+req_id 产品ID；会话内可兜底）", required=True),
+    inp("offer_id", "销售品ID（9位存量编码或配置落地返回的新销售品ID；会话内可兜底）", required=True),
     inp("date_range", "统计周期（默认最近1天，可选）", required=False),
     inp("chat_id", "会话消息ID（用于 xsbot-panel 外链）", required=False),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定",
     BASE_URL + "/api/v1/appstore/product/monitor",
-    [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
      inp("metric", "指标默认all", content="all")],
     [("offer_name", "产品名称", "string"),
@@ -2210,12 +2208,12 @@ s7f.append(llm_node(704, "告警文案生成",
 s7f.append(plugin_node(705, "异常告警", "send_alert",
     "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）",
     BASE_URL + "/api/v1/appstore/alert/send",
-    [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
      inp("alarm_level", "告警级别（按异常程度 high/middle/low）", content="high"),
      inp("content", "告警文案（节点704输出）", ref_block=nid(704), ref_rel="alert_content")],
     [("alert_id", "告警单号", "string"), ("status", "推送状态", "string")]))
 s7f.append(code_node(706, "异动根因推理", CODE_OP_ROOT_CAUSE,
-    [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id")],
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id")],
     [code_out("backend_pending", 706), code_out("reason_engine", 706), code_out("anomalies", 706), code_out("paths", 706), code_out("evidence_triples", 706), code_out("swrl_fired", 706), code_out("applied_rules", 706), code_out("action_list", 706), code_out("note", 706)]))
 s7f.append(llm_node(707, "根因推理链+优化方案",
     "你是产销品运维归因智能体。基于监控异常数据与 ops_root_cause 出参（backend_pending={backend_pending}，anomalies={anomalies}，paths={paths}，reason_engine={reason_engine}，action_list={action_list}，note={note}），按 flow-D D-2 第6步模板输出根因推理链与优化方案：\n"
@@ -2233,11 +2231,11 @@ s7f.append(llm_node(707, "根因推理链+优化方案",
      inp("note", "占位说明（节点706）", ref_block=nid(706), ref_rel="note")],
     [out("root_cause_report", "根因推理链+优化方案正文")]))
 s7f.append(code_node(708, "建工单闭环", CODE_OP_CREATE_WO,
-    [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id")],
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id")],
     [code_out("backend_pending", 708), code_out("work_order_id", 708), code_out("note", 708)]))
 s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     [inp("offer_name", "产品名称", ref_block=nid(702), ref_rel="offer_name"),
-     inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id"),
+     inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
      inp("order_count", "订单量", ref_block=nid(702), ref_rel="order_count"),
      inp("order_trend", "订单量趋势", ref_block=nid(702), ref_rel="order_trend"),
@@ -2252,7 +2250,7 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
      inp("wo_note", "建单占位说明", ref_block=nid(708), ref_rel="note"),
      inp("chat_id", "会话消息ID", ref_block=nid(701), ref_rel="chat_id")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
-    "【销售品运行监控】{product_id}（{date_range}）\n"
+    "【销售品运行监控】{offer_id}（{date_range}）\n"
     "- 产品名称：{offer_name}（为空显示\"未登记\"）\n"
     "- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n"
     "- 告警列表：{alarm_list}（为空显示\"无\"）\n"
@@ -2260,7 +2258,7 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     "{root_cause_report}\n"
     "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
      "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
-     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
      "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"))
 # ---- 正常分支 ----
 s7f.append(llm_node(710, "运营摘要生成(正常分支)",
@@ -2275,14 +2273,14 @@ s7f.append(llm_node(710, "运营摘要生成(正常分支)",
     [out("ops_summary", "运营摘要正文")]))
 s7f.append(end_node(711, "结束(正常-运营报告)",
     [inp("offer_name", "产品名称", ref_block=nid(702), ref_rel="offer_name"),
-     inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id"),
+     inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
      inp("ops_summary", "运营摘要", ref_block=nid(710), ref_rel="ops_summary"),
      inp("chat_id", "会话消息ID", ref_block=nid(701), ref_rel="chat_id")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "{ops_summary}\n\n"
      "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
-     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
      "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块）。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
@@ -2290,20 +2288,20 @@ files7f = workflow(
      edge(704,705), edge(705,706), edge(706,707), edge(707,708), edge(708,709), edge(710,711)])
 
 # ============================================================
-# wf_sub_08 审批进度查询（阶段5 重写：approval-id 优先/product-id 兜底；按 approval_type 区分双轨回显+审批矩阵+收尾块）
-#   开始(approval_id, product_id) → query_approval_status → LLM 状态摘要归纳(区分需求工单/上线审批 + 审批矩阵 + 收尾块) → 结束
+# wf_sub_08 审批进度查询（阶段5 重写：approval-id 优先/offer-id 兜底；按 approval_type 区分双轨回显+审批矩阵+收尾块）
+#   开始(approval_id, offer_id) → query_approval_status → LLM 状态摘要归纳(区分需求工单/上线审批 + 审批矩阵 + 收尾块) → 结束
 # ============================================================
 s8f = []
 s8f.append(start_node(801, [
-    inp("approval_id", "审批单号（可选，与 product_id 至少一个，approval_id 优先）", required=False),
-    inp("product_id", "销售品ID（可选，缺失 approval_id 时按此查最新审批单）", required=False),
+    inp("approval_id", "审批单号（可选，与 offer_id 至少一个，approval_id 优先）", required=False),
+    inp("offer_id", "销售品ID（可选，缺失 approval_id 时按此查最新审批单）", required=False),
     inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s8f.append(plugin_node(802, "审批状态查询", "query_approval_status",
-    "工具13：自研模拟审批进度查询（approval_id 优先，product_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
+    "工具13：自研模拟审批进度查询（approval_id 优先，offer_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
     BASE_URL + "/api/v1/appstore/approval/status",
     [inp("approval_id", "审批单号", ref_block=nid(801), ref_rel="approval_id"),
-     inp("product_id", "产品ID", ref_block=nid(801), ref_rel="product_id")],
+     inp("offer_id", "销售品ID", ref_block=nid(801), ref_rel="offer_id")],
     [("approval_id", "审批单号", "string"), ("status", "审批中/通过/驳回", "string"),
      ("approval_type", "审批类型(requirement/launch)", "string"),
      ("current_node", "当前审批环节", "string"), ("approver", "当前审批人", "string"),
@@ -2335,23 +2333,23 @@ s8f.append(end_node(804, "结束(查询完成)",
     [inp("approval_summary", "审批状态摘要", ref_block=nid(803), ref_rel="approval_summary")],
     "{approval_summary}"))
 files8f = workflow(
-    "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/product_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
+    "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
     [edge(801,802), edge(802,803), edge(803,804)])
 
 # ============================================================
 # wf_sub_09 存量产品查询（阶段5 新增：D-4 只读，query_offer 内嵌代码节点 + 多命中收敛/唯一回显/未命中追问）
-#   开始(product_id/name/keyword) → CODE_OP_QUERY_OFFER(内嵌目录) → LLM 查询回显渲染 → 结束
+#   开始(offer_id/name/keyword) → CODE_OP_QUERY_OFFER(内嵌目录) → LLM 查询回显渲染 → 结束
 #   只读、不生成 req_id、不进入配置流水线
 # ============================================================
 s9f = []
 s9f.append(start_node(901, [
-    inp("product_id", "产品ID（9位存量编码，可选）", required=False),
+    inp("offer_id", "产品ID（9位存量编码，可选）", required=False),
     inp("name", "产品名称（可选）", required=False),
     inp("keyword", "描述关键词（可选）", required=False),
     inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s9f.append(code_node(902, "存量检索", CODE_OP_QUERY_OFFER,
-    [inp("product_id", "产品ID", ref_block=nid(901), ref_rel="product_id"),
+    [inp("offer_id", "产品ID", ref_block=nid(901), ref_rel="offer_id"),
      inp("name", "产品名称", ref_block=nid(901), ref_rel="name"),
      inp("keyword", "关键词", ref_block=nid(901), ref_rel="keyword")],
     [code_out("matched", 902), code_out("matched_count", 902), code_out("outcome", 902), code_out("k4_note", 902)]))

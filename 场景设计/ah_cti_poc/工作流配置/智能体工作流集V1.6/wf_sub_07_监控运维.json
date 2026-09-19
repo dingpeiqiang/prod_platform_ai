@@ -11,8 +11,8 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "product_id",
-            "description": "销售品ID（9位存量编码或配置落地返回的 P+req_id 产品ID；会话内可兜底）",
+            "name": "offer_id",
+            "description": "销售品ID（9位存量编码或配置落地返回的新销售品ID；会话内可兜底）",
             "type": "string",
             "required": true,
             "content": ""
@@ -151,17 +151,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
@@ -460,17 +460,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           },
           {
             "blockID": "",
@@ -568,22 +568,22 @@
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nROOT_URL = 'http://10.86.13.201:31281/api/v1/appstore/ops/root-cause'\n\ndef _fetch(product_id):\n    body = json.dumps({'product_id': product_id}).encode('utf-8')\n    req = urllib.request.Request(ROOT_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    product_id = str(p.get('product_id') or '')\n    try:\n        info = _fetch(product_id)\n    except Exception:\n        info = None\n    if not info or not info.get('paths'):\n        ret: Output = {\n            'backend_pending': '1',\n            'reason_engine': '',\n            'anomalies': '[]',\n            'paths': '[]',\n            'evidence_triples': '[]',\n            'swrl_fired': '',\n            'applied_rules': '',\n            'action_list': '[]',\n            'note': '根因本体推理(ops_root_cause)端点暂不可达或未命中归因规则；当前仅告警，未归因',\n        }\n    else:\n        def _arr(v):\n            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n        ret: Output = {\n            'backend_pending': '0',\n            'reason_engine': str(info.get('reason_engine') or ''),\n            'anomalies': _arr(info.get('anomalies')),\n            'paths': _arr(info.get('paths')),\n            'evidence_triples': _arr(info.get('evidence_triples')),\n            'swrl_fired': str(info.get('swrl_fired') or ''),\n            'applied_rules': str(info.get('applied_rules') or ''),\n            'action_list': _arr(info.get('action_list')),\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nROOT_URL = 'http://10.86.13.201:31281/api/v1/appstore/ops/root-cause'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(ROOT_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    if not info or not info.get('paths'):\n        ret: Output = {\n            'backend_pending': '1',\n            'reason_engine': '',\n            'anomalies': '[]',\n            'paths': '[]',\n            'evidence_triples': '[]',\n            'swrl_fired': '',\n            'applied_rules': '',\n            'action_list': '[]',\n            'note': '根因本体推理(ops_root_cause)端点暂不可达或未命中归因规则；当前仅告警，未归因',\n        }\n    else:\n        def _arr(v):\n            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n        ret: Output = {\n            'backend_pending': '0',\n            'reason_engine': str(info.get('reason_engine') or ''),\n            'anomalies': _arr(info.get('anomalies')),\n            'paths': _arr(info.get('paths')),\n            'evidence_triples': _arr(info.get('evidence_triples')),\n            'swrl_fired': str(info.get('swrl_fired') or ''),\n            'applied_rules': str(info.get('applied_rules') or ''),\n            'action_list': _arr(info.get('action_list')),\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           }
         ],
         "checkErr": false,
@@ -769,22 +769,22 @@
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nWO_URL = 'http://10.86.13.201:31281/api/v1/appstore/ops/work-orders'\n\ndef _fetch(product_id):\n    body = json.dumps({'product_id': product_id}).encode('utf-8')\n    req = urllib.request.Request(WO_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    product_id = str(p.get('product_id') or '')\n    try:\n        info = _fetch(product_id)\n    except Exception:\n        info = None\n    wo_id = str((info or {}).get('work_order_id') or '')\n    if not info or not wo_id:\n        ret: Output = {\n            'backend_pending': '1',\n            'work_order_id': '',\n            'note': '建工单服务(create_work_order)端点暂不可达，工单未建立，稍后回检重试',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'work_order_id': wo_id,\n            'note': str(info.get('message') or '工单已建立'),\n        }\n    return ret",
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nWO_URL = 'http://10.86.13.201:31281/api/v1/appstore/ops/work-orders'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(WO_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    wo_id = str((info or {}).get('work_order_id') or '')\n    if not info or not wo_id:\n        ret: Output = {\n            'backend_pending': '1',\n            'work_order_id': '',\n            'note': '建工单服务(create_work_order)端点暂不可达，工单未建立，稍后回检重试',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'work_order_id': wo_id,\n            'note': str(info.get('message') or '工单已建立'),\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           }
         ],
         "checkErr": false,
@@ -805,7 +805,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节9/9·监控运维】✅ 执行成功\n\n【销售品运行监控】{product_id}（{date_range}）\n- 产品名称：{offer_name}（为空显示\"未登记\"）\n- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n- 告警列表：{alarm_list}（为空显示\"无\"）\n已推送告警，告警单号 {alert_id}\n\n{root_cause_report}\n**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"
+          "content": "【环节9/9·监控运维】✅ 执行成功\n\n【销售品运行监控】{offer_id}（{date_range}）\n- 产品名称：{offer_name}（为空显示\"未登记\"）\n- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n- 告警列表：{alarm_list}（为空显示\"无\"）\n已推送告警，告警单号 {alert_id}\n\n{root_cause_report}\n**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"
         },
         "settings": {
           "stream": false,
@@ -830,17 +830,17 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
@@ -1169,7 +1169,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节9/9·监控运维】✅ 执行成功\n\n{ops_summary}\n\n**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"
+          "content": "【环节9/9·监控运维】✅ 执行成功\n\n{ops_summary}\n\n**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"
         },
         "settings": {
           "stream": false,
@@ -1194,17 +1194,17 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "product_id",
-            "name": "product_id",
+            "relName": "offer_id",
+            "name": "offer_id",
             "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",

@@ -205,51 +205,7 @@
           {
             "name": "compare_list",
             "cname": "资费比对明细（8项，融合组行含member_role）",
-            "sechema": [
-              {
-                "name": "item",
-                "cname": "比对明细",
-                "sechema": [
-                  {
-                    "name": "project_name",
-                    "cname": "比对项目名",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "requirement_desc",
-                    "cname": "套餐描述（需求）",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "billing_desc",
-                    "cname": "计费配置描述（系统）",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "result",
-                    "cname": "比对结果：一致/不一致",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "member_role",
-                    "cname": "融合成员角色（融合组有值）",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  }
-                ],
-                "type": "object",
-                "required": false
-              }
-            ],
+            "sechema": [],
             "type": "array",
             "required": false
           }

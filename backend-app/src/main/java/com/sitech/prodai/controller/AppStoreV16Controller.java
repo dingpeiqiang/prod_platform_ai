@@ -88,15 +88,15 @@ public class AppStoreV16Controller {
         return sim.saveProductConfig(req, externalBaseUrl(httpRequest));
     }
 
-    @Operation(summary = "配置上线脚本下载", description = "V2.5：按 product_id 回放配置落地环节生成的 CRM/billing 落库 SQL 脚本（text/plain 附件下载，附件名 launch_{product_id}.sql）；未落地产品返回 404")
+    @Operation(summary = "配置上线脚本下载", description = "V2.5：按 offer_id 回放配置落地环节生成的 CRM/billing 落库 SQL 脚本（text/plain 附件下载，附件名 launch_{offer_id}.sql）；未落地产品返回 404")
     @GetMapping("/product/config/script")
-    public org.springframework.http.ResponseEntity<String> launchScript(@RequestParam("product_id") String product_id) {
-        String script = sim.launchScriptOf(product_id);
+    public org.springframework.http.ResponseEntity<String> launchScript(@RequestParam("offer_id") String offerId) {
+        String script = sim.launchScriptOf(offerId);
         if (script == null) {
             return org.springframework.http.ResponseEntity.notFound().build();
         }
         return org.springframework.http.ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=launch_" + product_id + ".sql")
+                .header("Content-Disposition", "attachment; filename=launch_" + offerId + ".sql")
                 .header("Content-Type", "text/plain; charset=utf-8")
                 .body(script);
     }
@@ -177,7 +177,7 @@ public class AppStoreV16Controller {
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
-    @Operation(summary = "上线审批推送", description = "生成模拟审批单号并写入审批状态库；校验 approve_confirmed==true 与 execution_id 四环节结果门禁；同 product_id 幂等")
+    @Operation(summary = "上线审批推送", description = "生成模拟审批单号并写入审批状态库；校验 approve_confirmed==true 与 execution_id 四环节结果门禁；同 offer_id 幂等")
     @PostMapping("/approval/submit")
     public Map<String, Object> approvalSubmit(@RequestBody Map<String, Object> req) {
         return sim.approvalSubmit(req);
@@ -185,22 +185,22 @@ public class AppStoreV16Controller {
 
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
-    @Operation(summary = "审批进度查询", description = "按 approval_id（优先）/product_id 查询审批单当前状态、环节与意见")
+    @Operation(summary = "审批进度查询", description = "按 approval_id（优先）/offer_id 查询审批单当前状态、环节与意见")
     @GetMapping("/approval/status")
     public Map<String, Object> approvalStatus(@RequestParam(required = false) String approval_id,
-                                              @RequestParam(required = false) String product_id) {
+                                              @RequestParam(required = false) String offer_id) {
         return sim.approvalStatus(Map.of("approval_id", MapOps.str(approval_id),
-                "product_id", MapOps.str(product_id)));
+                "offer_id", MapOps.str(offer_id)));
     }
 
     /* ================= 接口11：监控查询 query_product_monitor ================= */
 
     @Operation(summary = "监控查询", description = "按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表）")
     @GetMapping("/product/monitor")
-    public Map<String, Object> productMonitor(@RequestParam("product_id") String product_id,
+    public Map<String, Object> productMonitor(@RequestParam("offer_id") String offerId,
                                               @RequestParam(required = false) String date_range,
                                               @RequestParam(required = false, defaultValue = "all") String metric) {
-        return sim.productMonitor(Map.of("product_id", product_id,
+        return sim.productMonitor(Map.of("offer_id", offerId,
                 "date_range", MapOps.str(date_range), "metric", metric));
     }
 
@@ -284,16 +284,16 @@ public class AppStoreV16Controller {
 
     /**
      * 对接 work-flow 阶段1.1 wf_sub_07 节点706 CODE_OP_ROOT_CAUSE：
-     * 由 {product_id} 调 productOntologyService.analyzeRootCause(offeringId)，
+     * 由 {offer_id} 调 productOntologyService.analyzeRootCause(offeringId)，
      * 并把 camelCase 字段适配为 workflow 契约的 snake_case 出参
      * （reason_engine/evidence_triples/swrl_fired/applied_rules/action_list）。
      */
-    @Operation(summary = "异动根因本体推理", description = "由 product_id 对异动一指定位根因并推理处置动作，输出归因路径/证据三元组/命中规则/动作清单（契约出参 snake_case）")
+    @Operation(summary = "异动根因本体推理", description = "由 offer_id 对异动一指定位根因并推理处置动作，输出归因路径/证据三元组/命中规则/动作清单（契约出参 snake_case）")
     @PostMapping("/ops/root-cause")
     public Map<String, Object> opsRootCause(@RequestBody(required = false) Map<String, Object> req) {
         Map<String, Object> safe = req == null ? Map.of() : req;
-        String productId = MapOps.str(safe.get("product_id"));
-        Map<String, Object> r = productOntologyService.analyzeRootCause(productId, null);
+        String offerId = MapOps.str(safe.get("offer_id"));
+        Map<String, Object> r = productOntologyService.analyzeRootCause(offerId, null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         boolean ok = Boolean.TRUE.equals(r.get("success"))
                 && (r.get("paths") instanceof List<?> list && !list.isEmpty());
@@ -318,14 +318,14 @@ public class AppStoreV16Controller {
 
     /**
      * 对接 wf_sub_07 节点708 CODE_OP_CREATE_WO：
-     * 由 {product_id} 建处置工单，取嵌套 workOrder.workOrderId 显影为 work_order_id 契约出参。
+     * 由 {offer_id} 建处置工单，取嵌套 workOrder.workOrderId 显影为 work_order_id 契约出参。
      */
-    @Operation(summary = "创建运维工单", description = "由 product_id 建立处置工单并回写本体，返回 work_order_id（契约 snake_case）")
+    @Operation(summary = "创建运维工单", description = "由 offer_id 建立处置工单并回写本体，返回 work_order_id（契约 snake_case）")
     @PostMapping("/ops/work-orders")
     public Map<String, Object> opsCreateWorkOrder(@RequestBody(required = false) Map<String, Object> req) {
         Map<String, Object> safe = req == null ? Map.of() : req;
-        String productId = MapOps.str(safe.get("product_id"));
-        Map<String, Object> r = productOntologyService.createWorkOrder(Map.of("offeringId", productId, "source", "workflow"));
+        String offerId = MapOps.str(safe.get("offer_id"));
+        Map<String, Object> r = productOntologyService.createWorkOrder(Map.of("offeringId", offerId, "source", "workflow"));
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         Object woRaw = r.get("workOrder");
         String woId = null;
@@ -458,10 +458,10 @@ public class AppStoreV16Controller {
 
     /**
      * 对接 wf_sub_06 节点621 CODE_DOWNLOAD_LAUNCH_SCRIPT：
-     * 入参 {offer_id, approval_id, kind}；offer_id 即 product_id，回退到既有 GET /product/config/script 附件，
+     * 入参 {offer_id, approval_id, kind}；回退到既有 GET /product/config/script 附件，
      * 此处返回 download_url（+message）契约出参。
      */
-    @Operation(summary = "配置/上线脚本下载", description = "按 offer_id(product_id) 返回上线加载脚本下载链接 download_url + message")
+    @Operation(summary = "配置/上线脚本下载", description = "按 offer_id 返回上线加载脚本下载链接 download_url + message")
     @PostMapping("/script/download")
     public Map<String, Object> scriptDownload(@RequestBody(required = false) Map<String, Object> req,
                                               jakarta.servlet.http.HttpServletRequest httpRequest) {
@@ -477,7 +477,7 @@ public class AppStoreV16Controller {
         }
         out.put("backend_pending", "0");
         out.put("download_url", externalBaseUrl(httpRequest)
-                + "/api/v1/appstore/product/config/script?product_id=" + offerId.trim());
+                + "/api/v1/appstore/product/config/script?offer_id=" + offerId.trim());
         out.put("message", "配置/上线脚本已生成，可点击链接下载");
         return out;
     }

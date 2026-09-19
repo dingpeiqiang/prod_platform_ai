@@ -42,7 +42,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息——toFields18 同构转换为与需求要素一致的 fields 3 模块/9 分类 24 字段数组，V1.9 重写）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
 | 2 | 实时规格稽核 `realtime_spec_audit` | POST /api/v1/appstore/audit/realtime | 规则引擎：按配置规范校验必填属性/命名/生效期/销售范围，对照《产品信息.txt》该销售品规则；**同步返回** | pass/error_list/audit_summary 结构完整；支持构造缺陷用例（互斥叠加）返回 pass=0；60s 超时返回 TIMEOUT | 1d |
-| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 各模块字段；**确认门禁已按 V2.2 移除**（不校验 CONFIRMED 标记，确认语义由智能体识别；保留幂等与 plan_json 合法性校验），方案key由后端从 plan_json 的 req_id 键提取；幂等（同 plan_json 返回已存在 offer_id）；**V2.5 落地成功时按落地配置生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url` 下载链接** | 未确认不触发由智能体保证（后端无 NOT_CONFIRMED 返回）；save_result 各模块分类明细；product_id/offer_id 生成规则稳定；script_url 可下载（GET /api/v1/appstore/product/config/script?product_id=Pxxx，text/plain，未落地 404） | 1d |
+| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 各模块字段；**确认门禁已按 V2.2 移除**（不校验 CONFIRMED 标记，确认语义由智能体识别；保留幂等与 plan_json 合法性校验），方案key由后端从 plan_json 的 req_id 键提取；幂等（同 plan_json 返回已存在 offer_id）；**V2.5 落地成功时按落地配置生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url` 下载链接** | 未确认不触发由智能体保证（后端无 NOT_CONFIRMED 返回）；save_result 各模块分类明细；offer_id 生成规则稳定；script_url 可下载（GET /api/v1/appstore/product/config/script?offer_id={offer_id}，text/plain，未落地 404） | 1d |
 
 ### 1.1.2 自动测试类（含受理验证）
 
@@ -58,9 +58,9 @@
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
 | 8 | 计费规则校验 `check_billing_rule` | POST /api/v1/appstore/billing/rules/verify | 内置规则引擎（负资费/边界价差/叠加上限/互斥/自定义规则），对照 18 销售品资费结构 | check_scene 四种枚举生效；构造冲突用例 pass=0 且 risk_list 完整 | 1d |
-| 9 | 审批推送 `submit_release_approval` | POST /api/v1/appstore/approval/submit | 写入模拟审批状态库（状态机：审批中→产品经理审核→部门主管审批→通过/驳回）；**V1.7 后端硬校验：req_id 入参必填 + 遍历查询 `NodeResultService.latestRecord(req_id,"config"/"spec"/"fee"/"test")` 四条记录全部非空（V1.7 统一键，原 execution_id 参数合并为 req_id）**；幂等（同 product_id 返回原 approval_id） | 四环节结果缺失时拒绝推送（LLM 跳步发起也被拦截）；状态可被接口13 查询 | 0.5d |
-| 10 | 审批进度 `query_approval_status` | GET /api/v1/appstore/approval/status | 从模拟审批状态库按 approval_id（优先）/product_id 查询最新审批单 | 返回 status/current_node/approver/opinion/update_time；查无单返回明确提示 | 0.5d |
-| 11 | 监控查询 `query_product_monitor` | GET /api/v1/appstore/product/monitor | 按 product_id+日期确定性生成指标（订单量/异常量/差错率/告警列表）；支持 error_count>0 预置演示 | date_range/metric 参数生效；告警列表与接口12 写入记录回显一致 | 0.5d |
+| 9 | 审批推送 `submit_release_approval` | POST /api/v1/appstore/approval/submit | 写入模拟审批状态库（状态机：审批中→产品经理审核→部门主管审批→通过/驳回）；**V1.7 后端硬校验：req_id 入参必填 + 遍历查询 `NodeResultService.latestRecord(req_id,"config"/"spec"/"fee"/"test")` 四条记录全部非空（V1.7 统一键，原 execution_id 参数合并为 req_id）**；幂等（同 offer_id 返回原 approval_id） | 四环节结果缺失时拒绝推送（LLM 跳步发起也被拦截）；状态可被接口13 查询 | 0.5d |
+| 10 | 审批进度 `query_approval_status` | GET /api/v1/appstore/approval/status | 从模拟审批状态库按 approval_id（优先）/offer_id 查询最新审批单 | 返回 status/current_node/approver/opinion/update_time；查无单返回明确提示 | 0.5d |
+| 11 | 监控查询 `query_product_monitor` | GET /api/v1/appstore/product/monitor | 按 offer_id+日期确定性生成指标（订单量/异常量/差错率/告警列表）；支持 error_count>0 预置演示 | date_range/metric 参数生效；告警列表与接口12 写入记录回显一致 | 0.5d |
 | 12 | 异常告警 `send_alert` | POST /api/v1/appstore/alert/send | 生成 alert_id 写入模拟告警库（供监控查询回显闭环） | alarm_level 三级枚举；content 落库 | 0.25d |
 
 ### 1.1.4 节点结果存储查询对齐（后端通用 API，改动量小）
@@ -140,7 +140,7 @@
 - [ ] 代码节点与后端契约一致：CODE_OP_* / CODE_DOWNLOAD_* / CODE_POLL_PROGRESS 等逐一连通对应端点，路径/入参/出参与细化设计映射表逐条比对（含 PARAM_MISSING/5002/5004 错误码验证）
 - [ ] 工具9 四环节门禁（工具层硬校验）：四环节结果不全调 submit_approval 一律拒绝；跳步调用均有拦截记录（工具7 确认门禁已按 V2.2 移除，仅验证幂等与 plan_json 合法性校验）
 - [ ] V1.9 字段重构验证：ontology/fields 接口返回 24 字段注册表（3 模块/9 分类）；similar_offer offerInfo 为 24 字段数组；来源仅【原始需求】/【AI补全】两态；仅套餐档位可"待补充"；套餐编码默认"系统待生成"
-- [ ] 幂等：工具7 同 plan_json、工具9 同 product_id 重复提交不产生重复记录
+- [ ] 幂等：工具7 同 plan_json、工具9 同 offer_id 重复提交不产生重复记录
 - [ ] 异常注入开关：稽核驳回/资费冲突/测点不一致/监控异常 四类反向用例可复现
 - [ ] knowledge/ 知识源就位（K1~K5，原 references/ 废弃）；CODE_OP_QUERY_OFFER/CODE_OP_VALIDATE_NESTED 读取 knowledge/ 目录数据正常
 
@@ -277,12 +277,12 @@
 ```bash
 # V1.6 既有端点
 curl -X POST ${BASE_URL}/similar/offer/query -d '{"desc":"5G-A 单品套餐 月费199元 30G流量"}'
-curl ${BASE_URL}/product/monitor?product_id=900102308
+curl ${BASE_URL}/product/monitor?offer_id=900102308
 curl ${BASE_URL}/result/query?req_id=PLAN20260913143025087
 
 # V2.0 新增适配端点（需后端重启生效）
-curl -X POST ${BASE_URL}/ops/root-cause        -d '{"product_id":"900102308"}'
-curl -X POST ${BASE_URL}/ops/work-orders       -d '{"product_id":"900102308"}'
+curl -X POST ${BASE_URL}/ops/root-cause        -d '{"offer_id":"900102308"}'
+curl -X POST ${BASE_URL}/ops/work-orders       -d '{"offer_id":"900102308"}'
 curl -X POST ${BASE_URL}/shelf-compliance      -d '{"offering_ids":["900102308","900113043"]}'
 curl -X POST ${BASE_URL}/validate-nested       -d '{"template_id":"personMainPrc","payload":{}}'
 curl -X POST ${BASE_URL}/explain                -d '{"trace_id":"xxx"}'
@@ -337,7 +337,7 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 
 ### 2.4.2 按需加载验证
 - [ ] 智能体按 3.2 提示词【意图→工作流映射表】语义识别直调，常驻不膨胀；命中意图仅直调对应单份 wf_sub_* 子工作流；
-- [ ] K4 仅按 product_id 读取单文件（禁止全量读取 18 份）；
+- [ ] K4 仅按 offer_id 读取单文件（禁止全量读取 18 份）；
 - [ ] 大报文（plan_json/config_json/fields/report）一律走后端 save/query 或 `--file` 类端点文件传参，不经模型上下文中转。
 
 ### 2.4.3 意图路由联调（对齐 3.2 提示词【意图→工作流映射表】智能体语义识别直调）

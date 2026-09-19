@@ -26,7 +26,7 @@
     python wf_runner.py wf_sub_01 --offline            # 全部走 mock，不联网（仅调试）
     python wf_runner.py wf_sub_01 --allow-mock         # 真实执行失败时允许静默回退 mock
     python wf_runner.py wf_sub_01 --save-json out.json # 落盘每一步 I/O
-    python wf_runner.py wf_sub_01                     # 默认生成 logs/<工作流>_<时间戳>.log.md
+    python wf_runner.py wf_sub_01                     # 默认生成 logs/<工作流>_<流程名>_<时间戳>.log.md
     python wf_runner.py wf_sub_01 --no-log            # 不生成日志
     python wf_runner.py wf_sub_01 --log-file run.log.md  # 执行日志写入指定文件
     python wf_runner.py --list                          # 列出可用工作流
@@ -726,8 +726,8 @@ def _fast_urlopen(req, *a, **k):
     elif "approval" in u or "status" in u:
         payload = {"status": "approved", "approved": "true", "code": "0", "msg": "ok"}
     elif "download" in u:
-        payload = {"code": "0", "msg": "ok", "backend_pending": "0",
-                   "download_url": "https://example.invalid/mock/report.md"}
+        payload = {"code": "0", "msg": "ok", "backend_pending": "1",
+                   "download_url": "", "url": "", "note": "下载端点暂不可达，报告/脚本未生成"}
     elif "result" in u or "query" in u:
         payload = {"code": "0", "msg": "ok", "total": 0, "list": [],
                    "data": {}, "record_json": ""}
@@ -1341,15 +1341,22 @@ def _resolve_log_path(log_arg: str, workflow: str) -> str:
     """解析日志文件路径。
 
     - 未指定（空）→ 不写日志，返回 ""
-    - "-" 或 "auto" 或目录形式 → 自动生成 logs/<工作流>_<时间戳>.log.md
+    - "-" 或 "auto" 或目录形式 → 自动生成 logs/<工作流>_<流程名>_<时间戳>.log.md
     - 其它 → 视为显式文件路径
     """
     if not log_arg:
         return ""
     if log_arg in ("-", "auto") or log_arg.endswith(("/", "\\")):
         wf_name = os.path.splitext(os.path.basename(workflow or "workflow"))[0]
+        flow_name = ""
+        try:
+            flow_name = Workflow(WorkflowRunner._resolve_path(workflow)).flow_name or ""
+        except Exception:
+            pass
+        flow_name = re.sub(r'[\\/:*?"<>|]', "_", flow_name).strip(" _")
+        stem = f"{wf_name}_{flow_name}" if flow_name and flow_name != wf_name else wf_name
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        return os.path.join(BASE_DIR, "logs", f"{wf_name}_{ts}.log.md")
+        return os.path.join(BASE_DIR, "logs", f"{stem}_{ts}.log.md")
     return log_arg
 
 
@@ -1371,7 +1378,7 @@ def main(argv=None):
     ap.add_argument("--save-json", default="", metavar="FILE", help="把每步 I/O 落盘为 JSON")
     ap.add_argument("--log-file", default=None, metavar="FILE",
                     help="把执行日志（每节点完整输入/输出，不截断）写入 markdown 文件；"
-                         "默认（不传）自动生成 logs/<工作流>_<时间戳>.log.md，"
+                         "默认（不传）自动生成 logs/<工作流>_<流程名>_<时间戳>.log.md，"
                          "传 '-' 同为自动生成，传具体路径则写入该文件")
     ap.add_argument("--no-log", action="store_true", help="不生成执行日志")
     ap.add_argument("--base-url", default="", help="覆盖插件 BASE_URL（默认取 JSON 内 url）")

@@ -171,13 +171,6 @@
       {
         "outputs": [
           {
-            "name": "product_id",
-            "cname": "CRM产品ID",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "offer_id",
             "cname": "销售品ID",
             "sechema": [],
@@ -200,7 +193,7 @@
           },
           {
             "name": "product_config",
-            "cname": "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）",
+            "cname": "完整落地配置JSON（含offer_id/offer_name等与plan_json原文）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -1558,7 +1551,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）已串行执行完成（req_id：{req_id}）：\n\n【智能配置】product_id={product_id}，offer_id={offer_id}，落地状态={status}\n{save_result}\n\n【规格稽核】pass={spec_pass}\n{audit_suggest}\n\n【自动测试】总体结论：{test_passed}（globalId：{global_id}）\n{test_report}\n\n【资费校准】pass={fee_pass}\n{risk_summary}\n\n【下一步】若四环节均无异常，您可以直接发起上线审批；如存在异常，请按上述整改建议/风险提示处理后重新执行。"
+          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）已串行执行完成（req_id：{req_id}）：\n\n【智能配置】offer_id={offer_id}，落地状态={status}\n{save_result}\n\n【规格稽核】pass={spec_pass}\n{audit_suggest}\n\n【自动测试】总体结论：{test_passed}（globalId：{global_id}）\n{test_report}\n\n【资费校准】pass={fee_pass}\n{risk_summary}\n\n【下一步】若四环节均无异常，您可以直接发起上线审批；如存在异常，请按上述整改建议/风险提示处理后重新执行。"
         },
         "settings": {
           "stream": false,
@@ -1580,20 +1573,6 @@
               "a1b2c3d4-0000-4000-8000-000000001101,req_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000001103",
-            "relName": "product_id",
-            "name": "product_id",
-            "description": "CRM产品ID",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000001103",
-              "a1b2c3d4-0000-4000-8000-000000001103,product_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000001103,product_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000001103",

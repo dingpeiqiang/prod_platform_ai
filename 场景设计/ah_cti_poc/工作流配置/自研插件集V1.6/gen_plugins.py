@@ -421,7 +421,7 @@ plugins.append(build_plugin(
 # ---------------- 工具7 配置落地 ----------------
 plugins.append(build_plugin(
     "save-config-0001", "配置落地", "save_product_config",
-    "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
+    "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
     "/api/v1/appstore/product/config/save", "POST",
     {
         "req_id": schema_param("req_id", "string",
@@ -434,11 +434,10 @@ plugins.append(build_plugin(
     },
     ["req_id", "plan_json", "confirmed"],
     {
-        "product_id": {"description": "CRM 产品ID", "type": "string"},
         "offer_id": {"description": "销售品ID（后续稽核/测试入参）", "type": "string"},
         "save_result": {"description": "各字段分类写入结果：基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因", "type": "string"},
         "status": {"description": "SUCCESS / PARTIAL / FAIL / NOT_CONFIRMED", "type": "string"},
-        "product_config": {"description": "完整落地配置JSON（V2.4：含 product_id/offer_id编码/offer_name/资费与销售规则及 plan_json 原文，供环节结果存储整体落库）", "type": "string"},
+        "product_config": {"description": "完整落地配置JSON（V2.4：含 offer_id编码/offer_name/资费与销售规则及 plan_json 原文，供环节结果存储整体落库）", "type": "string"},
     },
     "N"))
 
@@ -467,13 +466,13 @@ plugins.append(build_plugin(
 # ---------------- 工具9 上线审批推送 ----------------
 plugins.append(build_plugin(
     "approval-submit-0001", "上线审批推送", "submit_release_approval",
-    "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id",
+    "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 offer_id 重复提交返回原 approval_id",
     "/api/v1/appstore/approval/submit", "POST",
     {
         "req_id": schema_param("req_id", "string",
             "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING", True),
-        "product_id": schema_param("product_id", "string",
-            "CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING", True),
+        "offer_id": schema_param("offer_id", "string",
+            "销售品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING", True),
         "report_url": schema_param("report_url", "string",
             "上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）", True),
         "approve_confirmed": schema_param("approve_confirmed", "string",
@@ -481,7 +480,7 @@ plugins.append(build_plugin(
         "approval_flow": schema_param("approval_flow", "string",
             "审批流枚举：standard/urgent，默认 standard", False, "standard", "standard,urgent"),
     },
-    ["req_id", "product_id", "report_url", "approve_confirmed"],
+    ["req_id", "offer_id", "report_url", "approve_confirmed"],
     {
         "approval_id": {"description": "审批单号", "type": "string"},
         "status": {"description": "提交状态", "type": "string"},
@@ -494,14 +493,14 @@ plugins.append(build_plugin(
     "自研模拟实现（V1.6）：按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），可构造 error_count>0 演示告警分支；模拟数据兼容18个销售品",
     "/api/v1/appstore/product/monitor", "GET",
     {
-        "product_id": schema_param("product_id", "string",
+        "offer_id": schema_param("offer_id", "string",
             "要查询的销售品ID；缺失返回 PARAM_MISSING", True),
         "metric": schema_param("metric", "string",
             "指标枚举：order/error/fee/all，默认 all", False, "all", "order,error,fee,all"),
     },
-    ["product_id"],
+    ["offer_id"],
     {
-        "offer_name": {"description": "产品名称（按product_id回读种子库）", "type": "string"},
+        "offer_name": {"description": "产品名称（按offer_id回读种子库）", "type": "string"},
         "order_count": {"description": "订单量", "type": "string"},
         "order_trend": {"description": "订单量趋势：上升/下降/持平", "type": "string"},
         "error_count": {"description": "异常量", "type": "string"},
@@ -523,14 +522,14 @@ plugins.append(build_plugin(
     "自研模拟实现（V1.6）：生成模拟告警单号 alert_id 并返回推送成功状态；告警记录写入模拟库供监控查询回显闭环",
     "/api/v1/appstore/alert/send", "POST",
     {
-        "product_id": schema_param("product_id", "string",
+        "offer_id": schema_param("offer_id", "string",
             "告警关联销售品ID；缺失返回 PARAM_MISSING", True),
         "alarm_level": schema_param("alarm_level", "string",
             "告警级别枚举：high/middle/low；缺失返回 PARAM_MISSING", True, "", "high,middle,low"),
         "content": schema_param("content", "string",
             "告警正文（含环节、问题描述、建议），由大模型节点生成，工作流变量引用", True),
     },
-    ["product_id", "alarm_level", "content"],
+    ["offer_id", "alarm_level", "content"],
     {
         "alert_id": {"description": "告警单号", "type": "string"},
         "status": {"description": "推送状态", "type": "string"},
@@ -540,13 +539,13 @@ plugins.append(build_plugin(
 # ---------------- 工具13 审批进度查询 ----------------
 plugins.append(build_plugin(
     "approval-status-0001", "审批进度查询", "query_approval_status",
-    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 product_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
     "/api/v1/appstore/approval/status", "GET",
     {
-        "product_id": schema_param("product_id", "string",
-            "产品ID，按其查最新审批单；为空返回 PARAM_MISSING", True),
+        "offer_id": schema_param("offer_id", "string",
+            "销售品ID，按其查最新审批单；为空返回 PARAM_MISSING", True),
     },
-    ["product_id"],
+    ["offer_id"],
     {
         "approval_id": {"description": "审批单号", "type": "string"},
         "status": {"description": "审批状态：审批中 / 通过 / 驳回", "type": "string"},

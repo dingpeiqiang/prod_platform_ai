@@ -177,7 +177,7 @@ gm = {m.get("role"): m for m in g.get("members", [])}
 check("F4-2 group.members 三成员 + 副卡功能费 offer_id 引用组定义",
       set(gm) == {"宽带", "天翼高清", "副卡功能费"}
       and gm.get("副卡功能费", {}).get("offer_id") == "7320110001600005", g)
-product_id = save.get("product_id", "")
+offer_id = save.get("offer_id", "")
 
 test_start = call("/api/v1/appstore/test/offer/start", {"offerId": "900113046"})
 gid = test_start.get("globalId", "")

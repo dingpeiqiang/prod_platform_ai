@@ -438,7 +438,7 @@ CODE_POLL_PROGRESS = CODE_POLL_PROGRESS.replace("BASE_URL", BASE_URL)
 
 # CODE_SUMMARY_APPROVAL：wf_sub_06 节点501s 合成结构化汇总（V2.4 新增，设计方案3.2.6 节点7）。
 # 输入=5类自查节点提取的环节结果原文（config/spec/fee/test + requirement），
-# 解析各环节 JSON 提取关键字段（product_id/offer_id/pass/audit_summary/pass/risk_list/
+# 解析各环节 JSON 提取关键字段（offer_id/offer_name/pass/audit_summary/pass/risk_list/
 # orderId/offerInstId/测试统计），合成一份 JSON 字符串供节点501g 报告生成与节点502 审批推送使用。
 CODE_SUMMARY_APPROVAL = (
     "import json\n"
@@ -463,8 +463,7 @@ CODE_SUMMARY_APPROVAL = (
     "    fee = _parse(p.get('fee_result') or '')\n"
     "    test = _parse(p.get('test_result') or '')\n"
     "    req = _parse(p.get('requirement_result') or '')\n"
-    "    # config 环节：完整落地配置JSON（内含 product_id/offer_id 与 plan_json）\n"
-    "    product_id = str(cfg.get('product_id') or '')\n"
+    "    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n"
     "    offer_id = str(cfg.get('offer_id') or '')\n"
     "    offer_name = str(cfg.get('offer_name') or '')\n"
     "    # spec 环节：存储的是稽核总结文本\n"
@@ -486,11 +485,10 @@ CODE_SUMMARY_APPROVAL = (
     "        offer_inst_id = m.group(1)\n"
     "    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n"
     "    summary = {\n"
-    "        'product_id': product_id,\n"
     "        'offer_id': offer_id,\n"
     "        'offer_name': offer_name,\n"
     "        'requirement_summary': str(req.get('raw') or '')[:500],\n"
-    "        'config': {'product_id': product_id, 'offer_id': offer_id,\n"
+    "        'config': {'offer_id': offer_id,\n"
     "                   'plan_json': cfg.get('plan_json')},\n"
     "        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n"
     "        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n"
@@ -500,7 +498,6 @@ CODE_SUMMARY_APPROVAL = (
     "    }\n"
     "    ret: Output = {\n"
     "        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n"
-    "        \"product_id\": product_id,\n"
     "        \"offer_id\": offer_id\n"
     "    }\n"
     "    return ret"
@@ -757,11 +754,11 @@ s2.append(plugin_node(103, "配置落地", "save_product_config",
      inp("plan_json", "执行方案JSON原文（节点106提取的 result_json）", ref_block=nid(106), ref_rel="record_json"),
      inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
-     [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
+     [("offer_id", "销售品ID", "string"),
       ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
-      ("product_config", "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）", "string")]))
+      ("product_config", "完整落地配置JSON（含offer_id/offer_name等与plan_json原文）", "string")]))
 s2.append(plugin_node(105, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（内含 product_id/offer_id/offer_name/... 与 plan_json 原文，供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查提取 offer_id）；主流程删除后存储下沉子工作流",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（内含 offer_id/offer_name/... 与 plan_json 原文，供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查提取 offer_id）；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=config（智能配置）", content="config"),
@@ -769,11 +766,10 @@ s2.append(plugin_node(105, "环节结果存储", "save_node_result",
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s2.append(end_node(104, "结束(配置落地完成)",
-    [inp("product_id", "CRM产品ID", ref_block=nid(103), ref_rel="product_id"),
-     inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
      inp("save_result", "四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status")],
-    "智能配置完成：product_id={product_id}，offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"))
+    "智能配置完成：offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"))
 files["wf_sub_02_智能配置.json"] = workflow(
     "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config，result_json=完整落地配置JSON（V2.4：含 offer_id 编码，供下游稽核/测试/门禁自查）。", "wf_sub_02", s2,
     [edge(101,102), edge(102,106), edge(106,103), edge(103,105), edge(105,104)])
@@ -789,7 +785,7 @@ s3.append(start_node(201, [
 # （wf_sub_03 单入参 req_id），改为按 req_id+node_name=config 查询 config 环节结果，
 # 代码节点提取 result_json 原文（落地配置JSON，内含 offer_id）供稽核使用
 s3.append(plugin_node(206, "读取配置环节结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 product_id/offer_id/...）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id/...）",
     BASE_URL + "/api/v1/appstore/result/query",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
@@ -987,7 +983,7 @@ files["wf_sub_05_资费校准.json"] = workflow(
 # ============================================================
 # wf_sub_06 上线审批（V2.4 按设计方案3.2.6 重构：11节点/10边）
 #   串行自查5类环节结果（config/spec/fee/test/requirement）→ 代码节点501s
-#   合成结构化汇总（含 product_id/orderId/offerInstId）→ LLM 501g 生成7章节报告
+#   合成结构化汇总（含 orderId/offerInstId）→ LLM 501g 生成7章节报告
 #   → 报告存储501r（node_name=report）→ 审批推送502（report_url=报告）→ 结束
 # ============================================================
 s6 = []
@@ -995,7 +991,7 @@ s6.append(start_node(501, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
 s6.append(plugin_node(5011, "自查配置结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 product_id/offer_id）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 offer_id）",
     BASE_URL + "/api/v1/appstore/result/query",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
@@ -1059,20 +1055,20 @@ s6.append(code_node(5020, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点5019查询出参 list（记录数组JSON）", ref_block=nid(5019), ref_rel="list")],
     [code_out("record_json", 5020)],
     pos=(390, 635)))
-# 501s 合成结构化汇总：解析5类环节原文，提取关键字段（product_id/orderId/offerInstId/各环节结论）合成 JSON
+# 501s 合成结构化汇总：解析5类环节原文，提取关键字段（offer_id/orderId/offerInstId/各环节结论）合成 JSON
 s6.append(code_node(5021, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
     [inp("config_result", "配置环节原文（节点5012提取）", ref_block=nid(5012), ref_rel="record_json"),
      inp("spec_result", "稽核环节原文（节点5014提取）", ref_block=nid(5014), ref_rel="record_json"),
      inp("fee_result", "资费环节原文（节点5016提取）", ref_block=nid(5016), ref_rel="record_json"),
      inp("test_result", "测试环节原文（节点5018提取）", ref_block=nid(5018), ref_rel="record_json"),
      inp("requirement_result", "执行方案原文（节点5020提取）", ref_block=nid(5020), ref_rel="record_json")],
-    [code_out("summary_json", 5021), code_out("product_id", 5021), code_out("offer_id", 5021)],
+    [code_out("summary_json", 5021), code_out("offer_id", 5021)],
     pos=(540, 385)))
 # 501g 报告生成：强制7章节（设计方案3.1.4），温度0.2
 s6.append(llm_node(5022, "上线报告生成",
     "请按标准模板汇总生成《销售品上线测试与稽核报告》，输入为结构化汇总（summary_json={summary_json}），强制包含 7 章节：\n"
     "1. 需求摘要（引用 requirement_summary，仅列关键字段）；\n"
-    "2. 配置落地结果（config：product_id/offer_id/offer_name 及写入情况）；\n"
+    "2. 配置落地结果（config：offer_id/offer_name 及写入情况）；\n"
     "3. 稽核结论（spec：audit_summary，通过/驳回）；\n"
     "4. 资费结论（fee：risk_summary，是否存在风险）；\n"
     "5. 测试统计（test：场景数/测点数/成功/失败统计，失败测点逐条列出）；\n"
@@ -1093,11 +1089,11 @@ s6.append(plugin_node(5023, "报告存储", "save_node_result",
      inp("result_json", "环节结果JSON=上线报告", ref_block=nid(5022), ref_rel="report"),
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(840, 385)))
-# 502 审批推送：product_id/report_url 均引用结构化结果（V2.4：不再传空由后端回读）
+# 502 审批推送：offer_id/report_url 均引用结构化结果（V2.4：不再传空由后端回读）
 s6.append(plugin_node(502, "审批推送", "submit_release_approval",
-    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id；product_id=501s从config环节结果提取，report_url=501g生成的上线报告",
+    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；offer_id=501s从config环节结果提取，report_url=501g生成的上线报告",
     BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("product_id", "CRM产品ID（节点5021从config环节结果提取）", ref_block=nid(5021), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID（节点5021从config环节结果提取）", ref_block=nid(5021), ref_rel="offer_id"),
      inp("report_url", "上线报告（节点5022生成的报告正文）", ref_block=nid(5022), ref_rel="report"),
      inp("req_id", "执行批次号（四环节结果门禁校验依据，=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
@@ -1109,7 +1105,7 @@ s6.append(end_node(503, "结束(审批已推送)",
      inp("report", "上线报告", ref_block=nid(5022), ref_rel="report")],
     "上线审批已推送：approval_id={approval_id}，status={status}\n{report}\n可随时发送\"查询审批进度\"消息查询审批状态。"))
 files["wf_sub_06_上线审批.json"] = workflow(
-    "产销品-上线审批", "子工作流6：上线审批（V2.4 按设计方案3.2.6 重构，13节点/12边）。单入参 req_id：串行自查5类环节结果（config/spec/fee/test/requirement，各配提取代码节点）→代码节点5021合成结构化汇总（含product_id/offer_id/orderId/offerInstId与各环节结论）→LLM生成7章节上线报告→报告落库（node_name=report）→submit_release_approval推送（product_id=结构化汇总提取，report_url=报告正文；后端硬门禁：approve_confirmed=true+req_id四环节结果齐全，幂等）。", "wf_sub_06", s6,
+    "产销品-上线审批", "子工作流6：上线审批（V2.4 按设计方案3.2.6 重构，13节点/12边）。单入参 req_id：串行自查5类环节结果（config/spec/fee/test/requirement，各配提取代码节点）→代码节点5021合成结构化汇总（含offer_id/orderId/offerInstId与各环节结论）→LLM生成7章节上线报告→报告落库（node_name=report）→submit_release_approval推送（offer_id=结构化汇总提取，report_url=报告正文；后端硬门禁：approve_confirmed=true+req_id四环节结果齐全，幂等）。", "wf_sub_06", s6,
     [edge(501,5011), edge(5011,5012), edge(5012,5013), edge(5013,5014), edge(5014,5015),
      edge(5015,5016), edge(5016,5017), edge(5017,5018), edge(5018,5019), edge(5019,5020),
      edge(5020,5021), edge(5021,5022), edge(5022,5023), edge(5023,502), edge(502,503)])
@@ -1164,12 +1160,12 @@ OPS_REPORT_PROMPT_HEAD = (
 )
 s7 = []
 s7.append(start_node(601, [
-    inp("product_id", "销售品ID", required=True),
+    inp("offer_id", "销售品ID", required=True),
 ]))
 s7.append(plugin_node(602, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告生成",
     BASE_URL + "/api/v1/appstore/product/monitor",
-    [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(601), ref_rel="offer_id"),
      inp("metric", "指标默认all", content="all")],
     [("offer_name", "产品名称", "string"),
      ("order_count", "订单量", "string"), ("order_trend", "订单量趋势", "string"),
@@ -1195,7 +1191,7 @@ s7.append(llm_node(604, "告警文案生成",
 s7.append(plugin_node(605, "异常告警", "send_alert",
     "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）",
     BASE_URL + "/api/v1/appstore/alert/send",
-    [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(601), ref_rel="offer_id"),
      inp("alarm_level", "告警级别", content="high"),
      inp("content", "告警文案（节点604输出）", ref_block=nid(604), ref_rel="alert_content")],
     [("alert_id", "告警单号", "string"), ("status", "推送状态", "string")]))
@@ -1239,21 +1235,21 @@ files["wf_sub_07_监控运维.json"] = workflow(
 # ============================================================
 s8 = []
 s8.append(start_node(701, [
-    inp("product_id", "产品ID", required=True),
+    inp("offer_id", "销售品ID", required=True),
 ]))
 s8.append(plugin_node(702, "审批状态查询", "query_approval_status",
     "工具13：自研模拟审批进度查询（从模拟审批状态库按产品查询最新审批单）",
     BASE_URL + "/api/v1/appstore/approval/status",
-    [inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id")],
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id")],
     [("approval_id", "审批单号", "string"), ("status", "审批中/通过/驳回", "string"),
      ("current_node", "当前审批环节", "string"), ("approver", "当前审批人", "string"),
      ("opinion", "审批意见", "string"), ("submit_time", "提交时间", "string"),
      ("update_time", "更新时间", "string")],
     method="get"))
 s8.append(llm_node(703, "状态摘要归纳",
-    "按'产品ID：{product_id}｜审批单号：{approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
+    "按'销售品ID：{offer_id}｜审批单号：{approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
     "输出要求：仅输出审批状态摘要内容（对应出参 approval_summary），不输出其他多余文字。",
-    [inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id"),
+    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
      inp("approval_id", "审批单号", ref_block=nid(702), ref_rel="approval_id"),
      inp("status", "审批状态", ref_block=nid(702), ref_rel="status"),
      inp("current_node", "当前环节", ref_block=nid(702), ref_rel="current_node"),
@@ -1265,7 +1261,7 @@ s8.append(end_node(704, "结束(查询完成)",
     [inp("approval_summary", "审批状态摘要", ref_block=nid(703), ref_rel="approval_summary")],
     "{approval_summary}"))
 files["wf_sub_08_审批进度查询.json"] = workflow(
-    "产销品-审批进度查询", "子工作流8：审批进度查询（V2.4 调整：仅按产品查询）。按 product_id 查最新审批单：query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。", "wf_sub_08", s8,
+    "产销品-审批进度查询", "子工作流8：审批进度查询（V2.4 调整：仅按产品查询）。按 offer_id 查最新审批单：query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。", "wf_sub_08", s8,
     [edge(701,702), edge(702,703), edge(703,704)])
 
 # ============================================================
@@ -1287,20 +1283,16 @@ CODE_COMBO_SUMMARY = (
     "    spec_text = str(p.get('spec_content') or '')\n"
     "    test_text = str(p.get('test_content') or '')\n"
     "    fee_text = str(p.get('fee_content') or '')\n"
-    "    # 环节1 智能配置：content 含 product_id=、offer_id=、状态：SUCCESS/PARTIAL/FAIL\n"
-    "    product_id = ''\n"
+    "    # 环节1 智能配置：content 含 offer_id=、状态：SUCCESS/PARTIAL/FAIL\n"
     "    offer_id = ''\n"
     "    config_status = 'UNKNOWN'\n"
-    "    m = re.search(r'product_id[=：:]\\s*([A-Za-z0-9\\-]+)', config_text)\n"
-    "    if m:\n"
-    "        product_id = m.group(1)\n"
     "    m = re.search(r'offer_id[=：:]\\s*([A-Za-z0-9\\-]+)', config_text)\n"
     "    if m:\n"
     "        offer_id = m.group(1)\n"
     "    m = re.search(r'状态[=：:]\\s*(SUCCESS|PARTIAL|FAIL)', config_text)\n"
     "    if m:\n"
     "        config_status = m.group(1)\n"
-    "    config_pass = '1' if config_status in ('SUCCESS', 'PARTIAL') and product_id else '0'\n"
+    "    config_pass = '1' if config_status in ('SUCCESS', 'PARTIAL') and offer_id else '0'\n"
     "    # 环节2 规格稽核：content 含 pass=1/0\n"
     "    spec_pass = '0'\n"
     "    m = re.search(r'pass[=：:]\\s*([01])', spec_text)\n"
@@ -1325,13 +1317,13 @@ CODE_COMBO_SUMMARY = (
     "    summary_md = '\\n'.join([\n"
     "        '| 环节 | 结论 | 关键结果 |',\n"
     "        '| --- | --- | --- |',\n"
-    "        '| 智能配置 | ' + config_mark + ' | product_id=' + (product_id or '-') + '，offer_id=' + (offer_id or '-') + '，落地状态=' + status_cn + ' |',\n"
+    "        '| 智能配置 | ' + config_mark + ' | offer_id=' + (offer_id or '-') + '，落地状态=' + status_cn + ' |',\n"
     "        '| 规格稽核 | ' + mark(spec_pass) + ' | ' + (spec_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
     "        '| 自动测试 | ' + mark(test_pass) + ' | ' + (test_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
     "        '| 资费校准 | ' + mark(fee_pass) + ' | ' + (fee_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
     "    ])\n"
     "    summary_json = json.dumps({\n"
-    "        'product_id': product_id, 'offer_id': offer_id,\n"
+    "        'offer_id': offer_id,\n"
     "        'config_status': config_status, 'config_pass': config_pass,\n"
     "        'spec_pass': spec_pass, 'test_pass': test_pass, 'fee_pass': fee_pass,\n"
     "        'all_pass': all_pass == '1',\n"
@@ -1339,7 +1331,6 @@ CODE_COMBO_SUMMARY = (
     "    ret: Output = {\n"
     "        \"summary_md\": summary_md,\n"
     "        \"summary_json\": summary_json,\n"
-    "        \"product_id\": product_id,\n"
     "        \"offer_id\": offer_id,\n"
     "        \"all_pass\": all_pass\n"
     "    }\n"
@@ -1366,7 +1357,7 @@ COMBO_REPORT_PROMPT = (
     "\n"
     "# 处理要求\n"
     "1. 按环节逐一展示执行结果：每个环节给出结论（✅ 通过 / ⚠️ 部分成功 / ❌ 未通过）与关键结果说明，数据以系统提供的为准，不得凭空创造。\n"
-    "2. 智能配置环节展示产品标识（product_id/offer_id）与落地状态；规格稽核与资费校准环节展示问题明细或风险清单要点；自动测试环节展示受理验证结论（orderId/offerInstId）与场景通过情况。\n"
+    "2. 智能配置环节展示产品标识（offer_id，即销售品ID）与落地状态；规格稽核与资费校准环节展示问题明细或风险清单要点；自动测试环节展示受理验证结论（orderId/offerInstId）与场景通过情况。\n"
     "3. 输出末尾固定给出下一步指引：全部通过时提示用户可发起上线审批（说明将按产品发起审批推送）；存在异常时逐条列出需整改项，并提示用户整改后重新执行。\n"
     "\n"
     "# 固定输出格式\n"
@@ -1408,7 +1399,7 @@ sc.append(code_node(906, "执行结果汇总", CODE_COMBO_SUMMARY,
      inp("test_content", "自动测试环节输出", ref_block=nid(904), ref_rel="content"),
      inp("fee_content", "资费校准环节输出", ref_block=nid(905), ref_rel="content")],
     [code_out("summary_md", 906), code_out("summary_json", 906),
-     code_out("product_id", 906), code_out("offer_id", 906), code_out("all_pass", 906)],
+     code_out("offer_id", 906), code_out("all_pass", 906)],
     pos=(1830, 300)))
 sc.append(selector_node2(907, "整体结论判断",
     [dep_node(906, "执行结果汇总", ["all_pass"])],
@@ -1442,7 +1433,7 @@ sc.append(end_node(911, "结束(存在异常-提示整改)",
      inp("req_id", "执行主干批次号", ref_block=nid(901), ref_rel="req_id")],
     "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上述整改项完成处理后重新执行。"))
 files["产销品-组合智能配置-自动化测试_export.json"] = workflow(
-    "产销品-智能配置-自动化测试", "组合主流程（V2.4 优化：结构化汇总+审批指引）：智能配置→规格稽核→自动测试→资费校准四环节串行（单入参 req_id 贯穿，环节存储下沉子工作流）→执行结果汇总（代码节点解析各环节输出：product_id/offer_id/落地状态/稽核结论/测试结论/资费结论，结构化输出汇总表 summary_md+汇总JSON summary_json+整体结论 all_pass）→整体结论判断（存在异常走 port=-1 分支；port=0 兜底全部通过）→两分支各自 LLM 报告生成（按固定模板结构化展示每个环节执行结果）→结束输出报告：全部通过提示用户发起上线审批，存在异常逐条列出整改项并提示重新执行。", "wf_combo_exec", sc,
+    "产销品-智能配置-自动化测试", "组合主流程（V2.4 优化：结构化汇总+审批指引）：智能配置→规格稽核→自动测试→资费校准四环节串行（单入参 req_id 贯穿，环节存储下沉子工作流）→执行结果汇总（代码节点解析各环节输出：offer_id/落地状态/稽核结论/测试结论/资费结论，结构化输出汇总表 summary_md+汇总JSON summary_json+整体结论 all_pass）→整体结论判断（存在异常走 port=-1 分支；port=0 兜底全部通过）→两分支各自 LLM 报告生成（按固定模板结构化展示每个环节执行结果）→结束输出报告：全部通过提示用户发起上线审批，存在异常逐条列出整改项并提示重新执行。", "wf_combo_exec", sc,
     [edge(901,902), edge(902,903), edge(903,904), edge(904,905), edge(905,906),
      edge(906,907), edge(907,908,0), edge(907,909,-1), edge(908,910), edge(909,911)])
 
@@ -1466,7 +1457,7 @@ files["产销品-组合智能配置-自动化测试_export.json"] = workflow(
 # ============================================================
 MERGED_END_CONTENT = (
     "四环节（智能配置→规格稽核→自动测试→资费校准）已串行执行完成（req_id：{req_id}）：\n\n"
-    "【智能配置】product_id={product_id}，offer_id={offer_id}，落地状态={status}\n"
+    "【智能配置】offer_id={offer_id}，落地状态={status}\n"
     "{save_result}\n\n"
     "【规格稽核】pass={spec_pass}\n{audit_suggest}\n\n"
     "【自动测试】总体结论：{test_passed}（globalId：{global_id}）\n{test_report}\n\n"
@@ -1499,9 +1490,9 @@ sm.append(plugin_node(1103, "配置落地", "save_product_config",
      inp("plan_json", "执行方案JSON原文（节点1106提取的 result_json）", ref_block=nid(1106), ref_rel="record_json"),
      inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
-    [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
+    [("offer_id", "销售品ID", "string"),
      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
-     ("product_config", "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）", "string")]))
+     ("product_config", "完整落地配置JSON（含offer_id/offer_name等与plan_json原文）", "string")]))
 sm.append(plugin_node(1105, "存储config环节结果", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含offer_id编码）",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1599,7 +1590,6 @@ sm.append(plugin_node(1405, "存储fee环节结果", "save_node_result",
 # ---------- 汇总结束（四环节结果直连各环节节点出参） ----------
 sm.append(end_node(1404, "结束(四环节执行完成)",
     [inp("req_id", "执行主干批次号", ref_block=nid(1101), ref_rel="req_id"),
-     inp("product_id", "CRM产品ID", ref_block=nid(1103), ref_rel="product_id"),
      inp("offer_id", "销售品ID", ref_block=nid(1103), ref_rel="offer_id"),
      inp("save_result", "四类字段写入结果", ref_block=nid(1103), ref_rel="save_result"),
      inp("status", "落地状态", ref_block=nid(1103), ref_rel="status"),

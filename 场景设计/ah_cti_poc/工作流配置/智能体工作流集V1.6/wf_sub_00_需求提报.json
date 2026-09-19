@@ -396,8 +396,8 @@
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
             "relName": "req_id",
-            "name": "product_id",
-            "description": "产品ID（需求阶段未落地，传需求单号 req_id 占位）",
+            "name": "offer_id",
+            "description": "销售品ID（需求阶段未落地，传需求单号 req_id 占位）",
             "type": "ref",
             "required": true,
             "content": "",

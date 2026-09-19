@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-审批进度查询",
-  "flowRemark": "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/product_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
+  "flowRemark": "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -12,7 +12,7 @@
             "blockID": "",
             "relName": "",
             "name": "approval_id",
-            "description": "审批单号（可选，与 product_id 至少一个，approval_id 优先）",
+            "description": "审批单号（可选，与 offer_id 至少一个，approval_id 优先）",
             "type": "string",
             "required": false,
             "content": ""
@@ -20,7 +20,7 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "product_id",
+            "name": "offer_id",
             "description": "销售品ID（可选，缺失 approval_id 时按此查最新审批单）",
             "type": "string",
             "required": false,
@@ -179,24 +179,24 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
-            "relName": "product_id",
-            "name": "product_id",
-            "description": "产品ID",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000801",
-              "a1b2c3d4-0000-4000-8000-000000000801,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "审批状态查询",
           "code": "query_approval_status",
-          "description": "工具13：自研模拟审批进度查询（approval_id 优先，product_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
+          "description": "工具13：自研模拟审批进度查询（approval_id 优先，offer_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
           "version": "1"
         },
         "authentic_info_new": {

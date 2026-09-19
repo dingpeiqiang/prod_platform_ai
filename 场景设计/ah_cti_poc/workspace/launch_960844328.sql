@@ -1,6 +1,6 @@
 -- =============================================================
 -- 销售品配置上线脚本（模拟生成）
--- product_id=PPLAN20260915160844328 offer_id=960844328
+-- offer_id=960844328
 -- offer_name=5G套餐
 -- 生成时间=2026-09-15 16:20:42
 -- 说明：本脚本由产销品加载AI应用配置落地环节自动生成，仅作演示产物，
@@ -13,7 +13,7 @@ select 'G960844328', '5G套餐', 'M328', '5G套餐定价', 'YnE328', 312.0, sysd
 insert into PD_GOODSCLASS_REL (GOODS_ID, CLASS_ID, STATE, STATE_TIME)
 select 'G960844328', 'YnE328', '1', sysdate from dual;
 insert into PD_GOODSOPCODE_REL (GOODS_ID, OPCODE, STATE, STATE_TIME)
-select 'G960844328', 'PPLAN20260915160844328', '1', sysdate from dual;
+select 'G960844328', '960844328', '1', sysdate from dual;
 insert into PD_GOODSRELEASE_DICT (GOODS_ID, RELEASE_VER, RELEASE_DESC, STATE, STATE_TIME)
 select 'G960844328', 'V1.0', '5G套餐 上线发布', '1', sysdate from dual;
 

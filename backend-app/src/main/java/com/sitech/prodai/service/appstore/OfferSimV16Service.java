@@ -48,9 +48,7 @@ public class OfferSimV16Service {
     private final Map<String, Map<String, Object>> savedConfigs = new ConcurrentHashMap<>();
     /** 新增销售品独立档案：offer_id -> 从 plan_json 构造的产品档案（与种子同构；新增链路不复用存量编码） */
     private final Map<String, Map<String, Object>> newProductArchive = new ConcurrentHashMap<>();
-    /** product_id -> offer_id（配置落地时登记，监控/告警按 product_id 反查销售品名称与配置） */
-    private final Map<String, String> productToOffer = new ConcurrentHashMap<>();
-    /** product_id -> 上线脚本（V2.5 配置落地时生成 CRM/billing 落库 SQL，供下载接口回放） */
+    /** offer_id -> 上线脚本（V2.5 配置落地时生成 CRM/billing 落库 SQL，供下载接口回放） */
     private final Map<String, String> launchScripts = new ConcurrentHashMap<>();
     /** globalId -> 自动化测试报告 Markdown（测试完成时归档，供下载接口回放） */
     private final Map<String, String> testReports = new ConcurrentHashMap<>();
@@ -60,8 +58,8 @@ public class OfferSimV16Service {
     private final Map<String, Map<String, Object>> testTasks = new ConcurrentHashMap<>();
     /** 审批单：approval_id -> 审批状态库 */
     private final Map<String, Map<String, Object>> approvals = new ConcurrentHashMap<>();
-    /** product_id -> approval_id（幂等） */
-    private final Map<String, String> approvalByProduct = new ConcurrentHashMap<>();
+    /** offer_id -> approval_id（幂等：同销售品重复审批返回原审批单） */
+    private final Map<String, String> approvalByOffer = new ConcurrentHashMap<>();
     /** 模拟审批自动流转时长（毫秒）：提交后 10s 自动"通过"并上架，避免演示中审批一直停在"审批中" */
     private static final long APPROVAL_AUTO_PASS_MS = 10_000L;
     /** 审批矩阵节点定义（节点名 -> 审批角色），四节点矩阵：产品经理→资费主管→运营审核→IT支撑（上线审批） */
@@ -284,7 +282,7 @@ public class OfferSimV16Service {
         if (replay != null) {
             // 幂等重放时重写 script_url：externalBaseUrl 可能随网关/主机变化，
             // 用本次请求的绝对前缀覆盖旧值，保证链接始终可直接下载
-            replay.put("script_url", scriptUrlOf(replay.get("product_id"), externalBaseUrl));
+            replay.put("script_url", scriptUrlOf(replay.get("offer_id"), externalBaseUrl));
             return replay;
         }
         Map<String, Object> plan = parseConfig(planJson);
@@ -306,13 +304,12 @@ public class OfferSimV16Service {
         }
         Map<String, Object> profile = newProductArchive.get(offerId);
         Map<String, Object> seedOffer = profile != null ? profile : seed.findOffer(offerId);
-        String productId = "P" + planId;
-        Map<String, Object> config = buildSavedConfig(productId, offerId, plan, seedOffer);
+        Map<String, Object> config = buildSavedConfig(offerId, plan, seedOffer);
 
         // V2.5：按落地配置生成 CRM/billing 落库 SQL 上线脚本（模拟脚本，表结构对齐样例风格），
-        // 存入脚本档案供下载接口回放；同 productId 覆盖（重跑配置即刷新脚本）
-        String launchScript = buildLaunchScript(productId, offerId, config, seedOffer);
-        launchScripts.put(productId, launchScript);
+        // 存入脚本档案供下载接口回放；同 offerId 覆盖（重跑配置即刷新脚本）
+        String launchScript = buildLaunchScript(offerId, config, seedOffer);
+        launchScripts.put(offerId, launchScript);
 
         List<Map<String, Object>> saveResult = new ArrayList<>();
         saveResult.add(classifyResult("基础信息", !MapOps.empty(plan.get("offer_name")) || seedOffer != null));
@@ -322,7 +319,6 @@ public class OfferSimV16Service {
         long failCount = saveResult.stream().filter(r -> !"success".equals(r.get("result"))).count();
 
         Map<String, Object> body = ok();
-        body.put("product_id", productId);
         body.put("offer_id", offerId);
         body.put("save_result", saveResult);
         body.put("status", failCount == 0 ? "SUCCESS" : (failCount < saveResult.size() ? "PARTIAL" : "FAIL"));
@@ -334,10 +330,10 @@ public class OfferSimV16Service {
         body.put("product_config", toJson(config));
         // V2.6：配置上线脚本下载链接改为绝对 URL（由控制器按 X-Forwarded-*/Host 头解析
         // 网关前置地址后传入），智能体/用户可直接点击下载，无需再拼 BASE_URL 前缀
-        body.put("script_url", scriptUrlOf(productId, externalBaseUrl));
+        body.put("script_url", scriptUrlOf(offerId, externalBaseUrl));
         // V2.0 融合商品扩展：组结构 plan_json（含 main_offer/member_offers 键）→ 出参内嵌 group
-        // （主 offer_id + members[]{role, offer_id, product_id}）；单品入参无 group 键（行为零变化）。
-        Map<String, Object> groupOut = buildGroupSaveResult(plan, groupMainOfferId(plan, offerId), productId);
+        // （主 offer_id + members[]{role, offer_id, required}）；单品入参无 group 键（行为零变化）。
+        Map<String, Object> groupOut = buildGroupSaveResult(plan, groupMainOfferId(plan, offerId));
         if (groupOut != null) {
             body.put("group", groupOut);
             log.info("[OfferSimV16] 融合组配置落地 group_id={} members={}", groupOut.get("group_id"),
@@ -345,19 +341,18 @@ public class OfferSimV16Service {
         }
 
         savedConfigs.put(offerId, config);
-        productToOffer.put(productId, offerId);
         planIdempotency.put(planJson, body);
-        log.info("[OfferSimV16] 配置落地 product_id={} offer_id={} status={}", productId, offerId, body.get("status"));
+        log.info("[OfferSimV16] 配置落地 offer_id={} status={}", offerId, body.get("status"));
         return body;
     }
 
     /**
      * V2.0 融合组落地出参 group：plan_json 为组结构（含 member_offers 键）时生成——
-     * {group_id, main_offer_id, members[]{role, offer_id, product_id, required}}，
+     * {group_id, main_offer_id, members[]{role, offer_id, required}}，
      * 成员 offer_id 逐字引用组定义（"省内自定"成员按省侧编码规则生成 9 位模拟编码并保持幂等）；
      * 单品 plan 返回 null（出参无 group 键，兼容铁律）。
      */
-    private Map<String, Object> buildGroupSaveResult(Map<String, Object> plan, String mainOfferId, String productId) {
+    private Map<String, Object> buildGroupSaveResult(Map<String, Object> plan, String mainOfferId) {
         if (plan.get("member_offers") == null) {
             return null;
         }
@@ -365,7 +360,6 @@ public class OfferSimV16Service {
         Map<String, Object> group = groupSeed.findGroup(mainOfferId);
         out.put("group_id", group == null ? "GP" + mainOfferId : MapOps.str(group.get("group_id")));
         out.put("main_offer_id", mainOfferId);
-        out.put("main_product_id", productId);
         List<Map<String, Object>> members = new ArrayList<>();
         List<Map<String, Object>> planMembers = castMapList(plan.get("member_offers"));
         List<Map<String, Object>> seedMembers = group == null ? List.of() : castMapList(group.get("members"));
@@ -388,7 +382,6 @@ public class OfferSimV16Service {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("role", role);
             item.put("offer_id", memberOfferId);
-            item.put("product_id", productId + "_M" + (i + 1));
             item.put("required", String.valueOf(required));
             item.put("status", "success");
             members.add(item);
@@ -1310,8 +1303,8 @@ public class OfferSimV16Service {
     }
 
     public synchronized Map<String, Object> approvalSubmit(Map<String, Object> req) {
-        if (MapOps.empty(req.get("product_id"))) {
-            return camelFail("PARAM_MISSING", "product_id 必填");
+        if (MapOps.empty(req.get("offer_id"))) {
+            return camelFail("PARAM_MISSING", "offer_id 必填");
         }
         if (MapOps.empty(req.get("report_url"))) {
             return camelFail("PARAM_MISSING", "report_url 必填");
@@ -1343,8 +1336,8 @@ public class OfferSimV16Service {
                 }
             }
         }
-        String productId = MapOps.str(req.get("product_id")).trim();
-        String existed = approvalByProduct.get(productId);
+        String offerId = MapOps.str(req.get("offer_id")).trim();
+        String existed = approvalByOffer.get(offerId);
         if (existed != null) {
             Map<String, Object> existedApproval = approvals.get(existed);
             advanceApproval(existedApproval);
@@ -1359,7 +1352,7 @@ public class OfferSimV16Service {
                 + String.format("%04d", approvals.size() + 1);
         Map<String, Object> approval = new LinkedHashMap<>();
         approval.put("approval_id", approvalId);
-        approval.put("product_id", productId);
+        approval.put("offer_id", offerId);
         approval.put("approval_type", approvalType.isBlank() ? "launch" : approvalType);
         approval.put("report_url", MapOps.str(req.get("report_url")));
         String flow = MapOps.str(req.get("approval_flow"));
@@ -1373,8 +1366,8 @@ public class OfferSimV16Service {
         approval.put("created_at", System.currentTimeMillis());
         approval.put("approval_matrix", buildApprovalMatrix());
         approvals.put(approvalId, approval);
-        approvalByProduct.put(productId, approvalId);
-        log.info("[OfferSimV16] 审批提交 approval_id={} product_id={}", approvalId, productId);
+        approvalByOffer.put(offerId, approvalId);
+        log.info("[OfferSimV16] 审批提交 approval_id={} offer_id={}", approvalId, offerId);
 
         Map<String, Object> body = camelOk();
         body.put("approval_id", approvalId);
@@ -1407,16 +1400,16 @@ public class OfferSimV16Service {
     }
 
     public Map<String, Object> approvalStatus(Map<String, Object> params) {
-        String productId = MapOps.str(params.get("product_id")).trim();
+        String offerId = MapOps.str(params.get("offer_id")).trim();
         String approvalIdParam = MapOps.str(params.get("approval_id")).trim();
-        if (productId.isEmpty() && approvalIdParam.isEmpty()) {
-            return camelFail("PARAM_MISSING", "approval_id 与 product_id 至少一个必填");
+        if (offerId.isEmpty() && approvalIdParam.isEmpty()) {
+            return camelFail("PARAM_MISSING", "approval_id 与 offer_id 至少一个必填");
         }
         Map<String, Object> approval;
         if (!approvalIdParam.isEmpty()) {
             approval = approvals.get(approvalIdParam);
         } else {
-            String aid = approvalByProduct.get(productId);
+            String aid = approvalByOffer.get(offerId);
             approval = aid == null ? null : approvals.get(aid);
         }
         if (approval == null) {
@@ -1439,19 +1432,19 @@ public class OfferSimV16Service {
     /* ================= 接口11：监控查询 query_product_monitor ================= */
 
     public Map<String, Object> productMonitor(Map<String, Object> params) {
-        String productId = MapOps.str(params.get("product_id")).trim();
-        if (productId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "product_id 必填");
+        String offerId = MapOps.str(params.get("offer_id")).trim();
+        if (offerId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "offer_id 必填");
         }
-        int seedNum = Math.abs(productId.hashCode());
+        int seedNum = Math.abs(offerId.hashCode());
         int orderCount = 100 + seedNum % 900;
-        int errorCount = monitorErrorInjection.contains(productId) ? 3 : 0;
+        int errorCount = monitorErrorInjection.contains(offerId) ? 3 : 0;
         double feeErrorRate = errorCount > 0 ? 0.012 : (seedNum % 5) / 1000.0;
 
         List<Map<String, Object>> alarmList = new ArrayList<>();
         synchronized (alerts) {
             for (Map<String, Object> a : alerts) {
-                if (productId.equals(MapOps.str(a.get("product_id")))) {
+                if (offerId.equals(MapOps.str(a.get("offer_id")))) {
                     alarmList.add(a);
                 }
             }
@@ -1459,9 +1452,7 @@ public class OfferSimV16Service {
 
         Map<String, Object> body = camelOk();
         // V2.4：补充产品名称与趋势字段，供 wf_sub_07 运营报告 LLM 节点按固定模板输出
-        // V2.8：product_id（P+req_id 形态）优先按配置落地档案反查销售品（监控新上线产品时
-        // product_id 不是 9 位存量销售品 ID，直接 findOffer 查无 → offer_name 为空）
-        Map<String, Object> offer = resolveOfferByProduct(productId);
+        Map<String, Object> offer = resolveOffer(offerId);
         String offerName = offer == null ? "" : MapOps.str(offer.get("offer_name"));
         body.put("offer_name", offerName);
         body.put("order_count", String.valueOf(orderCount));
@@ -1478,11 +1469,11 @@ public class OfferSimV16Service {
     /* ================= 接口12：异常告警 send_alert ================= */
 
     public synchronized Map<String, Object> sendAlert(Map<String, Object> req) {
-        String productId = MapOps.str(req.get("product_id")).trim();
+        String offerId = MapOps.str(req.get("offer_id")).trim();
         String level = MapOps.str(req.get("alarm_level")).trim().toLowerCase(java.util.Locale.ROOT);
         String content = MapOps.str(req.get("content")).trim();
-        if (productId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "product_id 必填");
+        if (offerId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "offer_id 必填");
         }
         if (level.isEmpty()) {
             return camelFail("PARAM_MISSING", "alarm_level 必填");
@@ -1497,7 +1488,7 @@ public class OfferSimV16Service {
                 + String.format("%04d", alerts.size() + 1);
         Map<String, Object> alert = new LinkedHashMap<>();
         alert.put("alarm_id", alertId);
-        alert.put("product_id", productId);
+        alert.put("offer_id", offerId);
         alert.put("alarm_level", level);
         alert.put("content", content);
         alert.put("alarm_time", LocalDateTime.now().format(TS));
@@ -1740,10 +1731,9 @@ public class OfferSimV16Service {
      * 落地配置组装：offer 传入统一解析后的销售品档案（新增品=plan 构造的独立档案，
      * 存量品=种子记录），in_fee/out_fee/销售规则全部取自该档案，业务值不再被种子覆盖。
      */
-    private Map<String, Object> buildSavedConfig(String productId, String offerId,
+    private Map<String, Object> buildSavedConfig(String offerId,
                                                  Map<String, Object> plan, Map<String, Object> offer) {
         Map<String, Object> config = new LinkedHashMap<>();
-        config.put("product_id", productId);
         config.put("offer_id", offerId);
         config.put("offer_name", firstNonEmptyText(plan.get("offer_name"),
                 offer == null ? "" : MapOps.str(offer.get("offer_name"))));
@@ -1769,8 +1759,8 @@ public class OfferSimV16Service {
      * V2.6 script_url 拼装：externalBaseUrl 由控制器按请求头解析（含尾斜杠归一），
      * 空时退化为相对路径（本地直连且未传 Host 头的兜底场景）。
      */
-    private String scriptUrlOf(Object productId, String externalBaseUrl) {
-        String path = "/api/v1/appstore/product/config/script?product_id=" + MapOps.str(productId);
+    private String scriptUrlOf(Object offerId, String externalBaseUrl) {
+        String path = "/api/v1/appstore/product/config/script?offer_id=" + MapOps.str(offerId);
         if (MapOps.empty(externalBaseUrl)) {
             return path;
         }
@@ -1782,13 +1772,13 @@ public class OfferSimV16Service {
     }
 
     /**
-     * 下载路由的业务逻辑：按 product_id 回放脚本档案；未落地过配置则返回 null（由控制器转 404 语义）。
+     * 下载路由的业务逻辑：按 offer_id 回放脚本档案；未落地过配置则返回 null（由控制器转 404 语义）。
      */
-    public String launchScriptOf(String productId) {
-        if (MapOps.empty(productId)) {
+    public String launchScriptOf(String offerId) {
+        if (MapOps.empty(offerId)) {
             return null;
         }
-        return launchScripts.get(productId.trim());
+        return launchScripts.get(offerId.trim());
     }
 
     /**
@@ -1797,7 +1787,7 @@ public class OfferSimV16Service {
      * 脚本结构与表结构维护只改模板，不再动 Java 代码。
      * 仅作演示产物，不真正执行落库。
      */
-    private String buildLaunchScript(String productId, String offerId,
+    private String buildLaunchScript(String offerId,
                                      Map<String, Object> config, Map<String, Object> offer) {
         // offer 为统一解析后的销售品档案（新增品=plan 构造的独立档案），为空时回退落地配置自身
         Map<String, Object> inFee = castMap(offer == null ? config.get("in_fee") : offer.get("in_fee"));
@@ -1806,14 +1796,13 @@ public class OfferSimV16Service {
         String template = loadLaunchTemplate();
         String stamp = LocalDateTime.now().format(STAMP);
         Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("product_id", productId);
         vars.put("offer_id", offerId);
         vars.put("offer_name", offerName);
         vars.put("generated_at", LocalDateTime.now().format(TS));
         vars.put("stamp", stamp);
         vars.put("goods_id", "G" + offerId);
         vars.put("prc_id", "M" + offerId.substring(offerId.length() - 3));
-        vars.put("class_id", "YnE" + productId.substring(Math.max(0, productId.length() - 3)));
+        vars.put("class_id", "YnE" + offerId.substring(Math.max(0, offerId.length() - 3)));
         vars.put("month_fee", MapOps.str(offer == null ? config.get("in_fee") : offer.get("monthly_fee")));
         vars.put("exp_date", "to_date('01-01-2050','dd-mm-yyyy')");
         vars.put("release_ver", "V1.0");
@@ -1961,19 +1950,6 @@ public class OfferSimV16Service {
         presets.put("P_PAY_MODE", firstNonEmptyText(MapOps.str(offer.get("pay_mode")), "后付费") + "、"
                 + firstNonEmptyText(MapOps.str(offer.get("pay_channel")), "账单支付"));
         return presets;
-    }
-
-    /** 监控/告警场景销售品解析：product_id 若为落地档案登记的新产品则反查其 offer_id，否则按原 ID 直查存量库 */
-    private Map<String, Object> resolveOfferByProduct(String productId) {
-        String mappedOfferId = productToOffer.get(productId);
-        Map<String, Object> offer = resolveOffer(mappedOfferId != null ? mappedOfferId : productId);
-        if (offer != null) {
-            return offer;
-        }
-        // 兜底：落地档案中直接按 product_id 找配置（含 offer_name）
-        return savedConfigs.values().stream()
-                .filter(c -> productId.equals(MapOps.str(c.get("product_id"))))
-                .findFirst().orElse(null);
     }
 
     private String firstNonEmptyText(Object... values) {

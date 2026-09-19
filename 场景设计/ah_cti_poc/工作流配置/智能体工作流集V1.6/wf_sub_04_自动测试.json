@@ -932,36 +932,22 @@
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nDL_URL = 'http://10.86.13.201:31281/api/v1/appstore/report/download'\n\ndef _fetch(record_id):\n    body = json.dumps({'record_id': record_id, 'kind': 'test_report'}).encode('utf-8')\n    req = urllib.request.Request(DL_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    record_id = str(p.get('record_id') or '').strip()\n    try:\n        info = _fetch(record_id)\n    except Exception:\n        info = None\n    if not info or not (info.get('download_url') or info.get('url')):\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '测试报告下载端点暂不可达，报告正文见上方输出，可复制保存；后端就绪后可直接下载正式版报告',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': str(info.get('download_url') or info.get('url') or ''),\n            'note': str(info.get('message') or '正式版测试报告已生成，可点击链接下载'),\n        }\n    return ret",
+        "code": "import urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nREPORT_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/report'\n\nasync def main(args):\n    p = args.params\n    global_id = str(p.get('global_id') or p.get('globalId') or '').strip()\n    if not global_id:\n        return {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '未获取到测试流水号，无法生成报告下载地址；报告正文见上方输出，可复制保存',\n        }\n    url = REPORT_URL + '?global_id=' + urllib.parse.quote(global_id)\n    backend_ok = False\n    try:\n        req = urllib.request.Request(url)\n        with urllib.request.urlopen(req, timeout=20) as resp:\n            backend_ok = resp.status == 200 and bool(resp.read())\n    except Exception:\n        backend_ok = False\n    if backend_ok:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': url,\n            'note': '正式版测试报告已生成，可点击链接下载',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': url,\n            'note': '报告下载端点暂不可达或报告未生成，可复制上方报告正文保存；后端就绪后点击链接下载正式版报告',\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000308",
-            "relName": "record_id",
-            "name": "record_id",
-            "description": "环节存储记录ID（节点308）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "global_id",
+            "description": "测试流水号（节点302出参，报告下载端点检索键）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000308",
-              "a1b2c3d4-0000-4000-8000-000000000308,record_id"
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000308,record_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000310",
-            "relName": "offer_id",
-            "name": "offer_id",
-            "description": "被测销售品ID（节点310）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000310",
-              "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
           }
         ],
         "checkErr": false,

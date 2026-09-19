@@ -101,7 +101,7 @@
 
 **重塑核心原则**：业务逻辑零改动（3 模块/9 分类/24 字段、待补充判定、本体推理引擎、req_id 统一键、异常矩阵原样保留）；接口契约零改动（路径/入参/出参与 2.1 节一致，替换真实实现仅改网关 BASE_URL）；确定性逻辑（merge_nested/render_table/validate_elements/get_template/render_requirement_report/map_fixed_cases/extract_record/dispatcher/poll_progress 等）由技能包脚本子命令迁移为工作流 type=6 代码节点，同一份 Python 逻辑整体内嵌、行为可审计。
 
-**执行入口变化**：用户对话 → 智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别用户意图（含实体提取 req_id/offer_id/product_id/approval_id 等）→ 直调对应子流 `wf_sub_00`~`wf_sub_10` → 子流内经代码节点 + 后端适配端点完成业务处理 → 结束节点输出结果。上下文成本控制：智能体常驻提示词精简，子流/知识库命中意图后才加载对应单份；大报文（plan_json/config_json/fields/report）一律经节点结果存储（req_id+node_name）或后端适配端点下载（report/download、script/download）传递，不经模型上下文中转。
+**执行入口变化**：用户对话 → 智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别用户意图（含实体提取 req_id/offer_id/approval_id 等）→ 直调对应子流 `wf_sub_00`~`wf_sub_10` → 子流内经代码节点 + 后端适配端点完成业务处理 → 结束节点输出结果。上下文成本控制：智能体常驻提示词精简，子流/知识库命中意图后才加载对应单份；大报文（plan_json/config_json/fields/report）一律经节点结果存储（req_id+node_name）或后端适配端点下载（report/download、script/download）传递，不经模型上下文中转。
 
 ---
 
@@ -118,7 +118,7 @@
 | 资费校准 | 校验计费逻辑、优惠叠加冲突 | 子工作流 `wf_sub_05`（成员分组）：计费规则校验 `check_billing_rule`（check_scene=all，按 member_role 分组比对，E27 负值比对） |
 | 销售品自动测试（含受理验证） | **发起**销售品自动化测试（发起动作）→轮询进度→取结果；测试平台自动执行受理类场景即完成受理验证 | 子工作流 `wf_sub_04`（重写）：`offer_test` / `get_test_scenes` / CODE_POLL_PROGRESS 轮询 / `get_test_result` + **CODE_MAP_FIXED_CASES（31 条固定用例 ACC/BILL/CUST + P0/P1）** + 九章节正式版报告 + 报告下载（report/download） |
 | 上线审批 | 汇总测试报告（含受理验证）、推送审批；**审批通过自动上线 + 生成监控运维方案** | 子工作流 `wf_sub_06`（**双轨 requirement/launch**）：CODE_SUMMARY_APPROVAL 汇总报告 → `submit_release_approval` 推送审批，审批通过自动上线并生成监控运维方案 |
-| **审批进度查询**（V1.5） | 用户发送消息查询审批单当前状态 | 子工作流 `wf_sub_08`（审批进度查询，**双轨**查询）+ `query_approval_status`（按 approval_id/product_id） |
+| **审批进度查询**（V1.5） | 用户发送消息查询审批单当前状态 | 子工作流 `wf_sub_08`（审批进度查询，**双轨**查询）+ `query_approval_status`（按 approval_id/offer_id） |
 | **存量产品查询**（V2.0 新增） | 用户发送消息查询存量/在售产品销售品信息（只读） | 子工作流 `wf_sub_09`（存量产品查询，**只读**）+ CODE_OP_QUERY_OFFER + `query_similar_offer`/`query_node_result` 只读查询 |
 | **存量合规扫描**（V2.0 新增） | 存量销售品合规扫描（上架合规） | 子工作流 `wf_sub_10`（存量合规扫描）：CODE_OP_SHELF_COMPLIANCE → 后端 `/shelf-compliance` 端点 |
 | 监控运维 | 上线后持续监控异常，异常根因推理 + 建工单闭环 | 子工作流 `wf_sub_07`（异常分支）：`query_product_monitor` 监控查询 → 异常时 **CODE_OP_ROOT_CAUSE 根因推理**（/ops/root-cause）+ **CODE_OP_CREATE_WO 建工单**（/ops/work-orders）闭环 |
@@ -146,12 +146,12 @@
 
 | # | 插件/工具名 | 说明 |
 | --- | --- | --- |
-| 8 | `save_product_config` | **配置落地接口**：读取执行方案 JSON（基础信息/资源配置/营销资源/销售规则四类字段），写入 CRM 销售品配置。V1.2 核心新增；模拟实现：写入内存产品档案（种子数据含《产品信息.txt》18 个销售品），并生成 product_id/offer_id |
+| 8 | `save_product_config` | **配置落地接口**：读取执行方案 JSON（基础信息/资源配置/营销资源/销售规则四类字段），写入 CRM 销售品配置。V1.2 核心新增；模拟实现：写入内存产品档案（种子数据含《产品信息.txt》18 个销售品），并生成 offer_id |
 | 9 | `check_billing_rule` | 计费规则校验：校验套餐计费逻辑、优惠叠加规则；模拟实现：规则引擎内置叠加/互斥/负资费规则，模拟数据适配 18 个销售品资费结构 |
 | 10 | `submit_release_approval` | 上线审批推送：汇总报告并推送审批流（V1.5 起由用户确认后触发）；模拟实现：生成审批单号并记录状态流转 |
 | 11 | `query_product_monitor` | 监控查询：查询上线后订单量、异常量、计费差错等（V1.5 起支持消息查询触发）；模拟实现：按产品 ID 确定性生成监控指标与告警回显 |
 | 12 | `send_alert` | 异常告警：推送异常告警到运维群/工单；模拟实现：生成告警单号，供监控查询回显闭环 |
-| 13 | `query_approval_status` | **审批进度查询**（V1.5 新增）：按 `approval_id`/`product_id` 查询审批单当前状态（审批中/通过/驳回）与当前审批环节、审批意见，支撑用户消息查询审批进度；模拟实现：按审批单号回放状态与意见 |
+| 13 | `query_approval_status` | **审批进度查询**（V1.5 新增）：按 `approval_id`/`offer_id` 查询审批单当前状态（审批中/通过/驳回）与当前审批环节、审批意见，支撑用户消息查询审批进度；模拟实现：按审批单号回放状态与意见 |
 
 #### D. V2.0 新增后端适配端点（AppStoreV16Controller，`/api/v1/appstore/*`，V2.0 重塑新增）
 
@@ -215,7 +215,7 @@
    引导【重新执行】（按 fail_node 续调，已成功环节不重跑）或【修改执行方案】。
 3. 审批与上线：四环节全成且用户确认后调度 `wf_sub_06`（自查四环节+报告推送，双轨）；
    审批通过自动上线并生成监控运维方案（通过前严禁生成）。
-4. 查询与运维：按消息直调 `wf_sub_08` 审批进度（双轨）、`wf_sub_07` 监控运维（product_id，
+4. 查询与运维：按消息直调 `wf_sub_08` 审批进度（双轨）、`wf_sub_07` 监控运维（offer_id，
    异常分支根因推理+建工单）、`wf_sub_09` 存量查询（只读）、`wf_sub_10` 存量合规扫描。
 
 【意图→工作流映射表（语义识别，直调子流）】
@@ -225,8 +225,8 @@
 | 确认配置 | 串行 `wf_sub_02`→`03`→`05`→`04` | req_id=最近值 |
 | 重新执行失败环节 | 按 fail_node 续调（STAGE1→02/2→03/3→05/4→04） | req_id 沿用；自查回放 |
 | 上线审批 | `wf_sub_06`（双轨） | req_id=原值 |
-| 查询审批进度 | `wf_sub_08` | approval_id/product_id |
-| 查询监控运维 | `wf_sub_07`（异常根因+工单闭环） | product_id |
+| 查询审批进度 | `wf_sub_08` | approval_id/offer_id |
+| 查询监控运维 | `wf_sub_07`（异常根因+工单闭环） | offer_id |
 | 查询存量产品 | `wf_sub_09`（只读） | 产品名/ID |
 | 存量合规扫描 | `wf_sub_10` | 存量范围 |
 | 业务问答/超范围 | K1~K5 知识库检索 / 答案为空提示 | 检索词 |
@@ -337,7 +337,7 @@
 | 接口 | POST `https://{cpcp-gateway}/api/v1/appstore/product/config/save` |
 | 描述 | 读取执行方案 JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入 CRM 销售品配置 |
 | 入参 | `req_id`(string,必填,执行方案存储key，V1.7 统一键) `plan_json`(string,必填,节点结果存储查询插件取回的执行方案JSON，原样透传) `operator`(string,选填) |
-| 出参 | `product_id`(string) `offer_id`(string) `save_result`(object: 各字段分类写入结果) `status`(string) |
+| 出参 | `offer_id`(string) `offer_id`(string) `save_result`(object: 各字段分类写入结果) `status`(string) |
 | 是否提参 | 是（plan_json 必填且须为存储 JSON 原文） |
 
 **工具8：计费规则校验 `check_billing_rule`**
@@ -358,22 +358,22 @@
 | 项 | 内容 |
 | --- | --- |
 | 接口 | GET `https://{monitor}/api/v1/appstore/product/monitor` |
-| 入参 | `product_id`(string,必填) `date_range`(string,选填) `metric`(string,枚举: order/error/fee/all) |
+| 入参 | `offer_id`(string,必填) `date_range`(string,选填) `metric`(string,枚举: order/error/fee/all) |
 | 出参 | `order_count`(int) `error_count`(int) `fee_error_rate`(float) `alarm_list`(array) |
 
 **工具11：异常告警 `send_alert`**
 | 项 | 内容 |
 | --- | --- |
 | 接口 | POST `https://{monitor}/api/v1/appstore/alert/send` |
-| 入参 | `product_id`(string,必填) `alarm_level`(string,枚举: high/middle/low) `content`(string,必填) |
+| 入参 | `offer_id`(string,必填) `alarm_level`(string,枚举: high/middle/low) `content`(string,必填) |
 | 出参 | `alert_id`(string) `status`(string) |
 
 **工具13：审批进度查询 `query_approval_status`**（V1.5 新增）
 | 项 | 内容 |
 | --- | --- |
 | 接口 | GET `https://{oa-gateway}/api/v1/appstore/approval/status` |
-| 描述 | 按 approval_id 或 product_id 查询上线审批单当前状态，支撑用户发送消息查询审批进度 |
-| 入参 | `approval_id`(string,选填,审批单号，与 product_id 至少一个必填) `product_id`(string,选填,产品ID，与 approval_id 至少一个必填) |
+| 描述 | 按 approval_id 或 offer_id 查询上线审批单当前状态，支撑用户发送消息查询审批进度 |
+| 入参 | `approval_id`(string,选填,审批单号，与 offer_id 至少一个必填) `offer_id`(string,选填,产品ID，与 approval_id 至少一个必填) |
 | 出参 | `approval_id`(string) `status`(string: 审批中/通过/驳回) `current_node`(string,当前审批环节) `approver`(string,当前审批人) `opinion`(string,审批意见) `submit_time`/`update_time`(string) |
 | 是否归纳 | 是（大模型节点归纳为"审批单号+状态+当前环节+意见"摘要） |
 
@@ -422,7 +422,7 @@
      已移除该门禁，直接进入执行主干）
   ▼
 ③ 【环节1】直调 wf_sub_02 智能配置（入参 req_id；子流自查 requirement→提取执行方案原文→落地）
-    出参 status/product_id/offer_id/save_result
+    出参 status/offer_id/save_result
     ├─ status==SUCCESS → 打印【环节1结果】→ 子流内部环节结果存储已写入
     │   （wf_sub_02 内置 save_node_result 节点，node_name=config，req_id=入参）
     └─ 异常 → 打印异常节点+原因 → 引导【重新执行】/【修改执行方案】（中断）
@@ -477,7 +477,7 @@
 **成功结果详情输出格式（四环节全部成功后统一模板）：**
 ```
 【执行主干全部完成】✅ 共4个环节执行成功：
-1. 智能配置：product_id={...}，offer_id={...}，四类字段全部写入成功；
+1. 智能配置：offer_id={...}，四类字段全部写入成功；
 2. 配置规格稽核：通过，{audit_summary}；
 3. 资费校准：通过，未发现叠加/互斥冲突；
 4. 自动测试（含受理验证）：场景 N 个、测点 M 个全部一致；
@@ -496,13 +496,13 @@
 | --- | --- | --- | --- | --- |
 | 需求提报 | `wf_sub_00` | requirement_text, requirement_file | req_id / 需求工单号 | 开始 → LLM 要素提取（snake_case 扁平 JSON）→ **CODE_RENDER_REQ 需求提报确认渲染**（render_requirement_report）→ 需求工单审批（**approval-type=requirement**，node_name=requirement_report）→ 审批通过后流转 wf_sub_01 |
 | 需求分析 | `wf_sub_01` | req_id | plan_json / plan_md（五列模块表格） | 开始 → CODE_EXTRACT_RECORD（取需求工单要素）→ 产品准入 LLM（选模板）→ query_similar_offer（相似产品 offerInfo）→ **CODE_GET_TEMPLATE 模板注册表选配**（/方案/templates/_registry.json）→ 要素提取 LLM → **CODE_VALIDATE_ELEMENTS 要素提取质量门禁**（validate_elements）→ **CODE_MERGE_NESTED 嵌套合并**（merge_nested）→ **CODE_OP_VALIDATE_NESTED 本体校验闸**（/validate-nested，R-C04/C06）→ **CODE_RENDER_TABLE 渲染四列表格**（render_table）→ 保存 requirement（node_name=requirement）→ 结束 |
-| 智能配置（配置落地） | `wf_sub_02` | req_id（必填） | product_id / offer_id / save_result（含可选 group） | 开始(req_id) → query_node_result(自查 requirement) → CODE_EXTRACT_RECORD(取 result_json 原文) → save_product_config(配置落地) → **CODE_FUSION_GROUP_ECHO 融合组成员回显**（含可选 group/role/offer_id 成员集）→ **save_node_result(node_name=config)** → 结束 |
+| 智能配置（配置落地） | `wf_sub_02` | req_id（必填） | offer_id / save_result（含可选 group） | 开始(req_id) → query_node_result(自查 requirement) → CODE_EXTRACT_RECORD(取 result_json 原文) → save_product_config(配置落地) → **CODE_FUSION_GROUP_ECHO 融合组成员回显**（含可选 group/role/offer_id 成员集）→ **save_node_result(node_name=config)** → 结束 |
 | 规格稽核（组维度） | `wf_sub_03` | req_id（必填） | pass / error_list / audit_summary | 开始(req_id) → 自查 config（取 offer_id/config_json）→ CODE_EXTRACT_RECORD → realtime_spec_audit(实时稽核, **组维度稽核**, error_list 含 group:role 定位) → 大模型(整改建议生成) → **save_node_result(node_name=spec)** → 结束 |
 | 资费校准（成员分组） | `wf_sub_05` | req_id（必填） | pass / risk_list | 开始(req_id) → 自查 config（取 config_json）→ CODE_EXTRACT_RECORD → check_billing_rule(check_scene=all，**按 member_role 分组比对，E27 负值比对**) → 大模型(风险解读) → **save_node_result(node_name=fee)** → 结束 |
 | 自动测试（含受理验证，重写） | `wf_sub_04` | req_id（必填） | globalId / 测试报告（九章节正式版） | 开始(req_id) → 自查 config（取 offer_id）→ offer_test(发起) → get_test_scenes → **CODE_POLL_PROGRESS 轮询进度**（type=6，asyncio.sleep 5s×360/30 分钟）→ get_test_result → **CODE_MAP_FIXED_CASES 确定式 31 条固定用例映射**（ACC/BILL/CUST + P0/P1 + 缺省 + E26 核对）→ 九章节正式版测试报告 → **CODE_DOWNLOAD_TEST_REPORT 报告下载链接**（/report/download）→ **save_node_result(node_name=test)** → 结束 |
 | 上线审批（双轨） | `wf_sub_06` | req_id（必填） | approval_id / status | 开始(req_id) → 自查 四环节结果 → **CODE_SUMMARY_APPROVAL 审批汇总**（requirement/launch 双轨：requirement 轨=需求工单审批，launch 轨=上线审批，后端硬校验四环节）→ submit_release_approval(推送审批) → 审批通过后**自动上线 + 生成监控运维方案**（CODE_DOWNLOAD_LAUNCH_SCRIPT 上线脚本下载 /script/download，/*run@crm*/+/*run@billing*/）→ 结束 |
-| 监控运维（异常分支） | `wf_sub_07` | product_id / date_range | 指标与告警 / 工单号 | 开始 → query_product_monitor → 选择器(异常?) → 异常分支 **CODE_OP_ROOT_CAUSE 根因推理**（/ops/root-cause）→ **CODE_OP_CREATE_WO 建工单闭环**（/ops/work-orders）→ 结束；正常分支 send_alert/汇总 |
-| 审批进度查询（双轨） | `wf_sub_08` | approval_id / product_id | 审批状态摘要 | 开始 → query_approval_status（**双轨**：approval_id 或 product_id）→ 大模型(状态摘要归纳) → 结束 |
+| 监控运维（异常分支） | `wf_sub_07` | offer_id / date_range | 指标与告警 / 工单号 | 开始 → query_product_monitor → 选择器(异常?) → 异常分支 **CODE_OP_ROOT_CAUSE 根因推理**（/ops/root-cause）→ **CODE_OP_CREATE_WO 建工单闭环**（/ops/work-orders）→ 结束；正常分支 send_alert/汇总 |
+| 审批进度查询（双轨） | `wf_sub_08` | approval_id / offer_id | 审批状态摘要 | 开始 → query_approval_status（**双轨**：approval_id 或 offer_id）→ 大模型(状态摘要归纳) → 结束 |
 | 存量产品查询（只读） | `wf_sub_09` | 产品名称 / 产品 ID | 存量销售品信息 | 开始 → **CODE_OP_QUERY_OFFER 只读查询** → query_similar_offer / query_node_result（只读，不落库不写）→ 结束 |
 | 存量合规扫描 | `wf_sub_10` | 存量产品范围 | 合规扫描结论 | 开始 → **CODE_OP_SHELF_COMPLIANCE 合规扫描**（/shelf-compliance）→ 结束 |
 
@@ -578,8 +578,8 @@
 - 兜底（V1.7）：`submit_release_approval` **后端硬校验** req_id 入参 + 四环节（config/spec/fee/test）结果齐全，跳过执行主干直接发起审批将被拒绝。
 
 **⑩ 消息查询实现（V1.5 新增，V2.1 由智能体语义识别直调）**
-- **审批进度查询**：用户发送含"审批进度/审批状态"语义的消息 → 智能体语义识别"查询审批进度" → 直调 `wf_sub_08`（approval_id 优先，缺失时按 product_id 查最新审批单）→ 大模型归纳输出"审批单号+状态+当前环节+审批意见"。
-- **监控运维结果查询**：用户发送含"监控/运行监控/运维结果"语义的消息 → 智能体语义识别"查询监控运维" → 直调 `wf_sub_07`（product_id 必填，为空时提示用户提供销售品 ID）→ 大模型归纳输出"订单量/异常量/计费差错率/告警列表"；异常时（error_count>0 或 fee_error_rate>阈值）进入根因推理（ops_root_cause）与建工单（create_work_order）闭环。
+- **审批进度查询**：用户发送含"审批进度/审批状态"语义的消息 → 智能体语义识别"查询审批进度" → 直调 `wf_sub_08`（approval_id 优先，缺失时按 offer_id 查最新审批单）→ 大模型归纳输出"审批单号+状态+当前环节+审批意见"。
+- **监控运维结果查询**：用户发送含"监控/运行监控/运维结果"语义的消息 → 智能体语义识别"查询监控运维" → 直调 `wf_sub_07`（offer_id 必填，为空时提示用户提供销售品 ID）→ 大模型归纳输出"订单量/异常量/计费差错率/告警列表"；异常时（error_count>0 或 fee_error_rate>阈值）进入根因推理（ops_root_cause）与建工单（create_work_order）闭环。
 
 ### 6.4 需求分析助手提示词（@deprecated，V1.2 历史版本，已被 V2.0 wf_sub_01 模板轨取代）
 
@@ -714,7 +714,7 @@
 | 自动测试 `wf_sub_04` | CODE_POLL_PROGRESS（轮询测试进度）→ CODE_MAP_FIXED_CASES（31 条固定用例映射）→ CODE_DOWNLOAD_TEST_REPORT（/report/download 下载） |
 | 上线审批 `wf_sub_06` | CODE_SUMMARY_APPROVAL（requirement/launch 双轨汇总）→ CODE_DOWNLOAD_LAUNCH_SCRIPT（/script/download 上线脚本下载） |
 | 监控运维 `wf_sub_07` | CODE_OP_ROOT_CAUSE（/ops/root-cause 根因推理）→ CODE_OP_CREATE_WO（/ops/work-orders 建工单闭环） |
-| 审批进度查询 `wf_sub_08` | query_approval_status 双轨（approval_id/product_id，GET /api/v1/appstore/approval/status） |
+| 审批进度查询 `wf_sub_08` | query_approval_status 双轨（approval_id/offer_id，GET /api/v1/appstore/approval/status） |
 | 存量产品查询 `wf_sub_09` | CODE_OP_QUERY_OFFER（只读，query_similar_offer / query_node_result） |
 | 存量合规扫描 `wf_sub_10` | CODE_OP_SHELF_COMPLIANCE（/shelf-compliance） |
 
@@ -853,7 +853,7 @@
 | 用户未确认即触发生产写入 | 智能体提示词【技能2】确认语义识别约束（V2.2 起后端 save_product_config 已移除 CONFIRMED 门禁，"未确认不配置"由智能体语义识别保证） |
 | 执行主干串行中断后重复执行已完成写操作 | 各子工作流以 req_id（统一键）、node_name=config/spec/fee/test/report 落库节点结果存储（后端持久化）；续跑时子工作流自查回放已成功环节，写接口不重复调用 |
 | 未经确认发起审批 | V1.7 工具层硬校验：后端 submit_release_approval 校验 req_id 四环节（config/spec/fee/test）结果齐全 + 智能体提示词【技能4】审批引导约束 |
-| 消息查询意图未命中 | 智能体提示词【技能5】明确"审批进度/审批状态/监控/运行监控"触发词；查询工具入参缺失时提示用户补齐 product_id/approval_id |
+| 消息查询意图未命中 | 智能体提示词【技能5】明确"审批进度/审批状态/监控/运行监控"触发词；查询工具入参缺失时提示用户补齐 offer_id/approval_id |
 | 测试报告缺受理验证结论 | 大模型报告节点提示词强制要求包含 orderId/offerInstId 与逐受理场景结论；验收按 8.2 指标核验 |
 | 生产误操作 | 写入类插件前置用户确认；测试仅对接测试环境 |
 | 资费漏洞漏检 | 知识库规则持续运营 + `check_scene=all` 全量校验 |

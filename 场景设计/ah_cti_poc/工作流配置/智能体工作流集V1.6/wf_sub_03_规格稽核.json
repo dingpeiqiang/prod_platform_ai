@@ -91,7 +91,7 @@
         "nodeMeta": {
           "title": "读取配置环节结果",
           "code": "query_node_result",
-          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 product_id/offer_id 及可选 group）",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id 及可选 group）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -356,7 +356,7 @@
               "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
               "relName": "offer_id",
               "name": "offer_id",
-              "description": "主 offer_id（组件维度回显标题行）",
+              "description": "主 offer_id（稽核对象回显）",
               "type": "ref",
               "required": true,
               "content": "",

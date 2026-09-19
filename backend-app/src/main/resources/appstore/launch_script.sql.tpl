@@ -1,6 +1,6 @@
 -- =============================================================
 -- 销售品配置上线脚本（模拟生成）
--- product_id=${product_id} offer_id=${offer_id}
+-- offer_id=${offer_id}
 -- offer_name=${offer_name}
 -- 生成时间=${generated_at}
 -- 说明：本脚本由产销品加载AI应用配置落地环节自动生成，仅作演示产物，
@@ -13,7 +13,7 @@ select '${goods_id}', '${offer_name}', '${prc_id}', '${offer_name}定价', '${cl
 insert into PD_GOODSCLASS_REL (GOODS_ID, CLASS_ID, STATE, STATE_TIME)
 select '${goods_id}', '${class_id}', '1', sysdate from dual;
 insert into PD_GOODSOPCODE_REL (GOODS_ID, OPCODE, STATE, STATE_TIME)
-select '${goods_id}', '${product_id}', '1', sysdate from dual;
+select '${goods_id}', '${offer_id}', '1', sysdate from dual;
 insert into PD_GOODSRELEASE_DICT (GOODS_ID, RELEASE_VER, RELEASE_DESC, STATE, STATE_TIME)
 select '${goods_id}', '${release_ver}', '${offer_name} 上线发布', '1', sysdate from dual;
 

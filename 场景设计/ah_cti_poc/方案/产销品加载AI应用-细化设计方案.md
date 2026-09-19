@@ -9,10 +9,10 @@
 | --- | --- | --- |
 | V2.0 重塑 | 2026-09-18 | **整体实现方式从"Skills 技能包"重塑回"工作流配置"（V2.0 基线，业务口径与工具契约零改动）**：① 废弃 `skills/cpcp-product-worker`（SKILL.md/flow-A~D/35 子命令/scripts/），回到并重塑 11 个子工作流 JSON（`wf_sub_00~10`，位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 生成），意图由智能体（LLM）按提示词【意图→工作流映射表】语义识别后直调子工作流；② 确定性逻辑从技能包脚本子命令内嵌为**类型6 代码节点**：`merge_nested(CODE_MERGE_NESTED)`、`render_table(CODE_RENDER_TABLE)`、`validate_elements(CODE_VALIDATE_ELEMENTS, wf_sub_01 节点108)`、`get_template(CODE_GET_TEMPLATE)`、`render_requirement_report(CODE_RENDER_REQ, wf_sub_00)`、`map_fixed_cases(CODE_MAP_FIXED_CASES, wf_sub_04 节点315)`、`extract_record(CODE_EXTRACT_RECORD)`、`poll_progress(CODE_POLL_PROGRESS)` 等；③ 后端新增 7 个适配端点（`AppStoreV16Controller /api/v1/appstore/*`）：`POST /ops/root-cause`、`POST /ops/work-orders`、`POST /shelf-compliance`、`POST /validate-nested`、`POST /explain`、`POST /report/download`、`POST /script/download`，网关 `BASE_URL=http://10.86.13.201:31281`；④ 知识库迁至 `knowledge/`（原 `references/`、`skills/` 废弃）；⑤ 环节覆盖对齐 V2.0：需求提报(wf_sub_00 含需求工单审批 requirement 轨)、需求分析(wf_sub_01 模板轨，含 validate_nested 本体校验闸节点110/explain)、自动测试(wf_sub_04 九章节正式版报告+31 条固定用例)、上线审批(wf_sub_06 双轨+自动上线)、监控运维(wf_sub_07 根因+工单闭环)、存量查询(wf_sub_09)、存量合规(wf_sub_10)；⑥ 接口/工具契约补充 7 个新适配端点；业务口径（字段体系/异常矩阵/门禁/契约）保持不变，仅替换实现载体表述 |
 | V2.7 | 2026-09-15 | **输出结构铁律强化（防汇总块缺失/术语污染）**：① SKILL.md 纪律5 重写——每环节输出固定四要素（标题头/执行结果/关键数据/建议处理引导行），四环节输出完毕后必须输出【执行主干全部完成】汇总块（失败时输出【执行主干中断】），禁止环节4 后直接结束；② SKILL.md 纪律1 判定字段补全（环节1=status、环节2/3=pass、环节4=test_passed/测点 resultCode/场景 failTestCaseCount）并追加"禁止输出非业务自造名词"兜底；③ SKILL.md 纪律6 追加"禁止输出非模板表述"兜底禁令；④ flow-B 环节1/2/3 输出模板补"建议处理"引导行（固定输出，串行连续执行时用户无需操作），文末汇总块补注"必须输出"约束，对齐本文件 3.4.7 模板② |
-| V2.6 | 2026-09-14 | **上线脚本真实落盘下载（工具7 出参强化 + 新增工具7A + 脚本模板化）**：① 工具7 出参 `script_url` 由相对路径改为**绝对 URL**——后端控制器按 X-Forwarded-Proto/X-Forwarded-Host/Host 头解析网关前置地址后拼装，头缺失退化为相对路径（脚本层补 BASE_URL 前缀）；幂等重放时按本次请求头重写 script_url 保证链接始终可用；② 脚本层新增 `download_launch_script` 子命令（工具7A，本地代码节点）——GET 下载路由响应体原样写本地文件（默认 `./launch_<product_id>.sql`），出参 resultCode/saved_path/file_size；③ 程序B 环节1 落地后自动下载，输出模板新增"脚本文件已下载：{{saved_path}}（{{file_size}} 字节）"行（下载失败省略该行不中断主干）；④ 上线脚本改为**模板化生成**——SQL 骨架抽为 classpath 资源 `appstore/launch_script.sql.tpl`（`${xxx}` 占位符），buildLaunchScript 仅做需求产品信息替换（offer_name/月费/资源量/套外资费/商品编码等 16 变量），脚本结构维护只改模板不动 Java；⑤ 1.3 映射表/2.x 工具7/3.5 环节1 同步 |
+| V2.6 | 2026-09-14 | **上线脚本真实落盘下载（工具7 出参强化 + 新增工具7A + 脚本模板化）**：① 工具7 出参 `script_url` 由相对路径改为**绝对 URL**——后端控制器按 X-Forwarded-Proto/X-Forwarded-Host/Host 头解析网关前置地址后拼装，头缺失退化为相对路径（脚本层补 BASE_URL 前缀）；幂等重放时按本次请求头重写 script_url 保证链接始终可用；② 脚本层新增 `download_launch_script` 子命令（工具7A，本地代码节点）——GET 下载路由响应体原样写本地文件（默认 `./launch_<offer_id>.sql`），出参 resultCode/saved_path/file_size；③ 程序B 环节1 落地后自动下载，输出模板新增"脚本文件已下载：{{saved_path}}（{{file_size}} 字节）"行（下载失败省略该行不中断主干）；④ 上线脚本改为**模板化生成**——SQL 骨架抽为 classpath 资源 `appstore/launch_script.sql.tpl`（`${xxx}` 占位符），buildLaunchScript 仅做需求产品信息替换（offer_name/月费/资源量/套外资费/商品编码等 16 变量），脚本结构维护只改模板不动 Java；⑤ 1.3 映射表/2.x 工具7/3.5 环节1 同步 |
 | V2.5 | 2026-09-14 | **资费校准 8 项比对明细出参化（工具8 扩展）**：① billing_verify 出参新增 `compare_list[]`——8 项（套餐月租/流量/语音/短信赠送量/三项套外资费/商品有效期），requirement_desc 取落地配置 plan_json 字段原文、billing_desc 系统侧含折算括注（"首月按天折算"/"按天折算"/"自动续展"）、result 两态；② 环节3 输出模板改为逐行引用 compare_list（禁止模板自行拼装折算括注），表行数=出参长度；③ 1.3 映射表/3.4.7 模板②同步；④ 后端 buildFeeCompareList 实现（种子销售品资费规则 + 过渡期资费推导折算括注） |
 | V2.4 | 2026-09-14 | **受理验证归并为自动测试子集（去独立环节5）**：① 执行主干由"5 环节"改回"四环节"（智能配置→稽核→资费校准→自动测试），受理验证=环节4 测试报告内子集小节（数据源不变：orderId/offerInstId+逐受理场景，不新增接口、不设触发词）；② 1.3 映射总表/3.1 程序B 表/3.3 调度时序/3.4.5 测试报告提示词/3.4.7 模板①②③ 全量同步四环节口径；③ flow-C 上线校验看板"受理验证"行并入"自动测试（含受理验证）"；④ SKILL.md description/路由表/纪律/开场白同步（"受理验证"用户单独询问时回放环节4 小节）；⑤ 工具7 出参 script_url（V2.3）在 1.3 映射表同步展示 |
-| V2.3 | 2026-09-14 | **配置上线脚本下载链接（工具7 扩展）**：① 工具7 出参新增 `script_url`（相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），落地成功时后端按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式 `/*run@crm*/`+`/*run@billing*/`）并存入脚本档案；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，附件名 launch_Pxxx.sql，未落地 404）；③ 程序B 环节1 输出模板新增"配置上线脚本下载链接"行（script_url 逐字引用出参，缺失省略本行） |
+| V2.3 | 2026-09-14 | **配置上线脚本下载链接（工具7 扩展）**：① 工具7 出参新增 `script_url`（相对路径 `/api/v1/appstore/product/config/script?offer_id={offer_id}`），落地成功时后端按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式 `/*run@crm*/`+`/*run@billing*/`）并存入脚本档案；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，附件名 launch_{offer_id}.sql，未落地 404）；③ 程序B 环节1 输出模板新增"配置上线脚本下载链接"行（script_url 逐字引用出参，缺失省略本行） |
 | V2.2 | 2026-09-14 | **字段体系全量重构同步（对齐主方案 V2.9，3 模块/9 分类/24 字段）**：① 1.3 映射总表与 3.1 映射索引同步 24 字段口径（"18 字段要素"→"24 字段要素"、"四类18字段数组"→"3 模块/9 分类 24 字段数组"、"套餐固定费"→"套餐档位"、待补充唯一项=套餐档位、产品编码默认"系统待生成"）；② 来源两态归一——"AI推理"→"AI补全"，来源枚举 {原始需求, AI补全}（原"本体推理"并入 AI补全，6.3 枚举约定同步）；③ 触发词对齐——"确认执行"→"确认配置"（3.0/3.1/3.3/3.4/3.5/E3 等同步）、"发起审批"→"上线审批"、新增"确认上线"（flow-D 支线D-3 监控运维方案，审批通过后触发）；④ 3.0/3.1 程序B 四环节→5 环节（新增受理验证，复用测试结果不新增接口）、程序C 输出改上线校验看板（5 项 ✅ 表）；⑤ 3.4 待补充判定改套餐档位唯一、提示词模板同步五列模块表格（模块/分类/字段名称/字段值/备注）与"建议处理"引导话术；⑥ 3.5 用例 #3/#4/#4b 口径同步（套餐固定费→套餐档位）；⑦ 第 2 章工具契约原样保留（接口契约零改动，仅出参 offerInfo.fields 说明同步 24 字段） |
 | V2.1 | 2026-09-14 | **全部接口去除 contractRoot 包裹，统一裸报文请求**（基于 599 元 5G 套餐实测反馈，接口路径/入出参契约零改动）：① 2.0.2 节整体改写为"请求报文约定"——tcpCont 报文头拼装表与 contractRoot 包裹结构删除，请求体直接为业务参数 JSON（置于顶层），变更原因与出参侧 `_unwrap` 兼容说明见节内注记；② 2.1/2.3 各工具"接口"行同步（contractRoot 报文/requestObject 报文 → 裸报文）；③ 2.4 自测项 #8 改为"裸报文契约"（mock 回显断言）、#13 本地自测 7→8 项、#14 为 ontology 空返回防护；④ 2.6 映射表 similar_offer/spec_audit/ontology_reason 备注同步；⑤ 附录 A 核对项同步；⑥ 工具2 spec_audit 文件传参缺陷修复（`--config-json-file` 未走 `_read_arg` 导致 PARAM_MISSING） |
 | V2.0 | 2026-09-14 | **整体实现方式从"九思平台工作流"切换为"Skills 技能包"**（对齐主方案 V2.6/Skills技能包实现方案 V1.3，业务口径与工具契约零改动）：① 1.2 总体装配视图改写为技能包结构（SKILL.md 常驻总调度 + scripts/cpcp_api.py 17 子命令 + references/ 4 份 flow 流程文档 + K1~K5 知识目录）；② 1.3 映射总表"子工作流"列改为"承载程序"（程序 A~D，wf_sub_01~08 与 A~D 的映射见技能包方案第 5 章）；③ 第 3 章改题为"Skills 流程文档细化设计"：3.0 工作流清单改为 4 份 flow 文档清单与加载机制（原 3.1 主工作流归档配置、3.2 子工作流逐节点配置不再实施，逐节点口径已完整迁移至 flow 文档——步骤编号与原节点编号对齐；本文档 3.1 保留映射索引表供验收对照）；④ 3.3 调度时序重写为"SKILL.md 意图路由→按需加载 flow→脚本执行"（意图 6 类收敛为 5 类路由，两次中断语义不变）；⑤ 3.4 关键算法口径不变（req_id/取值链/门禁/轮询/提示词模板），承载方式改述为脚本子命令（build_plan/extract_record/poll_test_progress.py 等）；⑥ 3.5 自测用例 21 条保留，表述改脚本/程序口径；⑦ 第 4 章知识库"平台挂载点"改为"flow 文档读取指令"；⑧ 第 5 章智能体装配清单改为技能包部署清单；⑨ 第 6/7 章与附录 A~D 同步改为 skill 口径（wf_sub_XX→程序 A/B/C/D）；⑩ 第 2 章 14 工具契约**原样保留**（业务口径权威），仅"调用方/归纳设置"微调为脚本调用方口径，并新增 2.6 节"工具→脚本子命令映射" |
@@ -77,7 +77,7 @@
 | 需求分析 | wf_sub_01（模板轨） | query_node_result → `CODE_EXTRACT_RECORD` → 产品识别 LLM → query_similar_offer → `CODE_GET_TEMPLATE` → 要素提取 LLM → `CODE_VALIDATE_ELEMENTS`（节点108 质量闸）→ `CODE_MERGE_NESTED`（节点109）→ `CODE_OP_VALIDATE_NESTED`（节点110 本体校验闸+explain）→ `CODE_RENDER_TABLE`（节点111）→ save_node_result | 业务规范（K1）+ **存量销售品资料库（K4 单文件）** + templates 模板注册表 | req_id / 方案表格 / pending_required / 本体校验结论 |
 | 用户确认 | 智能体（LLM）按 3.2 提示词【意图→工作流映射表】识别确认语义（V2.2 起后端无确认门禁）后直调 wf_sub_02 | — | — | — |
 | **执行主干自动化串行**（智能配置→规格稽核→资费校准→自动测试→受理验证，一次跑完，仅异常中断） | wf_sub_02→wf_sub_03→wf_sub_05→wf_sub_04 | 见下列各环节行 | 各环节对应知识库 | 每环节结果打印；异常中断并引导重新执行/修改执行方案 |
-| 智能配置 | wf_sub_02（智能配置） | query_node_result → `CODE_EXTRACT_RECORD` → save_product_config → `CODE_FUSION_GROUP_ECHO` → save_node_result | — | product_id / offer_id / save_result / script_url（绝对 URL，后端 script/download 回退） |
+| 智能配置 | wf_sub_02（智能配置） | query_node_result → `CODE_EXTRACT_RECORD` → save_product_config → `CODE_FUSION_GROUP_ECHO` → save_node_result | — | offer_id / save_result / script_url（绝对 URL，后端 script/download 回退） |
 | 配置规格稽核（实时） | wf_sub_03（规格稽核） | query_node_result → `CODE_EXTRACT_RECORD` → realtime_spec_audit（工具2）→ save_node_result | 业务规范（K1，稽核标准参照） | pass / error_list / audit_summary |
 | 资费校准 | wf_sub_05（资费校准） | query_node_result → `CODE_EXTRACT_RECORD` → check_billing_rule（工具8）→ save_node_result | **资费规则库（K2）** | pass / risk_list / compare_list（8 项比对明细） |
 | 自动测试（含受理验证独立成节） | wf_sub_04（自动测试） | offer_test → get_test_scenes → `CODE_POLL_PROGRESS`（轮询）→ get_test_result → `CODE_MAP_FIXED_CASES`（节点315：31 条固定用例 / ACC|BILL|CUST / P0|P1|P2 / 九章节正式版报告）→ `CODE_DOWNLOAD_TEST_REPORT`（/report/download）→ save_node_result | **测试规范库（K3，V2.0 九章节模板）** + 存量销售品资料库（K4 预期值核对） | globalId / 《销售品自动化测试报告》正式版（受理验证独立成节：orderId/offerInstId + 逐受理场景结论） |
@@ -340,7 +340,7 @@
 | 项 | 配置 |
 | --- | --- |
 | 接口 | POST `{BASE_URL}/api/v1/appstore/product/config/save`（`BASE_URL=http://10.86.13.201:31281`） |
-| 实现方式 | **自研模拟实现（V1.6）**：写入模拟 CRM 销售品配置库（内存/存储模拟），生成 product_id/offer_id，模拟结果兼容 18 个销售品；**V2.2 确认门禁已移除**（详见下方） |
+| 实现方式 | **自研模拟实现（V1.6）**：写入模拟 CRM 销售品配置库（内存/存储模拟），生成 offer_id，模拟结果兼容 18 个销售品；**V2.2 确认门禁已移除**（详见下方） |
 | 工具描述 | 读取执行方案 JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入 CRM 销售品配置 |
 | 调用方 | wf_sub_02 智能配置（节点103 配置落地；**唯一写入步骤，plan_json 原文原样透传，中间无任何模型改写**） |
 
@@ -352,17 +352,17 @@
 
 | 出参 | 类型 | 说明 |
 | --- | --- | --- |
-| `product_id` | string | CRM 产品 ID |
+| `offer_id` | string | CRM 产品 ID |
 | `offer_id` | string | 销售品 ID（后续稽核/测试入参） |
 | `save_result` | object | 各字段分类写入结果（基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因） |
 | `status` | string | SUCCESS / PARTIAL / FAIL |
-| `script_url` | string | V2.6 起为**绝对 URL**（后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接下载；头缺失退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），环节1 输出模板引用 |
+| `script_url` | string | V2.6 起为**绝对 URL**（后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接下载；头缺失退化为相对路径 `/api/v1/appstore/product/config/script?offer_id={offer_id}`），环节1 输出模板引用 |
 
 | 归纳 | 否 |
 | --- | --- |
 | 超时/重试 | 60s / **不自动重试**（写操作防重复写入；失败由用户重新触发） |
 | **确认门禁（V2.2 移除）** | 原 V1.7 后端硬校验（confirmed==true + 存储中 req_id 的 CONFIRMED 标记，无标记返回 NOT_CONFIRMED）**已删除**——联调发现 LLM 跳步/漏写标记导致合法调用被误拒，确认与否改由外层智能体 LLM 语义识别保证；后端保留幂等（同 plan_json 重放返回原结果，并按本次请求头重写 script_url）与 plan_json 合法性校验；插件入参 confirmed 保留为兼容字段（后端仅记录不校验） |
-| **上线脚本（V2.5 新增，V2.6 模板化+强化）** | 落地成功时按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式：`/*run@crm*/` 定价信息 PD_GOODSPRC_DICT/PD_GOODSCLASS_REL/PD_GOODSOPCODE_REL/PD_GOODSRELEASE_DICT + `/*run@billing*/` 优惠/累计 FAV_INDEX/CUMULATE_VALUE_CTRL/VOICEFAV_CFEE_PLAN/PRICING_COMBINE/REMIND_ITEM_PROPERTY/REMIND_GROUP_MEMBER），存入脚本档案；**V2.6 起脚本骨架抽为 classpath 模板 `appstore/launch_script.sql.tpl`**（`${xxx}` 占位符 16 变量：offer_name/offer_id/goods_id/prc_id/class_id/month_fee/flow/voice/sms/out_flow/out_voice/out_sms 等），生成时从落地配置+种子规则提取需求产品信息逐项替换——脚本表结构维护只改模板，不动 Java；附带下载路由 GET `/api/v1/appstore/product/config/script?product_id=Pxxx`（text/plain，附件名 launch_Pxxx.sql；未落地返回 404）；V2.6 起 `script_url` 为**绝对 URL**（后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接下载；头缺失退化为相对路径，见 出参 script_url 行）；V2.0 起 wf_sub_06（节点621 `CODE_DOWNLOAD_LAUNCH_SCRIPT`）经 `POST /api/v1/appstore/script/download` 下载脚本，端点不可达回退下载引导文本（`backend_pending=1`、download_url 空） |
+| **上线脚本（V2.5 新增，V2.6 模板化+强化）** | 落地成功时按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式：`/*run@crm*/` 定价信息 PD_GOODSPRC_DICT/PD_GOODSCLASS_REL/PD_GOODSOPCODE_REL/PD_GOODSRELEASE_DICT + `/*run@billing*/` 优惠/累计 FAV_INDEX/CUMULATE_VALUE_CTRL/VOICEFAV_CFEE_PLAN/PRICING_COMBINE/REMIND_ITEM_PROPERTY/REMIND_GROUP_MEMBER），存入脚本档案；**V2.6 起脚本骨架抽为 classpath 模板 `appstore/launch_script.sql.tpl`**（`${xxx}` 占位符 16 变量：offer_name/offer_id/goods_id/prc_id/class_id/month_fee/flow/voice/sms/out_flow/out_voice/out_sms 等），生成时从落地配置+种子规则提取需求产品信息逐项替换——脚本表结构维护只改模板，不动 Java；附带下载路由 GET `/api/v1/appstore/product/config/script?offer_id={offer_id}`（text/plain，附件名 launch_{offer_id}.sql；未落地返回 404）；V2.6 起 `script_url` 为**绝对 URL**（后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接下载；头缺失退化为相对路径，见 出参 script_url 行）；V2.0 起 wf_sub_06（节点621 `CODE_DOWNLOAD_LAUNCH_SCRIPT`）经 `POST /api/v1/appstore/script/download` 下载脚本，端点不可达回退下载引导文本（`backend_pending=1`、download_url 空） |
 | 错误处理 | status=PARTIAL 时返回失败分类明细供用户修正；status=FAIL 终止 wf_sub_02 |
 
 #### 工具8：计费规则校验 `check_billing_rule`
@@ -400,7 +400,7 @@
 | 入参 | 类型 | 必填 | 是否提参 | 为空提示 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `req_id` | string | 是 | 是 | 缺少执行方案key，请先完成执行主干 | 执行方案存储 key（V1.7 统一键，后端四环节硬校验依据） |
-| `product_id` | string | 是 | 是 | 缺少产品ID，请先完成配置落地 | CRM 产品 ID |
+| `offer_id` | string | 是 | 是 | 缺少产品ID，请先完成配置落地 | CRM 产品 ID |
 | `report_url` | string | 是 | 否（工作流变量引用报告全文） | 缺少上线报告，请先完成测试报告生成 | 报告内容或链接（大模型节点 report 输出） |
 | `approval_flow` | string | 否 | 是 | 默认 standard | 枚举：standard/urgent |
 
@@ -411,7 +411,7 @@
 
 | 归纳 | 否 |
 | --- | --- |
-| 超时/重试 | 30s / 重试 1 次（幂等：同 product_id 重复提交返回原 approval_id） |
+| 超时/重试 | 30s / 重试 1 次（幂等：同 offer_id 重复提交返回原 approval_id） |
 | **后端硬校验（V1.7）** | 后端校验 req_id 入参存在 + 逐一查询 `NodeResultService.latestRecord(req_id, "config"/"spec"/"fee"/"test")` 四条记录全部非空（V1.7 统一键，原 execution_id 参数合并为 req_id）；缺失任一环节拒绝推送，防止 LLM 跳步/绕过执行主干发起审批 |
 
 #### 工具10：监控查询 `query_product_monitor`
@@ -424,7 +424,7 @@
 
 | 入参 | 类型 | 必填 | 是否提参 | 为空提示 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `product_id` | string | 是 | 是 | 缺少产品ID，请提供要查询的销售品 | — |
+| `offer_id` | string | 是 | 是 | 缺少产品ID，请提供要查询的销售品 | — |
 | `date_range` | string | 否 | 是 | 默认最近1天 | 如 `2026-09-11~2026-09-12` |
 | `metric` | string | 否 | 是 | 默认 all | 枚举：order/error/fee/all |
 
@@ -448,7 +448,7 @@
 
 | 入参 | 类型 | 必填 | 是否提参 | 为空提示 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `product_id` | string | 是 | 是 | 缺少产品ID，请提供告警关联销售品 | — |
+| `offer_id` | string | 是 | 是 | 缺少产品ID，请提供告警关联销售品 | — |
 | `alarm_level` | string | 是 | 是 | 缺少告警级别 | 枚举：high/middle/low |
 | `content` | string | 是 | 否（工作流变量引用，由大模型节点生成告警文案） | 缺少告警内容 | 告警正文（含环节、问题描述、建议） |
 
@@ -465,13 +465,13 @@
 | --- | --- |
 | 接口 | GET `{BASE_URL}/api/v1/appstore/approval/status` |
 | 实现方式 | **自研模拟实现（V1.6）**：从模拟审批状态库（工具9 写入）查询并返回审批状态/当前环节/意见；契约保持不变 |
-| 工具描述 | 按 approval_id 或 product_id 查询上线审批单当前状态，支撑用户发送消息查询审批进度 |
+| 工具描述 | 按 approval_id 或 offer_id 查询上线审批单当前状态，支撑用户发送消息查询审批进度 |
 | 调用方 | wf_sub_08 审批进度查询（节点801；智能体 LLM 按【意图→工作流映射表】识别查询意图后直调命中） |
 
 | 入参 | 类型 | 必填 | 是否提参 | 为空提示 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `approval_id` | string | 条件必填（与 product_id 至少一个） | 是 | 请提供审批单号或销售品ID，以便查询审批进度 | 审批单号（submit_release_approval 出参），优先使用 |
-| `product_id` | string | 条件必填（与 approval_id 至少一个） | 是 | 请提供审批单号或销售品ID，以便查询审批进度 | 产品 ID，缺失 approval_id 时按其查最新审批单 |
+| `approval_id` | string | 条件必填（与 offer_id 至少一个） | 是 | 请提供审批单号或销售品ID，以便查询审批进度 | 审批单号（submit_release_approval 出参），优先使用 |
+| `offer_id` | string | 条件必填（与 approval_id 至少一个） | 是 | 请提供审批单号或销售品ID，以便查询审批进度 | 产品 ID，缺失 approval_id 时按其查最新审批单 |
 
 | 出参 | 类型 | 说明 |
 | --- | --- | --- |
@@ -529,7 +529,7 @@
 | 工具9 submit_release_approval | wf_sub_06（`CODE_SUMMARY_APPROVAL` 合成后调用） | POST /api/v1/appstore/approval/submit | 后端四环节硬校验；幂等；requirement/launch 双轨 |
 | 工具10 query_product_monitor | wf_sub_07（节点701 监控查询） | GET /api/v1/appstore/product/monitor | — |
 | 工具11 send_alert | wf_sub_07（异常分支）、wf_sub_03（稽核驳回分支联动） | POST /api/v1/appstore/alert/send | 枚举校验 high/middle/low |
-| 工具13 query_approval_status | wf_sub_08（节点801） | GET /api/v1/appstore/approval/status | approval_id/product_id 至少一个，缺失报 PARAM_MISSING；双轨按 approval_type 区分回显 |
+| 工具13 query_approval_status | wf_sub_08（节点801） | GET /api/v1/appstore/approval/status | approval_id/offer_id 至少一个，缺失报 PARAM_MISSING；双轨按 approval_type 区分回显 |
 | 节点结果存储（2.2 节） | 各子工作流 save_node_result / query_node_result 插件节点 + `CODE_EXTRACT_RECORD` | POST /api/v1/appstore/result/save、GET /api/v1/appstore/result/query | 直连后端；64KB 超限/req_id 格式由后端 5002/5004 兜底；`CODE_EXTRACT_RECORD` 提取 list[0].result_json 原文（list 为空 → E5） |
 | CODE_RENDER_REQ | wf_sub_00（需求提报） | 内嵌代码节点 | req_id 系统生成/需求提报单渲染/pending 反查 |
 | CODE_GET_TEMPLATE | wf_sub_01（节点106） | 内嵌代码节点 | 模板注册表选择，读 knowledge/templates |
@@ -559,7 +559,7 @@
 | 4 | `/api/v1/appstore/validate-nested` | POST | wf_sub_01 `CODE_OP_VALIDATE_NESTED`（节点110 本体校验闸） | 对 MERGE_NESTED 合并后的嵌套报文做本体校验（valid/合规性/待修正），端点不可达回退 backend_pending=1 |
 | 5 | `/api/v1/appstore/explain` | POST | wf_sub_01（节点110 校验闸解释分支） | 对校验失败/待修正项输出可解释说明（解释/更正路径） |
 | 6 | `/api/v1/appstore/report/download` | POST | wf_sub_04 `CODE_DOWNLOAD_TEST_REPORT` | 按 record_id 下载正式版测试报告（download_url/消息），端点不可达回退下载引导文本 |
-| 7 | `/api/v1/appstore/script/download` | POST | wf_sub_06 `CODE_DOWNLOAD_LAUNCH_SCRIPT` | 按 record/product_id 下载上线脚本（V2.6 起绝对 URL 回退引导），端点不可达回退 backend_pending=1、download_url 空 |
+| 7 | `/api/v1/appstore/script/download` | POST | wf_sub_06 `CODE_DOWNLOAD_LAUNCH_SCRIPT` | 按 record/offer_id 下载上线脚本（V2.6 起绝对 URL 回退引导），端点不可达回退 backend_pending=1、download_url 空 |
 
 ---
 
@@ -628,16 +628,16 @@
 | --- | --- |
 | 触发门禁 | 仅四环节（config/spec/fee/test）全部成功且用户明确回复"上线审批"后进入；用户仅说"帮我上线"未确认时先提示"回复【上线审批】后才能提交审批流" |
 | 串行自查 | 依次 query_node_result 查 config/spec/fee/test/requirement（链式顺序非并行）；任何一步 total==0 → E15/E18 中断 |
-| 合成汇总（`CODE_SUMMARY_APPROVAL`） | 提取需求摘要关键字段、product_id/offer_id/save_result、audit_summary、risk_list、场景/测点统计、orderId/offerInstId |
+| 合成汇总（`CODE_SUMMARY_APPROVAL`） | 提取需求摘要关键字段、offer_id/save_result、audit_summary、risk_list、场景/测点统计、orderId/offerInstId |
 | 报告生成（LLM） | 按 3.4.7 模板③（强制 7 章节：需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证（orderId/offerInstId）/上线建议；全通过→"建议上线"，任一未通过→"暂缓上线"；只基于输入数据不新增结论） |
 | 报告存储 | save_node_result --node report |
-| 审批推送 + 审批轮询（`CODE_APPROVAL_POLL`） | submit_release_approval（approval-type=launch；后端硬校验 req_id 四环节结果齐全，跳步必被拒；幂等：同 product_id 重复提交返回原 approval_id；推送失败重试1次后 E16 中断）→ `CODE_APPROVAL_POLL` 轮询审批状态 → 审批通过后自动生成监控运维方案 + xsbot-panel 看板 + `CODE_DOWNLOAD_LAUNCH_SCRIPT`（/script/download）→ 输出审批单号 |
+| 审批推送 + 审批轮询（`CODE_APPROVAL_POLL`） | submit_release_approval（approval-type=launch；后端硬校验 req_id 四环节结果齐全，跳步必被拒；幂等：同 offer_id 重复提交返回原 approval_id；推送失败重试1次后 E16 中断）→ `CODE_APPROVAL_POLL` 轮询审批状态 → 审批通过后自动生成监控运维方案 + xsbot-panel 看板 + `CODE_DOWNLOAD_LAUNCH_SCRIPT`（/script/download）→ 输出审批单号 |
 
 **wf_sub_07/wf_sub_08/wf_sub_09/wf_sub_10（查询/运维/存量支线）**
 | 子工作流 | 链路要点 | 关键口径（不变） |
 | --- | --- | --- |
-| wf_sub_08 审批进度查询 | `approval_status`（approval_id/product_id 至少一个，缺失先追问不发起调用；双轨按 approval_type 区分回显）→ 按固定格式归纳输出 | "审批单号｜状态｜当前环节（审批人）｜最近意见｜更新时间"；驳回时附原因并提示可修改执行方案后重新发起；查无审批单 → E21 |
-| wf_sub_07 监控运维 | `query_product_monitor`（product_id 必填，缺失先追问不编造兜底；date_range/metric 可选）→ 异常判定 → 生成告警文案 → `send_alert` → 异常走 `CODE_OP_ROOT_CAUSE`（/ops/root-cause 根因推理）→ `CODE_OP_CREATE_WO`（/ops/work-orders 建工单闭环） | error_count>0 或 fee_error_rate>0.1 → 告警（文案含产品与异常摘要）；接口失败 → E17 终止本轮；审批状态==通过后用户回复"确认上线" → 自动生成监控运维方案（销售监控/受理监控/推送规则；数据引用 query_product_monitor 输出，不虚构指标），审批未通过时严禁生成 |
+| wf_sub_08 审批进度查询 | `approval_status`（approval_id/offer_id 至少一个，缺失先追问不发起调用；双轨按 approval_type 区分回显）→ 按固定格式归纳输出 | "审批单号｜状态｜当前环节（审批人）｜最近意见｜更新时间"；驳回时附原因并提示可修改执行方案后重新发起；查无审批单 → E21 |
+| wf_sub_07 监控运维 | `query_product_monitor`（offer_id 必填，缺失先追问不编造兜底；date_range/metric 可选）→ 异常判定 → 生成告警文案 → `send_alert` → 异常走 `CODE_OP_ROOT_CAUSE`（/ops/root-cause 根因推理）→ `CODE_OP_CREATE_WO`（/ops/work-orders 建工单闭环） | error_count>0 或 fee_error_rate>0.1 → 告警（文案含产品与异常摘要）；接口失败 → E17 终止本轮；审批状态==通过后用户回复"确认上线" → 自动生成监控运维方案（销售监控/受理监控/推送规则；数据引用 query_product_monitor 输出，不虚构指标），审批未通过时严禁生成 |
 | wf_sub_09 存量产品查询（只读） | `CODE_OP_QUERY_OFFER`（内嵌 knowledge/存量产品目录_清洗后.json）→ 结构化回显/多命中收敛 | 只读，不发起任何写接口 |
 | wf_sub_10 存量合规扫描（可选） | `CODE_OP_SHELF_COMPLIANCE`（POST /shelf-compliance）→ R-C* 批量合规结论 | 按 K1 业务规范判定，输出 R-C* 合规结论 + 整改引导 |
 
@@ -709,8 +709,8 @@ wf_sub_01：query_node_result → CODE_EXTRACT_RECORD → 相似产品查询（�
 | 提报需求 / 修改需求 | 直调 wf_sub_00→wf_sub_01（需求提报+需求分析模板轨） | requirement_text=用户需求原文含修改意见 |
 | 确认配置 / 重新执行失败环节 | 直调 wf_sub_02→03→05→04 串行执行主干（V2.2：无需写 CONFIRMED 确认标记，确认语义由意图识别保证） | req_id=<上一次执行方案存储键>（沿用原值，不新生成）；重新执行按 fail_node 续跑（STAGE1~4 映射 wf_sub_02/03/05/04），已成功环节凭存储回放 |
 | 上线审批 | 直调 wf_sub_06（仅四环节全部成功且用户明确确认后） | req_id=<原值> |
-| 查询审批进度 | 直调 wf_sub_08 | approval_id 或 product_id |
-| 运行监控 / 确认上线（审批通过后） | 直调 wf_sub_07（监控运维） | product_id / approval_id |
+| 查询审批进度 | 直调 wf_sub_08 | approval_id 或 offer_id |
+| 运行监控 / 确认上线（审批通过后） | 直调 wf_sub_07（监控运维） | offer_id / approval_id |
 | 存量产品查询 | 直调 wf_sub_09 | 产品描述 / 产品 ID |
 | 存量合规扫描 | 直调 wf_sub_10 | 存量产品清单 |
 | 业务规范/资费/测试/存量/FAQ 问答 | 独走知识库 `knowledge/`：业务规范→K1、资费→K2、测试→K3、存量销售品→K4 单文件、高频问答→K5 | — |
@@ -900,7 +900,7 @@ for i in range(max_retry):
 ```
 【环节N/{环节名称}】✅ 执行成功
 - 关键数据：{该环节关键输出（✅/统计值与出参一一对应，出参没有的数据省略该行）}
-  环节1：product_id / offer_id / 各模块字段写入结果（save_result）+ script_url（绝对 URL）
+  环节1：offer_id / 各模块字段写入结果（save_result）+ script_url（绝对 URL）
   环节2：稽核通过 + audit_summary
   环节3：资费校准通过 + 8 项比对表（compare_list 全部一致） + risk_list 为空说明
   环节4：场景数/测点数统计 + 测试结论 + 受理验证小节（orderId/offerInstId + 逐受理场景结论）
@@ -914,7 +914,7 @@ for i in range(max_retry):
 执行主干四个环节全部成功，请按以下模板输出（逐字引用输入数据，不新增结论）：
 
 【执行主干全部完成】✅ 共4个环节执行成功：
-1. 智能配置：product_id={...}，offer_id={...}，各模块字段全部写入成功；
+1. 智能配置：offer_id={...}，各模块字段全部写入成功；
 2. 配置规格稽核：通过，{audit_summary}；
 3. 资费校准：通过，未发现叠加/互斥冲突；
 4. 自动测试：场景 N 个、测点 M 个全部一致；受理验证（测试子集）：orderId={...}，offerInstId={...}，各受理场景均通过。

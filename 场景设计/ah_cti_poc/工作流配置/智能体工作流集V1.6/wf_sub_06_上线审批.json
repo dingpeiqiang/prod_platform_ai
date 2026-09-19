@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-上线审批",
-  "flowRemark": "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含product_id/offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。",
+  "flowRemark": "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -91,7 +91,7 @@
         "nodeMeta": {
           "title": "自查配置结果",
           "code": "query_node_result",
-          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 product_id/offer_id）",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 offer_id）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -608,17 +608,12 @@
             "type": "string"
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000612,product_id",
-            "name": "product_id",
-            "type": "string"
-          },
-          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000612,offer_id",
             "name": "offer_id",
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # config 环节：完整落地配置JSON（内含 product_id/offer_id 与 plan_json）\n    product_id = str(cfg.get('product_id') or '')\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：存储的是稽核总结文本\n    audit_summary = str(spec.get('raw') or spec.get('audit_summary') or '')\n    spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：存储的是风险解读文本\n    risk_summary = str(fee.get('raw') or fee.get('risk_summary') or '')\n    fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'product_id': product_id,\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'requirement_summary': str(req.get('raw') or '')[:500],\n        'config': {'product_id': product_id, 'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"product_id\": product_id,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：存储的是稽核总结文本\n    audit_summary = str(spec.get('raw') or spec.get('audit_summary') or '')\n    spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：存储的是风险解读文本\n    risk_summary = str(fee.get('raw') or fee.get('risk_summary') or '')\n    fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'requirement_summary': str(req.get('raw') or '')[:500],\n        'config': {'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -739,20 +734,6 @@
                 "a1b2c3d4-0000-4000-8000-000000000612,summary_json"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000612,summary_json"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
-              "relName": "product_id",
-              "name": "product_id",
-              "description": "CRM产品ID（节点612）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000612",
-                "a1b2c3d4-0000-4000-8000-000000000612,product_id"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000612,product_id"
             },
             {
               "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
@@ -902,17 +883,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
-            "relName": "product_id",
-            "name": "product_id",
-            "description": "CRM产品ID（节点612从config提取）",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（节点612从config提取）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000612",
-              "a1b2c3d4-0000-4000-8000-000000000612,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000613",
@@ -974,7 +955,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id；product_id=节点612从config提取，report_url=节点613审批建议",
+          "description": "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；offer_id=节点612从config提取，report_url=节点613审批建议",
           "version": "1"
         },
         "authentic_info_new": {
@@ -1037,7 +1018,7 @@
             "type": "string"
           }
         ],
-        "code": "import json, time, asyncio\nimport urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nSTATUS_URL = 'http://10.86.13.201:31281/api/v1/appstore/approval/status'\nMAX_RETRY = 12\nINTERVAL = 2\n\ndef _fetch(approval_id, product_id):\n    params = {}\n    if approval_id:\n        params['approval_id'] = approval_id\n    if product_id:\n        params['product_id'] = product_id\n    url = STATUS_URL + '?' + urllib.parse.urlencode(params)\n    with urllib.request.urlopen(url, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    approval_id = str(p.get('approval_id') or '')\n    product_id = str(p.get('product_id') or '')\n    out_status = '待审'\n    info = {}\n    for i in range(MAX_RETRY):\n        try:\n            info = _fetch(approval_id, product_id)\n        except Exception:\n            await asyncio.sleep(INTERVAL)\n            continue\n        st = str(info.get('status') or '')\n        if st == '通过':\n            out_status = '通过'\n            break\n        if st == '驳回':\n            out_status = '驳回'\n            break\n        time.sleep(INTERVAL)\n    ret: Output = {\n        'status': out_status,\n        'approval_id': str(info.get('approval_id') or approval_id),\n        'approval_type': str(info.get('approval_type') or 'launch'),\n        'current_node': str(info.get('current_node') or ''),\n        'approver': str(info.get('approver') or ''),\n        'opinion': str(info.get('opinion') or ''),\n        'update_time': str(info.get('update_time') or ''),\n        'approval_matrix': json.dumps(info.get('approval_matrix') or [], ensure_ascii=False),\n    }\n    return ret",
+        "code": "import json, time, asyncio\nimport urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nSTATUS_URL = 'http://10.86.13.201:31281/api/v1/appstore/approval/status'\nMAX_RETRY = 12\nINTERVAL = 2\n\ndef _fetch(approval_id, offer_id):\n    params = {}\n    if approval_id:\n        params['approval_id'] = approval_id\n    if offer_id:\n        params['offer_id'] = offer_id\n    url = STATUS_URL + '?' + urllib.parse.urlencode(params)\n    with urllib.request.urlopen(url, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    approval_id = str(p.get('approval_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    out_status = '待审'\n    info = {}\n    for i in range(MAX_RETRY):\n        try:\n            info = _fetch(approval_id, offer_id)\n        except Exception:\n            await asyncio.sleep(INTERVAL)\n            continue\n        st = str(info.get('status') or '')\n        if st == '通过':\n            out_status = '通过'\n            break\n        if st == '驳回':\n            out_status = '驳回'\n            break\n        time.sleep(INTERVAL)\n    ret: Output = {\n        'status': out_status,\n        'approval_id': str(info.get('approval_id') or approval_id),\n        'approval_type': str(info.get('approval_type') or 'launch'),\n        'current_node': str(info.get('current_node') or ''),\n        'approver': str(info.get('approver') or ''),\n        'opinion': str(info.get('opinion') or ''),\n        'update_time': str(info.get('update_time') or ''),\n        'approval_matrix': json.dumps(info.get('approval_matrix') or [], ensure_ascii=False),\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -1056,17 +1037,17 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
-            "relName": "product_id",
-            "name": "product_id",
-            "description": "CRM产品ID（节点612）",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（节点612）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000612",
-              "a1b2c3d4-0000-4000-8000-000000000612,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
           }
         ],
         "checkErr": false,
@@ -1210,7 +1191,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。上线审批（approval-type=launch，审批单号 {approval_id}）已通过，销售品已自动上线，请按 flow-D V13.0「审批通过自动上线·监控运维方案」固定模板输出（环节9 标题头为强制，监控阈值/推送时间为平台标准口径禁止改写）：\n【环节9/9·监控运维】✅ 执行成功\n\n**满足条件的套餐监控运维方案已生成**\n\n**一、销售情况监控**\n- 订购量、新增量、退订量、订购成功率\n\n**二、受理运行监控**\n- 受理成功率、订购失败率、变更失败率、退订失败率\n\n**三、推送规则**\n- **定时推送：** 每日09:00推送前一日销售及受理情况；每周一09:00推送近7日趋势；每月1日09:00推送上月运营报告。\n- **异常推送：** 订购成功率低于95%、受理成功率低于95%、失败率超过5%、核心指标波动超过30%时立即推送。\n\n**当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。\n\n**单品运营可视化：** 经 `xsbot-panel` 外链片段（必须是 JSON，且以 ```xsbot-panel 代码围栏包裹）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&offer_id={offer_id}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n**产品已成功上线，运营视图已开启。**\n\n> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n约束：xsbot-panel 必须整段输出上述 JSON 结构并逐字替换入参：{chat_id} 用于 message_id 与 url 的 chatId 参数，{product_id}/{offer_id} 替换为对应入参；url 基址固定 http://10.86.13.201:31280/ops-web/product-detail.html，title 固定「单品运营可视化」，禁止拼凑其他地址；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。"
+              "content": "你是产销品监控运维智能体。上线审批（approval-type=launch，审批单号 {approval_id}）已通过，销售品已自动上线，请按 flow-D V13.0「审批通过自动上线·监控运维方案」固定模板输出（环节9 标题头为强制，监控阈值/推送时间为平台标准口径禁止改写）：\n【环节9/9·监控运维】✅ 执行成功\n\n**满足条件的套餐监控运维方案已生成**\n\n**一、销售情况监控**\n- 订购量、新增量、退订量、订购成功率\n\n**二、受理运行监控**\n- 受理成功率、订购失败率、变更失败率、退订失败率\n\n**三、推送规则**\n- **定时推送：** 每日09:00推送前一日销售及受理情况；每周一09:00推送近7日趋势；每月1日09:00推送上月运营报告。\n- **异常推送：** 订购成功率低于95%、受理成功率低于95%、失败率超过5%、核心指标波动超过30%时立即推送。\n\n**当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。\n\n**单品运营可视化：** 经 `xsbot-panel` 外链片段（必须是 JSON，且以 ```xsbot-panel 代码围栏包裹）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n**产品已成功上线，运营视图已开启。**\n\n> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n约束：xsbot-panel 必须整段输出上述 JSON 结构并逐字替换入参：{chat_id} 用于 message_id 与 url 的 chatId 参数，{offer_id} 替换为对应入参；url 基址固定 http://10.86.13.201:31280/ops-web/product-detail.html，title 固定「单品运营可视化」，禁止拼凑其他地址；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -1227,20 +1208,6 @@
                 "a1b2c3d4-0000-4000-8000-000000000615,approval_id"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000615,approval_id"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
-              "relName": "product_id",
-              "name": "product_id",
-              "description": "CRM产品ID（节点612）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000612",
-                "a1b2c3d4-0000-4000-8000-000000000612,product_id"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000612,product_id"
             },
             {
               "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
