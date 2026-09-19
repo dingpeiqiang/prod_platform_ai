@@ -1043,7 +1043,10 @@ files01 = workflow(
 # ---------------- CODE_FUSION_GROUP_ECHO：智能配置融合成员回显 ----------------
 # 输入：group_json（save_product_config 出参 product_config 或 group 的 JSON 文本，含 group 键时解析）、
 #       status（落地总状态 SUCCESS/PARTIAL/FAIL）
-# 输出：fusion_echo（融合成员回显行，无 group 键时为空串）、fusion_status（修正后状态：任一成员 PARTIAL→PARTIAL）
+# 输出：fusion_echo（融合成员回显行，无 group 键时为空串）、
+#       fusion_status（修正后状态：任一成员 PARTIAL→PARTIAL）、
+#       fusion_note（仅融合品且有成员失败时的提示行；单商品/无 group 时为空串，
+#                    避免在单商品执行时输出无关的融合口径说明）
 CODE_FUSION_GROUP_ECHO = (
     "import json\n"
     "from typing import Any, Dict\n"
@@ -1065,25 +1068,40 @@ CODE_FUSION_GROUP_ECHO = (
     "async def main(args):\n"
     "    p = args.params\n"
     "    cfg = _load(p.get('group_json') or '')\n"
+    "    raw_status = str(p.get('status') or '')\n"
     "    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n"
     "    if not merged:\n"
-    "        ret: Output = {'fusion_echo': '', 'fusion_status': str(p.get('status') or '')}\n"
+    "        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n"
     "        return ret\n"
     "    members = merged.get('members') or []\n"
     "    parts = []\n"
+    "    failed = []\n"
     "    for m in members:\n"
     "        role = str(m.get('role') or '')\n"
     "        oid = str(m.get('offer_id') or '')\n"
     "        if role:\n"
     "            parts.append('%s（offer_id %s）' % (role, oid))\n"
+    "        m_status = str(m.get('status') or '').upper()\n"
+    "        if m_status in ('PARTIAL', 'FAIL'):\n"
+    "            failed.append('%s=%s' % (role or oid, m_status))\n"
     "    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n"
     "    line = '融合成员：'\n"
     "    if main_id:\n"
     "        line += '主 offer_id %s / ' % main_id\n"
     "    line += ' / '.join(parts) if parts else ''\n"
+    "    fusion_status = raw_status.upper()\n"
+    "    if failed and fusion_status == 'SUCCESS':\n"
+    "        fusion_status = 'PARTIAL'\n"
+    "    note = ''\n"
+    "    if fusion_status == 'PARTIAL':\n"
+    "        detail = '、'.join(failed) if failed else '详见失败明细'\n"
+    "        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n"
+    "    elif fusion_status == 'FAIL':\n"
+    "        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n"
     "    ret: Output = {\n"
     "        \"fusion_echo\": line if parts else '',\n"
-    "        \"fusion_status\": str(p.get('status') or ''),\n"
+    "        \"fusion_status\": fusion_status,\n"
+    "        \"fusion_note\": note,\n"
     "    }\n"
     "    return ret"
 )
@@ -1122,7 +1140,7 @@ s2f.append(plugin_node(103, "配置落地", "save_product_config",
 s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
     [inp("group_json", "落地配置JSON（节点103出参 product_config，含可选 group）", ref_block=nid(103), ref_rel="product_config"),
      inp("status", "落地总状态（节点103出参 status）", ref_block=nid(103), ref_rel="status")],
-    [code_out("fusion_echo", 107), code_out("fusion_status", 107)],
+    [code_out("fusion_echo", 107), code_out("fusion_status", 107), code_out("fusion_note", 107)],
     pos=(900, 300)))
 s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含 offer_id 及可选 group）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
@@ -1137,8 +1155,9 @@ s2f.append(end_node(104, "结束(配置落地完成)",
      inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
      inp("save_result", "四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status"),
-     inp("fusion_echo", "融合成员回显（V4.0，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo")],
-    "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n（融合组：任一成员 PARTIAL 即整体 PARTIAL；请按失败明细说明修改意见或回复【重新执行】）"))
+     inp("fusion_echo", "融合成员回显（V4.0，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo"),
+     inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note")],
+    "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}"))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
     [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,105), edge(105,104)])
@@ -1173,15 +1192,33 @@ s3f.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
     [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细（融合组可含 group:<role> 类目）", "array"),
      ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
 s3f.append(llm_node(203, "整改建议生成",
-    "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。\n"
-    "融合组维度（V4.0，出参含 group 时）：在稽核对象行下追加组维度回显行 `> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参 group，禁止增删成员）；error_list 含 `group:<role>` 类目时，对应该成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项检查项结构不变。\n"
+    "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
+    "输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n"
+    "稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n"
+    "七项固定检查项（顺序固定，逐项输出，不得增删）：\n"
+    "- 基础信息完整性\n- 资源配置完整性\n- 套外资费完整性\n- 字段格式规范性\n- 字段枚举合法性\n"
+    "- 配置项关联一致性\n- 业务规则完整性\n"
+    "判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n"
+    "- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n"
+    "- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n"
+    "融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行 "
+    "`> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参原文 record_json 的 group，禁止增删成员）；"
+    "error_list 含 `group:<role>` 类目时，对应成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项结构不变。\n"
+    "输出模板（严格按此渲染）：\n"
+    "> **稽核对象：销售品ID（offer_id）{offer_id}**\n"
+    "> **稽核结果：{通过/不通过}**\n"
+    "> - 基础信息完整性：✅/❌\n> - 资源配置完整性：✅/❌\n> - 套外资费完整性：✅/❌\n"
+    "> - 字段格式规范性：✅/❌\n> - 字段枚举合法性：✅/❌\n> - 配置项关联一致性：✅/❌\n"
+    "> - 业务规则完整性：✅/❌\n>\n"
+    "> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n"
     "不新增稽核结论。\n"
-    "输出要求：仅输出整改建议清单内容（对应出参 audit_suggest），不输出其他多余文字。",
+    "输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。",
     [inp("error_list", "引用节点202问题明细", ref_block=nid(202), ref_rel="error_list"),
      inp("audit_summary", "引用节点202稽核总结", ref_block=nid(202), ref_rel="audit_summary"),
      inp("record_json", "config 环节结果原文（含可选 group，供组维度回显）", ref_block=nid(207), ref_rel="record_json"),
-     inp("offer_id", "主 offer_id（组件维度回显标题行）", ref_block=nid(207), ref_rel="offer_id")],
-    [out("audit_suggest", "整改建议清单（含融合组维度行）")]))
+     inp("offer_id", "主 offer_id（稽核对象回显）", ref_block=nid(207), ref_rel="offer_id"),
+     inp("pass", "引用节点202稽核结论（1通过/0不通过）", ref_block=nid(202), ref_rel="pass")],
+    [out("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）")], max_tokens=3072))
 s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1193,10 +1230,10 @@ s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
 s3f.append(end_node(204, "结束(稽核完成)",
     [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
      inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_suggest", "整改建议（含融合组维度行）", ref_block=nid(203), ref_rel="audit_suggest")],
+     inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest")],
     "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
 files3f = workflow(
-    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→整改建议生成（V4.0 融合组维度：出参含 group 时组维度回显行，error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
+    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
     [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,205), edge(205,204)])
 
 # ============================================================
@@ -1224,13 +1261,18 @@ s5f.append(plugin_node(402, "计费校验", "check_billing_rule",
     BASE_URL + "/api/v1/appstore/billing/rules/verify",
     [inp("config_json", "落地配置JSON（节点407提取的环节结果原文）", ref_block=nid(407), ref_rel="record_json"),
      inp("check_scene", "校验场景默认all", content="all")],
-    [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "array")]))
+    [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "array"),
+     ("compare_list", "资费比对明细（8项，融合组行含member_role）", "array")]))
 s5f.append(llm_node(403, "风险解读",
-    "将资费风险清单（risk_list={risk_list}）翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出\"资费校准通过，未发现叠加/互斥冲突\"。\n"
-    "融合组维度（V4.0）：计费校验出参含 member_role 的比对项时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
-    "可引用资费规则库知识作为解释依据，但不得新增风险结论。\n"
-    "输出要求：仅输出风险解读内容（对应出参 risk_summary，融合组时按成员分组），不输出其他多余文字。",
-    [inp("risk_list", "引用节点402风险清单", ref_block=nid(402), ref_rel="risk_list")],
+    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读：\n"
+    "1）比对信息（compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
+    "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
+    "3）风险解读：risk_list 逐条翻译为业务语言，说明每条风险的影响与处置建议；risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
+    "4）校准结论行：「**校准结论：**」+ 全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
+    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，直接输出「资费校准通过，未发现叠加/互斥冲突」。\n"
+    "输出要求：仅输出以上内容（对应出参 risk_summary，融合组时按成员分组），不输出其他多余文字。",
+    [inp("risk_list", "引用节点402风险清单", ref_block=nid(402), ref_rel="risk_list"),
+     inp("compare_list", "引用节点402资费比对明细（8项，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list")],
     [out("risk_summary", "风险解读（融合组按 member_role 分组）")]))
 s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流",
@@ -1306,6 +1348,11 @@ CODE_MAP_FIXED_CASES = (
     "    return None\n"
     "\n"
     "def _load(text):\n"
+    "    # 兼容上游直接透传 dict/list（节点出参未序列化时的常见情形）\n"
+    "    if isinstance(text, list):\n"
+    "        return {'testScenes': text}\n"
+    "    if isinstance(text, dict):\n"
+    "        return text\n"
     "    if not isinstance(text, str) or not text.strip():\n"
     "        return {}\n"
     "    t = text.strip()\n"
@@ -1313,6 +1360,8 @@ CODE_MAP_FIXED_CASES = (
     "        t = t.split(':', 1)[1].strip()\n"
     "    try:\n"
     "        v = json.loads(t)\n"
+    "        if isinstance(v, list):\n"
+    "            return {'testScenes': v}\n"
     "        return v if isinstance(v, dict) else {}\n"
     "    except Exception:\n"
     "        return {}\n"
@@ -1396,11 +1445,20 @@ CODE_MAP_FIXED_CASES = (
     "async def main(args):\n"
     "    p = args.params\n"
     "    tr = _load(p.get('test_result_json') or '')\n"
+    "    if not isinstance(tr, dict):\n"
+    "        tr = {}\n"
+    "    # 受理凭证/被测名称由上游单独透传（绑定到 305 的独立出参），此处回填拦截\n"
+    "    if not tr.get('offerName'):\n"
+    "        tr['offerName'] = str(p.get('test_offer_name') or '')\n"
+    "    if not tr.get('orderId'):\n"
+    "        tr['orderId'] = str(p.get('order_id') or '')\n"
+    "    if not tr.get('offerInstId'):\n"
+    "        tr['offerInstId'] = str(p.get('offer_inst_id') or '')\n"
     "    sp = _load(p.get('spec_record') or '')\n"
     "    fee = _load(p.get('fee_record') or '')\n"
     "    cfg_offer_id = str(p.get('offer_id') or '')\n"
     "    plan = _load(p.get('plan_json') or '')\n"
-    "    if not plan:\n"
+    "    if not isinstance(plan, dict):\n"
     "        plan = {}\n"
     "    inner_plan = plan.get('plan_json')\n"
     "    if isinstance(inner_plan, dict):\n"
@@ -1564,7 +1622,10 @@ s4f.append(plugin_node(305, "查询测试结果", "get_test_result",
      ("testScenes", "逐场景结果含测点明细（照列出参）", "array")]))
 # CODE_MAP_FIXED_CASES：确定性构建 31 条固定用例表 + 结论 + 缺陷 + 场景覆盖 + E26 核对
 s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
-    [inp("test_result_json", "get_test_result 出参（节点305，含 testScenes/orderId/offerInstId/offerName）", ref_block=nid(305), ref_rel="testScenes"),
+    [inp("test_result_json", "get_test_result 逐场景结果（节点305 testScenes，含测点明细）", ref_block=nid(305), ref_rel="testScenes"),
+     inp("test_offer_name", "被测销售品名称（节点305 offerName，E26 一致性核对）", ref_block=nid(305), ref_rel="offerName"),
+     inp("order_id", "受理订单号（节点305 orderId，ACC-011 受理凭证）", ref_block=nid(305), ref_rel="orderId"),
+     inp("offer_inst_id", "销售品实例ID（节点305 offerInstId，ACC-011/CUST-002 受理凭证）", ref_block=nid(305), ref_rel="offerInstId"),
      inp("offer_id", "被测销售品ID（节点310解析）", ref_block=nid(310), ref_rel="offer_id"),
      inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json")],
     [code_out("cases_json", 315), code_out("dimension_summary", 315), code_out("overall_conclusion", 315), code_out("defect_list", 315), code_out("p0_pass", 315), code_out("e26", 315), code_out("e26_note", 315), code_out("scene_cover", 315)],
@@ -1574,14 +1635,14 @@ s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
     "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）、31条固定用例确定性映射结果（cases_json={cases_json}，dimension_summary={dimension_summary}，overall_conclusion={overall_conclusion}，defect_list={defect_list}，scene_cover={scene_cover}，e26={e26}）与受理凭证（orderId={orderId}，offerInstId={offerInstId}），按 K3 模板 V2.0 生成《销售品自动化测试报告》正式版，9 章节结构：\n"
     "一、报告概述（目的/范围/依据/等级定义 P0拦截/P1警告/P2提示）；\n"
     "二、基础信息（12 项：报告编号 TEST-REP-当日-序号/测试任务ID {testRequestId}/被测销售品名称 {offerName}/销售品编码 {offerId}/产品类型（取配置 plan_json 套餐属性）/所属业务域 产销品域/所属部门 产商品中心CRM_POS/生效时间（配置套餐生效规则摘要）/测试方式 全自动智能测试/测试时间 报告生成时间/关联加载方案 {req_id}/测试流水号 {globalId}）；\n"
-    "三、测试总体结论（总校验用例数=各场景 testCaseCount 合计逐字引用；通过=各场景 successTestCaseCount 合计；警告=0；阻断=各场景 failTestCaseCount 合计；通过率；整体上线结论={overall_conclusion}）；\n"
-    "四、分项测试结果：4.1 受理验证（ACC-001~012，结果逐行引用 cases_json 中 ACC 行 result 原值，未覆盖标'本销售品未覆盖'，不判❌不计入阻断；受理凭证 orderId={orderId}、offerInstId={offerInstId}，为空按E14标注'未获取到受理凭证，需人工核实'）；4.2 计费验证（BILL-001~010，结果引用 cases_json BILL 行）；4.3 客服验证（CUST-001~009，结果引用 cases_json CUST 行）；\n"
+    "三、测试总体结论（**唯一数据源=dimension_summary**：总校验用例数=dimension_summary 各维度 pass+fail 合计；通过=各维度 pass 合计；阻断=各维度 fail 合计；通过率=通过/总数；整体上线结论={overall_conclusion}。**禁止改用 testScenes 的场景 testCaseCount/successTestCaseCount 合计作为总体结论**——testScenes 仅为测试引擎场景级明细，不等于 31 条固定用例判定结果，两处口径不同不得混用；\n"
+    "四、分项测试结果：4.1 受理验证（用例ID ACC-001~012，逐行引用 cases_json 中 ACC 行 caseName/level/result 原值，未覆盖标'本销售品未覆盖'，不判❌不计入阻断；受理凭证 orderId={orderId}、offerInstId={offerInstId}，为空按E14标注'未获取到受理凭证，需人工核实'）；4.2 计费验证（用例ID BILL-001~010，逐行引用 cases_json BILL 行）；4.3 客服验证（用例ID CUST-001~009，逐行引用 cases_json CUST 行）。**章节标题与用例段必须严格对应**：4.1 只放 ACC、4.2 只放 BILL、4.3 只放 CUST，禁止错位（如把 ACC 行写进计费小节）；\n"
     "五、缺陷问题明细清单（引用 defect_list，无则写'无'）；\n"
     "六、业务风险汇总（引用 defect_list 中 P1 ❌ 项；无警告级风险固定输出'未发现警告级风险。'）；\n"
     "七、整改修复建议（无阻断/警告问题固定输出'无需整改'；有则逐条给出可落地整改建议）；\n"
     "八、最终测试结论与审批建议（三选一={overall_conclusion}，判定规则见 K3 规范第6章；e26=0 时结论须从严标注并提示人工核实，不输出通过性明细）；\n"
     "九、版本说明（V1.0）。\n"
-    "严格遵守：31 条固定用例清单禁止增删改；用例结果仅依据出参字段判定；只基于输入数据生成，禁止虚构测点/结论/统计值；记录 e26 不一致时按 E26 中断口径输出（不输出通过性明细，标注被测一致性需人工核实）。\n"
+    "严格遵守：31 条固定用例清单禁止增删改；用例结果仅依据 cases_json 判定；只基于输入数据生成，禁止虚构测点/结论/统计值；**三章统计与四章逐行结论必须自洽**（四章 ✅ 行数须等于三章通过数、❌ 行数须等于三章阻断数），出现矛盾时以 cases_json 为准重新生成；记录 e26 不一致时按 E26 中断口径输出（不输出通过性明细，标注被测一致性需人工核实）。\n"
     "输出要求：仅输出报告正文（对应出参 test_report），其中四章分项内**受理验证独立成节**（标题'环节7/9·受理验证'，逐字引用 orderId/offerInstId 与逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 结论、关键测点比对，融合品含 S_GROUP_BIND/S_ADDON_SUB）；不输出其他多余文字。",
     [inp("testScenes", "引用节点305逐场景结果", ref_block=nid(305), ref_rel="testScenes"),
      inp("testRequestId", "测试请求ID（节点305）", ref_block=nid(305), ref_rel="testRequestId"),
@@ -2068,10 +2129,10 @@ s6f.append(llm_node(618, "监控运维方案生成",
     "**三、推送规则**\n- **定时推送：** 每日09:00推送前一日销售及受理情况；每周一09:00推送近7日趋势；每月1日09:00推送上月运营报告。\n- **异常推送：** 订购成功率低于95%、受理成功率低于95%、失败率超过5%、核心指标波动超过30%时立即推送。\n\n"
     "**当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。\n\n"
     "**单品运营可视化：** 经 `xsbot-panel` 外链片段（必须是 JSON，且以 ```xsbot-panel 代码围栏包裹）：\n"
-    "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={chat_id}\",\"title\":\"实名激活\"}]}\n```\n\n"
-    "**产品已成功上线，运营视图已开启。**\n\n"
-    "> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n"
-    "约束：xsbot-panel 必须整段输出上述 JSON 结构并将 {chat_id} 替换为入参 chat_id；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&offer_id={offer_id}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "**产品已成功上线，运营视图已开启。**\n\n"
+     "> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n"
+     "约束：xsbot-panel 必须整段输出上述 JSON 结构并逐字替换入参：{chat_id} 用于 message_id 与 url 的 chatId 参数，{product_id}/{offer_id} 替换为对应入参；url 基址固定 http://10.86.13.201:31280/ops-web/product-detail.html，title 固定「单品运营可视化」，禁止拼凑其他地址；禁止省略面板、禁止纯文本/纯URL拼凑替代表单渲染；监控运维方案固定模板禁止改写阈值。\n"
     "输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。",
     [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id"),
      inp("product_id", "CRM产品ID（节点612）", ref_block=nid(612), ref_rel="product_id"),
@@ -2198,9 +2259,9 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     "已推送告警，告警单号 {alert_id}\n\n"
     "{root_cause_report}\n"
     "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
-    "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
-    "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={chat_id}\",\"title\":\"实名激活\"}]}\n```\n\n"
-    "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"))
+     "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"))
 # ---- 正常分支 ----
 s7f.append(llm_node(710, "运营摘要生成(正常分支)",
     "你是产销品监控运维智能体。基于正常监控数据输出运营摘要（产品名称/订单量/异常量/计费差错率/告警列表），整体正常时给出简洁说明，无需强行生成建议。输入：offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
@@ -2220,9 +2281,9 @@ s7f.append(end_node(711, "结束(正常-运营报告)",
      inp("chat_id", "会话消息ID", ref_block=nid(701), ref_rel="chat_id")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "{ops_summary}\n\n"
-    "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
-    "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.88.158.111:10002/gzdg/orderForm/?busiId=SHI_MING_JI_HUO&chatId={chat_id}\",\"title\":\"实名激活\"}]}\n```\n\n"
-    "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"))
+     "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
+     "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?product_id={product_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
+     "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块）。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
     [edge(701,702), edge(702,703), edge(703,710,0), edge(703,704,-1),

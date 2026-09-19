@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→整改建议生成（V4.0 融合组维度：出参含 group 时组维度回显行，error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。",
+  "flowRemark": "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -294,19 +294,19 @@
         "outputs": [
           {
             "name": "audit_suggest",
-            "description": "整改建议清单（含融合组维度行）",
+            "description": "稽核明细清单（七项固定检查项，无条件输出）",
             "type": "string",
             "content": ""
           }
         ],
-        "max_tokens": 2048,
+        "max_tokens": 3072,
         "flowJson": null,
         "inputs": {
           "llmParam": [
             {
               "name": "prompt",
               "type": "string",
-              "content": "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。\n融合组维度（V4.0，出参含 group 时）：在稽核对象行下追加组维度回显行 `> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参 group，禁止增删成员）；error_list 含 `group:<role>` 类目时，对应该成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项检查项结构不变。\n不新增稽核结论。\n输出要求：仅输出整改建议清单内容（对应出参 audit_suggest），不输出其他多余文字。"
+              "content": "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n七项固定检查项（顺序固定，逐项输出，不得增删）：\n- 基础信息完整性\n- 资源配置完整性\n- 套外资费完整性\n- 字段格式规范性\n- 字段枚举合法性\n- 配置项关联一致性\n- 业务规则完整性\n判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行 `> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参原文 record_json 的 group，禁止增删成员）；error_list 含 `group:<role>` 类目时，对应成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项结构不变。\n输出模板（严格按此渲染）：\n> **稽核对象：销售品ID（offer_id）{offer_id}**\n> **稽核结果：{通过/不通过}**\n> - 基础信息完整性：✅/❌\n> - 资源配置完整性：✅/❌\n> - 套外资费完整性：✅/❌\n> - 字段格式规范性：✅/❌\n> - 字段枚举合法性：✅/❌\n> - 配置项关联一致性：✅/❌\n> - 业务规则完整性：✅/❌\n>\n> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n不新增稽核结论。\n输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -365,6 +365,20 @@
                 "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+              "relName": "pass",
+              "name": "pass",
+              "description": "引用节点202稽核结论（1通过/0不通过）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000202",
+                "a1b2c3d4-0000-4000-8000-000000000202,pass"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,pass"
             }
           ]
         },
@@ -515,7 +529,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
             "relName": "audit_suggest",
             "name": "audit_suggest",
-            "description": "整改建议（含融合组维度行）",
+            "description": "稽核明细清单（七项固定检查项，无条件输出）",
             "type": "ref",
             "required": true,
             "content": "",

@@ -280,9 +280,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_status",
             "name": "fusion_status",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note",
+            "name": "fusion_note",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': str(p.get('status') or '')}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": str(p.get('status') or ''),\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    raw_status = str(p.get('status') or '')\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    failed = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n        m_status = str(m.get('status') or '').upper()\n        if m_status in ('PARTIAL', 'FAIL'):\n            failed.append('%s=%s' % (role or oid, m_status))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    fusion_status = raw_status.upper()\n    if failed and fusion_status == 'SUCCESS':\n        fusion_status = 'PARTIAL'\n    note = ''\n    if fusion_status == 'PARTIAL':\n        detail = '、'.join(failed) if failed else '详见失败明细'\n        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n    elif fusion_status == 'FAIL':\n        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": fusion_status,\n        \"fusion_note\": note,\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -417,7 +422,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n（融合组：任一成员 PARTIAL 即整体 PARTIAL；请按失败明细说明修改意见或回复【重新执行】）"
+          "content": "智能配置完成：product_id={product_id}，offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}"
         },
         "settings": {
           "stream": false,
@@ -495,6 +500,20 @@
               "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000107",
+            "relName": "fusion_note",
+            "name": "fusion_note",
+            "description": "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000107",
+              "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
           }
         ],
         "checkErr": false,

@@ -23,11 +23,19 @@
     python wf_runner.py wf_sub_01 --set req_id=PLAN20260919120000123
     python wf_runner.py wf_sub_00 --set "raw_input=我要办一个家庭套餐"
     python wf_runner.py wf_main_intent --set "query=帮我配置一个套餐"
-    python wf_runner.py wf_sub_01 --offline            # 全部走 mock，不联网
+    python wf_runner.py wf_sub_01 --offline            # 全部走 mock，不联网（仅调试）
+    python wf_runner.py wf_sub_01 --allow-mock         # 真实执行失败时允许静默回退 mock
     python wf_runner.py wf_sub_01 --save-json out.json # 落盘每一步 I/O
-    python wf_runner.py wf_sub_01 --log-file -         # 执行日志写入 logs/<工作流>_<时间戳>.log.md
+    python wf_runner.py wf_sub_01                     # 默认生成 logs/<工作流>_<时间戳>.log.md
+    python wf_runner.py wf_sub_01 --no-log            # 不生成日志
     python wf_runner.py wf_sub_01 --log-file run.log.md  # 执行日志写入指定文件
     python wf_runner.py --list                          # 列出可用工作流
+
+默认行为
+-------
+**默认真实执行**（联网调用插件与 LLM），且**严格模式**：任一环节真实调用失败
+不再静默回退 mock，而是直接报错定位，确保产出结果真实可信。需要调试时
+用 `--offline`（全 mock）或 `--allow-mock`（允许回退）。
 """
 
 from __future__ import annotations
@@ -811,10 +819,11 @@ class WorkflowRunner:
 
     def __init__(self, registry=None, llm=None, offline=False, save_json="",
                  verbose=True, show_values=True, live_plugins=True, color=True,
-                 fast_forward=False, log_file=""):
+                 fast_forward=False, log_file="", strict=False):
         self.registry = registry or PluginRegistry()
         self.llm = llm
         self.offline = offline
+        self.strict = strict
         self.fast_forward = offline or fast_forward
         self.save_json = save_json
         self.verbose = verbose
@@ -958,6 +967,8 @@ class WorkflowRunner:
         try:
             if ntype == 3:
                 outs, fb, note = self.plugin_caller.call(node, _ref_inputs(node, res.inputs))
+                if fb and self.strict:
+                    raise RuntimeError(f"插件真实调用失败且未允许回退 mock：{note}")
                 res.outputs = outs
                 res.status = "fallback" if fb else "ok"
                 res.note = note
@@ -968,6 +979,8 @@ class WorkflowRunner:
                 res.note = note or "内联 Python 执行"
             elif ntype == 1:
                 outs, fb, note = self._run_llm(node, res.inputs)
+                if fb and self.strict:
+                    raise RuntimeError(f"LLM 真实调用失败且未允许回退 mock：{note}")
                 res.outputs = outs
                 res.status = "fallback" if fb else "ok"
                 res.note = note
@@ -1001,6 +1014,19 @@ class WorkflowRunner:
         inputs = node.get("inputs")
         if node.get("type") == 1 and isinstance(inputs, dict):
             rows = inputs.get("inputParameters") or []
+        elif node.get("type") == 2 and isinstance(inputs, dict):
+            # 条件分支：入参按 condition 组的 left 引用（blockID/relName）解析
+            conds = inputs.get("condition") or inputs.get("conditions") or []
+            for group in conds:
+                if not isinstance(group, dict):
+                    continue
+                for it in group.get("conditions") or []:
+                    left = it.get("left") or {}
+                    block = left.get("blockID") or ""
+                    rel = left.get("relName") or ""
+                    if block and rel:
+                        out[rel] = (ctx.get(block) or {}).get(rel, "")
+            return out
         else:
             rows = inputs if isinstance(inputs, list) else []
         for ip in rows:
@@ -1045,6 +1071,8 @@ class WorkflowRunner:
         prompt = _render_template(prompt_tpl, inputs)
         system = node.get("prompt_system") or ""
         if self.llm is None:
+            if self.strict:
+                raise RuntimeError("未读取到 LLM 配置（data-h2.sql），严格模式下不允许 mock")
             text = LlmClient._mock(prompt)
             outs = {o.get("name"): text for o in node.get("outputs", [])}
             return outs, True, "无LLM配置(回退mock)"
@@ -1313,7 +1341,7 @@ def _resolve_log_path(log_arg: str, workflow: str) -> str:
     """解析日志文件路径。
 
     - 未指定（空）→ 不写日志，返回 ""
-    - "-" 或目录形式 → 自动生成 logs/<工作流>_<时间戳>.log.md
+    - "-" 或 "auto" 或目录形式 → 自动生成 logs/<工作流>_<时间戳>.log.md
     - 其它 → 视为显式文件路径
     """
     if not log_arg:
@@ -1332,15 +1360,20 @@ def main(argv=None):
     ap.add_argument("workflow", nargs="?", help="工作流名或文件（wf_sub_01 / wf_main_intent ...）")
     ap.add_argument("--set", action="append", default=[], metavar="K=V",
                     help="覆盖开始节点入参，可多次")
-    ap.add_argument("--offline", action="store_true", help="全部走 mock，不联网")
+    ap.add_argument("--offline", action="store_true",
+                    help="全部走 mock，不联网（仅调试用；默认联网真实执行）")
     ap.add_argument("--fast-forward", action="store_true",
                     help="代码节点快进沙箱：跳过 sleep/轮询等待（离线默认开启）")
+    ap.add_argument("--allow-mock", action="store_true",
+                    help="允许真实执行失败时静默回退 mock（默认不允许：网关不可达即报错）")
     ap.add_argument("--no-color", action="store_true", help="关闭彩色输出")
     ap.add_argument("--no-values", action="store_true", help="只打印节点流转，不打印入/出参值")
     ap.add_argument("--save-json", default="", metavar="FILE", help="把每步 I/O 落盘为 JSON")
-    ap.add_argument("--log-file", default="", metavar="FILE",
+    ap.add_argument("--log-file", default=None, metavar="FILE",
                     help="把执行日志（每节点完整输入/输出，不截断）写入 markdown 文件；"
-                         "传 '-' 或留空文件名时自动生成 logs/<工作流>_<时间戳>.log.md")
+                         "默认（不传）自动生成 logs/<工作流>_<时间戳>.log.md，"
+                         "传 '-' 同为自动生成，传具体路径则写入该文件")
+    ap.add_argument("--no-log", action="store_true", help="不生成执行日志")
     ap.add_argument("--base-url", default="", help="覆盖插件 BASE_URL（默认取 JSON 内 url）")
     ap.add_argument("--model", default="", help="覆盖 LLM 模型名")
     ap.add_argument("--timeout", type=int, default=60, help="插件 HTTP 超时秒")
@@ -1359,21 +1392,26 @@ def main(argv=None):
         llm_cfg.model = args.model
     llm = None if args.offline else LlmClient(llm_cfg, offline=args.offline)
 
-    log_file = _resolve_log_path(args.log_file, args.workflow)
+    if args.no_log:
+        log_file = ""
+    else:
+        log_file = _resolve_log_path(args.log_file or "-", args.workflow)
 
     runner = WorkflowRunner(
         registry=registry, llm=llm, offline=args.offline,
         save_json=args.save_json, show_values=not args.no_values,
         color=not args.no_color, fast_forward=args.fast_forward,
-        log_file=log_file)
+        log_file=log_file, strict=not args.offline and not args.allow_mock)
     runner.plugin_caller.timeout = args.timeout
     runner.plugin_caller.base_url_override = args.base_url
 
+    mode = "离线 mock" if args.offline else (
+        f"实时（LLM={getattr(llm_cfg, 'model', '') or '无配置'}）")
+    strict_note = "，失败即报错（--allow-mock 可放开）" if runner.strict else ""
+    print(f"{C.GREY}执行模式: {mode}{strict_note}{C.RESET}")
     if llm_cfg and not args.offline:
         print(f"{C.GREY}LLM: {llm_cfg.model} @ {llm_cfg.completions_url()} "
               f"(auth={llm_cfg.auth_type}){C.RESET}")
-    elif args.offline:
-        print(f"{C.GREY}LLM: 离线 mock 模式{C.RESET}")
 
     initial = _parse_sets(args.set)
     try:

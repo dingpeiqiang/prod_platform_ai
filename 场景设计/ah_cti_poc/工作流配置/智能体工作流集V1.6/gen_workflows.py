@@ -809,12 +809,36 @@ s3.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
      inp("audit_scene", "稽核场景默认all", content="all")],
     [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "array"),
      ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
+# 整改建议生成（V4.1：稽核明细无条件输出七项检查清单，pass=1 逐项 ✅ 也完整呈现，
+# 不再只输出"稽核通过"；七项检查项固定，与出参 error_list 分类一一对应）
 s3.append(llm_node(203, "整改建议生成",
-    "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。不新增稽核结论。\n"
-    "输出要求：仅输出整改建议清单内容（对应出参 audit_suggest），不输出其他多余文字。",
-    [inp("error_list", "引用节点2问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_summary", "引用节点2稽核总结", ref_block=nid(202), ref_rel="audit_summary")],
-    [out("audit_suggest", "整改建议清单")]))
+    "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
+    "输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n"
+    "稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n"
+    "七项固定检查项（顺序固定，逐项输出，不得增删）：\n"
+    "- 基础信息完整性\n- 资源配置完整性\n- 套外资费完整性\n- 字段格式规范性\n- 字段枚举合法性\n"
+    "- 配置项关联一致性\n- 业务规则完整性\n"
+    "判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n"
+    "- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n"
+    "- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n"
+    "融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行 "
+    "`> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参原文 record_json 的 group，禁止增删成员）；"
+    "error_list 含 `group:<role>` 类目时，对应成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项结构不变。\n"
+    "输出模板（严格按此渲染）：\n"
+    "> **稽核对象：销售品ID（offer_id）{offer_id}**\n"
+    "> **稽核结果：{通过/不通过}**\n"
+    "> - 基础信息完整性：✅/❌\n> - 资源配置完整性：✅/❌\n> - 套外资费完整性：✅/❌\n"
+    "> - 字段格式规范性：✅/❌\n> - 字段枚举合法性：✅/❌\n> - 配置项关联一致性：✅/❌\n"
+    "> - 业务规则完整性：✅/❌\n>\n"
+    "> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n"
+    "不新增稽核结论。\n"
+    "输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。",
+    [inp("error_list", "引用节点202问题明细", ref_block=nid(202), ref_rel="error_list"),
+     inp("audit_summary", "引用节点202稽核总结", ref_block=nid(202), ref_rel="audit_summary"),
+     inp("record_json", "config 环节结果原文（含可选 group，供组维度回显）", ref_block=nid(207), ref_rel="record_json"),
+     inp("offer_id", "引用节点207解析的 offer_id（稽核对象回显）", ref_block=nid(207), ref_rel="offer_id"),
+     inp("pass", "引用节点202稽核结论（1通过/0不通过）", ref_block=nid(202), ref_rel="pass")],
+    [out("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）")], max_tokens=3072))
 s3.append(plugin_node(205, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -826,10 +850,10 @@ s3.append(plugin_node(205, "环节结果存储", "save_node_result",
 s3.append(end_node(204, "结束(稽核完成)",
     [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
      inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_suggest", "整改建议", ref_block=nid(203), ref_rel="audit_suggest")],
+     inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest")],
     "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
 files["wf_sub_03_规格稽核.json"] = workflow(
-    "产销品-规格稽核", "子工作流3：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按req_id+config读取智能配置环节结果→代码节点提取 result_json 原文（V2.2 修复断链）→realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_03", s3,
+    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3,
     [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,205), edge(205,204)])
 
 # ============================================================
