@@ -491,7 +491,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。"
+          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -541,6 +541,20 @@
               "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
           }
         ],
         "checkErr": false,
@@ -564,7 +578,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}"
+          "content": "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -614,6 +628,20 @@
               "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
           }
         ],
         "checkErr": false,

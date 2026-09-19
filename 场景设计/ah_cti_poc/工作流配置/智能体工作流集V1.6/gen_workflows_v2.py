@@ -26,6 +26,48 @@ from gen_workflows import (
 )
 
 # ============================================================
+# 页面地址输出（每个工作流结束后统一输出配置工作台/环节业务页外链）
+#   约定：结束节点 outputs.content 末尾追加 ```xsbot-panel``` 代码块，
+#   块内 JSON 的 "key":"{chat_id}" 属规范 11.1 允许的占位引用；
+#   每个结束节点固定两个面板：[配置工作台, 环节业务页]。
+# ============================================================
+OPS_WEB_BASE = "http://10.86.13.201:31280/ops-web"
+CONFIG_WB_PAGE = OPS_WEB_BASE + "/config-workbench.html"
+MONITOR_PAGE = OPS_WEB_BASE + "/product-detail.html"
+
+
+def panel_external(url, title, panel="right"):
+    """单个 xsbot-panel 外链面板（url 中的 {xxx} 为合法占位引用）"""
+    return '{"panel":"%s","mode":"external","url":"%s","title":"%s"}' % (panel, url, title)
+
+
+def config_workbench_panel(offer_id, offer_name, chat_id, stage):
+    """配置工作台入口面板（view=workbench），供页面渲染通用配置工作台"""
+    url = "%s?offer_id=%s&name=%s&chatId=%s&stage=%s&view=workbench" % (
+        CONFIG_WB_PAGE, offer_id, offer_name, chat_id, stage)
+    return panel_external(url, "配置工作台")
+
+
+def biz_panel(offer_id, offer_name, chat_id, stage, title=None, page=None):
+    """环节业务页面板：无专属页时兜底 config-workbench.html（view=stage 交由页面按环节渲染）"""
+    url = "%s?offer_id=%s&name=%s&chatId=%s&stage=%s&view=stage" % (
+        page or CONFIG_WB_PAGE, offer_id, offer_name, chat_id, stage)
+    return panel_external(url, title or "环节业务页")
+
+
+def xsbot_panel_block(offer_id, offer_name, chat_id, stage, biz_title=None, biz_page=None):
+    """生成结束节点末尾的 xsbot-panel 文本块（配置工作台 + 环节业务页 两面板）"""
+    panels = [
+        config_workbench_panel(offer_id, offer_name, chat_id, stage),
+        biz_panel(offer_id, offer_name, chat_id, stage, title=biz_title, page=biz_page),
+    ]
+    return ("**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n"
+            "```xsbot-panel\n"
+            '{"version":"1.0","message_id":"{chat_id}","panels":[%s]}\n'
+            "```\n" % ",".join(panels))
+
+
+# ============================================================
 # 阶段1.3 代码节点（嵌入式确定性逻辑）
 # ============================================================
 
@@ -470,13 +512,19 @@ s00.append(plugin_node(6, "需求工单审批", "submit_release_approval",
 s00.append(end_node(7, "结束(无待补充-提报成功)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
-     inp("approval_id", "审批单号", ref_block=nid(6), ref_rel="approval_id")],
-    "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。"))
+     inp("approval_id", "审批单号", ref_block=nid(6), ref_rel="approval_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(1), ref_rel="chat_id")],
+    "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n"
+    + xsbot_panel_block("{req_id}", "", "{chat_id}", "00",
+                        biz_title="需求提报单")))
 s00.append(end_node(8, "结束(有待补充)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
-     inp("pending_fields", "待补充字段", ref_block=nid(3), ref_rel="pending_fields")],
-    "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}"))
+     inp("pending_fields", "待补充字段", ref_block=nid(3), ref_rel="pending_fields"),
+     inp("chat_id", "会话消息ID", ref_block=nid(1), ref_rel="chat_id")],
+    "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n"
+    + xsbot_panel_block("{req_id}", "", "{chat_id}", "00",
+                        biz_title="需求提报单")))
 e00 = [edge(1, 2), edge(2, 3), edge(3, 4),
        edge(4, 5, 0), edge(5, 6), edge(6, 7), edge(4, 8, -1)]
 files00 = workflow(
@@ -1130,12 +1178,15 @@ s01.append(end_node(111, "结束(方案已生成)",
      inp("pending_required", "必填待补充", ref_block=nid(108), ref_rel="pending_required"),
      inp("template_id", "模板", ref_block=nid(106), ref_rel="template_id"),
      inp("quality_gate", "要素提取质量门禁（节点108）", ref_block=nid(108), ref_rel="quality_gate"),
-     inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="ve_stats")],
+     inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="ve_stats"),
+     inp("chat_id", "会话消息ID", ref_block=nid(101), ref_rel="chat_id")],
     "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n"
     "【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n"
     "【待补充必填】{pending_required}\n请核对以上方案：\n"
     "- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n"
-    "- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。"))
+    "- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。\n\n"
+    + xsbot_panel_block("{req_id}", "", "{chat_id}", "01",
+                        biz_title="配置方案")))
 e01 = [edge(101, 102), edge(102, 103), edge(103, 104),
        edge(104, 105), edge(105, 106), edge(106, 107),
        edge(107, 108), edge(108, 109), edge(109, 110), edge(110, 111)]
@@ -1348,10 +1399,13 @@ s2f.append(end_node(104, "结束(配置落地完成)",
      inp("fusion_echo", "融合成员回显（V4.0，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo"),
      inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note"),
      inp("config_summary", "配置销售品要点简介（节点108渲染）", ref_block=nid(108), ref_rel="config_summary"),
-     inp("script_url", "配置脚本下载地址（节点103出参）", ref_block=nid(103), ref_rel="script_url")],
+     inp("script_url", "配置脚本下载地址（节点103出参）", ref_block=nid(103), ref_rel="script_url"),
+     inp("chat_id", "会话消息ID", ref_block=nid(101), ref_rel="chat_id")],
     "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n"
     "{config_summary}\n{fusion_note}\n"
-    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"))
+    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n"
+    + xsbot_panel_block("{offer_id}", "", "{chat_id}", "02",
+                        biz_title="落地配置看板")))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
     [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,108), edge(108,105), edge(105,104)])
@@ -1433,8 +1487,12 @@ s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
 s3f.append(end_node(204, "结束(稽核完成)",
     [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
      inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest")],
-    "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
+     inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest"),
+     inp("offer_id", "销售品ID（节点207提取）", ref_block=nid(207), ref_rel="offer_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(201), ref_rel="chat_id")],
+    "配置规格稽核完成：pass={pass}\n{audit_suggest}\n\n"
+    + xsbot_panel_block("{offer_id}", "", "{chat_id}", "03",
+                        biz_title="规格稽核")))
 files3f = workflow(
     "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）→结构化封包（V2.5：error_list+audit_suggest 合成 envelope）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
     [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,208), edge(202,208), edge(208,205), edge(205,204)])
@@ -1497,8 +1555,12 @@ s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论", ref_block=nid(402), ref_rel="pass"),
      inp("risk_list", "风险清单", ref_block=nid(402), ref_rel="risk_list"),
-     inp("risk_summary", "风险解读（融合组按成员分组）", ref_block=nid(403), ref_rel="risk_summary")],
-    "资费校准完成：pass={pass}\n{risk_summary}"))
+     inp("risk_summary", "风险解读（融合组按成员分组）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("offer_id", "销售品ID（节点407提取）", ref_block=nid(407), ref_rel="offer_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(401), ref_rel="chat_id")],
+    "资费校准完成：pass={pass}\n{risk_summary}\n\n"
+    + xsbot_panel_block("{offer_id}", "", "{chat_id}", "05",
+                        biz_title="资费校准")))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
     [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,408), edge(402,408), edge(408,405), edge(405,404)])
@@ -1928,10 +1990,13 @@ s4f.append(end_node(307, "结束(测试完成)",
      inp("overall_conclusion", "整体上线结论", ref_block=nid(315), ref_rel="overall_conclusion"),
      inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId"),
      inp("download_url", "报告下载地址（节点316）", ref_block=nid(316), ref_rel="download_url"),
-     inp("dl_note", "下载说明（节点316）", ref_block=nid(316), ref_rel="note")],
+     inp("dl_note", "下载说明（节点316）", ref_block=nid(316), ref_rel="note"),
+     inp("chat_id", "会话消息ID", ref_block=nid(301), ref_rel="chat_id")],
     "《销售品自动化测试报告》（正式版 9 章节）已生成（被测 offer_id={offerId}，测试流水号：{globalId}）\n整体上线结论：{overall_conclusion}\n\n{test_report}\n\n"
     "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
-    "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"))
+    "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。\n\n"
+    + xsbot_panel_block("{offerId}", "", "{chat_id}", "04",
+                        biz_title="测试报告")))
 files4f = workflow(
     "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(317~320 取 error_list/compare_list)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
     [edge(301,309), edge(309,310), edge(310,302), edge(302,304),
@@ -2409,18 +2474,26 @@ s6f.append(end_node(619, "结束(审批通过-自动上线)",
      inp("status", "审批状态", ref_block=nid(616), ref_rel="status"),
      inp("monitor_plan", "监控运维方案", ref_block=nid(618), ref_rel="monitor_plan"),
      inp("download_url", "脚本下载地址（节点621）", ref_block=nid(621), ref_rel="download_url"),
-     inp("dl_note", "下载说明（节点621）", ref_block=nid(621), ref_rel="note")],
+     inp("dl_note", "下载说明（节点621）", ref_block=nid(621), ref_rel="note"),
+     inp("offer_id", "销售品ID", ref_block=nid(612), ref_rel="offer_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(601), ref_rel="chat_id")],
     "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n"
-    "【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）"))
+    "【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）\n\n"
+    + xsbot_panel_block("{offer_id}", "{offer_id}", "{chat_id}", "06",
+                        biz_title="单品运营看板", biz_page=MONITOR_PAGE)))
 s6f.append(end_node(620, "结束(审批轮询中)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
      inp("status", "审批状态", ref_block=nid(616), ref_rel="status"),
      inp("current_node", "当前审批环节", ref_block=nid(616), ref_rel="current_node"),
      inp("approver", "当前审批人", ref_block=nid(616), ref_rel="approver"),
-     inp("opinion", "审批意见", ref_block=nid(616), ref_rel="opinion")],
+     inp("opinion", "审批意见", ref_block=nid(616), ref_rel="opinion"),
+     inp("offer_id", "销售品ID", ref_block=nid(612), ref_rel="offer_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(601), ref_rel="chat_id")],
     "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，当前状态：{status}（当前环节 {current_node}，审批人 {approver}，最近意见：{opinion}）\n"
     "审批通过后将自动上线并衔接监控运维方案输出。\n\n"
-    "> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）"))
+    "> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）\n\n"
+    + xsbot_panel_block("{offer_id}", "{offer_id}", "{chat_id}", "06",
+                        biz_title="上线审批看板")))
 files6f = workflow(
     "产销品-上线审批", "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
@@ -2516,11 +2589,13 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     "- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n"
     "- 告警列表：{alarm_list}（为空显示\"无\"）\n"
     "已推送告警，告警单号 {alert_id}\n\n"
-    "{root_cause_report}\n"
-    "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
+     "{root_cause_report}\n"
+     "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
      "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
      "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
-     "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}"))
+     "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}\n\n"
+     + xsbot_panel_block("{offer_id}", "{offer_name}", "{chat_id}", "07",
+                         biz_title="单品运营看板", biz_page=MONITOR_PAGE)))
 # ---- 正常分支 ----
 s7f.append(llm_node(710, "运营摘要生成(正常分支)",
     "你是产销品监控运维智能体。基于正常监控数据输出运营摘要（产品名称/订单量/异常量/计费差错率/告警列表），整体正常时给出简洁说明，无需强行生成建议。输入：offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
@@ -2542,7 +2617,9 @@ s7f.append(end_node(711, "结束(正常-运营报告)",
     "{ops_summary}\n\n"
      "**单品运营可视化：** 经 xsbot-panel 外链加载外部运营看板：\n"
      "```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}\",\"title\":\"单品运营可视化\"}]}\n```\n\n"
-     "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】"))
+     "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】\n\n"
+     + xsbot_panel_block("{offer_id}", "{offer_name}", "{chat_id}", "07",
+                         biz_title="单品运营看板", biz_page=MONITOR_PAGE)))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块）。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
     [edge(701,702), edge(702,703), edge(703,710,0), edge(703,704,-1),
@@ -2591,8 +2668,12 @@ s8f.append(llm_node(803, "状态摘要归纳",
      inp("approval_matrix", "审批矩阵", ref_block=nid(802), ref_rel="approval_matrix")],
     [out("approval_summary", "审批状态摘要")]))
 s8f.append(end_node(804, "结束(查询完成)",
-    [inp("approval_summary", "审批状态摘要", ref_block=nid(803), ref_rel="approval_summary")],
-    "{approval_summary}"))
+    [inp("approval_summary", "审批状态摘要", ref_block=nid(803), ref_rel="approval_summary"),
+     inp("offer_id", "销售品ID", ref_block=nid(801), ref_rel="offer_id"),
+     inp("chat_id", "会话消息ID", ref_block=nid(801), ref_rel="chat_id")],
+    "{approval_summary}\n\n"
+    + xsbot_panel_block("{offer_id}", "{offer_id}", "{chat_id}", "08",
+                        biz_title="上线审批看板")))
 files8f = workflow(
     "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
     [edge(801,802), edge(802,803), edge(803,804)])
@@ -2636,8 +2717,13 @@ s9f.append(llm_node(903, "查询回显渲染",
      inp("k4_note", "K4档案说明（节点902）", ref_block=nid(902), ref_rel="k4_note")],
     [out("query_reply", "查询回显正文")]))
 s9f.append(end_node(904, "结束(查询完成)",
-    [inp("query_reply", "查询回显正文", ref_block=nid(903), ref_rel="query_reply")],
-    "{query_reply}"))
+    [inp("query_reply", "查询回显正文", ref_block=nid(903), ref_rel="query_reply"),
+     inp("offer_id", "产品ID", ref_block=nid(901), ref_rel="offer_id"),
+     inp("offer_name", "产品名称", ref_block=nid(901), ref_rel="name"),
+     inp("chat_id", "会话消息ID", ref_block=nid(901), ref_rel="chat_id")],
+    "{query_reply}\n\n"
+    + xsbot_panel_block("{offer_id}", "{offer_name}", "{chat_id}", "09",
+                        biz_title="存量产品详情")))
 files9f = workflow(
     "产销品-存量产品查询", "子工作流9（阶段5 新增：D-4 只读存量查询）。CODE_OP_QUERY_OFFER 内嵌确定性检索（数据源 knowledge/存量产品目录_清洗后.json 18 条，内嵌目录便于 Demo；后端 query_offer 插件就绪后切换远端检索；K4 档案待后端回显）→LLM 按 flow-D D-4 渲染查询回显（unique 结构化回显+收尾块 / multi 匹配清单收敛 / none 追问引导）。只读、不生成 req_id、不进入配置流水线。", "wf_sub_09", s9f,
     [edge(901,902), edge(902,903), edge(903,904)])
@@ -2660,8 +2746,11 @@ s10f.append(llm_node(1003, "合规报告渲染",
      inp("note", "占位说明（节点1002）", ref_block=nid(1002), ref_rel="note")],
     [out("compliance_report", "合规报告正文")]))
 s10f.append(end_node(1004, "结束(合规扫描)",
-    [inp("compliance_report", "合规报告正文", ref_block=nid(1003), ref_rel="compliance_report")],
-    "{compliance_report}"))
+    [inp("compliance_report", "合规报告正文", ref_block=nid(1003), ref_rel="compliance_report"),
+     inp("chat_id", "会话消息ID", ref_block=nid(1001), ref_rel="chat_id")],
+    "{compliance_report}\n\n"
+    + xsbot_panel_block("", "", "{chat_id}", "10",
+                        biz_title="存量合规看板")))
 files10f = workflow(
     "产销品-存量合规扫描", "子工作流10（阶段5 新增(可选)：shelf_compliance 批量 R-C* 合规+整改引导）。CODE_OP_SHELF_COMPLIANCE 占位(阶段1.1 Java 插件待就绪)→LLM 合规报告渲染（R-C* 合规结论+整改引导）。", "wf_sub_10", s10f,
     [edge(1001,1002), edge(1002,1003), edge(1003,1004)])

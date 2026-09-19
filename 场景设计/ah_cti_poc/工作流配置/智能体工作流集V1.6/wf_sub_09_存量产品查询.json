@@ -240,7 +240,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "{query_reply}"
+          "content": "{query_reply}\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}&stage=09&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name={offer_name}&chatId={chat_id}&stage=09&view=stage\",\"title\":\"存量产品详情\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -262,6 +262,48 @@
               "a1b2c3d4-0000-4000-8000-000000000903,query_reply"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000903,query_reply"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "name",
+            "name": "offer_name",
+            "description": "产品名称",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,chat_id"
           }
         ],
         "checkErr": false,

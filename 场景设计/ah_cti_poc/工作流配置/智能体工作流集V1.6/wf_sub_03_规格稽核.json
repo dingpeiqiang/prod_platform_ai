@@ -579,7 +579,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "配置规格稽核完成：pass={pass}\n{audit_suggest}"
+          "content": "配置规格稽核完成：pass={pass}\n{audit_suggest}\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name=&chatId={chat_id}&stage=03&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name=&chatId={chat_id}&stage=03&view=stage\",\"title\":\"规格稽核\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -629,6 +629,34 @@
               "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（节点207提取）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
           }
         ],
         "checkErr": false,

@@ -1343,7 +1343,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）"
+          "content": "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name={offer_id}&chatId={chat_id}&stage=06&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/product-detail.html?offer_id={offer_id}&name={offer_id}&chatId={chat_id}&stage=06&view=stage\",\"title\":\"单品运营看板\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -1421,6 +1421,34 @@
               "a1b2c3d4-0000-4000-8000-000000000621,note"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000621,note"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000612",
+              "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000601",
+              "a1b2c3d4-0000-4000-8000-000000000601,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000601,chat_id"
           }
         ],
         "checkErr": false,
@@ -1444,7 +1472,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，当前状态：{status}（当前环节 {current_node}，审批人 {approver}，最近意见：{opinion}）\n审批通过后将自动上线并衔接监控运维方案输出。\n\n> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）"
+          "content": "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，当前状态：{status}（当前环节 {current_node}，审批人 {approver}，最近意见：{opinion}）\n审批通过后将自动上线并衔接监控运维方案输出。\n\n> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name={offer_id}&chatId={chat_id}&stage=06&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name={offer_id}&chatId={chat_id}&stage=06&view=stage\",\"title\":\"上线审批看板\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -1522,6 +1550,34 @@
               "a1b2c3d4-0000-4000-8000-000000000616,opinion"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000616,opinion"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000612",
+              "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000601",
+              "a1b2c3d4-0000-4000-8000-000000000601,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000601,chat_id"
           }
         ],
         "checkErr": false,

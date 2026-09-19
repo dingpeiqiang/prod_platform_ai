@@ -280,6 +280,10 @@ end_node(seq, title, inputs, out_content)
 - `out_content`：模板字符串，用 `{入参名}` 占位（如 `"《执行方案》已生成（req_id：{req_id}）\n\n{plan_md}"`）。
 - 常附加 `【下一步】`/`【确认执行】` 引导语，衔接下游子流。
 - 分支结束节点各自独立 `end_node`（如 `结束(有待补充)` / `结束(无待补充)`），title 区分语义。
+- **页面地址输出（统一约定）**：每个子工作流结束节点末尾必须追加 `xsbot_panel_block(...)` 生成的 ```` ```xsbot-panel ```` 代码块，块内 `panels` 固定两个外链面板：`[配置工作台(view=workbench), 环节业务页(view=stage)]`。生成函数见 `gen_workflows_v2.py`（`OPS_WEB_BASE`/`config_workbench_panel`/`biz_panel`/`xsbot_panel_block`）。
+  - 无专属业务页的环节，业务页兜底 `config-workbench.html?stage=<N>&view=stage`（页面按 `stage/view` 渲染）；监控运维（07）业务页为 `product-detail.html`。
+  - 用户标识：已有 `offer_id` 的环节用 `{offer_id}`，需求/方案阶段（00/01）用 `{req_id}` 兜底；各结束节点须补绑 `chat_id`（起始节点透传）供 `message_id` 与 `chatId` 使用。
+  - 页面落库：`frontend/public/ops-web/config-workbench.html`（原型 `配置工作台-独立页面.html` 落库并解析 `offer_id/name/chatId/stage/view` query）。
 
 ### 11.1 占位符语法红线（历次踩坑点）
 
@@ -355,5 +359,6 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 **版本**：v1.1
 
 ### 变更记录
+- v1.2（2026-09-19）：新增「结束节点页面地址输出」统一约定（十一节）：11 个子工作流全部结束节点末尾追加双面板 `xsbot-panel` 外链块（配置工作台 + 环节业务页）；新增生成器辅助 `OPS_WEB_BASE/config_workbench_panel/biz_panel/xsbot_panel_block`；原型页落库 `frontend/public/ops-web/config-workbench.html`（解析 `offer_id/name/chatId/stage/view`）。修复 wf_sub_02 业务页与工作台入口重复问题（改用 `view=workbench|stage` 区分）。
 - v1.1（2026-09-19）：新增 11.1 结束节点占位符语法红线（占用说明提示不得写入花括号内部，否则平台模板匹配失败导致节点无法显示）；十四节同步新增"结束节点占位符校验"项；修复 wf_sub_01/04/06/07 结束节点模板并重新生成。
 - v1.0（2026-09-18）：首版，对齐 gen_workflows_v2.py 生成器与 12 个工作流。
