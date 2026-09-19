@@ -459,10 +459,64 @@
         "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
       },
       {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&stage=02&view=stage'\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"落地配置看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000109",
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n{config_summary}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name=&chatId={chat_id}&stage=02&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={offer_id}&name=&chatId={chat_id}&stage=02&view=stage\",\"title\":\"落地配置看板\"}]}\n```\n"
+          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n{config_summary}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -570,18 +624,18 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000103,script_url"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
-            "relName": "chat_id",
-            "name": "chat_id",
-            "description": "会话消息ID",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000109",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000101",
-              "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+              "a1b2c3d4-0000-4000-8000-000000000109",
+              "a1b2c3d4-0000-4000-8000-000000000109,panel"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000109,panel"
           }
         ],
         "checkErr": false,
@@ -595,7 +649,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000104",
@@ -635,8 +689,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000109",
         "startId": "a1b2c3d4-0000-4000-8000-000000000105"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000109"
       }
     ],
     "flowId": "wf_sub_02",

@@ -481,71 +481,17 @@
         "id": "a1b2c3d4-0000-4000-8000-000000000006",
         "position": {
           "x": 1815,
-          "y": 430
+          "y": 300
         },
         "dependencyData": [],
         "type": 3,
         "url": "http://10.86.13.201:31281/api/v1/appstore/approval/submit"
       },
       {
-        "outputs": [
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000009,panel",
-            "name": "panel",
-            "type": "string"
-          }
-        ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&stage=00&view=stage'\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
-            "relName": "chat_id",
-            "name": "chat_id",
-            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000001",
-              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "offer_id",
-            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          }
-        ],
-        "checkErr": false,
-        "nodeMeta": {
-          "description": "编写代码，处理输入变量来生成返回值",
-          "title": "构建页面地址面板(提报成功)"
-        },
-        "language": 1,
-        "id": "a1b2c3d4-0000-4000-8000-000000000009",
-        "position": {
-          "x": 2175,
-          "y": 300
-        },
-        "dependencyData": [],
-        "type": 6
-      },
-      {
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n{panel}"
+          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -597,18 +543,18 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
-            "relName": "panel",
-            "name": "panel",
-            "description": "xsbot-panel 页面地址片段",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000009",
-              "a1b2c3d4-0000-4000-8000-000000000009,panel"
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000009,panel"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
           }
         ],
         "checkErr": false,
@@ -622,71 +568,17 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000007",
         "dependencyData": []
       },
       {
-        "outputs": [
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000010,panel",
-            "name": "panel",
-            "type": "string"
-          }
-        ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&stage=00&view=stage'\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
-            "relName": "chat_id",
-            "name": "chat_id",
-            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000001",
-              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "offer_id",
-            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          }
-        ],
-        "checkErr": false,
-        "nodeMeta": {
-          "description": "编写代码，处理输入变量来生成返回值",
-          "title": "构建页面地址面板(有待补充)"
-        },
-        "language": 1,
-        "id": "a1b2c3d4-0000-4000-8000-000000000010",
-        "position": {
-          "x": 1455,
-          "y": 170
-        },
-        "dependencyData": [],
-        "type": 6
-      },
-      {
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n{panel}"
+          "content": "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
         },
         "settings": {
           "stream": false,
@@ -738,18 +630,18 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000010",
-            "relName": "panel",
-            "name": "panel",
-            "description": "xsbot-panel 页面地址片段",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000010",
-              "a1b2c3d4-0000-4000-8000-000000000010,panel"
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000010,panel"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
           }
         ],
         "checkErr": false,
@@ -763,7 +655,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 1455,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000008",
@@ -798,23 +690,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000009",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000007",
         "startId": "a1b2c3d4-0000-4000-8000-000000000006"
       },
       {
-        "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000007",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000009"
-      },
-      {
         "sourcePort": -1,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000010",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000008",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000010"
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
       }
     ],
     "flowId": "wf_sub_00",

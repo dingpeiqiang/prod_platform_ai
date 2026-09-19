@@ -280,9 +280,11 @@ end_node(seq, title, inputs, out_content)
 - `out_content`：模板字符串，用 `{入参名}` 占位（如 `"《执行方案》已生成（req_id：{req_id}）\n\n{plan_md}"`）。
 - 常附加 `【下一步】`/`【确认执行】` 引导语，衔接下游子流。
 - 分支结束节点各自独立 `end_node`（如 `结束(有待补充)` / `结束(无待补充)`），title 区分语义。
-- **页面地址输出（统一约定）**：每个子工作流结束节点末尾必须追加 `xsbot_panel_block(...)` 生成的 ```` ```xsbot-panel ```` 代码块，块内 `panels` 固定两个外链面板：`[配置工作台(view=workbench), 环节业务页(view=stage)]`。生成函数见 `gen_workflows_v2.py`（`OPS_WEB_BASE`/`config_workbench_panel`/`biz_panel`/`xsbot_panel_block`）。
-  - 无专属业务页的环节，业务页兜底 `config-workbench.html?stage=<N>&view=stage`（页面按 `stage/view` 渲染）；监控运维（07）业务页为 `product-detail.html`。
-  - 用户标识：已有 `offer_id` 的环节用 `{offer_id}`，需求/方案阶段（00/01）用 `{req_id}` 兜底；各结束节点须补绑 `chat_id`（起始节点透传）供 `message_id` 与 `chatId` 使用。
+- **页面地址输出（统一约定）**：每个子工作流结束节点**不再内联** `xsbot-panel` 代码块，而是由**独立代码节点（type=6，`panel_code_node(...)`）专门构建** ```` ```xsbot-panel ```` 片段（节点出参 `panel`），结束节点模板末尾仅引用 `{panel}`。对齐参考示例形态：**单面板、单 url**（`panels` 仅一个外链面板）。生成辅助见 `gen_workflows_v2.py`（`OPS_WEB_BASE`/`CONFIG_WB_PAGE`/`gen_panel_code`/`panel_inputs`/`panel_code_node`）。
+  - 每个结束节点前须插入一个 `panel_code_node`，其入参用 `panel_inputs(...)` 绑定上游 `chat_id`（起始节点透传）及可选 `offer_id/offer_name`（无法 `name==ref_rel` 之处按上游出参名绑定，如需求/方案阶段 `off_rel="req_id"`），并将 `panel` 入参（`ref_block=该代码节点`、`ref_rel="panel"`）加入结束节点 `inputs`，模板以 `{panel}` 收尾。
+  - 单面板 url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=..&stage=<N>&view=stage`（页面按 `stage/view` 渲染对应业务），`title` 用环节业务名；`chatId` 运行期以 `chat_id` 实值填充。**不再**使用产品详情页/监控看板（`product-detail.html`）与"配置工作台（view=workbench）"冗余面板。
+  - **JSON 必须紧凑（无空格）**，逐字对齐参考示例：`{"version":"1.0","message_id":"<chat_id>","panels":[{"panel":"right","mode":"external","url":"<url>","title":"<环节业务名>"}]}`——冒号/逗号后**不得有空格**；`panel` 无 `**页面地址：**` 前缀，整段形如 `\n\n```xsbot-panel\n{紧凑JSON}\n```\n`。本节 v1.4 起由 `gen_panel_code` 直接拼装紧凑字符串（不用 `json.dumps` 默认带空格输出）。
+  - 用户标识：已有 `offer_id` 的环节面板取 `offer_id`，需求/方案阶段（00/01）面板取 `req_id` 兜底。
   - 页面落库：`frontend/public/ops-web/config-workbench.html`（原型 `配置工作台-独立页面.html` 落库并解析 `offer_id/name/chatId/stage/view` query）。
 
 ### 11.1 占位符语法红线（历次踩坑点）
@@ -303,7 +305,7 @@ end_node(seq, title, inputs, out_content)
 1. 花括号内**只能**是 `inputs` 中真实存在的入参名（字母数字下划线），且必须逐字一致（含大小写）。
 2. 空值兜底文案一律放花括号外，如 `（为空省略）`、`（为空显示"…"）`、`（为空填写"…"）`。
 3. 引用入参名必须以 `inp(..., ref_block=..., ref_rel=...)` 声明，且 `ref_rel` 与上游出参名一致（复用 5.1 三层一致规则）。
-4. 确需插入 JSON（如 xsbot-panel 外链）时，用 ```xsbot-panel 代码块包裹，块内 JSON 的 `"key": "{chat_id}"` 属合法占位引用，不受本规则约束。
+4. xsbot-panel 外链不再写在结束节点模板内（已抽为独立代码节点 type=6 构建**单面板** `panel` 片段，运行期完成 `chat_id/offer_id/offer_name` 实值替换），结束节点模板只引用 `{panel}`；故除 `{panel}` 外，结束节点模板无需容纳内嵌 JSON 的占位引用。
 
 ---
 
@@ -356,9 +358,12 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 ---
 
 **最后更新**：2026-09-19
-**版本**：v1.1
+**版本**：v1.5
 
 ### 变更记录
+- v1.5（2026-09-19）：**panel JSON 收敛为紧凑格式（无空格）**，逐字对齐参考示例 `{"version":"1.0","message_id":"<chat_id>","panels":[{"panel":"right","mode":"external","url":"<url>","title":"<环节业务名>"}]}`——`gen_panel_code` 改为直接拼装紧凑字符串（去掉 `json.dumps` 默认带空格输出），`title` 生成期烘焙为字面量；§十一补"JSON 必须紧凑"子项。11 个 JSON（14 个 panel 代码节点）已重生成，紧凑格式 + 结构校验全 OK。
+- v1.4（2026-09-19）：xsbot-panel 收敛为**单面板、单 url**（对齐参考示例形态）：每个结束节点固定一个外链面板，url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=..&stage=<N>&view=stage`，`title` 用环节业务名；移除之前误做的"配置工作台（view=workbench）+ 环节业务页"双面板与 `product-detail.html` 监控看板，删除生成器死代码 `config_workbench_panel/biz_panel/xsbot_panel_block/MONITOR_PAGE`；`panel` 无 `**页面地址：**` 前缀，格式为 `\n\n```xsbot-panel {json} ```\n`（十一节）。11 个 JSON（14 个 panel 代码节点）已重生成，`_validate_flows.py` + panel asyncio 执行 + 占位符/边校验全部 OK。
+- v1.3（2026-09-19）：xsbot-panel 从"结束节点模板内联"改为"独立代码节点构建"（十一节）：新增生成器辅助 `gen_panel_code`/`panel_inputs`/`panel_code_node`（type=6，出参 `panel`），11 个子工作流全部结束节点改为引用 `panel_code_node` 输出的 `{panel}`，删除结束节点模板内联 `xsbot-panel` 代码块与相应 `chat_id/offer_id/offer_name` 内联绑定；需求/方案阶段（00/01）面板 `offer_id` 取 `req_id` 兜底。生成器 + 11 个 JSON 已重生成并全量校验 OK。
 - v1.2（2026-09-19）：新增「结束节点页面地址输出」统一约定（十一节）：11 个子工作流全部结束节点末尾追加双面板 `xsbot-panel` 外链块（配置工作台 + 环节业务页）；新增生成器辅助 `OPS_WEB_BASE/config_workbench_panel/biz_panel/xsbot_panel_block`；原型页落库 `frontend/public/ops-web/config-workbench.html`（解析 `offer_id/name/chatId/stage/view`）。修复 wf_sub_02 业务页与工作台入口重复问题（改用 `view=workbench|stage` 区分）。
 - v1.1（2026-09-19）：新增 11.1 结束节点占位符语法红线（占用说明提示不得写入花括号内部，否则平台模板匹配失败导致节点无法显示）；十四节同步新增"结束节点占位符校验"项；修复 wf_sub_01/04/06/07 结束节点模板并重新生成。
 - v1.0（2026-09-18）：首版，对齐 gen_workflows_v2.py 生成器与 12 个工作流。

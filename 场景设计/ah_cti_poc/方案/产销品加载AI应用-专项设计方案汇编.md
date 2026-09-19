@@ -10,10 +10,12 @@
 >
 > 各章均对齐 **V2.0 工作流重塑**口径：确定性逻辑由技能包脚本内嵌为工作流 `type=6` 代码节点（CODE_*），知识库迁至 `knowledge/`（原 references/、skills/ 废弃），后端适配能力经 AppStoreV16Controller `/api/v1/appstore/*` 暴露。
 >
-> 版本：V2.1 实跑验证　日期：2026-09-19
+> 版本：V2.2 面板收敛　日期：2026-09-19
 > 相关：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.1
 
 > **V2.1 端到端实跑验证（2026-09-19）**：以 `wf_runner.py` strict 模式从「需求提报」串行跑通 8 个子工作流（真实 LLM + 真实网关端点，零回退零错误），覆盖本汇编第 1 章融合/成员链路（单商品链路口径）与第 2 章模板轨。实测 `req_id=PLAN20260919182810908`、`offer_id=982810908`、上线审批单 `AP202609191829100019`（通过）。各章功能口径（24 字段注册表、member_role 分组、31 条固定用例、E26 纪律）实跑未发现与本文档相悖之处；差异点（渠道 APP 未落显、串行顺序、受理场景未覆盖）汇总见《端到端演示剧本》1.5.4。
+
+> **V2.2 结束节点页面单面板收敛（2026-09-19）**：各子工作流结束节点末尾 `{panel}` 片段由「配置工作台(view=workbench) + 环节业务页(view=stage)」双面板收敛为**单面板、单 url**——url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=<实值>&stage=<N>&view=stage`（`title` 用环节业务名），移除 `product-detail.html` 单品运营看板与 view=workbench 冗余面板；panel 输出 **JSON 紧凑无空格**（冒号/逗号后无空格，逐字对齐 `{"version":"1.0","message_id":"...","panels":[{"panel":"right","mode":"external","url":"...","title":"..."}]}`）；00/01 阶段 `offer_id` 取 `req_id` 兜底。生成器 `gen_workflows_v2.py` + 11 个 JSON 同步，详见《工作流JSON开发规范.md》§十一。
 
 ---
 
