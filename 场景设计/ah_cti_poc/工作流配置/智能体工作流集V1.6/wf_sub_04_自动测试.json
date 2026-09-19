@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-自动测试",
-  "flowRemark": "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。",
+  "flowRemark": "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(317~320 取 error_list/compare_list)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -457,6 +457,228 @@
       {
         "outputs": [
           {
+            "name": "list",
+            "cname": "记录数组JSON",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=spec（规格稽核）",
+            "type": "string",
+            "required": true,
+            "content": "spec"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "自查稽核结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（result_json=结构化 envelope，含 error_list）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000317",
+        "position": {
+          "x": 375,
+          "y": 560
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000318,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000317",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点317查询出参 list",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000317",
+              "a1b2c3d4-0000-4000-8000-000000000317,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000317,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取稽核原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000318",
+        "position": {
+          "x": 735,
+          "y": 560
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "记录数组JSON",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=fee（资费校准）",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "自查资费结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（result_json=结构化 envelope，含 compare_list/risk_list）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000319",
+        "position": {
+          "x": 375,
+          "y": 40
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000320,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000319",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点319查询出参 list",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000319",
+              "a1b2c3d4-0000-4000-8000-000000000319,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000319,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取资费原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000320",
+        "position": {
+          "x": 735,
+          "y": 40
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000315,cases_json",
             "name": "cases_json",
             "type": "string"
@@ -583,6 +805,34 @@
               "a1b2c3d4-0000-4000-8000-000000000310,record_json"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000310,record_json"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000318",
+            "relName": "record_json",
+            "name": "spec_record",
+            "description": "稽核环节结构化原文（节点318提取，含 error_list，供 CUST-008 等映射）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000318",
+              "a1b2c3d4-0000-4000-8000-000000000318,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000318,record_json"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000320",
+            "relName": "record_json",
+            "name": "fee_record",
+            "description": "资费环节结构化原文（节点320提取，含 compare_list/risk_list，供 BILL-001~009/CUST-004 映射）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000320",
+              "a1b2c3d4-0000-4000-8000-000000000320,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000320,record_json"
           }
         ],
         "checkErr": false,
@@ -1110,6 +1360,36 @@
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000315",
         "startId": "a1b2c3d4-0000-4000-8000-000000000305"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000317",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000301"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000318",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000317"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000315",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000318"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000319",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000301"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000320",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000319"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000315",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000320"
       },
       {
         "sourcePort": null,

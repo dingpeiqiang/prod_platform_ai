@@ -336,6 +336,46 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,config_summary",
+            "name": "config_summary",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\ndef _cell(v):\n    return str(v) if v not in (None, '') else '—'\n\nasync def main(args):\n    cfg = _load(args.params.get('product_config') or '')\n    if not cfg:\n        ret: Output = {'config_summary': ''}\n        return ret\n    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n    print_c = info.get('printContent') if isinstance(info.get('printContent'), dict) else {}\n    gprs = info.get('billGprsCfg') if isinstance(info.get('billGprsCfg'), dict) else {}\n    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n    out_fee = cfg.get('out_fee') if isinstance(cfg.get('out_fee'), dict) else {}\n    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n    gift = str(print_c.get('containResource') or '').strip()\n    if not gift:\n        parts = []\n        if str(gprs.get('theshold') or '').strip():\n            parts.append('国内通用流量 %s%s' % (gprs.get('theshold'), gprs.get('unit') or ''))\n        if str(voice.get('theshold') or '').strip():\n            parts.append('国内通话 %s分钟' % voice.get('theshold'))\n        gift = '、'.join(parts)\n    out_price = str(print_c.get('chargeStandard') or '').strip()\n    if not out_price:\n        parts = []\n        if str(gprs.get('outChargeMode') or '').strip():\n            parts.append('套外流量 %s' % gprs.get('outChargeMode'))\n        if str(voice.get('outCharge') or '').strip():\n            parts.append('套外语音 %s元/分钟' % voice.get('outCharge'))\n        out_price = '、'.join(parts)\n    cycle = str(in_fee.get('计费周期') or '').strip()\n    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n    lines = ['【配置销售品要点简介】']\n    lines.append('- 销售品名称：%s' % _cell(offer_name))\n    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n    lines.append('- 套内资源：%s' % _cell(gift))\n    lines.append('- 套外资费：%s' % _cell(out_price))\n    if cycle:\n        lines.append('- 计费周期：%s' % cycle)\n    if carry:\n        lines.append('- 流量结转：可结转至次月')\n    lines.append('- 订购规则：%s' % _cell(cfg.get('order_rule')))\n    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n    ret: Output = {'config_summary': '\\n'.join(lines)}\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "product_config",
+            "name": "product_config",
+            "description": "落地配置JSON（节点103出参 product_config）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "配置要点简介"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000108",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
             "name": "record_id",
             "cname": "存储记录ID",
             "sechema": [],
@@ -411,7 +451,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000105",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -422,7 +462,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"
+          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n{config_summary}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"
         },
         "settings": {
           "stream": false,
@@ -502,6 +542,20 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
           },
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "config_summary",
+            "name": "config_summary",
+            "description": "配置销售品要点简介（节点108渲染）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,config_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,config_summary"
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
             "relName": "script_url",
             "name": "script_url",
@@ -527,7 +581,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000104",
@@ -557,8 +611,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000105",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000108",
         "startId": "a1b2c3d4-0000-4000-8000-000000000107"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000105",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000108"
       },
       {
         "sourcePort": null,

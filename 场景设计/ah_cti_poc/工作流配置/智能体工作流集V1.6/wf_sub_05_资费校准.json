@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-资费校准",
-  "flowRemark": "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）；结束前存储 node_name=fee。单商品路径零变化。",
+  "flowRemark": "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -332,6 +332,97 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000408,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "pass",
+            "name": "pass",
+            "description": "校验结论（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "risk_list",
+            "name": "risk_list",
+            "description": "风险清单（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "compare_list",
+            "name": "compare_list",
+            "description": "资费比对明细（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
+            "relName": "risk_summary",
+            "name": "md",
+            "description": "风险解读 markdown（节点403）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000403",
+              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "md_key",
+            "description": "md 落库字段名",
+            "type": "string",
+            "required": true,
+            "content": "risk_summary"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "资费结果结构化封包"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000408",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
             "name": "record_id",
             "cname": "存储记录ID",
             "sechema": [],
@@ -367,18 +458,18 @@
             "content": "fee"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
-            "relName": "risk_summary",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000408",
+            "relName": "record_json",
             "name": "result_json",
-            "description": "环节结果JSON=风险解读（融合组按成员分组）",
+            "description": "环节结果JSON=结构化封包（compare_list+risk_summary）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000403",
-              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+              "a1b2c3d4-0000-4000-8000-000000000408",
+              "a1b2c3d4-0000-4000-8000-000000000408,record_json"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000408,record_json"
           },
           {
             "blockID": "",
@@ -394,7 +485,7 @@
         "nodeMeta": {
           "title": "环节结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
           "version": "1"
         },
         "authentic_info_new": {
@@ -407,7 +498,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000405",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -481,7 +572,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000404",
@@ -511,8 +602,18 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000405",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
         "startId": "a1b2c3d4-0000-4000-8000-000000000403"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000405",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000408"
       },
       {
         "sourcePort": null,

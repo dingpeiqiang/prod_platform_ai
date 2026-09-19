@@ -22,7 +22,7 @@ from gen_workflows import (
     nid, inp, out, code_out, start_node, end_node, llm_node, plugin_node, code_node,
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
-    CODE_SUMMARY_APPROVAL,
+    CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD,
 )
 
 # ============================================================
@@ -258,7 +258,7 @@ CODE_RENDER_TABLE = (
     "SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\n"
     "SYSTEM_GEN_KEYS = ('orderNo',)\n"
     "SOURCE_MAP = {\n"
-    "    '原始需求': '原始需求提取', 'AI补全': '复用相似产品',\n"
+    "    '原始需求': '原始需求提取', 'AI补全': '相似产品补全',\n"
     "    '本体推理': '本体推理', '默认值': '默认值', '同源派生': '同源派生',\n"
     "}\n"
     "SIMILAR_REF_PREFIX = '参考相似产品: '\n"
@@ -527,6 +527,75 @@ CODE_EXTRACT_MERGE = (
     "    'releaseInfo.groupId': '全省',\n"
     "}\n"
     "\n"
+    "# 模板取值溯源：区分“原始需求 / 模板默认 / 模板枚举 / 模型推测”\n"
+    "DEFAULT_MARK_RE = re.compile(r'默认(?:为)?([^，。、；：\\s]+)')\n"
+    "ENUM_SPLIT_RE = re.compile(r'[、，,/\\n；;]')\n"
+    "REQ_TRACE_MIN_LEN = 2\n"
+    "MODEL_GUESS_SOURCE = '模型推测'\n"
+    "TEMPLATE_SOURCE = '模板值'\n"
+    "DEFAULT_SOURCE = '默认值'\n"
+    "REQ_SOURCE = '原始需求'\n"
+    "\n"
+    "def _req_tokens(req_text):\n"
+    "    return set(re.split(r'[\\s,，、。;；:：()（）{}\\[\\]\"\\'\\\\/\\n]+', str(req_text or '')))\n"
+    "\n"
+    "def _matches_requirement(val, req_text, tokens):\n"
+    "    s = str(val).strip()\n"
+    "    if not s:\n"
+    "        return False\n"
+    "    if len(s) >= REQ_TRACE_MIN_LEN and s in str(req_text):\n"
+    "        return True\n"
+    "    return s in tokens\n"
+    "\n"
+    "def _schema_owned_values(prop, path):\n"
+    "    out = []\n"
+    "    if path in BUSINESS_DEFAULTS:\n"
+    "        out.append(('default', str(BUSINESS_DEFAULTS[path])))\n"
+    "    d = prop.get('default')\n"
+    "    if d not in (None, ''):\n"
+    "        out.append(('default', str(d).strip()))\n"
+    "    for e in prop.get('enum') or []:\n"
+    "        s = str(e).strip()\n"
+    "        if s:\n"
+    "            out.append(('enum', s))\n"
+    "            out.extend(('enum', t.strip()) for t in ENUM_SPLIT_RE.split(s) if t.strip())\n"
+    "    for key in ('x-hint', 'description'):\n"
+    "        txt = str(prop.get(key) or '')\n"
+    "        m = DEFAULT_MARK_RE.search(txt)\n"
+    "        if m and m.group(1).strip():\n"
+    "            out.append(('hint_default', m.group(1).strip()))\n"
+    "        out.extend(('hint_word', t.strip()) for t in ENUM_SPLIT_RE.split(txt)\n"
+    "                   if t.strip() and len(t.strip()) >= REQ_TRACE_MIN_LEN)\n"
+    "    return out\n"
+    "\n"
+    "def relabel_source_map(elements_map, leaves, req_text):\n"
+    "    # 溯源修正：需求原文可追溯→原始需求；命中 schema 显式默认/枚举→默认值/模板值；\n"
+    "    # 其余为模型推测。仅改来源标注与默认值归一，不改变取值语义。\n"
+    "    tokens = _req_tokens(req_text)\n"
+    "    source_map = {}\n"
+    "    for path, val in list(elements_map.items()):\n"
+    "        prop = leaves.get(path)\n"
+    "        if not prop:\n"
+    "            continue\n"
+    "        if _matches_requirement(val, req_text, tokens):\n"
+    "            source_map[path] = REQ_SOURCE\n"
+    "            continue\n"
+    "        matched = None\n"
+    "        for kind, sv in _schema_owned_values(prop, path):\n"
+    "            if str(val).strip() == sv:\n"
+    "                matched = (kind, sv)\n"
+    "                break\n"
+    "        if matched is None:\n"
+    "            source_map[path] = MODEL_GUESS_SOURCE\n"
+    "            continue\n"
+    "        kind, sv = matched\n"
+    "        if kind in ('default', 'hint_default'):\n"
+    "            elements_map[path] = sv\n"
+    "            source_map[path] = DEFAULT_SOURCE\n"
+    "        else:\n"
+    "            source_map[path] = TEMPLATE_SOURCE\n"
+    "    return source_map\n"
+    "\n"
     "def _is_non_extractable(path):\n"
     "    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n"
     "\n"
@@ -652,13 +721,17 @@ CODE_EXTRACT_MERGE = (
     "        return '全省' not in gval\n"
     "    return True\n"
     "\n"
-    "def merge_body(schema, elements_map, offer_map, meta, path='', pending=None, cond_map=None, out_map=None):\n"
+    "def merge_body(schema, elements_map, offer_map, meta, path='', pending=None, cond_map=None, out_map=None, source_map=None, req_price_map=None):\n"
     "    if pending is None:\n"
     "        pending = []\n"
     "    if cond_map is None:\n"
     "        cond_map = {}\n"
     "    if out_map is None:\n"
     "        out_map = {}\n"
+    "    if source_map is None:\n"
+    "        source_map = {}\n"
+    "    if req_price_map is None:\n"
+    "        req_price_map = {}\n"
     "    out = {}\n"
     "    props = schema.get('properties') or {}\n"
     "    for key, sub in props.items():\n"
@@ -667,14 +740,18 @@ CODE_EXTRACT_MERGE = (
     "        if sub.get('x-show-when'):\n"
     "            cond_map[cur] = sub['x-show-when']\n"
     "        if sub.get('type') == 'object':\n"
-    "            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending, cond_map, out_map)\n"
+    "            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending, cond_map, out_map, source_map, req_price_map)\n"
     "            continue\n"
     "        val = elements_map.get(cur)\n"
-    "        source = '原始需求' if val is not None else ''\n"
+    "        source = source_map.get(cur) or (REQ_SOURCE if val is not None else '')\n"
     "        if val is None and not is_price(label, key):\n"
     "            oval = offer_map.get(cur)\n"
     "            if oval is not None:\n"
     "                val, source = oval, 'AI补全'\n"
+    "        if val is None and req_price_map:\n"
+    "            rp = _match_req_price(cur, label, req_price_map)\n"
+    "            if rp is not None:\n"
+    "                val, source = rp, '原始需求'\n"
     "        if val is None and sub.get('default') is not None:\n"
     "            val, source = sub['default'], '默认值'\n"
     "        if val is None and sub.get('x-default-rule'):\n"
@@ -687,13 +764,44 @@ CODE_EXTRACT_MERGE = (
     "            val, source = '', ''\n"
     "        out_map[cur] = val\n"
     "        if val == '' and source == '':\n"
-    "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n"
+    "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS \\\n"
+    "                    and not _is_non_extractable(cur) \\\n"
+    "                    and (is_price(label, key) or '资源' in label or 'resource' in str(label).lower()):\n"
     "                if not _charge_desc_covers(sub, cur, elements_map) and _visible(cond_map, out_map, cur):\n"
     "                    pending.append(cur)\n"
     "        out[key] = val\n"
     "        if source:\n"
     "            meta[cur] = {'label': label, 'value': val, 'source': source}\n"
     "    return out\n"
+    "\n"
+    "def _collect_req_prices(record_json):\n"
+    "    # 从需求字段原文提取价格候选（仅按月费/固定费口径），供 LLM 漏提时确定性兜底\n"
+    "    rec = _load(record_json)\n"
+    "    if not isinstance(rec, dict):\n"
+    "        return {}\n"
+    "    out = {}\n"
+    "    for k in ('price', 'month_fee', 'monthFee', 'fee', 'monthly_fee'):\n"
+    "        v = rec.get(k)\n"
+    "        if v in (None, ''):\n"
+    "            continue\n"
+    "        num = _to_number(v)\n"
+    "        if num is not None:\n"
+    "            out[k] = v\n"
+    "    return out\n"
+    "\n"
+    "PRICE_LABEL_HINTS = ('套餐月费', '套餐固定费', '月功能费')\n"
+    "PRICE_LABEL_EXCLUDE = ('有效期', '周期', '时长', '间隔', '值')\n"
+    "\n"
+    "def _match_req_price(path, label, req_price_map):\n"
+    "    # 仅对“月费/固定费”类价格叶子兜底：标签严格命中月费语义且非有效期类\n"
+    "    lab = str(label or '')\n"
+    "    if any(x in lab for x in PRICE_LABEL_EXCLUDE):\n"
+    "        return None\n"
+    "    if not any(h in lab for h in PRICE_LABEL_HINTS):\n"
+    "        return None\n"
+    "    for _, v in req_price_map.items():\n"
+    "        return v\n"
+    "    return None\n"
     "\n"
     "def _path_get(node, path):\n"
     "    for part in path.split('.'):\n"
@@ -904,9 +1012,11 @@ CODE_EXTRACT_MERGE = (
     "    if isinstance(offer, dict) and template_id in offer:\n"
     "        offer = offer[template_id]\n"
     "    elements_map = flatten_elements(elements)\n"
+    "    source_map = relabel_source_map(elements_map, leaves, p.get('record_json') or '')\n"
     "    offer_map = flatten_offer(offer)\n"
+    "    req_price_map = _collect_req_prices(p.get('record_json') or '')\n"
     "    meta, pending = {}, []\n"
-    "    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending)\n"
+    "    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending, source_map=source_map, req_price_map=req_price_map)\n"
     "    reconcile_same_parameter(merged, meta, pending)\n"
     "    ret: Output = {\n"
     "        'payload': json.dumps(merged, ensure_ascii=False),\n"
@@ -916,6 +1026,7 @@ CODE_EXTRACT_MERGE = (
     "        'quality_gate': gate,\n"
     "        've_result': ve_result,\n"
     "        've_stats': ve_stats,\n"
+    "        'status': 'pend' if pending else 'ok',\n"
     "    }\n"
     "    return ret"
 )
@@ -973,10 +1084,14 @@ s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
 # 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON
 s01.append(llm_node(107, "配置要素提取",
     "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），严格按模板 schema 提取配置要素。\n"
-    "【硬性约束】输出 JSON 的 key 必须**逐字复制模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources/effective_way/out_price 等一律禁止），**严禁**改写成中文键；对位靠 x-label 语义理解，但落键必须是 schema 英文键。\n"
-    "步骤：①读 schema 的顶层容器（baseInfo/releaseInfo/optionalInfo 等）与其下各级 properties；②逐个叶子，取其 x-label 语义，在需求原文中查找对应信息（含同义改写，如「套餐名称/资费名称」→prodPrcName、「月费/199元」→套餐月费相关叶子、「包含资源/流量通话」→containResource）；③命中则写入该叶子路径，值为需求原文表述；未命中则不输出该键。\n"
-    "示例（仅示键路径与嵌套，非值）：需求「5G-A套餐199元，含120GB流量」→ {\"baseInfo\":{\"prodPrcName\":\"5G-A套餐\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199元\",\"containResource\":\"120GB流量\"}}}。\n"
-    "禁止臆造值；价格类字段只取需求原文，不得照搬相似产品；值一律沿用需求原文中文表述，单位禁止中英混写（如「0.15 元/分钟」不得写成「0.15 元/minute」）。\n"
+    "【硬性约束】\n"
+    "1. 输出 JSON 的 key 必须**逐字复制模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources/effective_way/out_price 等一律禁止），**严禁**改写成中文键；对位靠 x-label 语义理解，但落键必须是 schema 英文键。\n"
+    "2. **严禁枚举展开多值/枚举型字段**：凡 schema 中标注 x-element=多选框、enum 为集合（如 groupIdMessage 的「22个地市」）或语义为“明细列表”的字段，一律**只写一个占位/汇总值或直接省略**，绝不可逐项罗列具体地市、号码、日期区间等；这类长枚举是本环节最主要的失败源，会导致输出被截断。\n"
+    "3. **必须输出完整、闭合的合法 JSON**：即使部分叶子未命中，也必须先保证 JSON 结构闭合（括号/引号成对）；宁可少写叶子，也不可让输出中途截断。\n"
+    "步骤：①读 schema 顶层容器（baseInfo/releaseInfo/optionalInfo 等）与其下各级 properties；②逐个叶子取其 x-label 语义，在需求原文中查找对应信息（含同义改写，如「套餐名称/资费名称」→prodPrcName、「月费/199元/月租」→optionalInfo.printContent.prcMonthFee 与 optionalInfo.acctMonth.fixFee、「包含资源/流量通话」→containResource、「120GB/1000分钟」→billGprsCfg.theshold 与 billVoiceCfg.theshold、「套外3元/GB」→billGprsCfg.outChargeMode、「是否结转」→billGprsCfg.carryFlag、「营业厅/APP渠道」→releaseInfo.chnClassLimit）；③命中则写入该叶子路径，值为需求原文表述；未命中则不输出该键。\n"
+    "【重点叶子（务必逐项核对需求原文，命中即必须输出）】optionalInfo.printContent.prcMonthFee、optionalInfo.acctMonth.fixFee（月费金额，如 199）、optionalInfo.printContent.containResource（包含资源汇总）、optionalInfo.billGprsCfg.theshold（流量数值，如 120）、optionalInfo.billGprsCfg.unit（单位，如 GB）、optionalInfo.billGprsCfg.outChargeMode（套外流量计费，如 3元/GB）、optionalInfo.billGprsCfg.carryFlag（是否结转，是/否）、optionalInfo.billVoiceCfg.theshold（语音分钟数，如 1000）。\n"
+    "示例（仅示键路径与嵌套，非值）：需求「5G-A套餐199元/月，含120GB国内流量，套外3元/GB，可结转」→ {\"baseInfo\":{\"prodPrcName\":\"5G-A套餐\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB国内流量\"},\"acctMonth\":{\"fixFee\":\"199\"},\"billGprsCfg\":{\"theshold\":\"120\",\"unit\":\"GB\",\"outChargeMode\":\"3元/GB\",\"carryFlag\":\"是\"}}}。\n"
+    "禁止臆造值：每个键值必须能在需求原文中找到对应表述（含同义改写），需求原文未出现的模板默认项（如协议期36个月、成员9人、发布地市全省等）一律不输出该键；价格类字段只取需求原文，不得照搬相似产品；值一律沿用需求原文中文表述，单位禁止中英混写（如「0.15 元/分钟」不得写成「0.15 元/minute」）。\n"
     "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素 JSON 的**字符串**（形如 {\"elements_json\":\"{\\\"baseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json"),
      inp("schema_json", "引用节点106模板 schema", ref_block=nid(106), ref_rel="schema_json")],
@@ -986,8 +1101,9 @@ s01.append(code_node(108, "要素校验与方案合并", CODE_EXTRACT_MERGE,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素（节点107提取）", ref_block=nid(107), ref_rel="elements_json"),
      inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer"),
-     inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30")],
-    [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108)],
+     inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30"),
+     inp("record_json", "需求字段原文（节点103；供价格类叶子确定性兜底）", ref_block=nid(103), ref_rel="record_json")],
+    [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108), code_out("status", 108)],
     pos=(690, 300)))
 # 方案表格渲染：按模板 schema 分节渲染业务可读表格
 s01.append(code_node(109, "方案表格渲染", CODE_RENDER_TABLE,
@@ -1100,9 +1216,85 @@ CODE_FUSION_GROUP_ECHO = (
     "    return ret"
 )
 
+# ---------------- CODE_CONFIG_SUMMARY：智能配置要点简介 ----------------
+# 输入：product_config（save_product_config 出参完整落地配置JSON文本）
+# 输出：config_summary（配置要点简介 markdown：销售品名称/月费/套内资源/套外资费/计费周期/订购退订规则）
+# 说明：解析失败时回退为空串，结束节点仅少一段简介，不阻断链路。
+CODE_CONFIG_SUMMARY = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "def _load(text):\n"
+    "    if isinstance(text, dict):\n"
+    "        return text\n"
+    "    if not isinstance(text, str) or not text.strip():\n"
+    "        return {}\n"
+    "    try:\n"
+    "        return json.loads(text)\n"
+    "    except Exception:\n"
+    "        try:\n"
+    "            t = text.strip()\n"
+    "            if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
+    "                t = t.split(':', 1)[1].strip()\n"
+    "            return json.loads(t)\n"
+    "        except Exception:\n"
+    "            return {}\n"
+    "\n"
+    "def _cell(v):\n"
+    "    return str(v) if v not in (None, '') else '—'\n"
+    "\n"
+    "async def main(args):\n"
+    "    cfg = _load(args.params.get('product_config') or '')\n"
+    "    if not cfg:\n"
+    "        ret: Output = {'config_summary': ''}\n"
+    "        return ret\n"
+    "    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n"
+    "    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n"
+    "    print_c = info.get('printContent') if isinstance(info.get('printContent'), dict) else {}\n"
+    "    gprs = info.get('billGprsCfg') if isinstance(info.get('billGprsCfg'), dict) else {}\n"
+    "    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n"
+    "    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n"
+    "    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n"
+    "    out_fee = cfg.get('out_fee') if isinstance(cfg.get('out_fee'), dict) else {}\n"
+    "    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n"
+    "    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n"
+    "    gift = str(print_c.get('containResource') or '').strip()\n"
+    "    if not gift:\n"
+    "        parts = []\n"
+    "        if str(gprs.get('theshold') or '').strip():\n"
+    "            parts.append('国内通用流量 %s%s' % (gprs.get('theshold'), gprs.get('unit') or ''))\n"
+    "        if str(voice.get('theshold') or '').strip():\n"
+    "            parts.append('国内通话 %s分钟' % voice.get('theshold'))\n"
+    "        gift = '、'.join(parts)\n"
+    "    out_price = str(print_c.get('chargeStandard') or '').strip()\n"
+    "    if not out_price:\n"
+    "        parts = []\n"
+    "        if str(gprs.get('outChargeMode') or '').strip():\n"
+    "            parts.append('套外流量 %s' % gprs.get('outChargeMode'))\n"
+    "        if str(voice.get('outCharge') or '').strip():\n"
+    "            parts.append('套外语音 %s元/分钟' % voice.get('outCharge'))\n"
+    "        out_price = '、'.join(parts)\n"
+    "    cycle = str(in_fee.get('计费周期') or '').strip()\n"
+    "    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n"
+    "    lines = ['【配置销售品要点简介】']\n"
+    "    lines.append('- 销售品名称：%s' % _cell(offer_name))\n"
+    "    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n"
+    "    lines.append('- 套内资源：%s' % _cell(gift))\n"
+    "    lines.append('- 套外资费：%s' % _cell(out_price))\n"
+    "    if cycle:\n"
+    "        lines.append('- 计费周期：%s' % cycle)\n"
+    "    if carry:\n"
+    "        lines.append('- 流量结转：可结转至次月')\n"
+    "    lines.append('- 订购规则：%s' % _cell(cfg.get('order_rule')))\n"
+    "    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n"
+    "    ret: Output = {'config_summary': '\\n'.join(lines)}\n"
+    "    return ret"
+)
+
 # ============================================================
 # wf_sub_02 智能配置（融合组扩展）：在既有链路上新增融合成员回显代码节点，
 # 出参含 group 时结束节点追加融合成员行；单商品路径零变化。
+# 并在结束时追加「配置销售品要点简介」（CODE_CONFIG_SUMMARY）。
 # ============================================================
 s2f = []
 s2f.append(start_node(101, [
@@ -1137,6 +1329,10 @@ s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
      inp("status", "落地总状态（节点103出参 status）", ref_block=nid(103), ref_rel="status")],
     [code_out("fusion_echo", 107), code_out("fusion_status", 107), code_out("fusion_note", 107)],
     pos=(900, 300)))
+s2f.append(code_node(108, "配置要点简介", CODE_CONFIG_SUMMARY,
+    [inp("product_config", "落地配置JSON（节点103出参 product_config）", ref_block=nid(103), ref_rel="product_config")],
+    [code_out("config_summary", 108)],
+    pos=(860, 420)))
 s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含 offer_id 及可选 group）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1151,12 +1347,14 @@ s2f.append(end_node(104, "结束(配置落地完成)",
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status"),
      inp("fusion_echo", "融合成员回显（V4.0，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo"),
      inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note"),
+     inp("config_summary", "配置销售品要点简介（节点108渲染）", ref_block=nid(108), ref_rel="config_summary"),
      inp("script_url", "配置脚本下载地址（节点103出参）", ref_block=nid(103), ref_rel="script_url")],
-    "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n{fusion_note}\n"
+    "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n"
+    "{config_summary}\n{fusion_note}\n"
     "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）"))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
-    [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,105), edge(105,104)])
+    [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,108), edge(108,105), edge(105,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（融合组扩展）：组维度稽核——LLM 提示词增加组维度回显与
@@ -1215,12 +1413,21 @@ s3f.append(llm_node(203, "整改建议生成",
      inp("offer_id", "主 offer_id（稽核对象回显）", ref_block=nid(207), ref_rel="offer_id"),
      inp("pass", "引用节点202稽核结论（1通过/0不通过）", ref_block=nid(202), ref_rel="pass")],
     [out("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）")], max_tokens=3072))
+# 208 结构化封包：上游结构化出参（pass/error_list/audit_summary）+ LLM 明细清单
+#   → 合成 result_json envelope（error_list 供 sub_04 节点315 CUST-008 等确定性映射）
+s3f.append(code_node(208, "稽核结果结构化封包", CODE_PACK_RECORD,
+    [inp("pass", "稽核结论（节点202）", ref_block=nid(202), ref_rel="pass"),
+     inp("error_list", "问题明细（节点202）", ref_block=nid(202), ref_rel="error_list"),
+     inp("audit_summary", "稽核总结（节点202）", ref_block=nid(202), ref_rel="audit_summary"),
+     inp("md", "稽核明细清单 markdown（节点203）", ref_block=nid(203), ref_rel="audit_suggest"),
+     inp("md_key", "md 落库字段名", content="audit_suggest")],
+    [code_out("record_json", 208)], pos=(780, 135)))
 s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=结构化封包（含 error_list + audit_suggest 明细）；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=spec（规格稽核）", content="spec"),
-     inp("result_json", "环节结果JSON=稽核总结（含融合组维度行）", ref_block=nid(203), ref_rel="audit_suggest"),
+     inp("result_json", "环节结果JSON=结构化封包（error_list+audit_suggest）", ref_block=nid(208), ref_rel="record_json"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s3f.append(end_node(204, "结束(稽核完成)",
@@ -1229,8 +1436,8 @@ s3f.append(end_node(204, "结束(稽核完成)",
      inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest")],
     "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
 files3f = workflow(
-    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
-    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,205), edge(205,204)])
+    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）→结构化封包（V2.5：error_list+audit_suggest 合成 envelope）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
+    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,208), edge(202,208), edge(208,205), edge(205,204)])
 
 # ============================================================
 # wf_sub_05 资费校准（融合组扩展）：比对表按 member_role 分组、E27 阈值逐成员内计算；单商品零变化。
@@ -1270,12 +1477,21 @@ s5f.append(llm_node(403, "风险解读",
     [inp("risk_list", "引用节点402风险清单", ref_block=nid(402), ref_rel="risk_list"),
      inp("compare_list", "引用节点402资费比对明细（8项，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list")],
     [out("risk_summary", "风险解读（融合组按 member_role 分组）")]))
+# 408 结构化封包：上游结构化出参（pass/risk_list/compare_list）+ LLM 风险解读
+#   → 合成 result_json envelope（compare_list 供 sub_04 节点315 BILL-001~009/CUST-004 等确定性映射）
+s5f.append(code_node(408, "资费结果结构化封包", CODE_PACK_RECORD,
+    [inp("pass", "校验结论（节点402）", ref_block=nid(402), ref_rel="pass"),
+     inp("risk_list", "风险清单（节点402）", ref_block=nid(402), ref_rel="risk_list"),
+     inp("compare_list", "资费比对明细（节点402）", ref_block=nid(402), ref_rel="compare_list"),
+     inp("md", "风险解读 markdown（节点403）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("md_key", "md 落库字段名", content="risk_summary")],
+    [code_out("record_json", 408)], pos=(780, 135)))
 s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
      inp("node_name", "环节名=fee（资费校准）", content="fee"),
-     inp("result_json", "环节结果JSON=风险解读（融合组按成员分组）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("result_json", "环节结果JSON=结构化封包（compare_list+risk_summary）", ref_block=nid(408), ref_rel="record_json"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s5f.append(end_node(404, "结束(资费校准完成)",
@@ -1284,8 +1500,8 @@ s5f.append(end_node(404, "结束(资费校准完成)",
      inp("risk_summary", "风险解读（融合组按成员分组）", ref_block=nid(403), ref_rel="risk_summary")],
     "资费校准完成：pass={pass}\n{risk_summary}"))
 files5f = workflow(
-    "产销品-资费校准", "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
-    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,405), edge(405,404)])
+    "产销品-资费校准", "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
+    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,408), edge(402,408), edge(408,405), edge(405,404)])
 
 
 # ============================================================
@@ -1575,12 +1791,13 @@ CODE_DOWNLOAD_TEST_REPORT = CODE_DOWNLOAD_TEST_REPORT.replace("BASE_URL", BASE_U
 #   流程：开始(req_id) → 读取 config 环节结果(309) → 提取原文+offer_id(310)
 #     → 发起测试(302 offer_test 取 globalId) → 轮询进度(304 CODE_POLL_PROGRESS)
 #     → 查询结果(305 get_test_result 取 testScenes/orderId/offerInstId/offerName)
+#     → 自查 spec(317/318 取 error_list)、自查 fee(319/320 取 compare_list/risk_list)
 #     → CODE_MAP_FIXED_CASES(315 确定性 31 条固定用例 + 结论 + 缺陷 + 场景覆盖 + E26 核对)
 #     → LLM(306 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版，受理验证独立成节)
 #     → 存储(308 node_name=test) → 下载测试报告(316) → 结束(307)
-#   注：原「查询场景(303)」「自检 spec(311/312)」「自检 fee(313/314)」四个环节出参无任何
-#   下游消费，属链路冗余，已删除；315 的 spec_record/fee_record 入参同步移除，
-#   306 报告中的稽核/资费引用改为基于 315 确定性映射结果（维度统计/缺陷清单）。
+#   注：V2.5 起 sub_03/sub_05 存储结构化 envelope（error_list/compare_list），
+#   故此处恢复 317~320 自检读取（原判定为冗余已删除，现重新接线），
+#   315 的 spec_record/fee_record 入参据此填充，计费/客服分项由「未覆盖」升级为确定性判定。
 # ============================================================
 s4f = []
 s4f.append(start_node(301, [
@@ -1621,6 +1838,33 @@ s4f.append(plugin_node(305, "查询测试结果", "get_test_result",
      ("testRequestId", "测试请求ID", "string"), ("offerName", "被测销售品名称", "string"),
      ("orderId", "受理订单号", "string"), ("offerInstId", "销售品实例ID", "string"),
      ("testScenes", "逐场景结果含测点明细（照列出参）", "array")]))
+# 自检 spec（node_name=spec → 结构化 envelope：error_list/audit_suggest）与
+# 自检 fee（node_name=fee → 结构化 envelope：compare_list/risk_list），
+# 供 315 固定用例的计费(BILL-001~009)/客服(CUST-004/008)分项确定性填充。
+s4f.append(plugin_node(317, "自查稽核结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（result_json=结构化 envelope，含 error_list）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+     inp("node_name", "环节名=spec（规格稽核）", content="spec"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [ ("list", "记录数组JSON", "string")],
+    method="get", pos=(240, 430)))
+s4f.append(code_node(318, "提取稽核原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点317查询出参 list", ref_block=nid(317), ref_rel="list")],
+    [code_out("record_json", 318)],
+    pos=(390, 430)))
+s4f.append(plugin_node(319, "自查资费结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（result_json=结构化 envelope，含 compare_list/risk_list）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+     inp("node_name", "环节名=fee（资费校准）", content="fee"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [ ("list", "记录数组JSON", "string")],
+    method="get", pos=(240, 555)))
+s4f.append(code_node(320, "提取资费原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点319查询出参 list", ref_block=nid(319), ref_rel="list")],
+    [code_out("record_json", 320)],
+    pos=(390, 555)))
 # CODE_MAP_FIXED_CASES：确定性构建 31 条固定用例表 + 结论 + 缺陷 + 场景覆盖 + E26 核对
 s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
     [inp("test_result_json", "get_test_result 逐场景结果（节点305 testScenes，含测点明细）", ref_block=nid(305), ref_rel="testScenes"),
@@ -1628,7 +1872,9 @@ s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
      inp("order_id", "受理订单号（节点305 orderId，ACC-011 受理凭证）", ref_block=nid(305), ref_rel="orderId"),
      inp("offer_inst_id", "销售品实例ID（节点305 offerInstId，ACC-011/CUST-002 受理凭证）", ref_block=nid(305), ref_rel="offerInstId"),
      inp("offer_id", "被测销售品ID（节点310解析）", ref_block=nid(310), ref_rel="offer_id"),
-     inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json")],
+     inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json"),
+     inp("spec_record", "稽核环节结构化原文（节点318提取，含 error_list，供 CUST-008 等映射）", ref_block=nid(318), ref_rel="record_json"),
+     inp("fee_record", "资费环节结构化原文（节点320提取，含 compare_list/risk_list，供 BILL-001~009/CUST-004 映射）", ref_block=nid(320), ref_rel="record_json")],
     [code_out("cases_json", 315), code_out("dimension_summary", 315), code_out("overall_conclusion", 315), code_out("defect_list", 315), code_out("p0_pass", 315), code_out("e26", 315), code_out("e26_note", 315), code_out("scene_cover", 315)],
     pos=(900, 300)))
 # LLM（306）：按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版 + 受理验证独立成节
@@ -1687,9 +1933,11 @@ s4f.append(end_node(307, "结束(测试完成)",
     "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
     "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"))
 files4f = workflow(
-    "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
+    "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(317~320 取 error_list/compare_list)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
     [edge(301,309), edge(309,310), edge(310,302), edge(302,304),
-     edge(304,305), edge(305,315), edge(315,306), edge(306,308),
+     edge(304,305), edge(305,315), edge(301,317), edge(317,318), edge(318,315),
+     edge(301,319), edge(319,320), edge(320,315),
+     edge(315,306), edge(306,308),
      edge(308,316), edge(316,307)])
 
 # ============================================================
@@ -1718,11 +1966,27 @@ CODE_APPROVAL_POLL = (
     "    with urllib.request.urlopen(url, timeout=30) as resp:\n"
     "        return json.loads(resp.read().decode('utf-8'))\n"
     "\n"
+    "def _norm_status(info):\n"
+    "    # 对齐后端口径：终态 通过/驳回；处理中 审批中/待审/待审核/进行中/approved\n"
+    "    st = str(info.get('status') or '').strip()\n"
+    "    if st in ('通过', '已通过'):\n"
+    "        return '通过'\n"
+    "    if st in ('驳回', '已驳回', '拒绝'):\n"
+    "        return '驳回'\n"
+    "    if str(info.get('approved') or '').lower() in ('true', 'yes', '1'):\n"
+    "        return '通过'\n"
+    "    if str(info.get('rejected') or '').lower() in ('true', 'yes', '1'):\n"
+    "        return '驳回'\n"
+    "    if st == '' or st in ('审批中', '待审', '待审核', '进行中', 'approved', 'pending', 'auditing'):\n"
+    "        return '审批中'\n"
+    "    return st\n"
+    "\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
     "    approval_id = str(p.get('approval_id') or '')\n"
     "    offer_id = str(p.get('offer_id') or '')\n"
-    "    out_status = '待审'\n"
+    "    out_status = '审批中'\n"
     "    info = {}\n"
     "    for i in range(MAX_RETRY):\n"
     "        try:\n"
@@ -1730,12 +1994,8 @@ CODE_APPROVAL_POLL = (
     "        except Exception:\n"
     "            await asyncio.sleep(INTERVAL)\n"
     "            continue\n"
-    "        st = str(info.get('status') or '')\n"
-    "        if st == '通过':\n"
-    "            out_status = '通过'\n"
-    "            break\n"
-    "        if st == '驳回':\n"
-    "            out_status = '驳回'\n"
+    "        out_status = _norm_status(info)\n"
+    "        if out_status in ('通过', '驳回'):\n"
     "            break\n"
     "        time.sleep(INTERVAL)\n"
     "    ret: Output = {\n"
@@ -2064,7 +2324,7 @@ s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
      inp("fee_result", "资费环节原文（节点607提取）", ref_block=nid(607), ref_rel="record_json"),
      inp("test_result", "测试环节原文（节点609提取）", ref_block=nid(609), ref_rel="record_json"),
      inp("requirement_result", "执行方案原文（节点611提取）", ref_block=nid(611), ref_rel="record_json")],
-    [code_out("summary_json", 612), code_out("offer_id", 612)],
+    [code_out("summary_json", 612), code_out("offer_id", 612), code_out("fusion_verification", 612)],
     pos=(540, 385)))
 # 613 LLM：按 flow-C 模板生成《上线审批建议》（环节8 标题头 + 校验看板 + 风险 + 整体结论）
 s6f.append(llm_node(613, "上线审批建议生成",
@@ -2078,14 +2338,15 @@ s6f.append(llm_node(613, "上线审批建议生成",
     "| 需求完整性 | ✅/❌ |\n"
     "| 配置规格稽核 | ✅/❌ |\n"
     "| 资费校准 | ✅/❌ |\n"
-    "| 自动测试（三大验证：受理/计费/客服{{融合品追加：\"+成员组合验证\"}}） | ✅/❌ |\n\n"
+    "| 自动测试（三大验证：受理/计费/客服{fusion_verification}） | ✅/❌ |\n\n"
     "**风险检查：** {{逐字引用配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}\n\n"
     "**整体上线结论：** {{逐字引用正式版报告第三/八章三选一结论：✅建议上线/⚠️评估风险后上线/❌禁止上线}}\n\n"
     "**AI审批建议：{{全部通过→'建议上线'；任一环节未通过→'暂缓上线'}}。**\n"
     "约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n"
     "输出要求：仅输出审批建议正文（对应出参 approval_suggest），不输出其他多余文字。",
     [inp("summary_json", "结构化汇总（节点612）", ref_block=nid(612), ref_rel="summary_json"),
-     inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id")],
+     inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
+     inp("fusion_verification", "融合成员组合验证标记（节点612）", ref_block=nid(612), ref_rel="fusion_verification")],
     [out("approval_suggest", "《上线审批建议》正文（环节8标题头）")], pos=(690, 385)))
 # 614 报告存储 node=report
 s6f.append(plugin_node(614, "报告存储", "save_node_result",

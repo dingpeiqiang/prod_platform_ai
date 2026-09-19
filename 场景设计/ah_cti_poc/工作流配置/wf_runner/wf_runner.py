@@ -380,8 +380,14 @@ class LlmClient:
         self.offline = offline
         self.timeout = timeout
 
-    def chat(self, prompt: str, system: str = "") -> tuple[str, bool, str]:
-        """返回 (text, is_fallback, note)。"""
+    def chat(self, prompt: str, system: str = "",
+             temperature: float | None = None,
+             max_tokens: int | None = None) -> tuple[str, bool, str]:
+        """返回 (text, is_fallback, note)。
+
+        temperature / max_tokens 为节点级覆盖值（平台节点可声明），
+        缺省回退全局 LLM 配置。
+        """
         if self.offline or self.cfg is None:
             return self._mock(prompt), True, "offline/mock"
         messages = []
@@ -391,8 +397,8 @@ class LlmClient:
         payload = {
             "model": self.cfg.model,
             "messages": messages,
-            "temperature": self.cfg.temperature,
-            "max_tokens": self.cfg.max_tokens,
+            "temperature": self.cfg.temperature if temperature is None else temperature,
+            "max_tokens": self.cfg.max_tokens if max_tokens is None else max_tokens,
             "stream": False,
         }
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -634,10 +640,13 @@ class CodeExecutor:
             return {o.get("name"): "" for o in node.get("outputs", [])}, "空源码"
         node_id = node.get("id")
         try:
-            compiled = self._compiled.get(node_id)
+            # 缓存键绑定源码：不同流程存在相同 node_id 的代码节点（如各子流节点 106），
+            # 仅按 node_id 缓存会导致跨流程复用错误源码，故以 (node_id, src) 为键。
+            cache_key = (node_id, src)
+            compiled = self._compiled.get(cache_key)
             if compiled is None:
                 compiled = compile(src, f"<code_node {node_id}>", "exec")
-                self._compiled[node_id] = compiled
+                self._compiled[cache_key] = compiled
         except SyntaxError as e:
             raise RuntimeError(f"代码节点编译失败: {e}")
 
@@ -871,6 +880,10 @@ class WorkflowRunner:
         ctx: dict = {}
         self.contexts[wf.flow_id] = ctx
         prefix = "  " * depth
+        # 顶层每次 run 重置执行记录，避免多次编排时节点总数跨流程累计
+        # （嵌套子流程 depth>0 继续追加到同一份 results）
+        if depth == 0:
+            self.results = []
 
         if self.verbose and depth == 0:
             self._banner(wf)
@@ -1076,7 +1089,9 @@ class WorkflowRunner:
             text = LlmClient._mock(prompt)
             outs = {o.get("name"): text for o in node.get("outputs", [])}
             return outs, True, "无LLM配置(回退mock)"
-        text, fb, note = self.llm.chat(prompt, system)
+        text, fb, note = self.llm.chat(prompt, system,
+                                       temperature=node.get("temperature"),
+                                       max_tokens=node.get("max_tokens"))
         names = [o.get("name") for o in node.get("outputs", [])] or ["content"]
         outs = {}
         for nm in names:
@@ -1272,12 +1287,18 @@ def _bind_llm_output(text: str, name: str) -> str:
         candidate = re.sub(r"\s*```$", "", candidate).strip()
     s, e = candidate.find("{"), candidate.rfind("}")
     if s != -1 and e > s:
-        try:
-            obj = json.loads(candidate[s:e + 1])
+        # 容忍模型尾部多余的闭合括号/空白：从右端逐步收缩再解析
+        frag = candidate[s:e + 1]
+        for cut in range(len(frag), s, -1):
+            piece = frag[:cut - s].rstrip()
+            if not piece.endswith("}"):
+                continue
+            try:
+                obj = json.loads(piece)
+            except Exception:
+                continue
             if isinstance(obj, dict) and name in obj:
                 return _clean_label(_to_str(obj[name]), name)
-        except Exception:
-            pass
     # ② 标签式文本回退：形如 "template_id：xxx" / "1. template_id: xxx"
     m = re.search(r"(?:^|\n)\s*(?:\d+[.、]\s*)?%s\s*[:：]\s*(.+?)(?=\n\s*(?:\d+[.、]\s*)?\w+\s*[:：]|\Z)"
                   % re.escape(name), raw, re.S)
