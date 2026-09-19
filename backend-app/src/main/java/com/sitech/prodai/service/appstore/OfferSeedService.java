@@ -30,6 +30,8 @@ public class OfferSeedService {
 
     private static final String SEED_FILE = "appstore/seed_offers.json";
     private static final String PRESET_FILE = "appstore/preset_map.json";
+    /** 存量销售品逻辑模型报文库（offer_id → templateId → 嵌套报文），离线预生成，运行期只读获取 */
+    private static final String MODEL_FILE = "appstore/seed_offer_models.json";
 
     private final ObjectMapper objectMapper;
 
@@ -37,6 +39,8 @@ public class OfferSeedService {
     private final Map<String, Map<String, Object>> offers = new LinkedHashMap<>();
     /** offer_id -> 测点预期值映射 */
     private final Map<String, Map<String, Object>> presetMap = new ConcurrentHashMap<>();
+    /** offer_id -> templateId -> 存量逻辑模型报文（嵌套，key=模板字段名） */
+    private final Map<String, Map<String, Map<String, Object>>> offerModels = new ConcurrentHashMap<>();
     /** 测点编码表（10 个） */
     private List<String> testPoints = new ArrayList<>();
 
@@ -48,7 +52,9 @@ public class OfferSeedService {
     void load() {
         loadOffers();
         loadPresets();
-        log.info("[OfferSeedService] 种子数据加载完成 offers={} presets={}", offers.size(), presetMap.size());
+        loadOfferModels();
+        log.info("[OfferSeedService] 种子数据加载完成 offers={} presets={} models={}",
+                offers.size(), presetMap.size(), offerModels.size());
     }
 
     private void loadOffers() {
@@ -76,6 +82,28 @@ public class OfferSeedService {
             Map<String, Object> v = castMap(e.getValue());
             if (!v.isEmpty()) {
                 presetMap.put(e.getKey(), v);
+            }
+        }
+    }
+
+    /**
+     * 加载存量逻辑模型报文库：{models: {offer_id: {templateId: {baseInfo,releaseInfo,optionalInfo}}}}。
+     * 报文由 gen_seed_offer_models.py 离线实例化（6 模板 × 全部存量销售品），运行期仅按需获取，不实时生成。
+     */
+    private void loadOfferModels() {
+        Map<String, Object> root = readJson(MODEL_FILE);
+        Map<String, Object> models = castMap(root.get("models"));
+        for (Map.Entry<String, Object> e : models.entrySet()) {
+            Map<String, Object> byTemplate = castMap(e.getValue());
+            Map<String, Map<String, Object>> inner = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> t : byTemplate.entrySet()) {
+                Map<String, Object> report = castMap(t.getValue());
+                if (!report.isEmpty()) {
+                    inner.put(t.getKey(), report);
+                }
+            }
+            if (!inner.isEmpty()) {
+                offerModels.put(e.getKey(), inner);
             }
         }
     }
@@ -108,6 +136,27 @@ public class OfferSeedService {
     }
 
     /**
+     * 存量销售品的逻辑模型报文（模板同构嵌套报文，key=模板字段名）。
+     *
+     * @param offerId   销售品编码
+     * @param templateId 模板标识（personMainPrc 等 6 套之一）；为空时返回该销售品任一可用模板报文
+     * @return 嵌套报文 Map；无该销售品/该模板报文时返回 null（调用方回退）
+     */
+    public Map<String, Object> reportOf(String offerId, String templateId) {
+        if (offerId == null) {
+            return null;
+        }
+        Map<String, Map<String, Object>> byTemplate = offerModels.get(offerId.trim());
+        if (byTemplate == null || byTemplate.isEmpty()) {
+            return null;
+        }
+        if (templateId != null && !templateId.isBlank()) {
+            return byTemplate.get(templateId.trim());
+        }
+        return byTemplate.values().iterator().next();
+    }
+
+    /**
      * 相似度匹配：关键词命中（名称/系列/权益类型/资费档位/资源量）加权 + 档位相近度 + 资源相近度，
      * 返回按 score 降序列表。任意合理需求均至少返回基础分命中产品（未命中不中断流程）。
      *
@@ -116,6 +165,17 @@ public class OfferSeedService {
      * @return 相似销售品列表（按相似度降序，最多 topN 条），元素含 similarOfferId/similarOfferName/similarityScore/similarityDesc/offerInfo（完整产品配置信息）
      */
     public List<Map<String, Object>> matchSimilar(String businessDesc, int topN) {
+        return matchSimilar(businessDesc, topN, "");
+    }
+
+    /**
+     * 相似度匹配（带模板）：在 {@link #matchSimilar(String, int)} 基础上，为每项附加
+     * {@code offerModel}——该存量销售品按指定模板实例化的逻辑模型报文（嵌套，key=模板字段名），
+     * 供需求分析模板轨 merge_nested 按 JSONPath 对位补全；无模板/无报文时不附该键。
+     *
+     * @param templateId 模板标识（personMainPrc 等）；为空则不附 offerModel
+     */
+    public List<Map<String, Object>> matchSimilar(String businessDesc, int topN, String templateId) {
         String text = businessDesc == null ? "" : businessDesc;
         String lower = text.toLowerCase(Locale.ROOT);
         List<Map<String, Object>> result = new ArrayList<>();
@@ -125,11 +185,19 @@ public class OfferSeedService {
                 continue;
             }
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("similarOfferId", MapOps.str(offer.get("offer_id")));
+            String offerId = MapOps.str(offer.get("offer_id"));
+            item.put("similarOfferId", offerId);
             item.put("similarOfferName", MapOps.str(offer.get("offer_name")));
             item.put("similarityScore", String.format(Locale.ROOT, "%.2f", score));
             item.put("similarityDesc", descOf(offer));
             item.put("offerInfo", toFields24(offer));
+            // 存量产品逻辑模型报文（模板同构嵌套，key=模板字段名）：按请求模板直接取用，不实时生成
+            if (templateId != null && !templateId.isBlank()) {
+                Map<String, Object> model = reportOf(offerId, templateId);
+                if (model != null) {
+                    item.put("offerModel", model);
+                }
+            }
             result.add(item);
         }
         result.sort((a, b) -> Double.compare(

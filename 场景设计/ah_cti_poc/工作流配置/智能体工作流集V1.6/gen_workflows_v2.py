@@ -233,6 +233,11 @@ CODE_MERGE_NESTED = (
     "    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n"
     ")\n"
     "\n"
+    "def _today_str():\n"
+    "    # x-default-rule=system_date 用的当前日期（YYYY-MM-DD）\n"
+    "    import datetime\n"
+    "    return datetime.date.today().strftime('%Y-%m-%d')\n"
+    "\n"
     "def is_price(label, key):\n"
     "    for text in (label, key):\n"
     "        t = text or ''\n"
@@ -302,6 +307,10 @@ CODE_MERGE_NESTED = (
     "                val, source = oval, 'AI补全'\n"
     "        if val is None and sub.get('default') is not None:\n"
     "            val, source = sub['default'], '默认值'\n"
+    "        if val is None and sub.get('x-default-rule'):\n"
+    "            rule = sub['x-default-rule']\n"
+    "            val = _today_str() if rule == 'system_date' else rule\n"
+    "            source = '默认值'\n"
     "        if val is None:\n"
     "            val, source = '', ''\n"
     "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n"
@@ -362,6 +371,16 @@ CODE_MERGE_NESTED = (
     "                if path in pending:\n"
     "                    pending.remove(path)\n"
     "\n"
+    "def unwrap_offer(offer):\n"
+    "    # 节点105 出参为 similarOffer 包裹时，优先取存量逻辑模型报文 offerModel，回退扁平 offerInfo\n"
+    "    if isinstance(offer, dict) and 'similarOffer' in offer and isinstance(offer['similarOffer'], dict):\n"
+    "        inner = offer['similarOffer']\n"
+    "        if isinstance(inner.get('offerModel'), dict):\n"
+    "            return inner['offerModel']\n"
+    "        if 'offerInfo' in inner:\n"
+    "            return inner['offerInfo']\n"
+    "    return offer\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
     "    def load(text):\n"
@@ -379,7 +398,7 @@ CODE_MERGE_NESTED = (
     "                return {}\n"
     "    schema = load(p.get('schema_json') or '')\n"
     "    elements = load(p.get('elements_json') or '')\n"
-    "    offer = load(p.get('offer_json') or '')\n"
+    "    offer = unwrap_offer(load(p.get('offer_json') or ''))\n"
     "    template_id = schema.get('x-template', '')\n"
     "    if isinstance(offer, dict) and template_id in offer:\n"
     "        offer = offer[template_id]\n"
@@ -797,6 +816,22 @@ CODE_OP_VALIDATE_NESTED = (
     "\n"
     "VALIDATE_URL = 'BASE_URL/api/v1/appstore/validate-nested'\n"
     "\n"
+    "def _load_payload(text):\n"
+    "    if isinstance(text, dict):\n"
+    "        return text\n"
+    "    if not isinstance(text, str) or not text.strip():\n"
+    "        return {}\n"
+    "    try:\n"
+    "        return json.loads(text)\n"
+    "    except Exception:\n"
+    "        try:\n"
+    "            t = text.strip()\n"
+    "            if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
+    "                t = t.split(':', 1)[1].strip()\n"
+    "            return json.loads(t)\n"
+    "        except Exception:\n"
+    "            return {}\n"
+    "\n"
     "def _fetch(payload, template_id):\n"
     "    body = json.dumps({'payload': payload, 'template_id': template_id}).encode('utf-8')\n"
     "    req = urllib.request.Request(VALIDATE_URL, data=body, method='POST',\n"
@@ -806,8 +841,17 @@ CODE_OP_VALIDATE_NESTED = (
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    payload = str(p.get('payload') or '')\n"
+    "    payload = _load_payload(p.get('payload'))\n"
     "    template_id = str(p.get('template_id') or '')\n"
+    "    if not payload:\n"
+    "        ret: Output = {\n"
+    "            'backend_pending': '1',\n"
+    "            'valid': '',\n"
+    "            'error_list': '[]',\n"
+    "            'explain': '',\n"
+    "            'note': 'merge_nested 报文本体解析失败或为空，未执行本体校验；请人工核对必填项',\n"
+    "        }\n"
+    "        return ret\n"
     "    try:\n"
     "        info = _fetch(payload, template_id)\n"
     "    except Exception:\n"
@@ -871,11 +915,12 @@ s01.append(llm_node(104, "产品识别与模板选择",
     [out("template_id", "选定的模板标识（personMainPrc 等六选一）"), out("need_summary", "需求要素摘要（相似检索检索词）")]))
 # 双源相似检索：query_offer 本地优先 → similar_offer 兜底（无循环，双插件并行由外层智能体按需或串行）
 s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
-    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 完整配置，与模板同构）；模板轨用于提取相似产品逻辑模型报文供 merge_nested 补全",
+    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；模板轨用于提取相似产品逻辑模型报文供 merge_nested 按 JSONPath 对位补全",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
-    [inp("businessDesc", "业务需求描述（=节点104需求要素摘要）", ref_block=nid(104), ref_rel="need_summary")],
+    [inp("businessDesc", "业务需求描述（=节点104需求要素摘要）", ref_block=nid(104), ref_rel="need_summary"),
+     inp("templateId", "模板标识（=节点104选定），后端按此模板返回存量逻辑模型报文 offerModel", ref_block=nid(104), ref_rel="template_id")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
-     ("similarOffer", "相似产品（含相似度评分与 offerInfo 完整配置信息）", "object")]))
+     ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文）", "object")]))
 # 取模板：get_template 代码节点读取已迁移模板 schema
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
     [inp("template_id", "模板标识（节点104选定）", ref_block=nid(104), ref_rel="template_id"),
@@ -902,7 +947,7 @@ s01.append(code_node(108, "要素提取质量校验", CODE_VALIDATE_ELEMENTS,
 s01.append(code_node(109, "方案报文合并", CODE_MERGE_NESTED,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素（节点107提取，已过质量校验）", ref_block=nid(107), ref_rel="elements_json"),
-     inp("offer_json", "相似产品报文（节点105 similarOffer.offerInfo，嵌套或templateId包裹）", ref_block=nid(105), ref_rel="similarOffer")],
+     inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer")],
     [code_out("payload", 109), code_out("meta", 109), code_out("pending_required", 109), code_out("template", 109)],
     pos=(690, 300)))
 # 本体校验闸：merge_nested 后、render_table 前（validate_nested，R-C04/C06；端点不可达时回退占位，方案仍按原链路给出）

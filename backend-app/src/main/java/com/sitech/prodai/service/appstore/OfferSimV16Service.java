@@ -96,8 +96,10 @@ public class OfferSimV16Service {
         if (MapOps.empty(req.get("businessDesc"))) {
             return paramMissing("businessDesc 必填");
         }
-        // 最多返回 3 个相似销售品（按相似度降序），第 1 个作为主推荐高匹配产品
-        List<Map<String, Object>> similarList = seed.matchSimilar(MapOps.str(req.get("businessDesc")), 3);
+        // 最多返回 3 个相似销售品（按相似度降序），第 1 个作为主推荐高匹配产品。
+        // templateId（可选）：需求分析模板轨传入，用于为相似品附上对应模板的存量逻辑模型报文 offerModel。
+        String templateId = MapOps.str(req.get("templateId"));
+        List<Map<String, Object>> similarList = seed.matchSimilar(MapOps.str(req.get("businessDesc")), 3, templateId);
         Map<String, Object> body = ok();
         if (similarList.isEmpty()) {
             body.put("resultMsg", "未命中相似销售品");
