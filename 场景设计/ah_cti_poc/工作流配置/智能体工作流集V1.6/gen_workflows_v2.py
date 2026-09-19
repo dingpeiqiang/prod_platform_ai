@@ -165,15 +165,16 @@ CODE_RENDER_REQ = (
 )
 
 # ---------------- CODE_GET_TEMPLATE：模板注册表选择 ----------------
-# 来源 方案/templates/_registry.json + *.schema.json（阶段0.1 已随包迁移）
-# 输入 args.params['template_id']（六选一）+ args.params['template_base']（schema 目录，默认方案/templates）
-# 输出：schema_json（完整模板 schema JSON 字符串）、template_type（product_type）、
-#       schema_file（文件名）
+# 来源：后端 BASE_URL/api/v1/appstore/template/schema（classpath 下发，避免平台环境读不到本地文件）；
+# 本地开发可用 args.params['template_base'] 指定目录做文件兜底（默认空=仅走接口）。
+# 输入 args.params['template_id']（六选一，或中文名/产品类型）+ 可选 template_base（文件兜底目录）
+# 输出：schema_json（完整模板 schema JSON 字符串）、template_name_cn、template_product_type、
+#       schema_file、missing、source（backend/file/empty）
 CODE_GET_TEMPLATE = (
-    "import json, os\n"
+    "import json, os, urllib.request\n"
     "from typing import Any, Dict\n"
     "\n"
-    "DEFAULT_BASE = r'D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\方案\\templates'\n"
+    "TEMPLATE_URL = 'BASE_URL/api/v1/appstore/template/schema'\n"
     "TEMPLATE_ALIAS = {\n"
     "    'personMainPrc': ('个人主资费', '个人主套餐'),\n"
     "    'broadBandMainPrc': ('宽带主资费', '宽带主套餐'),\n"
@@ -190,29 +191,54 @@ CODE_GET_TEMPLATE = (
     "            return tid, cn, pt\n"
     "    return 'personMainPrc', '个人主资费', '个人主套餐'\n"
     "\n"
+    "def _fetch(tid):\n"
+    "    body = json.dumps({'templateId': tid}).encode('utf-8')\n"
+    "    req = urllib.request.Request(TEMPLATE_URL, data=body, method='POST',\n"
+    "                                 headers={'Content-Type': 'application/json'})\n"
+    "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
+    "        return json.loads(resp.read().decode('utf-8'))\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
     "    tid, cn, pt = _pick(p.get('template_id') or '')\n"
-    "    base = str(p.get('template_base') or DEFAULT_BASE)\n"
-    "    schema_file = '%s.schema.json' % tid\n"
-    "    schema_path = os.path.join(base, schema_file)\n"
     "    content = '{}'\n"
     "    missing = '0'\n"
+    "    source = 'empty'\n"
+    "    # ① 后端下发（主路径）\n"
     "    try:\n"
-    "        with open(schema_path, 'r', encoding='utf-8') as f:\n"
-    "            content = f.read()\n"
+    "        info = _fetch(tid)\n"
+    "        schema_text = str((info or {}).get('schema_json') or '')\n"
+    "        if schema_text.strip() and schema_text.strip() != '{}':\n"
+    "            content = schema_text\n"
+    "            cn = str(info.get('template_name_cn') or cn)\n"
+    "            pt = str(info.get('template_product_type') or pt)\n"
+    "            source = 'backend'\n"
     "    except Exception:\n"
+    "        info = None\n"
+    "    # ② 本地文件兜底（仅当显式配置 template_base 时）\n"
+    "    if source != 'backend':\n"
+    "        base = str(p.get('template_base') or '').strip()\n"
+    "        if base:\n"
+    "            try:\n"
+    "                with open(os.path.join(base, '%s.schema.json' % tid), 'r', encoding='utf-8') as f:\n"
+    "                    content = f.read()\n"
+    "                source = 'file'\n"
+    "            except Exception:\n"
+    "                missing = '1'\n"
+    "    if source == 'empty':\n"
     "        missing = '1'\n"
     "    ret: Output = {\n"
     "        \"template_id\": tid,\n"
     "        \"template_name_cn\": cn,\n"
     "        \"template_product_type\": pt,\n"
     "        \"schema_json\": content,\n"
-    "        \"schema_file\": schema_file,\n"
+    "        \"schema_file\": '%s.schema.json' % tid,\n"
     "        \"missing\": missing,\n"
+    "        \"source\": source,\n"
     "    }\n"
     "    return ret"
 )
+CODE_GET_TEMPLATE = CODE_GET_TEMPLATE.replace("BASE_URL", BASE_URL)
 
 # ---------------- CODE_MERGE_NESTED：嵌套报文合并 ----------------
 # 来源 scripts/merge_nested.py（V1.0，去 argparse）
@@ -226,6 +252,7 @@ CODE_MERGE_NESTED = (
     "\n"
     "PRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')\n"
     "PRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')\n"
+    "CHARGE_DESC_KEYWORDS = ('超套', '套外', '资费', '计费', '收费')\n"
     "EMPTY_MARKS = ('', '待补充', '系统待生成')\n"
     "SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\n"
     "SYSTEM_GEN_KEYS = ('orderNo',)\n"
@@ -256,6 +283,21 @@ CODE_MERGE_NESTED = (
     "        return v\n"
     "    s = str(v).strip()\n"
     "    return '' if s in EMPTY_MARKS else s\n"
+    "\n"
+    "def _charge_desc_covers(prop, cur, elements_map):\n"
+    "    # V9.2：必填枚举字段为空时，若需求已在同体系'计费说明型'自由文本字段（*chargeStandard）\n"
+    "    # 写入含 超套/套外/资费/计费/收费 关键词的原文，判为已覆盖，不进待补充。\n"
+    "    if not prop.get('enum'):\n"
+    "        return False\n"
+    "    label = str(prop.get('x-label', '') or '') + cur\n"
+    "    if not [w for w in CHARGE_DESC_KEYWORDS if w in label]:\n"
+    "        return False\n"
+    "    for epath, evalue in elements_map.items():\n"
+    "        if not epath.endswith('chargeStandard'):\n"
+    "            continue\n"
+    "        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):\n"
+    "            return True\n"
+    "    return False\n"
     "\n"
     "def flatten_elements(node, prefix='', out=None):\n"
     "    if out is None:\n"
@@ -314,7 +356,8 @@ CODE_MERGE_NESTED = (
     "        if val is None:\n"
     "            val, source = '', ''\n"
     "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n"
-    "                pending.append(cur)\n"
+    "                if not _charge_desc_covers(sub, cur, elements_map):\n"
+    "                    pending.append(cur)\n"
     "        out[key] = val\n"
     "        if source:\n"
     "            meta[cur] = {'label': label, 'value': val, 'source': source}\n"
@@ -929,10 +972,12 @@ s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
     pos=(530, 300)))
 # 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON（merge_nested 输入契约）
 s01.append(llm_node(107, "配置要素提取",
-    "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），按模板内各字段的 x-label 提取配置要素，仅提取需求原文可找到（含同义改写）的字段值。\n"
-    "规则：对照模板 schema 的顶层容器（如 baseInfo/releaseInfo/optionalInfo/phoneMbrInfo 等）与各叶子的 x-label，输出与模板嵌套结构**同构**的 JSON（key=模板字段名），值取需求原文；需求未提及的字段不输出（merge_nested 会以空处理并交相似产品补全）。\n"
-    "禁止臆造值；禁止把价格类字段照搬相似产品（本节点只输出需求原文提取值）。\n"
-    "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述与模板嵌套结构同构的元素 JSON 的字符串（即先按规则生成元素 JSON，再将该元素 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"baseInfo\\\":{...},\\\"releaseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。",
+    "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），严格按模板 schema 提取配置要素。\n"
+    "【硬性约束】输出 JSON 的 key 必须**逐字复制模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources/effective_way/out_price 等一律禁止），**严禁**改写成中文键；对位靠 x-label 语义理解，但落键必须是 schema 英文键。\n"
+    "步骤：①读 schema 的顶层容器（baseInfo/releaseInfo/optionalInfo 等）与其下各级 properties；②逐个叶子，取其 x-label 语义，在需求原文中查找对应信息（含同义改写，如「套餐名称/资费名称」→prodPrcName、「月费/199元」→套餐月费相关叶子、「包含资源/流量通话」→containResource）；③命中则写入该叶子路径，值为需求原文表述；未命中则不输出该键。\n"
+    "示例（仅示键路径与嵌套，非值）：需求「5G-A套餐199元，含120GB流量」→ {\"baseInfo\":{\"prodPrcName\":\"5G-A套餐\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199元\",\"containResource\":\"120GB流量\"}}}。\n"
+    "禁止臆造值；价格类字段只取需求原文，不得照搬相似产品。\n"
+    "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素 JSON 的**字符串**（形如 {\"elements_json\":\"{\\\"baseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json"),
      inp("schema_json", "引用节点106模板 schema", ref_block=nid(106), ref_rel="schema_json")],
     [out("elements_json", "配置要素（与模板嵌套结构同构的JSON，仅需求原文有值项）")]))

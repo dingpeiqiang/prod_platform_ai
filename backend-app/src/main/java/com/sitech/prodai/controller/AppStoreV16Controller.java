@@ -33,14 +33,34 @@ public class AppStoreV16Controller {
     private final NodeResultService nodeResultService;
     private final FieldOntologyService fieldOntologyService;
     private final ProductOntologyService productOntologyService;
+    private final com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
-                                 ProductOntologyService productOntologyService) {
+                                 ProductOntologyService productOntologyService,
+                                 com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
         this.productOntologyService = productOntologyService;
+        this.configTemplateService = configTemplateService;
+    }
+
+    /* ================= 模板 schema 下发 get_template_schema ================= */
+
+    @Operation(summary = "模板schema下发", description = "按模板标识返回逻辑模型模板 schema 原文（x-label/x-required JSON-Schema 形态），供需求分析 get_template 节点 HTTP 获取")
+    @PostMapping("/template/schema")
+    public Map<String, Object> templateSchema(@RequestBody Map<String, Object> req) {
+        return configTemplateService.schemaOf(MapOps.str(req.get("templateId")));
+    }
+
+    @Operation(summary = "模板清单", description = "返回 6 套逻辑模型模板清单（template_id/中文名/产品类型）")
+    @GetMapping("/template/list")
+    public Map<String, Object> templateList() {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("resultCode", "0");
+        body.put("templates", configTemplateService.list());
+        return body;
     }
 
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
