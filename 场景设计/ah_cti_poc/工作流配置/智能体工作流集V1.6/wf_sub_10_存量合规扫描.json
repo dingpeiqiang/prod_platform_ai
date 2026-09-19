@@ -7,7 +7,17 @@
     "nodes": [
       {
         "flowJson": null,
-        "inputs": [],
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          }
+        ],
         "checkErr": false,
         "nodeMeta": {
           "description": "工作流的起始节点，用于设定启动工作流需要的信息",
@@ -23,14 +33,16 @@
       },
       {
         "outputs": [
-          [
-            "backend_pending",
-            "合规插件是否就绪(1=占位)"
-          ],
-          [
-            "note",
-            "占位说明"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001002,backend_pending",
+            "name": "backend_pending",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001002,note",
+            "name": "note",
+            "type": "string"
+          }
         ],
         "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nSHELF_URL = 'http://10.86.13.201:31281/api/v1/appstore/shelf-compliance'\n\ndef _fetch():\n    req = urllib.request.Request(SHELF_URL, data=b'{}', method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    try:\n        info = _fetch()\n    except Exception:\n        info = None\n    if not info:\n        ret: Output = {\n            'backend_pending': '1',\n            'note': '存量合规扫描(shelf_compliance)端点暂不可达，当前无合规结论',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0' if info.get('rows') or info.get('results') else '1',\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
         "flowJson": null,

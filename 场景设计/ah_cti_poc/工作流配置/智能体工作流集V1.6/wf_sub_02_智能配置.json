@@ -16,6 +16,15 @@
             "type": "string",
             "required": true,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,
@@ -125,14 +134,16 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "执行方案原文（list[0].result_json 或原文）"
-          ],
-          [
-            "offer_id",
-            "从 result_json 解析的 offer_id"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -281,14 +292,16 @@
       },
       {
         "outputs": [
-          [
-            "fusion_echo",
-            "融合成员回显行（无 group 时为空串）"
-          ],
-          [
-            "fusion_status",
-            "落地状态"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo",
+            "name": "fusion_echo",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_status",
+            "name": "fusion_status",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': str(p.get('status') or '')}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": str(p.get('status') or ''),\n    }\n    return ret",
         "flowJson": null,

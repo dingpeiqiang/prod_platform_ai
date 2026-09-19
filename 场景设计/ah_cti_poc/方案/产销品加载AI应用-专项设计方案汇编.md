@@ -45,9 +45,8 @@
 ## 1.1 总体结构（改动总览 · V2.0 工作流）
 
 ```
-场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/     # 12 个工作流 JSON（gen_workflows_v2.py 生成）
-  ├── wf_main_intent.json               # 总流程编排
-  ├── wf_sub_00 ~ wf_sub_10.json        # 各子流程
+场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/     # 11 个子工作流 JSON（gen_workflows_v2.py 生成）
+  ├── wf_sub_00 ~ wf_sub_10.json        # 各子流程（由智能体/LLM 按 3.2 提示词【意图→工作流映射表】语义识别后直调）
   │   ├── wf_sub_02 CODE_FUSION_GROUP_ECHO   # 智能配置融合成员回显（环节1 offer_id 回显成员清单）
   │   ├── wf_sub_03                       # 规格稽核组维度（error_list group 类目）
   │   ├── wf_sub_04 CODE_MAP_FIXED_CASES  # 自动测试融合组场景 + E26 组核对（节点315，31 条固定用例）
@@ -153,6 +152,8 @@ knowledge/                                # 知识库（原 references/、skills
 ## 1.4 工作流层：确定性逻辑落为 `type=6` 代码节点（原技能脚本 `cpcp_api.py` V3.1 / `validate_output.py` V1.1 已代码化）
 
 > 原技能包脚本（`build_plan` 组结构识别、`spec_audit` 组类目、`billing_verify` 成员分组、`map_fixed_cases` 组结论透出、`validate_output` 成员行/E26 组核对）均已内嵌为工作流 `type=6` 代码节点（`CODE_*`）。
+
+> **配置规范对齐（《SitechAI开发平台配置规范.md》代码节点规范）**：本方案确定性逻辑统一以 **type=6 代码节点**落位（`async def main(args)` + `args.params` 取入参；urllib.request 相对路径拼接 `BASE_URL` 占位符，经网关访问 `/api/v1/appstore/*`；含 `_json` 出参名（如 `plan_json`/`config_json`）存 JSON 字符串；后端不可达一律 `backend_pending=1` 优雅回退保离线 Demo）；出参中新增的 array 型（`group_violations[]`、`error_list[]`、`compare_list[]`）均配置 item 树（ARRAY_ITEM_FIELDS 白名单），键名 snake_case。生成与重新生成统一走 `gen_workflows_v2.py`，禁止手改 JSON。
 
 ### 1.4.1 融合成员回显代码节点（`CODE_FUSION_GROUP_ECHO`，wf_sub_02）
 
@@ -589,6 +590,8 @@ CODE_OP_VALIDATE_NESTED（type=6 代码节点）
 - 出参 `violations` 非空且含 `severity=high` → 按 **E33** 中断引导（异常矩阵新增）。
 - `severity=warn` → 不阻断，随 render_table 节点111 输出放到【风险提示】小节。
 - `trace_id` 落盘工件，供 `/api/v1/appstore/explain` 引用。
+
+> **配置规范对齐**：节点110 为 type=6 代码节点（`async def main(args)`/`args.params`），内部经网关 `BASE_URL` 占位符调用 `/api/v1/appstore/validate-nested`；后端不可达一律 `backend_pending=1` 优雅回退（不阻断离线 Demo）；`violations` array 出参配 item 树。
 
 ### 3.1.4 端点方案取舍（评审结论已定）
 历史设计曾评估"不新增端点，直接组合现有 `config/infer` + `config/compliance` + `config/explain`"以最小改动（优点零 Java 改动；缺点两次调用、trace 链割裂）。**评审已定：采用聚合单一 `validate-nested` 端点**（聚合 + 一次出 trace_id，性价比更高），V2.0 以 `/api/v1/appstore/validate-nested` 落地。

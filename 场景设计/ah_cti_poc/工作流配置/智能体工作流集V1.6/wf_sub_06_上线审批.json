@@ -134,14 +134,16 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "配置环节结果原文"
-          ],
-          [
-            "offer_id",
-            "解析的 offer_id"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000603,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000603,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -269,10 +271,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "稽核环节结果原文"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000605,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -400,10 +403,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "资费环节结果原文"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000607,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -531,10 +535,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "测试环节结果原文"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000609,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -662,10 +667,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "执行方案原文"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000611,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -701,18 +707,21 @@
       },
       {
         "outputs": [
-          [
-            "summary_json",
-            "结构化汇总 JSON"
-          ],
-          [
-            "product_id",
-            "CRM产品ID"
-          ],
-          [
-            "offer_id",
-            "销售品ID"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,summary_json",
+            "name": "summary_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,product_id",
+            "name": "product_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # config 环节：完整落地配置JSON（内含 product_id/offer_id 与 plan_json）\n    product_id = str(cfg.get('product_id') or '')\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：存储的是稽核总结文本\n    audit_summary = str(spec.get('raw') or spec.get('audit_summary') or '')\n    spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：存储的是风险解读文本\n    risk_summary = str(fee.get('raw') or fee.get('risk_summary') or '')\n    fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'product_id': product_id,\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'requirement_summary': str(req.get('raw') or '')[:500],\n        'config': {'product_id': product_id, 'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"product_id\": product_id,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -1106,38 +1115,46 @@
       },
       {
         "outputs": [
-          [
-            "status",
-            "审批状态（通过/待审/驳回）"
-          ],
-          [
-            "approval_id",
-            "审批单号"
-          ],
-          [
-            "approval_type",
-            "审批类型"
-          ],
-          [
-            "current_node",
-            "当前审批环节"
-          ],
-          [
-            "approver",
-            "当前审批人"
-          ],
-          [
-            "opinion",
-            "审批意见"
-          ],
-          [
-            "update_time",
-            "更新时间"
-          ],
-          [
-            "approval_matrix",
-            "审批矩阵 JSON"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,status",
+            "name": "status",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,approval_id",
+            "name": "approval_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,approval_type",
+            "name": "approval_type",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,current_node",
+            "name": "current_node",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,approver",
+            "name": "approver",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,opinion",
+            "name": "opinion",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,update_time",
+            "name": "update_time",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000616,approval_matrix",
+            "name": "approval_matrix",
+            "type": "string"
+          }
         ],
         "code": "import json, time, asyncio\nimport urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nSTATUS_URL = 'http://10.86.13.201:31281/api/v1/appstore/approval/status'\nMAX_RETRY = 12\nINTERVAL = 2\n\ndef _fetch(approval_id, product_id):\n    params = {}\n    if approval_id:\n        params['approval_id'] = approval_id\n    if product_id:\n        params['product_id'] = product_id\n    url = STATUS_URL + '?' + urllib.parse.urlencode(params)\n    with urllib.request.urlopen(url, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    approval_id = str(p.get('approval_id') or '')\n    product_id = str(p.get('product_id') or '')\n    out_status = '待审'\n    info = {}\n    for i in range(MAX_RETRY):\n        try:\n            info = _fetch(approval_id, product_id)\n        except Exception:\n            await asyncio.sleep(INTERVAL)\n            continue\n        st = str(info.get('status') or '')\n        if st == '通过':\n            out_status = '通过'\n            break\n        if st == '驳回':\n            out_status = '驳回'\n            break\n        time.sleep(INTERVAL)\n    ret: Output = {\n        'status': out_status,\n        'approval_id': str(info.get('approval_id') or approval_id),\n        'approval_type': str(info.get('approval_type') or 'launch'),\n        'current_node': str(info.get('current_node') or ''),\n        'approver': str(info.get('approver') or ''),\n        'opinion': str(info.get('opinion') or ''),\n        'update_time': str(info.get('update_time') or ''),\n        'approval_matrix': json.dumps(info.get('approval_matrix') or [], ensure_ascii=False),\n    }\n    return ret",
         "flowJson": null,
@@ -1393,18 +1410,21 @@
       },
       {
         "outputs": [
-          [
-            "backend_pending",
-            "下载插件是否就绪(1=回退下载引导)"
-          ],
-          [
-            "download_url",
-            "脚本下载地址（空=端点不可达）"
-          ],
-          [
-            "note",
-            "下载说明"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000621,backend_pending",
+            "name": "backend_pending",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000621,download_url",
+            "name": "download_url",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000621,note",
+            "name": "note",
+            "type": "string"
+          }
         ],
         "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nDL_URL = 'http://10.86.13.201:31281/api/v1/appstore/script/download'\n\ndef _fetch(offer_id, approval_id):\n    body = json.dumps({'offer_id': offer_id, 'approval_id': approval_id, 'kind': 'launch_script'}).encode('utf-8')\n    req = urllib.request.Request(DL_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '').strip()\n    approval_id = str(p.get('approval_id') or '').strip()\n    try:\n        info = _fetch(offer_id, approval_id)\n    except Exception:\n        info = None\n    if not info or not (info.get('download_url') or info.get('url')):\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '配置/上线脚本下载端点暂不可达，可联系产商品中心获取加载脚本；后端就绪后可直接下载',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': str(info.get('download_url') or info.get('url') or ''),\n            'note': str(info.get('message') or '配置/上线脚本已生成，可点击链接下载'),\n        }\n    return ret",
         "flowJson": null,
@@ -1456,7 +1476,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n【配置/上线脚本下载】地址 {download_url，为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"}（{dl_note}）"
+          "content": "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）"
         },
         "settings": {
           "stream": false,

@@ -16,6 +16,15 @@
             "type": "string",
             "required": true,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,
@@ -125,14 +134,16 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "配置环节结果原文（list[0].result_json）"
-          ],
-          [
-            "offer_id",
-            "从结果解析的 offer_id"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000310,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000310,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -431,10 +442,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "稽核环节结果原文（list[0].result_json，可含 error_list）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000312,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -562,10 +574,11 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "资费环节结果原文（list[0].result_json，可含 compare_list/risk_list）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000314,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -601,22 +614,26 @@
       },
       {
         "outputs": [
-          [
-            "done",
-            "1=测试完成"
-          ],
-          [
-            "failed",
-            "1=测试失败/中止"
-          ],
-          [
-            "failIndex",
-            "失败索引"
-          ],
-          [
-            "fail_reason",
-            "失败/超时原因（非空标识异常退出）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,done",
+            "name": "done",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,failed",
+            "name": "failed",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,failIndex",
+            "name": "failIndex",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,fail_reason",
+            "name": "fail_reason",
+            "type": "string"
+          }
         ],
         "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 360\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n    return ret",
         "flowJson": null,
@@ -856,38 +873,46 @@
       },
       {
         "outputs": [
-          [
-            "cases_json",
-            "31条固定用例表 rows JSON（caseId/level/dimension/result）"
-          ],
-          [
-            "dimension_summary",
-            "ACC/BILL/CUST pass/fail 统计 JSON"
-          ],
-          [
-            "overall_conclusion",
-            "整体上线结论（✅建议上线/⚠️评估风险后上线/❌禁止上线）"
-          ],
-          [
-            "defect_list",
-            "缺陷清单 JSON"
-          ],
-          [
-            "p0_pass",
-            "P0 全通过 1/0"
-          ],
-          [
-            "e26",
-            "被测一致性核对 1 通过 0 不一致"
-          ],
-          [
-            "e26_note",
-            "E26 不一致说明"
-          ],
-          [
-            "scene_cover",
-            "场景覆盖核对结论（加分号分隔）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,cases_json",
+            "name": "cases_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,dimension_summary",
+            "name": "dimension_summary",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,overall_conclusion",
+            "name": "overall_conclusion",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,defect_list",
+            "name": "defect_list",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,p0_pass",
+            "name": "p0_pass",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,e26",
+            "name": "e26",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,e26_note",
+            "name": "e26_note",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000315,scene_cover",
+            "name": "scene_cover",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\n\ndef _scene_of(tr, nbr):\n    for s in (tr.get('testScenes') or []):\n        if s.get('testSceneNbr') == nbr:\n            return s\n    return None\n\ndef _point_ok(tr, nbr, point_nbr):\n    scene = _scene_of(tr, nbr)\n    if not scene:\n        return None\n    for p in (scene.get('testCasePointResults') or []):\n        if p.get('testPointNbr') == point_nbr:\n            return str(p.get('resultCode')) == '0'\n    return None\n\ndef _scene_pass(tr, nbr):\n    scene = _scene_of(tr, nbr)\n    if not scene:\n        return None\n    try:\n        return int(scene.get('successTestCaseCount') or 0) == int(scene.get('testCaseCount') or 0)\n    except Exception:\n        return False\n\ndef _compare_ok(fee, project):\n    for c in (fee.get('compare_list') or []):\n        if c.get('project_name') == project:\n            return str(c.get('result')) == '一致'\n    return None\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {}\n    except Exception:\n        return {}\n\nFIXED_CASES = [\n    ('ACC-001', '销售品基础准入规则校验', 'P0', 'ACC', lambda tr, sp, fee: _scene_pass(tr, 'S_O_TC')),\n    ('ACC-002', '产品互斥规则校验', 'P0', 'ACC', lambda tr, sp, fee: _point_ok(tr, 'S_O_TC', 'P_MUTEX_REL')),\n    ('ACC-003', '产品依赖规则校验', 'P0', 'ACC', lambda tr, sp, fee: _point_ok(tr, 'S_O_TC', 'P_RELY_REL')),\n    ('ACC-004', '订购操作能力校验', 'P0', 'ACC', lambda tr, sp, fee: (\n        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(\n            _scene_pass(tr, 'S_O_TC'), _point_ok(tr, 'S_O_TC', 'P_STATUS')))),\n    ('ACC-005', '变更操作能力校验', 'P1', 'ACC', lambda tr, sp, fee: None),\n    ('ACC-006', '退订操作能力校验', 'P0', 'ACC', lambda tr, sp, fee: _scene_pass(tr, 'S_U_TC')),\n    ('ACC-007', '受理表单必填字段完整性', 'P0', 'ACC', lambda tr, sp, fee: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME'), _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE'),\n                         _point_ok(tr, 'S_O_TC', 'P_PAY_MODE'))\n        else all((_point_ok(tr, 'S_O_TC', p) for p in ('P_OFFER_NAME', 'P_OFFER_TYPE', 'P_PAY_MODE'))))),\n    ('ACC-008', '限购数量规则校验', 'P1', 'ACC', lambda tr, sp, fee: _point_ok(tr, 'S_O_TC', 'P_ORD_CNT')),\n    ('ACC-009', '地域受理范围校验', 'P1', 'ACC', lambda tr, sp, fee: None),\n    ('ACC-010', '受理时段生效校验', 'P1', 'ACC', lambda tr, sp, fee: _point_ok(tr, 'S_O_TC', 'P_EFF_DATE')),\n    ('ACC-011', '模拟订购接口预测试', 'P0', 'ACC', lambda tr, sp, fee: (\n        True if tr.get('orderId') and tr.get('offerInstId') else\n        (None if not any((tr.get('testScenes') or [])) else False))),\n    ('ACC-012', '模拟退订接口预测试', 'P0', 'ACC', lambda tr, sp, fee: (\n        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(\n            _scene_pass(tr, 'S_U_TC'), _point_ok(tr, 'S_U_TC', 'P_STATUS')))),\n    ('BILL-001', '基础资费金额合法性校验', 'P0', 'BILL', lambda tr, sp, fee: _compare_ok(fee, '套餐月租')),\n    ('BILL-002', '计费周期类型校验', 'P0', 'BILL', lambda tr, sp, fee: (\n        None if fee is None or not fee.get('compare_list') or not tr.get('plan_billing_cycle')\n        else str(tr.get('plan_billing_cycle')) == '自然月')),\n    ('BILL-003', '计费起算时间规则校验', 'P0', 'BILL', lambda tr, sp, fee: (\n        None if fee is None or not fee.get('compare_list') else all(\n            str(c.get('result')) == '一致' for c in fee['compare_list'] if c.get('project_name') == '套餐月租'))),\n    ('BILL-004', '资源扣减规则校验', 'P0', 'BILL', lambda tr, sp, fee: (\n        None if fee is None or not fee.get('compare_list') else (lambda rs: None if None in rs else all(rs))(\n            [_compare_ok(fee, p) for p in ('流量赠送量', '语音赠送量', '短信赠送量')]))),\n    ('BILL-005', '阶梯/按量批价规则校验', 'P1', 'BILL', lambda tr, sp, fee: (\n        None if fee is None or not fee.get('compare_list') else (lambda rs: None if None in rs else all(rs))(\n            [_compare_ok(fee, p) for p in ('流量超出资费', '语音超出资费', '短信超出资费')]))),\n    ('BILL-006', '优惠叠加/捆绑减免校验', 'P1', 'BILL', lambda tr, sp, fee: (\n        None if fee is None or 'risk_list' not in fee else not fee.get('risk_list'))),\n    ('BILL-007', '账单展示项配置校验', 'P1', 'BILL', lambda tr, sp, fee: None),\n    ('BILL-008', '模拟订购账单试算', 'P0', 'BILL', lambda tr, sp, fee: None),\n    ('BILL-009', '退订费用结算试算', 'P1', 'BILL', lambda tr, sp, fee: None),\n    ('BILL-010', '资费生效失效联动校验', 'P0', 'BILL', lambda tr, sp, fee: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE'), _point_ok(tr, 'S_O_TC', 'P_EXP_DATE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE') and _point_ok(tr, 'S_O_TC', 'P_EXP_DATE')))),\n    ('CUST-001', '客服产品基础视图完整性', 'P0', 'CUST', lambda tr, sp, fee: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME'), _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME') and _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE')))),\n    ('CUST-002', '客户订单查询能力校验', 'P0', 'CUST', lambda tr, sp, fee: (\n        True if tr.get('offerInstId') else\n        (None if not any((tr.get('testScenes') or [])) else False))),\n    ('CUST-003', '客服侧产品操作权限校验', 'P1', 'CUST', lambda tr, sp, fee: None),\n    ('CUST-004', '产品资费对外说明话术校验', 'P0', 'CUST', lambda tr, sp, fee: (\n        None if fee is None or not fee.get('compare_list') else (lambda rs: None if None in rs else all(rs))(\n            [str(c.get('result')) == '一致' for c in fee['compare_list']]))),\n    ('CUST-005', '产品生效失效规则话术校验', 'P1', 'CUST', lambda tr, sp, fee: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE'), _point_ok(tr, 'S_O_TC', 'P_EXP_DATE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE') and _point_ok(tr, 'S_O_TC', 'P_EXP_DATE')))),\n    ('CUST-006', '产品退订规则话术校验', 'P1', 'CUST', lambda tr, sp, fee: _scene_pass(tr, 'S_U_TC')),\n    ('CUST-007', '产品限制规则话术校验', 'P1', 'CUST', lambda tr, sp, fee: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_MUTEX_REL'), _point_ok(tr, 'S_O_TC', 'P_RELY_REL'),\n                         _point_ok(tr, 'S_O_TC', 'P_ORD_CNT'))\n        else all((_point_ok(tr, 'S_O_TC', p) for p in ('P_MUTEX_REL', 'P_RELY_REL', 'P_ORD_CNT'))))),\n    ('CUST-008', '对外展示信息合规校验', 'P0', 'CUST', lambda tr, sp, fee: (\n        None if sp is None or 'error_list' not in sp else not sp.get('error_list'))),\n    ('CUST-009', '客服常见问题FAQ完备性', 'P1', 'CUST', lambda tr, sp, fee: None),\n]\n\ndef _conclude(rows, fee):\n    p0_fail = any(r['level'] == 'P0' and r['result'] == '❌' for r in rows)\n    p1_fail = any(r['level'] == 'P1' and r['result'] == '❌' for r in rows)\n    risk_nonempty = bool(fee and fee.get('risk_list'))\n    if p0_fail:\n        return '❌ 禁止上线'\n    if p1_fail or risk_nonempty:\n        return '⚠️ 评估风险后上线'\n    return '✅ 建议上线'\n\nasync def main(args):\n    p = args.params\n    tr = _load(p.get('test_result_json') or '')\n    sp = _load(p.get('spec_record') or '')\n    fee = _load(p.get('fee_record') or '')\n    cfg_offer_id = str(p.get('offer_id') or '')\n    plan = _load(p.get('plan_json') or '')\n    if not plan:\n        plan = {}\n    inner_plan = plan.get('plan_json')\n    if isinstance(inner_plan, dict):\n        merged = dict(plan)\n        merged.update(inner_plan)\n        plan = merged\n    rows, counts = [], {'ACC': [0, 0], 'BILL': [0, 0], 'CUST': [0, 0]}\n    defects = []\n    for case_id, name, level, dim, judge in FIXED_CASES:\n        verdict = judge(tr, sp, fee)\n        if verdict is True:\n            result = '✅'\n        elif verdict is False:\n            result = '❌'\n        else:\n            result = '本销售品未覆盖'\n        if result in ('✅', '❌'):\n            counts[dim][0 if result == '✅' else 1] += 1\n            if result == '❌':\n                defects.append({'id': case_id, 'module': {'ACC': '受理', 'BILL': '计费', 'CUST': '客服'}[dim],\n                                'level': level, 'desc': '出现' + name + '未通过，请核查配置'})\n        rows.append({'caseId': case_id, 'caseName': name, 'level': level, 'dimension': dim, 'result': result})\n    conclusion = _conclude(rows, fee)\n    p0_pass = '1' if not any(r['level'] == 'P0' and r['result'] == '❌' for r in rows) else '0'\n    # E26 被测一致性核对：主 offerName 一致 + 融合组 offer_group_check 成员角色集合 vs plan member_offers 角色集合一致\n    e26 = '1'\n    e26_note = ''\n    test_offer_name = str(tr.get('offerName') or '')\n    plan_name = str(plan.get('offer_name') or plan.get('套餐名称') or '')\n    if test_offer_name and plan_name and test_offer_name != plan_name:\n        e26 = '0'\n        e26_note = \"测试平台 offerName('%s') 与配置 套餐名称('%s') 不一致\" % (test_offer_name, plan_name)\n    group_check = tr.get('offer_group_check')\n    if e26 == '1' and isinstance(group_check, dict):\n        check_roles = set()\n        for m in (group_check.get('members') or []):\n            r = str(m.get('role') or '').strip()\n            if r:\n                check_roles.add(r)\n        plan_roles = set()\n        for mo in (plan.get('member_offers') or []):\n            r = str(mo.get('role') or '').strip()\n            if r:\n                plan_roles.add(r)\n        if check_roles and plan_roles and check_roles != plan_roles:\n            e26 = '0'\n            e26_note = '融合组成员角色集合不一致：测试平台[' + ','.join(sorted(check_roles)) + '] vs 配置[' + ','.join(sorted(plan_roles)) + ']'\n    # 场景覆盖核对（K3 第5章）：S_O_TC+S_U_TC 必选；plan 允许副卡（member 存在 ACTION 或 plan_json 副卡规则）时须含 S_ADD_CARD\n    scene_cover = []\n    scene_nbrs = [s.get('testSceneNbr') for s in (tr.get('testScenes') or [])]\n    for req_nbr in ('S_O_TC', 'S_U_TC'):\n        if req_nbr not in scene_nbrs:\n            scene_cover.append('应覆盖场景 %s 未执行（S_O_TC/S_U_TC 为所有销售品必选）' % req_nbr)\n    allow_card = str(plan.get('副卡规则') or plan.get('allow_add_card') or '')\n    if allow_card == '允许' and 'S_ADD_CARD' not in scene_nbrs:\n        scene_cover.append('应覆盖场景 S_ADD_CARD（副卡加装）未执行，整体结论不得为“✅建议上线”，降级为“⚠️评估风险后上线”')\n    if scene_cover and conclusion == '✅ 建议上线':\n        conclusion = '⚠️ 评估风险后上线'\n    ret: Output = {\n        \"cases_json\": json.dumps(rows, ensure_ascii=False),\n        \"dimension_summary\": json.dumps({d: {'pass': v[0], 'fail': v[1]} for d, v in counts.items()}, ensure_ascii=False),\n        \"overall_conclusion\": conclusion,\n        \"defect_list\": json.dumps(defects, ensure_ascii=False),\n        \"p0_pass\": p0_pass,\n        \"e26\": e26,\n        \"e26_note\": e26_note,\n        \"scene_cover\": ';'.join(scene_cover),\n    }\n    return ret",
         "flowJson": null,
@@ -1341,18 +1366,21 @@
       },
       {
         "outputs": [
-          [
-            "backend_pending",
-            "下载插件是否就绪(1=回退下载引导)"
-          ],
-          [
-            "download_url",
-            "报告下载地址（空=端点不可达）"
-          ],
-          [
-            "note",
-            "下载说明"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000316,backend_pending",
+            "name": "backend_pending",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000316,download_url",
+            "name": "download_url",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000316,note",
+            "name": "note",
+            "type": "string"
+          }
         ],
         "code": "import json, urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nDL_URL = 'http://10.86.13.201:31281/api/v1/appstore/report/download'\n\ndef _fetch(record_id):\n    body = json.dumps({'record_id': record_id, 'kind': 'test_report'}).encode('utf-8')\n    req = urllib.request.Request(DL_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    record_id = str(p.get('record_id') or '').strip()\n    try:\n        info = _fetch(record_id)\n    except Exception:\n        info = None\n    if not info or not (info.get('download_url') or info.get('url')):\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '测试报告下载端点暂不可达，报告正文见上方输出，可复制保存；后端就绪后可直接下载正式版报告',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': str(info.get('download_url') or info.get('url') or ''),\n            'note': str(info.get('message') or '正式版测试报告已生成，可点击链接下载'),\n        }\n    return ret",
         "flowJson": null,
@@ -1404,7 +1432,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品自动化测试报告》（正式版 9 章节）已生成（被测 offer_id={offerId}，测试流水号：{globalId}）\n整体上线结论：{overall_conclusion}\n\n{test_report}\n\n【报告下载】{value_dl}：地址 {download_url，为空填写\"暂不可用，见上方报告正文\"}（{dl_note}）\n\n【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"
+          "content": "《销售品自动化测试报告》（正式版 9 章节）已生成（被测 offer_id={offerId}，测试流水号：{globalId}）\n整体上线结论：{overall_conclusion}\n\n{test_report}\n\n【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"
         },
         "settings": {
           "stream": false,

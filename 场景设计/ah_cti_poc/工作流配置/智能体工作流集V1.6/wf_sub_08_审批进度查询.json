@@ -25,6 +25,15 @@
             "type": "string",
             "required": false,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,

@@ -1,10 +1,10 @@
 # 产销品加载 AI 应用 · 端到端演示剧本
 
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 实现方式：12 个工作流 JSON + `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点（入口 `wf_main_intent` 经 CODE_DISPATCHER 意图解析路由）
+> 实现方式：11 个子工作流 JSON（`wf_sub_00~wf_sub_10`）+ `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点（演示从智能体（助手）对话开始，智能体按提示词语义识别直调子工作流）
 > 版本：V2.0　日期：2026-09-18（工作流重塑版）
 > 依据：《产销品加载AI应用开发方案.md》、《产销品加载AI应用-细化设计方案.md》、《工作流JSON生成规范.md》、《智能体工作流集V1.6》
-> 用途：现场演示、验收评审、宣传展示（V2.0 重塑：从 Skills 技能包改为 12 个工作流 JSON，各环节拆分独立子工作流；需审核 docs 与演示口径）
+> 用途：现场演示、验收评审、宣传展示（V2.0 重塑：从 Skills 技能包改为 11 个子工作流 JSON，各环节拆分独立子工作流；需审核 docs 与演示口径）
 
 ---
 
@@ -12,7 +12,7 @@
 
 | 版本 | 日期 | 重塑要点 |
 | --- | --- | --- |
-| V2.0 | 2026-09-18 | **实现载体重塑**：废弃 `skills/cpcp-product-worker` 技能包与 `scripts/cpcp_api.py` 子命令脚本，改为 **12 个工作流 JSON**（`wf_main_intent` + `wf_sub_00~10`，位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`），入口 `wf_main_intent` 经 **CODE_DISPATCHER** 确定性意图解析路由到各子流；知识库由 `references/` 迁至 **`knowledge/`**（K1 规范/K2 资费/K3 测试/K4 存量/K5 存量报文/K5FAQ）。执行细节下沉为各子工作流的 **代码节点 / 后端端点**。`flow-A~D`、`SKILL.md`、`CPCP_BASE_URL` 表述废弃，统一为「工作流 JSON / 代码节点 / knowledge/ / 后端端点」，网关 `BASE_URL=http://10.86.13.201:31281`。 |
+| V2.0 | 2026-09-18 | **实现载体重塑**：废弃 `skills/cpcp-product-worker` 技能包与 `scripts/cpcp_api.py` 子命令脚本，改为 **11 个子工作流 JSON**（`wf_sub_00~wf_sub_10`，位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`），演示从智能体（助手）对话开始，智能体按提示词【意图→工作流映射表】语义识别直调各子工作流；知识库由 `references/` 迁至 **`knowledge/`**（K1 规范/K2 资费/K3 测试/K4 存量/K5 存量报文/K5FAQ）。执行细节下沉为各子工作流的 **代码节点 / 后端端点**。`flow-A~D`、`SKILL.md`、`CPCP_BASE_URL` 表述废弃，统一为「工作流 JSON / 代码节点 / knowledge/ / 后端端点」，网关 `BASE_URL=http://10.86.13.201:31281`。 |
 | V3.0 | 2026-09-16 | 需求分析切换逻辑模型模板驱动六步流程（旧 24 字段轨幕本存档见文末备注） |
 | V2.0(旧) | — | 融合商品（多成员）加载幕 1B |
 
@@ -22,8 +22,8 @@
 
 | 项 | 内容 | 检查 |
 | --- | --- | --- |
-| 工作流集 | `工作流配置/智能体工作流集V1.6/` 12 个工作流 JSON 已导入 Agent 运行时：入口 `wf_main_intent`（意图调度，CODE_DISPATCHER 路由）+ `wf_sub_00~10`（各环节子工作流） | [ ] |
-| 意图路由 | `wf_main_intent` 内置 CODE_DISPATCHER 确定性意图解析（封闭枚举 12 意图 + 确认语义 + 实体抽取 + KB 分流 + LLM 最小化兜底）；级联条件分支按 intent 路由：REQ_REPORT→wf_sub_00 / APPROVAL→wf_sub_06 / QUERY_APPROVAL→wf_sub_08 / QUERY_MONITOR→wf_sub_07 / QUERY_OFFER→wf_sub_09 / CONFIRM_EXEC/RESUME_EXEC→执行主干；其余 ASK_INTENT/QNA/OUT_OF_SCOPE→LLM 收口 | [ ] |
+| 工作流集 | `工作流配置/智能体工作流集V1.6/` 11 个子工作流 JSON 已导入 Agent 运行时：`wf_sub_00~10`（各环节子工作流，无独立主调度，由智能体按提示词语义识别直调） | [ ] |
+| 意图路由 | 智能体（助手）内置提示词【意图→工作流映射表】（3.2 节，封闭枚举 11 意图 + 确认语义 + 实体抽取 + KB 分流 + LLM 收口）；语义识别后按映射直调：REQ_REPORT→wf_sub_00 / APPROVAL→wf_sub_06 / QUERY_APPROVAL→wf_sub_08 / QUERY_MONITOR→wf_sub_07 / QUERY_OFFER→wf_sub_09 / 确认执行→执行主干；其余 ASK_INTENT/QNA/OUT_OF_SCOPE→LLM 收口 | [ ] |
 | 模板资产 | `knowledge/` 就绪：K1 规范（3 份）、K2 资费（2 份）、K3 测试（2 份：V2.0 九章节报告模板 + 31 条固定用例规范）、K4 存量（18 份销售品 md）、K5 存量报文（18 份 json+md + `_report.json`）、K5FAQ、`ontology-fields.json`、`seed_offer_groups.json`、`存量产品目录_清洗后.json`（18 条） | [ ] |
 | 后端服务 | 网关在线（`http://10.86.13.201:31281`），`/api/v1/appstore/*` 端点连通：`result/save`、`result/query`、`similar/offer/query`、`test/offer/*`、`approval/submit`、`approval/status`、`product/monitor`、`alert/send`、`ops/root-cause`、`ops/work-orders`、`shelf-compliance`、`validate-nested`、`report/download`、`script/download` 等 | [ ] |
 | 网关配置 | 网关 `BASE_URL=http://10.86.13.201:31281`（替换真实实现仅改此值） | [ ] |
@@ -33,6 +33,7 @@
 | 模型纪律 | 温度 0.2；出参逐字引用不加工；仅依据出参字段判成败；确定逻辑（合并/校验/渲染/路由）一律代码节点执行，LLM 仅在翻译环节参与 | [ ] |
 | 演示数据 | 主线：900102308 5G-A套餐199元（personMainPrc 模板）；融合幕：900113046 5G-A融合套餐199元（familyBasePrc 模板）；权益包备用：900117020（personAddPrc 模板） | [ ] |
 | 反向预置 | 预构造一份含"互斥优惠叠加"缺陷的需求文本（稽核失败幕用）+ 一份价格缺失需求（需求分析出口A 演示用）+ `error_count>0` 监控模拟数据（监控根因工单幕用） | [ ] |
+| 配置规范观察点 | 演示中穿插核对《SitechAI开发平台配置规范.md》符合性：11 JSON 由 `gen_workflows_v2.py` 生成（源码驱动，禁手改）；后端不可达时各代码节点输出 `backend_pending=1` + 降级文案（离线 Demo 仍可演示）；**智能体提示词【调度纪律】语义识别不越权直调**；`sourcePort`/引用三层一致/ item 树在导入平台时已由 2.5 节校验完成，演示仅作顺带确认 | [ ] |
 
 ---
 
@@ -49,7 +50,7 @@
 **系统预期输出：**
 
 【子工作流 0 · 需求提报（wf_sub_00）】
-1. `wf_main_intent` CODE_DISPATCHER 解析 intent=REQ_REPORT → 路由 `wf_sub_00`；
+1. 智能体（助手）按提示词【意图→工作流映射表】语义识别 intent=REQ_REPORT → 直调 `wf_sub_00`；
 2. LLM 需求字段抽取（snake_case 平面 JSON，未提及项空串）→ 代码节点 `render_requirement_report` 确定性渲染《销售品需求提报单》；
 3. 生成需求单号 `req_id` + 待补充判定；无待补充 → 保存需求工单（node_name=requirement_report）+ 触发**需求工单审批**（approval-type=requirement，`submit_release_approval`）→ 进入需求分析。
 
@@ -186,21 +187,21 @@
 
 ---
 
-## 幕2 用户确认门禁（先反向，后正向，CODE_DISPATCHER 语义识别）
+## 幕2 用户确认门禁（先反向，后正向，智能体语义识别）
 
 **幕2.1 反向演示（未确认不配置）：**
 ```
 输入：帮我直接配置落地
-预期：wf_main_intent CODE_DISPATCHER 意图解析拒绝——"请先确认执行方案后再触发智能配置"；
-      未命中 CONFIRM_EXEC，执行主干未加载，save_product_config 未被调用，CRM 无写入记录。
-说明：确认与否由 CODE_DISPATCHER 封闭意图枚举中的确认语义识别保证（后端无确认门禁标记），
-未识别到确认类回复时不得路由执行主干。
+预期：智能体语义识别未命中"确认执行"意图——"请先确认执行方案后再触发智能配置"；
+      未触发执行主干，save_product_config 未被调用，CRM 无写入记录。
+说明：确认与否由智能体提示词【调度纪律】中的确认语义识别保证（后端无确认门禁标记），
+未识别到确认类回复时不得直调执行主干。
 ```
 
 **幕2.2 正向演示：**
 ```
 输入：确认执行
-预期：CODE_DISPATCHER 意图路由命中 CONFIRM_EXEC → 执行主干（wf_sub_02~05 串行自查链路）——
+预期：智能体语义识别命中"确认执行" → 直调执行主干（wf_sub_02~05 串行自查链路）——
   ① 取上下文中执行方案存储键 req_id（沿用原值，不新生成——req_id 由需求提报代码节点生成，LLM 任何环节均不生成 req_id）；
   ② query_node_result 取回 requirement 节点 plan_json（嵌套报文为模板轨唯一事实源）；
   ③ 一次串行跑完各环节（智能配置→稽核→资费→测试，进入幕3，不等用户再发消息）。
@@ -208,16 +209,16 @@
 
 **⚠️ 幕2.3 故障排查（联调常见问题）：若输入"确认执行"后系统再次输出执行方案表格（重复需求分析）**
 ```
-现象：CODE_DISPATCHER 意图解析误判，未命中 CONFIRM_EXEC/RESUME_EXEC 执行主干，
+现象：智能体语义识别误判，未命中"确认执行"意图，
       仅原样重发需求文本重复运行 wf_sub_00/01。
-排查：1) 检查 wf_main_intent【意图路由表】是否含"确认执行/重新执行失败环节→路由执行主干"行，
-         及 CODE_DISPATCHER 确认语义识别约定；
+排查：1) 检查智能体提示词【意图→工作流映射表】是否含"确认执行/重新执行失败环节→直调执行主干"行，
+         及提示词【调度纪律】中确认语义识别约定；
       2) 新会话无 req_id 时，应先运行 query_node_result 检索最近执行方案取回 req_id；
       3) 若落地仍失败，检查落传入参是否为执行方案对象原文（须先经代码节点提取
          result_json 原文，禁止将 query_node_result 的 list 出参数组整体透传）。
 ```
 
-**验收映射：** 确认门禁有效性（CODE_DISPATCHER 确认语义识别）——未确认时配置落地触发率 = 0%。
+**验收映射：** 确认门禁有效性（智能体提示词【调度纪律】确认语义识别）——未确认时配置落地触发率 = 0%。
 
 ---
 
@@ -272,7 +273,7 @@
 - 执行主干全部完成
 ```
 
-**技术口径（V2.0 工作流版）：** `wf_main_intent` CODE_DISPATCHER 命中 CONFIRM_EXEC → 依次路由 `wf_sub_02`（智能配置，`save_product_config` 透传落地，融合新增成员回显代码节点）→ `wf_sub_03`（规格稽核，`realtime_spec_audit` 实时同步返回）→ `wf_sub_05`（资费校准，`check_billing_rule` check_scene=all）→ `wf_sub_04`（自动测试：`test/offer/start` 发起 → `get_test_scenes` 场景清单 → CODE_POLL_PROGRESS 轮询 → `get_test_result` → CODE_MAP_FIXED_CASES 构建 31 条固定用例 → LLM 按 K3 V2.0 九章节渲染报告 → CODE_DOWNLOAD_TEST_REPORT 下载 `/api/v1/appstore/report/download`）；每子工作流经 `result/save` 存储 node_name=config/spec/fee/test（req_id=统一键，后端持久化），打印后进入下一环节。
+**技术口径（V2.0 工作流版）：** 智能体语义识别命中"确认执行" → 依次直调 `wf_sub_02`（智能配置，`save_product_config` 透传落地，融合新增成员回显代码节点）→ `wf_sub_03`（规格稽核，`realtime_spec_audit` 实时同步返回）→ `wf_sub_05`（资费校准，`check_billing_rule` check_scene=all）→ `wf_sub_04`（自动测试：`test/offer/start` 发起 → `get_test_scenes` 场景清单 → CODE_POLL_PROGRESS 轮询 → `get_test_result` → CODE_MAP_FIXED_CASES 构建 31 条固定用例 → LLM 按 K3 V2.0 九章节渲染报告 → CODE_DOWNLOAD_TEST_REPORT 下载 `/api/v1/appstore/report/download`）；每子工作流经 `result/save` 存储 node_name=config/spec/fee/test（req_id=统一键，后端持久化），打印后进入下一环节。
 
 **验收映射：** 执行主干串行纪律（无并行/无跳步）；每环节结果打印率 100%。
 
@@ -298,7 +299,7 @@
 **续跑演示：**
 ```
 输入：重新执行
-预期：CODE_DISPATCHER 命中 RESUME_EXEC，从稽核环节续跑；环节3 不重复落地（CRM 无重复记录）；已成功环节结果回放打印。
+预期：智能体语义识别命中"续跑失败环节"，从稽核环节续跑；环节3 不重复落地（CRM 无重复记录）；已成功环节结果回放打印。
 ```
 
 **修改方案演示：**
@@ -342,7 +343,7 @@
 **正向演示（工作流版）：**
 ```
 输入：发起审批
-预期：CODE_DISPATCHER 意图路由命中 APPROVAL → 路由 wf_sub_06 上线审批（见下幕3C）。
+预期：智能体语义识别命中"发起审批"意图 → 直调 `wf_sub_06` 上线审批（见下幕3C）。
 ```
 
 **验收映射：** 审批发起门禁（未确认时审批推送触发率 0%）。
@@ -479,7 +480,7 @@
 
 ## 幕6 收尾话术（演示结束）
 
-> "以上就是产销品数字员工从需求提报、需求工单审批、需求分析、确认执行，到智能配置、实时稽核、资费校准、自动测试（31 条固定用例、九章节报告、受理验证独立成节）、上线审批双轨、审批通过自动上线、监控运维根因工单闭环，以及存量产品查询与存量合规扫描的端到端闭环。单商品与融合套餐（主商品+成员商品一次加载）均已演示：全流程 18 个销售品套餐均可复现演示（模拟数据取自 `knowledge/` 存量知识库，融合组取自 4 份融合品文档结构化种子），后续接口替换真实实现时，仅需修改网关 `BASE_URL` 指向真实网关，演示路径与 12 个工作流 JSON 保持不变。"
+> "以上就是产销品数字员工从需求提报、需求工单审批、需求分析、确认执行，到智能配置、实时稽核、资费校准、自动测试（31 条固定用例、九章节报告、受理验证独立成节）、上线审批双轨、审批通过自动上线、监控运维根因工单闭环，以及存量产品查询与存量合规扫描的端到端闭环。单商品与融合套餐（主商品+成员商品一次加载）均已演示：全流程 18 个销售品套餐均可复现演示（模拟数据取自 `knowledge/` 存量知识库，融合组取自 4 份融合品文档结构化种子），后续接口替换真实实现时，仅需修改网关 `BASE_URL` 指向真实网关，演示路径与 11 个子工作流 JSON 保持不变。"
 
 ---
 
@@ -487,9 +488,9 @@
 
 | # | 反向操作 | 预期拦截 | 对应验收指标 |
 | --- | --- | --- | --- |
-| 1 | 未确认执行方案直接要求配置 | CODE_DISPATCHER 确认语义识别拒绝 + 提示先确认；执行主干未加载，CRM 无写入 | 确认门禁（配置触发率 0%） |
+| 1 | 未确认执行方案直接要求配置 | 智能体提示词【调度纪律】确认语义识别拒绝 + 提示先确认；执行主干未加载，CRM 无写入 | 确认门禁（配置触发率 0%） |
 | 2 | 稽核不通过（互斥叠加） | 主干中断 + 异常环节/明细/建议 + 二选一引导 | 异常处置完整性 |
-| 3 | 重新执行（续跑） | RESUME_EXEC 从失败环节续跑，不重复落地 | 续跑正确性 |
+| 3 | 重新执行（续跑） | 智能体语义识别命中"续跑失败环节"从失败环节续跑，不重复落地 | 续跑正确性 |
 | 4 | 修改执行方案 | 覆盖写同 req_id，重新确认 | 执行方案一致性 |
 | 5 | 资费冲突（构造） | 主干中断 + 风险清单 | 资费拦截率 ≥95% |
 | 6 | 测试失败（构造测点不一致） | 主干中断 + 失败测点明细 + 受理验证结论；九章节报告第五章缺陷清单溯源 | 异常处置完整性 |
@@ -509,4 +510,4 @@
 
 ---
 
-> **版本备注（V2.0）**：本文档已按「V2.0 工作流重塑」全面更新——实现载体由 `skills/cpcp-product-worker` 技能包改为 **12 个工作流 JSON**（`wf_main_intent` + `wf_sub_00~10`），执行细节下沉为各子工作流代码节点 / 后端 `/api/v1/appstore/*` 端点，知识库迁至 `knowledge/`。示意图：`wf_main_intent`（CODE_DISPATCHER 意图路由）→ `wf_sub_00`（需求提报）→ `wf_sub_01`（需求分析，模板轨）→ 执行主干 `wf_sub_02`（智能配置）→ `wf_sub_03`（规格稽核）→ `wf_sub_05`（资费校准）→ `wf_sub_04`（自动测试）→ `wf_sub_06`（上线审批，审批通过自动上线 + 监控运维方案）→ `wf_sub_08`（审批进度查询双轨）→ `wf_sub_07`（监控运维，根因工单闭环）；旁路只读：`wf_sub_09`（存量查询）、`wf_sub_10`（存量合规扫描）。来源：`工作流配置/智能体工作流集V1.6/` 各 JSON 的 flowRemark 与节点元数据。
+> **版本备注（V2.0）**：本文档已按「V2.0 工作流重塑」全面更新——实现载体由 `skills/cpcp-product-worker` 技能包改为 **11 个子工作流 JSON**（`wf_sub_00~10`），执行细节下沉为各子工作流代码节点 / 后端 `/api/v1/appstore/*` 端点，知识库迁至 `knowledge/`。演示从智能体（助手）对话开始，智能体按提示词【意图→工作流映射表】语义识别直调各子工作流。示意图：智能体（提示词语义识别）→ `wf_sub_00`（需求提报）→ `wf_sub_01`（需求分析，模板轨）→ 执行主干 `wf_sub_02`（智能配置）→ `wf_sub_03`（规格稽核）→ `wf_sub_05`（资费校准）→ `wf_sub_04`（自动测试）→ `wf_sub_06`（上线审批，审批通过自动上线 + 监控运维方案）→ `wf_sub_08`（审批进度查询双轨）→ `wf_sub_07`（监控运维，根因工单闭环）；旁路只读：`wf_sub_09`（存量查询）、`wf_sub_10`（存量合规扫描）。来源：`工作流配置/智能体工作流集V1.6/` 各 JSON 的 flowRemark 与节点元数据。

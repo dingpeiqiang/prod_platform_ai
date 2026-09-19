@@ -16,6 +16,15 @@
             "type": "string",
             "required": true,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,
@@ -125,14 +134,16 @@
       },
       {
         "outputs": [
-          [
-            "record_json",
-            "需求字段原文（list[0].result_json 或原文）"
-          ],
-          [
-            "offer_id",
-            "（模板轨无 offer_id，恒空）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000103,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000103,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
@@ -294,30 +305,36 @@
       },
       {
         "outputs": [
-          [
-            "template_id",
-            "模板标识"
-          ],
-          [
-            "template_name_cn",
-            "模板中文名"
-          ],
-          [
-            "template_product_type",
-            "模板产品类型"
-          ],
-          [
-            "schema_json",
-            "模板 schema JSON 字符串"
-          ],
-          [
-            "schema_file",
-            "模板文件"
-          ],
-          [
-            "missing",
-            "1=模板文件缺失"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_id",
+            "name": "template_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_name_cn",
+            "name": "template_name_cn",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_product_type",
+            "name": "template_product_type",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,schema_json",
+            "name": "schema_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,schema_file",
+            "name": "schema_file",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,missing",
+            "name": "missing",
+            "type": "string"
+          }
         ],
         "code": "import json, os\nfrom typing import Any, Dict\n\nDEFAULT_BASE = r'D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\方案\\templates'\nTEMPLATE_ALIAS = {\n    'personMainPrc': ('个人主资费', '个人主套餐'),\n    'broadBandMainPrc': ('宽带主资费', '宽带主套餐'),\n    'personAddPrc': ('个人附加资费', '个人附加资费'),\n    'broadBandOptSpeedPrc': ('宽带加速包', '宽带附加资费'),\n    'familyBasePrc': ('家庭基础套餐', '家庭基础套餐'),\n    'familyAddPrc': ('家庭附加业务', '家庭附加资费'),\n}\n\ndef _pick(req):\n    r = str(req or '').strip()\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if r == tid or r == cn or r == pt:\n            return tid, cn, pt\n    return 'personMainPrc', '个人主资费', '个人主套餐'\n\nasync def main(args):\n    p = args.params\n    tid, cn, pt = _pick(p.get('template_id') or '')\n    base = str(p.get('template_base') or DEFAULT_BASE)\n    schema_file = '%s.schema.json' % tid\n    schema_path = os.path.join(base, schema_file)\n    content = '{}'\n    missing = '0'\n    try:\n        with open(schema_path, 'r', encoding='utf-8') as f:\n            content = f.read()\n    except Exception:\n        missing = '1'\n    ret: Output = {\n        \"template_id\": tid,\n        \"template_name_cn\": cn,\n        \"template_product_type\": pt,\n        \"schema_json\": content,\n        \"schema_file\": schema_file,\n        \"missing\": missing,\n    }\n    return ret",
         "flowJson": null,
@@ -376,7 +393,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），按模板内各字段的 x-label 提取配置要素，仅提取需求原文可找到（含同义改写）的字段值。\n规则：对照模板 schema 的顶层容器（如 baseInfo/releaseInfo/optionalInfo/phoneMbrInfo 等）与各叶子的 x-label，输出与模板嵌套结构**同构**的 JSON（key=模板字段名），值取需求原文；需求未提及的字段不输出（merge_nested 会以空处理并交相似产品补全）。\n禁止臆造值；禁止把价格类字段照搬相似产品（本节点只输出需求原文提取值）。\n输出要求：仅输出一个与模板嵌套结构同构的 JSON 对象（以{开头、}结尾，key=模板字段名），严禁输出其他文字、标签前缀或说明。"
+              "content": "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），按模板内各字段的 x-label 提取配置要素，仅提取需求原文可找到（含同义改写）的字段值。\n规则：对照模板 schema 的顶层容器（如 baseInfo/releaseInfo/optionalInfo/phoneMbrInfo 等）与各叶子的 x-label，输出与模板嵌套结构**同构**的 JSON（key=模板字段名），值取需求原文；需求未提及的字段不输出（merge_nested 会以空处理并交相似产品补全）。\n禁止臆造值；禁止把价格类字段照搬相似产品（本节点只输出需求原文提取值）。\n输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述与模板嵌套结构同构的元素 JSON 的字符串（即先按规则生成元素 JSON，再将该元素 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"baseInfo\\\":{...},\\\"releaseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。"
             }
           ],
           "inputParameters": [
@@ -429,34 +446,41 @@
       },
       {
         "outputs": [
-          [
-            "result",
-            "校验结果(PASS/PASS_WITH_WARNINGS/FAIL)"
-          ],
-          [
-            "quality_gate",
-            "质量门禁(PASS/FAIL)"
-          ],
-          [
-            "stats",
-            "六项统计 JSON（含可提取命中率）"
-          ],
-          [
-            "missing_required",
-            "待补可提取必填路径 JSON（E31 FAIL 时非空）"
-          ],
-          [
-            "removed",
-            "剔除项 JSON（非法路径/数值）"
-          ],
-          [
-            "yes_norm_hints",
-            "是否类归一提示 JSON"
-          ],
-          [
-            "price_cross_check",
-            "价格交叉核对 JSON（不阻断）"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,result",
+            "name": "result",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+            "name": "quality_gate",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,stats",
+            "name": "stats",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,missing_required",
+            "name": "missing_required",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,removed",
+            "name": "removed",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,yes_norm_hints",
+            "name": "yes_norm_hints",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,price_cross_check",
+            "name": "price_cross_check",
+            "type": "string"
+          }
         ],
         "code": "import json\nimport re\nfrom typing import Any, Dict\n\nNON_EXTRACTABLE_PATTERNS = (\n    r\"(effDate|expDate)$\",\n    r\"(effRuleId|cancelRuleId)$\",\n    r\"(prodId|pricingId|prodPrcId|inProdPrcId|outProdPrcId|billPrcId|conditionCode|groupId)$\",\n    r\"orderNo$\",\n    r\"groupIdMessage$\",\n    r\"subBillPrcIds$\",\n    r\"^optionalInfo\\.prcSmsCfg\\.\",\n    r\"acctItem$\",\n    r\"powerCode$\",\n    r\"familyCata$\",\n    r\"splitRate(9|6)$\",\n    r\"(favValidityVAlue|fixValidityVAlue)$\",\n)\nYES_HINT_WORDS = ('允许', '开通', '支持', '可以', '可办')\n\ndef _is_non_extractable(path):\n    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n\ndef _collect_leaves(schema):\n    leaves = {}\n    def walk(node, prefix=''):\n        props = node.get('properties') if isinstance(node, dict) else None\n        if not isinstance(props, dict):\n            return\n        for k, v in props.items():\n            p2 = (prefix + '.' + k) if prefix else k\n            if isinstance(v, dict) and v.get('type') == 'object':\n                walk(v, p2)\n            else:\n                leaves[p2] = v or {}\n    walk(schema)\n    return leaves\n\ndef _flatten(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if not isinstance(node, dict):\n        return out\n    for k, v in node.items():\n        path = (prefix + '.' + k) if prefix else k\n        if isinstance(v, dict):\n            _flatten(v, path, out)\n        else:\n            out[path] = v\n    return out\n\ndef _to_number(v):\n    if isinstance(v, bool):\n        return None\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    if not s:\n        return None\n    try:\n        return float(s) if '.' in s else int(s)\n    except ValueError:\n        m = re.match(r'^(\\d+(?:\\.\\d+)?)\\s*元?$', s)\n        return float(m.group(1)) if m else None\n\nasync def main(args):\n    p = args.params\n    try:\n        schema = json.loads(str(p.get('schema_json') or '{}'))\n    except Exception:\n        schema = {}\n    try:\n        elements = json.loads(str(p.get('elements_json') or '{}'))\n    except Exception:\n        elements = {}\n    threshold = float(p.get('threshold') or 0.30)\n    leaves = _collect_leaves(schema)\n    flat = _flatten(elements)\n    warnings, removed = [], []\n    yes_norm_hints, price_cross = [], []\n    valid_paths = {}\n    for path, val in flat.items():\n        prop = leaves.get(path)\n        if prop is None:\n            removed.append({'path': path, 'value': val, 'reason': 'invalid_path'})\n            continue\n        valid_paths[path] = (val, prop)\n    for path, (val, prop) in list(valid_paths.items()):\n        if prop.get('type') == 'number' and _to_number(val) is None:\n            removed.append({'path': path, 'value': val, 'reason': 'invalid_number'})\n            del valid_paths[path]\n    for path, (val, prop) in valid_paths.items():\n        label = prop.get('x-label') or ''\n        enum = prop.get('enum') or []\n        is_yes_no = ('是否' in label) or any(e in ('是、否', '是、否、默认') or str(e) in ('是', '否') for e in enum)\n        if is_yes_no and isinstance(val, str) and any(w in val for w in YES_HINT_WORDS):\n            yes_norm_hints.append({'path': path, 'value': val, 'suggest': '是'})\n    extractable_required = [p for p, prop in leaves.items()\n                            if prop.get('x-required') and not _is_non_extractable(p)]\n    hit = [p for p in extractable_required if p in valid_paths]\n    rate = (len(hit) / len(extractable_required)) if extractable_required else 1.0\n    gate = 'PASS' if rate >= threshold else 'FAIL'\n    pmf = _to_number(valid_paths.get('optionalInfo.printContent.prcMonthFee', (None,))[0]) \\\n        if 'optionalInfo.printContent.prcMonthFee' in valid_paths else None\n    ff = _to_number(valid_paths.get('optionalInfo.acctMonth.fixFee', (None,))[0]) \\\n        if 'optionalInfo.acctMonth.fixFee' in valid_paths else None\n    if pmf is not None and ff is not None and pmf != ff:\n        price_cross.append({'paths': ['optionalInfo.printContent.prcMonthFee',\n                                      'optionalInfo.acctMonth.fixFee'],\n                            'values': [pmf, ff],\n                            'note': '套餐月费与固定费不一致，请人工确认（不阻断）'})\n    result = 'FAIL' if gate == 'FAIL' else ('PASS_WITH_WARNINGS' if removed else 'PASS')\n    missing_required = []\n    if gate == 'FAIL':\n        missing_required = [\n            {'path': p, 'label': (leaves[p].get('x-label') or p),\n             'type': (leaves[p].get('type') or ''),\n             'enum': (leaves[p].get('enum') or [])[:6],\n             'hint': '原文是否提到该字段（可同义改写）；类型=%s' % (leaves[p].get('type') or '')}\n            for p in extractable_required if p not in valid_paths\n        ]\n    ret: Output = {\n        'result': result,\n        'quality_gate': gate,\n        'stats': json.dumps({\n            'extracted_total': len(flat),\n            'valid_total': len(valid_paths),\n            'removed_total': len(removed),\n            'required_total': sum(1 for p in leaves.values() if p.get('x-required')),\n            'extractable_required_total': len(extractable_required),\n            'extractable_required_hit': len(hit),\n            'extractable_hit_rate': round(rate, 4),\n            'threshold': threshold,\n        }, ensure_ascii=False),\n        'missing_required': json.dumps(missing_required, ensure_ascii=False),\n        'removed': json.dumps(removed, ensure_ascii=False),\n        'yes_norm_hints': json.dumps(yes_norm_hints, ensure_ascii=False),\n        'price_cross_check': json.dumps(price_cross, ensure_ascii=False),\n    }\n    return ret",
         "flowJson": null,
@@ -515,22 +539,26 @@
       },
       {
         "outputs": [
-          [
-            "payload",
-            "合并后实例化报文 JSON（嵌套结构）"
-          ],
-          [
-            "meta",
-            "逐叶子 source 溯源 JSON"
-          ],
-          [
-            "pending_required",
-            "必填待补充路径逗号串"
-          ],
-          [
-            "template",
-            "模板标识"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,payload",
+            "name": "payload",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,meta",
+            "name": "meta",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,pending_required",
+            "name": "pending_required",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,template",
+            "name": "template",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\n\nPRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')\nPRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')\nEMPTY_MARKS = ('', '待补充', '系统待生成')\nSKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\nSYSTEM_GEN_KEYS = ('orderNo',)\nSAME_PARAMETER_PAIRS = (\n    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n)\n\ndef is_price(label, key):\n    for text in (label, key):\n        t = text or ''\n        if any(m in t for m in PRICE_EXCLUDE_MARKS):\n            continue\n        if any(kw in t for kw in PRICE_KEYWORDS):\n            return True\n    return False\n\ndef strip(v):\n    if v is None:\n        return ''\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    return '' if s in EMPTY_MARKS else s\n\ndef flatten_elements(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if not isinstance(node, dict):\n        return out\n    for k, v in node.items():\n        path = (prefix + '.' + k) if prefix else k\n        if isinstance(v, dict):\n            flatten_elements(v, path, out)\n        else:\n            val = strip(v)\n            if val != '':\n                out[path] = val\n    return out\n\ndef flatten_offer(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if isinstance(node, dict):\n        for k, v in node.items():\n            path = (prefix + '.' + k) if prefix else k\n            flatten_offer(v, path, out)\n    elif isinstance(node, list):\n        for i, v in enumerate(node):\n            flatten_offer(v, '%s[%d]' % (prefix, i), out)\n    else:\n        val = strip(node)\n        if val != '':\n            out[prefix] = val\n    return out\n\ndef merge_body(schema, elements_map, offer_map, meta, path='', pending=None):\n    if pending is None:\n        pending = []\n    out = {}\n    props = schema.get('properties') or {}\n    for key, sub in props.items():\n        cur = (path + '.' + key) if path else key\n        label = sub.get('x-label', key)\n        if sub.get('type') == 'object':\n            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending)\n            continue\n        val = elements_map.get(cur)\n        source = '原始需求' if val is not None else ''\n        if val is None and not is_price(label, key):\n            oval = offer_map.get(cur)\n            if oval is not None:\n                val, source = oval, 'AI补全'\n        if val is None and sub.get('default') is not None:\n            val, source = sub['default'], '默认值'\n        if val is None:\n            val, source = '', ''\n            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n                pending.append(cur)\n        out[key] = val\n        if source:\n            meta[cur] = {'label': label, 'value': val, 'source': source}\n    return out\n\ndef _num(v):\n    if isinstance(v, bool) or v is None:\n        return None\n    try:\n        return float(str(v).strip())\n    except (TypeError, ValueError):\n        return None\n\ndef _path_get(node, path):\n    for part in path.split('.'):\n        if not isinstance(node, dict) or part not in node:\n            return None\n        node = node[part]\n    return node\n\ndef _path_set(node, path, value):\n    parts = path.split('.')\n    cur = node\n    for part in parts[:-1]:\n        if not isinstance(cur, dict):\n            return\n        cur = cur.setdefault(part, {})\n    if isinstance(cur, dict):\n        cur[parts[-1]] = value\n\ndef reconcile_same_parameter(merged, meta, pending):\n    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:\n        na, nb = _num(_path_get(merged, path_a)), _num(_path_get(merged, path_b))\n        src_a = (meta.get(path_a) or {}).get('source', '')\n        src_b = (meta.get(path_b) or {}).get('source', '')\n        def _authority():\n            if na is None and nb is None:\n                return None\n            pri = {'原始需求': 0, '存量提取': 0, 'AI补全': 1, '同源派生': 2, '默认值': 2}\n            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)\n            if na is not None and nb is not None:\n                if na == nb:\n                    return None\n                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)\n            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)\n        auth = _authority()\n        if auth is None:\n            continue\n        value, apath, alabel = auth\n        for path, label in ((path_a, label_a), (path_b, label_b)):\n            if _num(_path_get(merged, path)) != value:\n                _path_set(merged, path, value)\n                meta[path] = {'label': label, 'value': value, 'source': '同源派生(%s)' % alabel}\n                if path in pending:\n                    pending.remove(path)\n\nasync def main(args):\n    p = args.params\n    def load(text):\n        if not isinstance(text, str) or not text.strip():\n            return {}\n        try:\n            return json.loads(text)\n        except Exception:\n            try:\n                t = text.strip()\n                if ':' in t and not t.startswith('{') and not t.startswith('['):\n                    t = t.split(':', 1)[1].strip()\n                return json.loads(t)\n            except Exception:\n                return {}\n    schema = load(p.get('schema_json') or '')\n    elements = load(p.get('elements_json') or '')\n    offer = load(p.get('offer_json') or '')\n    template_id = schema.get('x-template', '')\n    if isinstance(offer, dict) and template_id in offer:\n        offer = offer[template_id]\n    elements_map = flatten_elements(elements)\n    offer_map = flatten_offer(offer)\n    meta, pending = {}, []\n    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending)\n    reconcile_same_parameter(merged, meta, pending)\n    ret: Output = {\n        \"payload\": json.dumps(merged, ensure_ascii=False),\n        \"meta\": json.dumps(meta, ensure_ascii=False),\n        \"pending_required\": ','.join(pending),\n        \"template\": template_id,\n    }\n    return ret",
         "flowJson": null,
@@ -594,26 +622,31 @@
       },
       {
         "outputs": [
-          [
-            "backend_pending",
-            "本体插件是否就绪(1=回退占位)"
-          ],
-          [
-            "valid",
-            "校验结论(1=通过/0=不通过/空=未执行)"
-          ],
-          [
-            "error_list",
-            "违规项JSON（valid=0时非空）"
-          ],
-          [
-            "explain",
-            "推理依据JSON"
-          ],
-          [
-            "note",
-            "说明"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000110,backend_pending",
+            "name": "backend_pending",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000110,valid",
+            "name": "valid",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000110,error_list",
+            "name": "error_list",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000110,explain",
+            "name": "explain",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000110,note",
+            "name": "note",
+            "type": "string"
+          }
         ],
         "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nVALIDATE_URL = 'http://10.86.13.201:31281/api/v1/appstore/validate-nested'\n\ndef _fetch(payload, template_id):\n    body = json.dumps({'payload': payload, 'template_id': template_id}).encode('utf-8')\n    req = urllib.request.Request(VALIDATE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    payload = str(p.get('payload') or '')\n    template_id = str(p.get('template_id') or '')\n    try:\n        info = _fetch(payload, template_id)\n    except Exception:\n        info = None\n    if not info:\n        ret: Output = {\n            'backend_pending': '1',\n            'valid': '',\n            'error_list': '[]',\n            'explain': '',\n            'note': '本体校验闸(validate_nested)端点暂不可达，未执行本体校验；方案仍按原链路给出（单产品闭合）',\n        }\n    else:\n        def _arr(v):\n            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n        ret: Output = {\n            'backend_pending': '0',\n            'valid': str(info.get('valid') or ''),\n            'error_list': _arr(info.get('error_list')),\n            'explain': _arr(info.get('explain')),\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
         "flowJson": null,
@@ -663,14 +696,16 @@
       },
       {
         "outputs": [
-          [
-            "table_text",
-            "markdown 分节多表（业务可读）"
-          ],
-          [
-            "pending_count",
-            "待补充字段数"
-          ]
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000111,table_text",
+            "name": "table_text",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000111,pending_count",
+            "name": "pending_count",
+            "type": "string"
+          }
         ],
         "code": "import json\nfrom typing import Any, Dict\n\nSKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\nSYSTEM_GEN_KEYS = ('orderNo',)\nSOURCE_MAP = {\n    '原始需求': '原始需求提取', 'AI补全': '复用相似产品',\n    '本体推理': '本体推理', '默认值': '默认值', '同源派生': '同源派生',\n}\nSIMILAR_REF_PREFIX = '参考相似产品: '\nINDENT_UNIT = '　'\nOVERVIEW_PATHS = (\n    ('baseInfo.prodPrcName', '资费名称'),\n    ('optionalInfo.printContent.prcMonthFee', '套餐月费'),\n    ('optionalInfo.printContent.containResource', '包含资源'),\n)\n\ndef has_business_value(sub_schema, sub_data):\n    if isinstance(sub_data, dict):\n        for v in sub_data.values():\n            if v not in ('', None, [], {}):\n                return True\n        return False\n    return False\n\ndef fmt_value(v):\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, list):\n        return '、'.join(str(x) for x in v)\n    return str(v)\n\ndef similar_ref(similar_offer):\n    if not isinstance(similar_offer, dict):\n        return ''\n    oid = similar_offer.get('similarOfferId', '')\n    oname = similar_offer.get('similarOfferName', '')\n    if isinstance(oid, (int, float)):\n        oid = str(oid)\n    if not oid or not oname:\n        return ''\n    return '%s%s %s' % (SIMILAR_REF_PREFIX, str(oid), str(oname))\n\ndef collect(schema, data, pending, meta=None, sim_ref=''):\n    sections = []\n    meta = meta or {}\n    def walk(obj_schema, obj_data, depth, path, sec):\n        for key, sub in obj_schema.get('properties', {}).items():\n            label = sub.get('x-label', key)\n            cur = (path + '.' + key) if path else key\n            if sub.get('type') == 'object':\n                sub_data = obj_data.get(key, {}) if isinstance(obj_data, dict) else {}\n                if not has_business_value(sub, sub_data):\n                    continue\n                if depth <= 1:\n                    sec2 = {'title': label, 'rows': []}\n                    sections.append(sec2)\n                    walk(sub, sub_data, depth + 1, cur, sec2)\n                else:\n                    sec['rows'].append(('s', depth, label, '', '', ''))\n                    walk(sub, sub_data, depth + 1, cur, sec)\n            else:\n                if key in SKIP_KEYS or not isinstance(obj_data, dict):\n                    continue\n                if key not in obj_data or obj_data[key] in ('', None):\n                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS:\n                        pending.append((INDENT_UNIT * depth) + label)\n                    continue\n                val = fmt_value(obj_data[key])\n                note_parts = []\n                cond = sub.get('x-show-when')\n                if cond:\n                    note_parts.append('满足条件时展示：' + str(cond).rstrip('才展示展示'))\n                entry = meta.get(cur) or {}\n                source_raw = entry.get('source', '') if isinstance(entry, dict) else ''\n                source = SOURCE_MAP.get(source_raw, source_raw)\n                if source_raw == 'AI补全' and sim_ref:\n                    source = sim_ref\n                sec['rows'].append(('|', depth, label, val, source, '；'.join(note_parts)))\n    top = {'title': '', 'rows': []}\n    sections.append(top)\n    walk(schema, data, 0, '', top)\n    return [s for s in sections if s['rows']]\n\nasync def main(args):\n    p = args.params\n    def load(text):\n        if not isinstance(text, str) or not text.strip():\n            return {}\n        try:\n            return json.loads(text)\n        except Exception:\n            try:\n                t = text.strip()\n                if ':' in t and not t.startswith('{') and not t.startswith('['):\n                    t = t.split(':', 1)[1].strip()\n                return json.loads(t)\n            except Exception:\n                return {}\n    schema = load(p.get('schema_json') or '')\n    data = load(p.get('payload') or '')\n    meta = load(p.get('meta') or '')\n    similar_offer = load(p.get('similar_offer') or '')\n    title = str(p.get('title') or '')\n    if schema.get('x-template') in data:\n        data = data[schema['x-template']]\n    pending = []\n    sim_ref = similar_ref(similar_offer)\n    sections = collect(schema, data, pending, meta, sim_ref)\n    lines = []\n    if title:\n        lines.append('## ' + title)\n        lines.append('')\n    overview = []\n    for dotted, cn in OVERVIEW_PATHS:\n        node = data\n        for k in dotted.split('.'):\n            node = node.get(k) if isinstance(node, dict) else None\n        if node not in ('', None):\n            overview.append('**%s**：%s' % (cn, fmt_value(node)))\n    if overview:\n        lines.append('> **套餐概览**　|　' + '　|　'.join(overview))\n        lines.append('')\n    n = 0\n    for sec in sections:\n        if not sec['rows']:\n            continue\n        n += 1\n        title_txt = '%d. %s' % (n, sec['title']) if sec['title'] else '%d. 配置明细' % n\n        lines.append('**%s**' % title_txt)\n        lines.append('')\n        lines.append('| 字段名称 | 字段值 | 取值来源 | 备注 |')\n        lines.append('| :--- | :--- | :--- | :--- |')\n        for kind, depth, label, val, source, note in sec['rows']:\n            if kind == 's':\n                lines.append('| **%s%s** |  |  |  |' % (INDENT_UNIT * (depth - 1), label))\n            else:\n                pad = INDENT_UNIT * (depth - 1) if depth > 0 else ''\n                lines.append('| %s%s | %s | %s | %s |' % (pad, label, val, source, note))\n        lines.append('')\n    if pending:\n        lines.append('**【待补充字段】**（%d 项，补充后可进入配置）：' % len(pending))\n        lines.append('、'.join(pending))\n        lines.append('')\n    ret: Output = {\n        \"table_text\": '\\n'.join(lines),\n        \"pending_count\": str(len(pending)),\n    }\n    return ret",
         "flowJson": null,
@@ -858,7 +893,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate，为空省略}；统计：{ve_stats，为空省略}\n【本体校验】valid={valid，为空显示\"未执行（validate_nested 端点暂不可达，请人工核对必填项）\"}；违规项：{error_list，为空省略}；说明：{val_note，为空省略}\n\n【待补充必填】{pending_required}\n请核对以上方案：\n- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。"
+          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}（为空省略）；统计：{ve_stats}（为空省略）\n【本体校验】valid={valid}（为空显示\"未执行（validate_nested 端点暂不可达，请人工核对必填项）\"）；违规项：{error_list}（为空省略）；说明：{val_note}（为空省略）\n\n【待补充必填】{pending_required}\n请核对以上方案：\n- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。"
         },
         "settings": {
           "stream": false,

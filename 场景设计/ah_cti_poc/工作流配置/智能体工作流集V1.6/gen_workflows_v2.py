@@ -18,10 +18,10 @@
 #   selector_node2/cond_item/cond_ref/cond_str/edge/workflow/apply_layout/dep_node
 import io, json, os, sys
 from gen_workflows import (
-    nid, inp, out, start_node, end_node, llm_node, plugin_node, code_node,
+    nid, inp, out, code_out, start_node, end_node, llm_node, plugin_node, code_node,
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
-    CODE_SUMMARY_APPROVAL, subflow_node,
+    CODE_SUMMARY_APPROVAL,
 )
 
 # ============================================================
@@ -157,7 +157,7 @@ CODE_RENDER_REQ = (
     "    ret: Output = {\n"
     "        \"report_text\": text,\n"
     "        \"pending_fields\": ','.join(pending),\n"
-    "        \"pending_count\": str(len(pending)),\n"
+    "        \"pending_count\": (str(len(pending)) if pending else ''),\n"
     "        \"req_id\": req_id,\n"
     "        \"elements\": json.dumps(values, ensure_ascii=False),\n"
     "    }\n"
@@ -565,6 +565,7 @@ s00 = []
 s00.append(start_node(1, [
     inp("requirement_text", "需求描述文本（用户原始需求，含产品名称/资费/资源/规则等）", required=True),
     inp("reporter", "提报人（会话用户，未提供可空）", required=False),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 # 需求字段抽取 LLM：snake_case 平面 JSON（render_requirement_report 输入契约）
 s00.append(llm_node(2, "需求字段抽取",
@@ -577,17 +578,14 @@ s00.append(llm_node(2, "需求字段抽取",
     "- change_rule：变更规则；cancel_rule：退订/拆机规则\n"
     "强制同义映射：月费/月租/套餐费+金额→price；每月XX G/含XX流量→resources；XX分钟语音/通话→resources；支持副卡→resources；按月付费→billing_cycle；X月X日生效→effective_way；退订/拆机→cancel_rule。\n"
     "禁止臆造字段值；原文未明确的字段一律空字符串。\n"
-    "输出要求：仅输出一个 JSON 对象（以{开头、}结尾，包含上述字段键），严禁输出其他文字、标签前缀、摘要或说明。",
+    "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述需求字段 JSON 的字符串（即先按字段口径生成字段 JSON，再将该字段 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"name\\\":\\\"...\\\",...}\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。",
     [inp("requirement_text", "引用开始节点需求文本", ref_block=nid(1), ref_rel="requirement_text")],
     [out("elements_json", "需求字段 snake_case 平面 JSON（未提及项为空字符串）")]))
 # render_requirement_report 代码节点：确定性渲染需求提报单 + req_id 生成 + 待补充判定
 s00.append(code_node(3, "需求提报单渲染", CODE_RENDER_REQ,
     [inp("elements_json", "引用节点2需求字段 JSON", ref_block=nid(2), ref_rel="elements_json"),
-     inp("req_id", "需求单号（留空由代码节点按 PLAN+时间戳+3位随机 生成）", content=""),
-     inp("reporter", "提报人（开始节点）", ref_block=nid(1), ref_rel="reporter"),
-     inp("need_summary", "需求概述（可空）", content="")],
-    [("report_text", "《销售品需求提报单》markdown"), ("pending_fields", "待补充字段业务标签逗号串"),
-     ("pending_count", "待补充字段数"), ("req_id", "需求单号"), ("elements", "归一后需求字段 JSON")],
+     inp("reporter", "提报人（开始节点）", ref_block=nid(1), ref_rel="reporter")],
+    [code_out("report_text", 3), code_out("pending_fields", 3), code_out("pending_count", 3), code_out("req_id", 3), code_out("elements", 3)],
     pos=(650, 300)))
 # 待补充判定：pending_count 长度大于0 → 有待补充（port=-1）；否则（=0/空）→ 无待补充（port=0）
 s00.append(selector_node2(4, "待补充判定",
@@ -839,6 +837,7 @@ CODE_OP_VALIDATE_NESTED = CODE_OP_VALIDATE_NESTED.replace("BASE_URL", BASE_URL)
 s01 = []
 s01.append(start_node(101, [
     inp("req_id", "需求单号（环节1 wf_sub_00 生成，PLAN+yyyyMMddHHmmss+3位随机；严禁重新生成）", required=True),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 # 读取需求工单（延续环节1 的 req_id，而非自生成）
 s01.append(plugin_node(102, "读取需求工单", "query_node_result",
@@ -852,7 +851,7 @@ s01.append(plugin_node(102, "读取需求工单", "query_node_result",
     method="get"))
 s01.append(code_node(103, "提取需求字段原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
-    [("record_json", "需求字段原文（list[0].result_json 或原文）"), ("offer_id", "（模板轨无 offer_id，恒空）")],
+    [code_out("record_json", 103), code_out("offer_id", 103)],
     pos=(390, 135)))
 # 产品识别（LLM）：识别产品类型 → 选模板 + 生成要素提取所需上下文
 s01.append(llm_node(104, "产品识别与模板选择",
@@ -881,15 +880,14 @@ s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
     [inp("template_id", "模板标识（节点104选定）", ref_block=nid(104), ref_rel="template_id"),
      inp("template_base", "模板目录（方案/templates，随包迁移）", content=r"D:\工作\sitech\项目\研发\git_workspace\AI\prod_platform_ai\场景设计\ah_cti_poc\方案\templates")],
-    [("template_id", "模板标识"), ("template_name_cn", "模板中文名"), ("template_product_type", "模板产品类型"),
-     ("schema_json", "模板 schema JSON 字符串"), ("schema_file", "模板文件"), ("missing", "1=模板文件缺失")],
+    [code_out("template_id", 106), code_out("template_name_cn", 106), code_out("template_product_type", 106), code_out("schema_json", 106), code_out("schema_file", 106), code_out("missing", 106)],
     pos=(530, 300)))
 # 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON（merge_nested 输入契约）
 s01.append(llm_node(107, "配置要素提取",
     "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），按模板内各字段的 x-label 提取配置要素，仅提取需求原文可找到（含同义改写）的字段值。\n"
     "规则：对照模板 schema 的顶层容器（如 baseInfo/releaseInfo/optionalInfo/phoneMbrInfo 等）与各叶子的 x-label，输出与模板嵌套结构**同构**的 JSON（key=模板字段名），值取需求原文；需求未提及的字段不输出（merge_nested 会以空处理并交相似产品补全）。\n"
     "禁止臆造值；禁止把价格类字段照搬相似产品（本节点只输出需求原文提取值）。\n"
-    "输出要求：仅输出一个与模板嵌套结构同构的 JSON 对象（以{开头、}结尾，key=模板字段名），严禁输出其他文字、标签前缀或说明。",
+    "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述与模板嵌套结构同构的元素 JSON 的字符串（即先按规则生成元素 JSON，再将该元素 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"baseInfo\\\":{...},\\\"releaseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json"),
      inp("schema_json", "引用节点106模板 schema", ref_block=nid(106), ref_rel="schema_json")],
     [out("elements_json", "配置要素（与模板嵌套结构同构的JSON，仅需求原文有值项）")]))
@@ -898,25 +896,20 @@ s01.append(code_node(108, "要素提取质量校验", CODE_VALIDATE_ELEMENTS,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素（节点107提取）", ref_block=nid(107), ref_rel="elements_json"),
      inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30")],
-    [("result", "校验结果(PASS/PASS_WITH_WARNINGS/FAIL)"), ("quality_gate", "质量门禁(PASS/FAIL)"),
-     ("stats", "六项统计 JSON（含可提取命中率）"), ("missing_required", "待补可提取必填路径 JSON（E31 FAIL 时非空）"),
-     ("removed", "剔除项 JSON（非法路径/数值）"), ("yes_norm_hints", "是否类归一提示 JSON"),
-     ("price_cross_check", "价格交叉核对 JSON（不阻断）")],
+    [code_out("result", 108), code_out("quality_gate", 108), code_out("stats", 108), code_out("missing_required", 108), code_out("removed", 108), code_out("yes_norm_hints", 108), code_out("price_cross_check", 108)],
     pos=(650, 300)))
 # merge_nested：代码节点合并需求要素 + 相似产品报文
 s01.append(code_node(109, "方案报文合并", CODE_MERGE_NESTED,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素（节点107提取，已过质量校验）", ref_block=nid(107), ref_rel="elements_json"),
      inp("offer_json", "相似产品报文（节点105 similarOffer.offerInfo，嵌套或templateId包裹）", ref_block=nid(105), ref_rel="similarOffer")],
-    [("payload", "合并后实例化报文 JSON（嵌套结构）"), ("meta", "逐叶子 source 溯源 JSON"),
-     ("pending_required", "必填待补充路径逗号串"), ("template", "模板标识")],
+    [code_out("payload", 109), code_out("meta", 109), code_out("pending_required", 109), code_out("template", 109)],
     pos=(690, 300)))
 # 本体校验闸：merge_nested 后、render_table 前（validate_nested，R-C04/C06；端点不可达时回退占位，方案仍按原链路给出）
 s01.append(code_node(110, "本体校验闸 validate_nested", CODE_OP_VALIDATE_NESTED,
     [inp("payload", "merge_nested 报文（节点109）", ref_block=nid(109), ref_rel="payload"),
      inp("template_id", "模板标识（节点106）", ref_block=nid(106), ref_rel="template_id")],
-    [("backend_pending", "本体插件是否就绪(1=回退占位)"), ("valid", "校验结论(1=通过/0=不通过/空=未执行)"),
-     ("error_list", "违规项JSON（valid=0时非空）"), ("explain", "推理依据JSON"), ("note", "说明")],
+    [code_out("backend_pending", 110), code_out("valid", 110), code_out("error_list", 110), code_out("explain", 110), code_out("note", 110)],
     pos=(770, 300)))
 # render_table：代码节点渲染业务分节表格
 s01.append(code_node(111, "方案表格渲染", CODE_RENDER_TABLE,
@@ -925,7 +918,7 @@ s01.append(code_node(111, "方案表格渲染", CODE_RENDER_TABLE,
      inp("meta", "溯源（节点109）", ref_block=nid(109), ref_rel="meta"),
      inp("similar_offer", "相似产品（节点105，来源列拼接）", ref_block=nid(105), ref_rel="similarOffer"),
      inp("title", "方案标题", content="产销品配置方案（模板轨）")],
-    [("table_text", "markdown 分节多表（业务可读）"), ("pending_count", "待补充字段数")],
+    [code_out("table_text", 111), code_out("pending_count", 111)],
     pos=(920, 300)))
 # 保存 requirement（延续 req_id，node_name=requirement 与既有 wf_sub_02~05 自查链路口径一致）
 s01.append(plugin_node(112, "保存执行方案", "save_node_result",
@@ -948,8 +941,8 @@ s01.append(end_node(113, "结束(方案已生成)",
      inp("quality_gate", "要素提取质量门禁（节点108）", ref_block=nid(108), ref_rel="quality_gate"),
      inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="stats")],
     "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n"
-    "【要素提取质量校验】门禁：{quality_gate，为空省略}；统计：{ve_stats，为空省略}\n"
-    "【本体校验】valid={valid，为空显示\"未执行（validate_nested 端点暂不可达，请人工核对必填项）\"}；违规项：{error_list，为空省略}；说明：{val_note，为空省略}\n\n"
+    "【要素提取质量校验】门禁：{quality_gate}（为空省略）；统计：{ve_stats}（为空省略）\n"
+    "【本体校验】valid={valid}（为空显示\"未执行（validate_nested 端点暂不可达，请人工核对必填项）\"）；违规项：{error_list}（为空省略）；说明：{val_note}（为空省略）\n\n"
     "【待补充必填】{pending_required}\n请核对以上方案：\n"
     "- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n"
     "- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。"))
@@ -1021,7 +1014,8 @@ CODE_FUSION_GROUP_ECHO = (
 # ============================================================
 s2f = []
 s2f.append(start_node(101, [
-    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True)]))
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False)]))
 s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组（list[0].result_json 为执行方案原文）",
     BASE_URL + "/api/v1/appstore/result/query",
@@ -1033,7 +1027,7 @@ s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
     method="get"))
 s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
-    [("record_json", "执行方案原文（list[0].result_json 或原文）"), ("offer_id", "从 result_json 解析的 offer_id")],
+    [code_out("record_json", 106), code_out("offer_id", 106)],
     pos=(530, 300)))
 s2f.append(plugin_node(103, "配置落地", "save_product_config",
     "工具7：执行方案JSON原文透传落地（节点106已从查询记录中提取 result_json 原文）；req_id 与 plan_json 均引用自查链路结果，方案key由后端从 plan_json 的 req_id 键提取；融合组（plan_json.offer_type=融合）时出参含 group（main_offer_id+members[]{role,offer_id}）",
@@ -1049,7 +1043,7 @@ s2f.append(plugin_node(103, "配置落地", "save_product_config",
 s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
     [inp("group_json", "落地配置JSON（节点103出参 product_config，含可选 group）", ref_block=nid(103), ref_rel="product_config"),
      inp("status", "落地总状态（节点103出参 status）", ref_block=nid(103), ref_rel="status")],
-    [("fusion_echo", "融合成员回显行（无 group 时为空串）"), ("fusion_status", "落地状态")],
+    [code_out("fusion_echo", 107), code_out("fusion_status", 107)],
     pos=(900, 300)))
 s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含 offer_id 及可选 group）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
@@ -1077,6 +1071,7 @@ files2f = workflow(
 s3f = []
 s3f.append(start_node(201, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s3f.append(plugin_node(206, "读取配置环节结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 product_id/offer_id 及可选 group）",
@@ -1089,7 +1084,7 @@ s3f.append(plugin_node(206, "读取配置环节结果", "query_node_result",
     method="get", pos=(240, 135)))
 s3f.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点206查询出参 list（记录数组JSON）", ref_block=nid(206), ref_rel="list")],
-    [("record_json", "配置环节结果原文（list[0].result_json）"), ("offer_id", "从结果解析的 offer_id")],
+    [code_out("record_json", 207), code_out("offer_id", 207)],
     pos=(390, 135)))
 s3f.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
     "工具2：自研模拟实时稽核，同步返回；offer_id/config_json 取自 config 环节结果（节点207提取原文与解析的offer_id）；融合组 error_list 可含 group:<role> 类目",
@@ -1132,6 +1127,7 @@ files3f = workflow(
 s5f = []
 s5f.append(start_node(401, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s5f.append(plugin_node(406, "读取配置环节结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文）",
@@ -1144,7 +1140,7 @@ s5f.append(plugin_node(406, "读取配置环节结果", "query_node_result",
     method="get"))
 s5f.append(code_node(407, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点406查询出参 list（记录数组JSON）", ref_block=nid(406), ref_rel="list")],
-    [("record_json", "配置环节结果原文（list[0].result_json）"), ("offer_id", "从结果解析的 offer_id")],
+    [code_out("record_json", 407), code_out("offer_id", 407)],
     pos=(240, 135)))
 s5f.append(plugin_node(402, "计费校验", "check_billing_rule",
     "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则）；config_json 取自 config 环节结果；融合组 compare_list 行可含 member_role 键",
@@ -1451,6 +1447,7 @@ CODE_DOWNLOAD_TEST_REPORT = CODE_DOWNLOAD_TEST_REPORT.replace("BASE_URL", BASE_U
 s4f = []
 s4f.append(start_node(301, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 # 读取 config 环节结果（自查上游，链路上游为 wf_sub_02 智能配置）
 s4f.append(plugin_node(309, "读取配置环节结果", "query_node_result",
@@ -1464,7 +1461,7 @@ s4f.append(plugin_node(309, "读取配置环节结果", "query_node_result",
     method="get", pos=(240, 135)))
 s4f.append(code_node(310, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点309查询出参 list（记录数组JSON）", ref_block=nid(309), ref_rel="list")],
-    [("record_json", "配置环节结果原文（list[0].result_json）"), ("offer_id", "从结果解析的 offer_id")],
+    [code_out("record_json", 310), code_out("offer_id", 310)],
     pos=(390, 135)))
 # 发起测试
 s4f.append(plugin_node(302, "发起测试", "offer_test",
@@ -1491,7 +1488,7 @@ s4f.append(plugin_node(311, "自检稽核结果", "query_node_result",
     method="get", pos=(240, 380)))
 s4f.append(code_node(312, "提取稽核原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点311查询出参 list（记录数组JSON）", ref_block=nid(311), ref_rel="list")],
-    [("record_json", "稽核环节结果原文（list[0].result_json，可含 error_list）")],
+    [code_out("record_json", 312)],
     pos=(390, 380)))
 # 自检 fee 环节结果（供 31 条固定用例计费分项 compare_list/risk_list 填充）
 s4f.append(plugin_node(313, "自检资费结果", "query_node_result",
@@ -1505,13 +1502,12 @@ s4f.append(plugin_node(313, "自检资费结果", "query_node_result",
     method="get", pos=(240, 505)))
 s4f.append(code_node(314, "提取资费原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点313查询出参 list（记录数组JSON）", ref_block=nid(313), ref_rel="list")],
-    [("record_json", "资费环节结果原文（list[0].result_json，可含 compare_list/risk_list）")],
+    [code_out("record_json", 314)],
     pos=(390, 505)))
 # 轮询测试进度（代码节点内嵌轮询，5s 间隔 / 30 分钟超时）
 s4f.append(code_node(304, "轮询测试进度", CODE_POLL_PROGRESS,
     [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
-    [("done", "1=测试完成"), ("failed", "1=测试失败/中止"),
-     ("failIndex", "失败索引"), ("fail_reason", "失败/超时原因（非空标识异常退出）")],
+    [code_out("done", 304), code_out("failed", 304), code_out("failIndex", 304), code_out("fail_reason", 304)],
     pos=(690, 300)))
 # 查询测试结果（done=true 后取 testScenes/orderId/offerInstId/offerName）
 s4f.append(plugin_node(305, "查询测试结果", "get_test_result",
@@ -1529,14 +1525,7 @@ s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
      inp("fee_record", "资费环节原文（节点314提取，可含 compare_list/risk_list）", ref_block=nid(314), ref_rel="record_json"),
      inp("offer_id", "被测销售品ID（节点310解析）", ref_block=nid(310), ref_rel="offer_id"),
      inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json")],
-    [("cases_json", "31条固定用例表 rows JSON（caseId/level/dimension/result）"),
-     ("dimension_summary", "ACC/BILL/CUST pass/fail 统计 JSON"),
-     ("overall_conclusion", "整体上线结论（✅建议上线/⚠️评估风险后上线/❌禁止上线）"),
-     ("defect_list", "缺陷清单 JSON"),
-     ("p0_pass", "P0 全通过 1/0"),
-     ("e26", "被测一致性核对 1 通过 0 不一致"),
-     ("e26_note", "E26 不一致说明"),
-     ("scene_cover", "场景覆盖核对结论（加分号分隔）")],
+    [code_out("cases_json", 315), code_out("dimension_summary", 315), code_out("overall_conclusion", 315), code_out("defect_list", 315), code_out("p0_pass", 315), code_out("e26", 315), code_out("e26_note", 315), code_out("scene_cover", 315)],
     pos=(900, 300)))
 # LLM（306）：按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版 + 受理验证独立成节
 s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
@@ -1584,8 +1573,7 @@ s4f.append(plugin_node(308, "环节结果存储", "save_node_result",
 s4f.append(code_node(316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
     [inp("record_id", "环节存储记录ID（节点308）", ref_block=nid(308), ref_rel="record_id"),
      inp("offer_id", "被测销售品ID（节点310）", ref_block=nid(310), ref_rel="offer_id")],
-    [("backend_pending", "下载插件是否就绪(1=回退下载引导)"), ("download_url", "报告下载地址（空=端点不可达）"),
-     ("note", "下载说明")],
+    [code_out("backend_pending", 316), code_out("download_url", 316), code_out("note", 316)],
     pos=(1520, 300)))
 s4f.append(end_node(307, "结束(测试完成)",
     [inp("offerId", "被测销售品ID", ref_block=nid(310), ref_rel="offer_id"),
@@ -1595,7 +1583,7 @@ s4f.append(end_node(307, "结束(测试完成)",
      inp("download_url", "报告下载地址（节点316）", ref_block=nid(316), ref_rel="download_url"),
      inp("dl_note", "下载说明（节点316）", ref_block=nid(316), ref_rel="note")],
     "《销售品自动化测试报告》（正式版 9 章节）已生成（被测 offer_id={offerId}，测试流水号：{globalId}）\n整体上线结论：{overall_conclusion}\n\n{test_report}\n\n"
-    "【报告下载】{value_dl}：地址 {download_url，为空填写\"暂不可用，见上方报告正文\"}（{dl_note}）\n\n"
+    "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
     "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"))
 files4f = workflow(
     "产销品-自动测试", "子工作流4（阶段4 重写正式版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→get_test_scenes 场景清单→自检 spec(311/312)+fee(313/314)读取供 31 条固定用例填充→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
@@ -1920,7 +1908,7 @@ s6f.append(plugin_node(602, "自查配置结果", "query_node_result",
     method="get", pos=(240, 135)))
 s6f.append(code_node(603, "提取配置原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点602查询出参 list", ref_block=nid(602), ref_rel="list")],
-    [("record_json", "配置环节结果原文"), ("offer_id", "解析的 offer_id")],
+    [code_out("record_json", 603), code_out("offer_id", 603)],
     pos=(390, 135)))
 s6f.append(plugin_node(604, "自查稽核结果", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=spec 取回规格稽核环节结果",
@@ -1933,7 +1921,7 @@ s6f.append(plugin_node(604, "自查稽核结果", "query_node_result",
     method="get", pos=(240, 260)))
 s6f.append(code_node(605, "提取稽核原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点604查询出参 list", ref_block=nid(604), ref_rel="list")],
-    [("record_json", "稽核环节结果原文")],
+    [code_out("record_json", 605)],
     pos=(390, 260)))
 s6f.append(plugin_node(606, "自查资费结果", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=fee 取回资费校准环节结果",
@@ -1946,7 +1934,7 @@ s6f.append(plugin_node(606, "自查资费结果", "query_node_result",
     method="get", pos=(240, 385)))
 s6f.append(code_node(607, "提取资费原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点606查询出参 list", ref_block=nid(606), ref_rel="list")],
-    [("record_json", "资费环节结果原文")],
+    [code_out("record_json", 607)],
     pos=(390, 385)))
 s6f.append(plugin_node(608, "自查测试结果", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=test 取回自动测试环节结果（正式版9章节报告，含受理凭证 orderId/offerInstId）",
@@ -1959,7 +1947,7 @@ s6f.append(plugin_node(608, "自查测试结果", "query_node_result",
     method="get", pos=(240, 510)))
 s6f.append(code_node(609, "提取测试原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点608查询出参 list", ref_block=nid(608), ref_rel="list")],
-    [("record_json", "测试环节结果原文")],
+    [code_out("record_json", 609)],
     pos=(390, 510)))
 s6f.append(plugin_node(610, "自查执行方案", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=requirement 取回执行方案（需求摘要）",
@@ -1972,7 +1960,7 @@ s6f.append(plugin_node(610, "自查执行方案", "query_node_result",
     method="get", pos=(240, 635)))
 s6f.append(code_node(611, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点610查询出参 list", ref_block=nid(610), ref_rel="list")],
-    [("record_json", "执行方案原文")],
+    [code_out("record_json", 611)],
     pos=(390, 635)))
 s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
     [inp("config_result", "配置环节原文（节点603提取）", ref_block=nid(603), ref_rel="record_json"),
@@ -1980,8 +1968,7 @@ s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
      inp("fee_result", "资费环节原文（节点607提取）", ref_block=nid(607), ref_rel="record_json"),
      inp("test_result", "测试环节原文（节点609提取）", ref_block=nid(609), ref_rel="record_json"),
      inp("requirement_result", "执行方案原文（节点611提取）", ref_block=nid(611), ref_rel="record_json")],
-    [("summary_json", "结构化汇总 JSON"), ("product_id", "CRM产品ID"),
-     ("offer_id", "销售品ID")],
+    [code_out("summary_json", 612), code_out("product_id", 612), code_out("offer_id", 612)],
     pos=(540, 385)))
 # 613 LLM：按 flow-C 模板生成《上线审批建议》（环节8 标题头 + 校验看板 + 风险 + 整体结论）
 s6f.append(llm_node(613, "上线审批建议生成",
@@ -2030,10 +2017,7 @@ s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
 s6f.append(code_node(616, "轮询审批状态", CODE_APPROVAL_POLL,
     [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id"),
      inp("product_id", "CRM产品ID（节点612）", ref_block=nid(612), ref_rel="product_id")],
-    [("status", "审批状态（通过/待审/驳回）"), ("approval_id", "审批单号"),
-     ("approval_type", "审批类型"), ("current_node", "当前审批环节"),
-     ("approver", "当前审批人"), ("opinion", "审批意见"),
-     ("update_time", "更新时间"), ("approval_matrix", "审批矩阵 JSON")],
+    [code_out("status", 616), code_out("approval_id", 616), code_out("approval_type", 616), code_out("current_node", 616), code_out("approver", 616), code_out("opinion", 616), code_out("update_time", 616), code_out("approval_matrix", 616)],
     pos=(1140, 385)))
 # 617 分流：status=通过 → 自动衔接环节9；否则 → 环节8 收尾块
 s6f.append(selector_node2(617, "审批状态分流",
@@ -2063,8 +2047,7 @@ s6f.append(llm_node(618, "监控运维方案生成",
 s6f.append(code_node(621, "配置/上线脚本下载", CODE_DOWNLOAD_LAUNCH_SCRIPT,
     [inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
      inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id")],
-    [("backend_pending", "下载插件是否就绪(1=回退下载引导)"), ("download_url", "脚本下载地址（空=端点不可达）"),
-     ("note", "下载说明")],
+    [code_out("backend_pending", 621), code_out("download_url", 621), code_out("note", 621)],
     pos=(1740, 385)))
 s6f.append(end_node(619, "结束(审批通过-自动上线)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
@@ -2073,7 +2056,7 @@ s6f.append(end_node(619, "结束(审批通过-自动上线)",
      inp("download_url", "脚本下载地址（节点621）", ref_block=nid(621), ref_rel="download_url"),
      inp("dl_note", "下载说明（节点621）", ref_block=nid(621), ref_rel="note")],
     "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n"
-    "【配置/上线脚本下载】地址 {download_url，为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"}（{dl_note}）"))
+    "【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）"))
 s6f.append(end_node(620, "结束(审批轮询中)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
      inp("status", "审批状态", ref_block=nid(616), ref_rel="status"),
@@ -2137,11 +2120,7 @@ s7f.append(plugin_node(705, "异常告警", "send_alert",
     [("alert_id", "告警单号", "string"), ("status", "推送状态", "string")]))
 s7f.append(code_node(706, "异动根因推理", CODE_OP_ROOT_CAUSE,
     [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id")],
-    [("backend_pending", "后端根因插件是否就绪(1=占位)"), ("reason_engine", "推理引擎"),
-     ("anomalies", "异动确认JSON"), ("paths", "归因路径JSON"),
-     ("evidence_triples", "证据三元组JSON"), ("swrl_fired", "命中SWRL规则"),
-     ("applied_rules", "应用规则"), ("action_list", "优化建议JSON"),
-     ("note", "占位说明")]))
+    [code_out("backend_pending", 706), code_out("reason_engine", 706), code_out("anomalies", 706), code_out("paths", 706), code_out("evidence_triples", 706), code_out("swrl_fired", 706), code_out("applied_rules", 706), code_out("action_list", 706), code_out("note", 706)]))
 s7f.append(llm_node(707, "根因推理链+优化方案",
     "你是产销品运维归因智能体。基于监控异常数据与 ops_root_cause 出参（backend_pending={backend_pending}，anomalies={anomalies}，paths={paths}，reason_engine={reason_engine}，action_list={action_list}，note={note}），按 flow-D D-2 第6步模板输出根因推理链与优化方案：\n"
     "**异动根因推理链路（{reason_engine，占位时省略}）**\n- 异动确认：{anomalies 摘要：指标 code、delta、message，逐字引用}\n- 归因路径（按 paths 排名）：| 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |\n（逐行展开 topN；paths 为空 → 照实引用出参 message\"已确认异动但未命中归因规则\"，禁止编造根因）\n- 命中规则：{swrl_fired / applied_rules，逗号分隔，空则照实省略}\n- 证据三元组：{evidence_triples 逐字摘要}\n\n"
@@ -2159,8 +2138,7 @@ s7f.append(llm_node(707, "根因推理链+优化方案",
     [out("root_cause_report", "根因推理链+优化方案正文")]))
 s7f.append(code_node(708, "建工单闭环", CODE_OP_CREATE_WO,
     [inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id")],
-    [("backend_pending", "建工单插件是否就绪(1=占位)"), ("work_order_id", "工单号(WO开头，占位时空)"),
-     ("note", "占位说明")]))
+    [code_out("backend_pending", 708), code_out("work_order_id", 708), code_out("note", 708)]))
 s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     [inp("offer_name", "产品名称", ref_block=nid(702), ref_rel="offer_name"),
      inp("product_id", "销售品ID", ref_block=nid(701), ref_rel="product_id"),
@@ -2179,9 +2157,9 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
      inp("chat_id", "会话消息ID", ref_block=nid(701), ref_rel="chat_id")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "【销售品运行监控】{product_id}（{date_range}）\n"
-    "- 产品名称：{offer_name，为空显示\"未登记\"}\n"
+    "- 产品名称：{offer_name}（为空显示\"未登记\"）\n"
     "- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n"
-    "- 告警列表：{alarm_list 摘要，为空显示\"无\"}\n"
+    "- 告警列表：{alarm_list}（为空显示\"无\"）\n"
     "已推送告警，告警单号 {alert_id}\n\n"
     "{root_cause_report}\n"
     "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
@@ -2223,6 +2201,7 @@ s8f = []
 s8f.append(start_node(801, [
     inp("approval_id", "审批单号（可选，与 product_id 至少一个，approval_id 优先）", required=False),
     inp("product_id", "销售品ID（可选，缺失 approval_id 时按此查最新审批单）", required=False),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s8f.append(plugin_node(802, "审批状态查询", "query_approval_status",
     "工具13：自研模拟审批进度查询（approval_id 优先，product_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
@@ -2273,13 +2252,13 @@ s9f.append(start_node(901, [
     inp("product_id", "产品ID（9位存量编码，可选）", required=False),
     inp("name", "产品名称（可选）", required=False),
     inp("keyword", "描述关键词（可选）", required=False),
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
 ]))
 s9f.append(code_node(902, "存量检索", CODE_OP_QUERY_OFFER,
     [inp("product_id", "产品ID", ref_block=nid(901), ref_rel="product_id"),
      inp("name", "产品名称", ref_block=nid(901), ref_rel="name"),
      inp("keyword", "关键词", ref_block=nid(901), ref_rel="keyword")],
-    [("matched", "命中列表 JSON"), ("matched_count", "命中数量"),
-     ("outcome", "unique/multi/none"), ("k4_note", "K4档案说明")]))
+    [code_out("matched", 902), code_out("matched_count", 902), code_out("outcome", 902), code_out("k4_note", 902)]))
 s9f.append(llm_node(903, "查询回显渲染",
     "你是产销品存量产品查询智能体（只读，不触发任何配置/审批/上线动作）。基于存量检索结果（matched={matched}，matched_count={matched_count}，outcome={outcome}，k4_note={k4_note}），按 flow-D D-4 输出查询回显：\n"
     "- outcome=unique（命中唯一）→ 结构化回显（逐字引用，禁止编造）：\n"
@@ -2313,10 +2292,11 @@ files9f = workflow(
 #   开始 → CODE_OP_SHELF_COMPLIANCE(待后端占位) → LLM 合规报告渲染 → 结束
 # ============================================================
 s10f = []
-s10f.append(start_node(1001, []))
+s10f.append(start_node(1001, [
+    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False)]))
 s10f.append(code_node(1002, "存量合规扫描", CODE_OP_SHELF_COMPLIANCE,
     [],
-    [("backend_pending", "合规插件是否就绪(1=占位)"), ("note", "占位说明")]))
+    [code_out("backend_pending", 1002), code_out("note", 1002)]))
 s10f.append(llm_node(1003, "合规报告渲染",
     "你是产销品存量合规扫描智能体。基于 shelf_compliance 出参（backend_pending={backend_pending}，note={note}），按 R-C* 合规口径输出存量合规报告：批量对存量在架产品执行合规检查（字段完整性/本体约束/资费规则等），输出合规结论与整改引导。\n"
     "约束：当前 backend_pending={backend_pending}（shelf_compliance 待后端接入，阶段1.1），本报告须以占位说明（{note}）呈现，禁止编造合规结论/违规项。\n"
@@ -2332,289 +2312,10 @@ files10f = workflow(
     [edge(1001,1002), edge(1002,1003), edge(1003,1004)])
 
 # ============================================================
-# 阶段 6：意图调度主流程 wf_main_intent（dispatcher 代码节点 → 条件分支 → 路由各子流）
 # ============================================================
-
-# ---------------- CODE_DISPATCHER：意图确定性解析（阶段6，从 dispatcher.py 直搬去 argparse） ----------------
-# 输入：message（用户消息）、session_json（会话上下文，取值 {req_id,offer_id,product_id,approval_id,offer_name}）
-# 输出：intent/route/confirmed/needs_llm/entities_json/llm_prompt/matched_rule/kb_target
-CODE_DISPATCHER = (
-    "import json, re\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "INTENTS = ['ASK_INTENT','REQ_REPORT','CONFIRM_EXEC','RESUME_EXEC','APPROVAL',\n"
-    "           'QUERY_APPROVAL','QUERY_MONITOR','QUERY_OFFER','ACCEPTANCE_PLAYBACK',\n"
-    "           'QNA','REJECT','OUT_OF_SCOPE']\n"
-    "CONFIRM_WORDS = ['确认配置','确认执行','确认','同意','可以','执行吧','执行','就这么办',\n"
-    "                 '没问题','好的','开始','继续配置','马上执行','就这么定','可以执行']\n"
-    "RESUME_WORDS = ['重新执行','重跑','续跑','失败环节','从失败','重试','再来一次','重新开始']\n"
-    "NEGATION_WORDS = ['不同意','不确认','暂不','先不','不要执行','先别','不了','拒绝',\n"
-    "                  '再等等','先放一放','不执行']\n"
-    "INTENT_RULES = [\n"
-    "    ('QUERY_APPROVAL',[r'审批.{0,20}(进度|状态|单状态|到哪|到哪了|结果|意见)', r'(审批|审核).{0,6}到哪']),\n"
-    "    ('APPROVAL',[r'(上线|发起|提交).{0,3}(审批|审核)', r'(审批|审核).{0,3}(发起|提交|上线)']),\n"
-    "    ('QUERY_MONITOR',[r'(查询|查看|查).{0,20}(监控|运营|运行监控|运行情况|上线后表现|运营情况)', r'监控.{0,6}(情况|结果|告警)']),\n"
-    "    ('ACCEPTANCE_PLAYBACK',[r'(受理|验收)(验证|测试|结果)', r'查询受理验证', r'受理验证']),\n"
-    "    ('RESUME_EXEC',[r'重新执行', r'重跑', r'续跑', r'从失败.{0,6}(环节|继续)', r'失败环节', r'重试']),\n"
-    "    ('REQ_REPORT',[r'(提报|提交|新增|我要{0,2})(销售品|套餐|产品|需求|方案)', r'需求', r'创建.{0,4}(套餐|销售品)',\n"
-    "       r'(改|调整|变更|修改).{0,8}(一下|配置|方案|需求)', r'改配置',\n"
-    "       r'(我要|帮我|麻烦|请|现在|直接)?(配置|提报|创建|开通|办|生成)(.{0,8})(销售品|套餐|产品|方案|需求|这个|一款)',\n"
-    "       r'^(?:我|现在|直接)?(?:要|想)?配置(?:这个|这款|这个套餐|这款套餐)?$', r'^我要配置$']),\n"
-    "    ('CONFIRM_EXEC',[r'确认配置', r'确认执行', r'确认', r'同意', r'可以', r'执行吧']),\n"
-    "    ('QUERY_OFFER',[r'(查|查询|查看|看看|了解一下|介绍)。?.{0,10}(存量|在架|在售|现有|上架|历史).{0,8}(产品|销售品|套餐|商品)(信息|资料|规格|详情|资费|价格|在售)',\n"
-    "       r'(存量|在架|在售|现有|上架|历史).{0,6}(产品|销售品|套餐|商品).{0,8}(有哪|有哪些|信息|资料|规格|详情|资费|价格|在售)',\n"
-    "       r'(查|查询|查看|看下|了解一下).{0,12}\\d{9}\\b', r'\\d{9}\\b.{0,6}(信息|资料|详情|规格|产品|套餐)',\n"
-    "       r'(?:查|查询|查看|了解|介绍)。?\\s*([\\u4e00-\\u9fa5A-Za-z0-9\\-·元]{1,20}(?:套餐|卡|包|产品)).{0,6}(信息|资料|详情|在售|在架|存量)',\n"
-    "       r'([\\u4e00-\\u9fa5A-Za-z0-9\\-·元]{1,20}(?:套餐|卡|包|产品)).{0,6}(在售|在架|存量信息|的信息|资料|详情)']),\n"
-    "    ('QNA',[r'(规范|规则|标准|怎么|如何|能否|能不能|是否|是什么|有哪些|收费|费用|资费|测试|用例|FAQ|常见|存量)']),\n"
-    "]\n"
-    "RESUME_ONLY_RULES = [r'^重新执行', r'^重跑', r'^续跑', r'^从失败']\n"
-    "BARE_EXEC_RE = re.compile(r'^(?:好|嗯|行|可以|就|那)?\\s*执行\\s*(?:吧|下|一下|！|!|。|\\.)?$')\n"
-    "KB_RULES = [('K1',[r'规范',r'命名',r'管理办法',r'配置规范',r'规则']),('K2',[r'资费',r'费用',r'收费',r'月租',r'套餐档位',r'叠加',r'优惠']),\n"
-    "            ('K3',[r'测试',r'用例',r'自动化',r'验收']),('K5',[r'FAQ',r'常见问题',r'怎么',r'如何',r'能不能']),('K4',[r'存量',r'已上线',r'现有销售品',r'历史产品'])]\n"
-    "REQ_ID_RE = re.compile(r'PLAN\\d{14,20}', re.IGNORECASE)\n"
-    "PRODUCT_ID_RE = re.compile(r'(?<!\\d)(?:P?\\d{9}|\\b\\d{9}\\b)(?!\\d)')\n"
-    "APPROVAL_ID_RE = re.compile(r'APPR?\\d{6,20}', re.IGNORECASE)\n"
-    "OFFER_ID_RE = re.compile(r'(?:OFFER|OFP?)[-_]?\\d{6,20}', re.IGNORECASE)\n"
-    "OFFER_NAME_RE = re.compile(r'([\\u4e00-\\u9fa5A-Za-z0-9]{1,12}(?:卡|包|产品)(?![含括围容装裹]))')\n"
-    "OFFER_NAME_GEN_RE = re.compile(r'([\\u4e00-\\u9fa5A-Za-z0-9\\-·元]{1,14}套餐)')\n"
-    "OFFER_NAME_STOP = ['帮我','请帮','请','我要','我','查询','查看','查','给','把','下','的','和','与','和我的','修改','改','调整','变更','上传']\n"
-    "PRODUCT_DOC_ASK = ['如何','怎么','能否','能不能','是什么','有哪些','请问','帮我查','查一下','介绍一下']\n"
-    "PRODUCT_DOC_KW = ['资费档位','套餐内','套外','生效方式','退订','订购','副卡','计费周期','套餐有效','资费方案','流量结转','断网授权','续订','计费']\n"
-    "PRODUCT_DOC_SECTION = re.compile(r'(?:[一二三四五六七八九十]+、|（[一二三四五六七八九十]+）|\\n\\d+[、.．]|\\s\\d+[、.．])')\n"
-    "NAME_HINTS = ['套餐','产品','销售品','副卡','宽带','天翼','5G','流量包','权益包','加装包','语音包','会员','校园卡']\n"
-    "FEE_HINTS = ['元/月','月租','月费','资费','流量','语音','分钟','GB','G流量','档位','通话','短信','叠加包']\n"
-    "QUERY_WORDS = ['查询','查看','查一下','查查','看看','帮我查','给我查','介绍','有没有','能不能','能否','怎么','如何','是什么','有哪些','多少钱','了解','请问','问一下','存量','信息']\n"
-    "CONFIG_WORDS = ['提报','配置','需求','创建','新增','生成','开通','办一个','报装','上线','落地','要走配置','进入配置','做成','要办','我要办','我要提报','我要配置','配置一下']\n"
-    "\n"
-    "def _clean_name(raw):\n"
-    "    if not raw:\n"
-    "        return ''\n"
-    "    for s in OFFER_NAME_STOP:\n"
-    "        if raw.startswith(s):\n"
-    "            return raw[len(s):]\n"
-    "    return raw\n"
-    "\n"
-    "def _is_product_doc(m):\n"
-    "    if len(m) < 120 or ('？' in m) or ('?' in m):\n"
-    "        return False\n"
-    "    if sum(1 for q in PRODUCT_DOC_ASK if q in m) >= 2:\n"
-    "        return False\n"
-    "    if not PRODUCT_DOC_SECTION.search(m):\n"
-    "        return False\n"
-    "    return sum(1 for k in PRODUCT_DOC_KW if k in m) >= 2\n"
-    "\n"
-    "def _is_desc_no_intent(m):\n"
-    "    if len(m) < 4 or len(m) > 400 or ('？' in m) or ('?' in m):\n"
-    "        return False\n"
-    "    if not any(w in m for w in NAME_HINTS):\n"
-    "        return False\n"
-    "    if sum(1 for f in FEE_HINTS if f in m) < 1:\n"
-    "        return False\n"
-    "    return not any(w in m for w in QUERY_WORDS + CONFIG_WORDS + CONFIRM_WORDS)\n"
-    "\n"
-    "def _has_config(m):\n"
-    "    if any(w in m for w in CONFIG_WORDS + CONFIRM_WORDS):\n"
-    "        return True\n"
-    "    for p in (r'(提报|提交|新增|我要{0,2})(销售品|套餐|产品|需求|方案)', r'需求',\n"
-    "              r'创建.{0,4}(套餐|销售品)', r'(改|调整|变更|修改).{0,8}(一下|配置|方案|需求)', r'改配置',\n"
-    "              r'(我要|帮我|麻烦|请|现在|直接)?(配置|提报|创建|开通|办|生成)(.{0,8})(销售品|套餐|产品|方案|需求|这个|一款)'):\n"
-    "        if re.search(p, m):\n"
-    "            return True\n"
-    "    return False\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    message = str(p.get('message') or '').strip()\n"
-    "    session = {}\n"
-    "    sj = p.get('session_json') or ''\n"
-    "    if isinstance(sj, str) and sj.strip():\n"
-    "        try:\n"
-    "            session = json.loads(sj)\n"
-    "        except Exception:\n"
-    "            session = {}\n"
-    "    if not message:\n"
-    "        ret: Output = {'intent':'', 'route':'NONE', 'confirmed':'false', 'needs_llm':'false',\n"
-    "                       'entities_json':'{}', 'llm_prompt':'', 'matched_rule':'param-missing', 'kb_target':''}\n"
-    "        return ret\n"
-    "    ents = {}\n"
-    "    m = REQ_ID_RE.search(message); ents['req_id'] = m.group(0).upper() if m else (session.get('req_id') or '')\n"
-    "    ents['product_id']=''; ents['offer_id']=''\n"
-    "    m = APPROVAL_ID_RE.search(message); ents['approval_id'] = m.group(0).upper() if m else (session.get('approval_id') or '')\n"
-    "    m = OFFER_ID_RE.search(message)\n"
-    "    if m: ents['offer_id'] = m.group(0)\n"
-    "    else: ents['offer_id'] = session.get('offer_id') or ''\n"
-    "    m = PRODUCT_ID_RE.search(message)\n"
-    "    if m: ents['product_id'] = m.group(0)\n"
-    "    else: ents['product_id'] = session.get('product_id') or (session.get('offer_id') or '')\n"
-    "    m = OFFER_NAME_RE.search(message) or OFFER_NAME_GEN_RE.search(message)\n"
-    "    ents['offer_name'] = _clean_name(m.group(1)) if m else (session.get('offer_name') or '')\n"
-    "    negated = any(w in message for w in NEGATION_WORDS)\n"
-    "    confirmed = (not negated) and any(w in message for w in CONFIRM_WORDS)\n"
-    "    resume = any(w in message for w in RESUME_WORDS)\n"
-    "    intent=''; matched=''\n"
-    "    if resume and not negated and any(re.search(pp, message) for pp in RESUME_ONLY_RULES):\n"
-    "        intent, matched = 'RESUME_EXEC', 'resume-only-regex'\n"
-    "    elif not negated and _is_product_doc(message):\n"
-    "        intent, matched = ('REQ_REPORT' if _has_config(message) else 'ASK_INTENT'), 'product-doc'\n"
-    "    elif not negated and _is_desc_no_intent(message):\n"
-    "        intent, matched = 'ASK_INTENT', 'product-desc-ask'\n"
-    "    else:\n"
-    "        for it, pats in INTENT_RULES:\n"
-    "            if it == 'CONFIRM_EXEC' and negated:\n"
-    "                continue\n"
-    "            hit = None\n"
-    "            for pp in pats:\n"
-    "                if re.search(pp, message):\n"
-    "                    hit = pp\n"
-    "                    break\n"
-    "            if hit:\n"
-    "                intent, matched = it, hit\n"
-    "                break\n"
-    "        if not intent:\n"
-    "            if not negated and len(message.strip()) <= 20 and BARE_EXEC_RE.match(message.strip()):\n"
-    "                intent, matched = 'CONFIRM_EXEC', 'bare-exec-short'\n"
-    "            elif negated:\n"
-    "                intent, matched = 'REJECT', 'negation-regex'\n"
-    "    needs_llm = False\n"
-    "    llm_prompt = ''\n"
-    "    if not intent:\n"
-    "        if any(w in message for w in ['贷款','股票','天气','笑话','你好','你是谁','自我介绍']):\n"
-    "            intent, matched = 'OUT_OF_SCOPE', 'keyword'\n"
-    "        else:\n"
-    "            needs_llm = True\n"
-    "            matched = 'llm-fallback'\n"
-    "            llm_prompt = json.dumps({'task':'intent_classify','user_message':message[:500],\n"
-    "                'allowed_intents':INTENTS,'known_entities':{k:v for k,v in ents.items() if v}},\n"
-    "                ensure_ascii=False)\n"
-    "    route = {'ASK_INTENT':'ASK','REQ_REPORT':'A','CONFIRM_EXEC':'B','RESUME_EXEC':'B',\n"
-    "             'APPROVAL':'C','QUERY_APPROVAL':'D1','QUERY_MONITOR':'D2','QUERY_OFFER':'D4',\n"
-    "             'ACCEPTANCE_PLAYBACK':'B','QNA':'QNA','REJECT':'NONE','OUT_OF_SCOPE':'NONE'}.get(intent,'NONE')\n"
-    "    kb = ''\n"
-    "    if intent == 'QNA':\n"
-    "        for k, pats in KB_RULES:\n"
-    "            if any(re.search(pp, message) for pp in pats):\n"
-    "                kb = k\n"
-    "                break\n"
-    "    ret: Output = {\n"
-    "        'intent': intent, 'route': route,\n"
-    "        'confirmed': 'true' if confirmed else 'false',\n"
-    "        'resume': 'true' if resume else 'false',\n"
-    "        'needs_llm': 'true' if needs_llm else 'false',\n"
-    "        'entities_json': json.dumps(ents, ensure_ascii=False),\n"
-    "        'llm_prompt': llm_prompt, 'matched_rule': matched, 'kb_target': kb,\n"
-    "    }\n"
-    "    return ret"
-)
-
-# ---------------- wf_main_intent 意图调度主流程（阶段6） ----------------
-#   start(message, session_json) → CODE_DISPATCHER 确定性意图解析 →
-#   条件分支级联：REQ_REPORT→wf_sub_00 / APPROVAL→wf_sub_06 / QUERY_APPROVAL→wf_sub_08 /
-#   QUERY_MONITOR→wf_sub_07 / QUERY_OFFER→wf_sub_09 / CONFIRM_EXEC|RESUME_EXEC→wf_merged_exec /
-#   其余（ASK_INTENT/needs_llm/QNA/REJECT/OUT_OF_SCOPE）→ LLM 澄清/应答 → 结束
-mini = []
-mini.append(start_node(2001, [
-    inp("message", "用户最新消息（待解析意图的下发文本）", required=True),
-    inp("session_json", "会话上下文 JSON（可选，含 req_id/offer_id/product_id/approval_id/offer_name，供实体兜底）", required=False),
-]))
-mini.append(code_node(2002, "意图解析", CODE_DISPATCHER,
-    [inp("message", "用户消息（节点2001）", ref_block=nid(2001), ref_rel="message"),
-     inp("session_json", "会话上下文（节点2001）", ref_block=nid(2001), ref_rel="session_json")],
-    [("intent", "判定意图(封闭枚举)"), ("route", "路由(A/B/C/D1/D2/D4/QNA/ASK/NONE)"),
-     ("confirmed", "是否确认(执行/配置)"), ("resume", "是否续跑"),
-     ("needs_llm", "规则未命中需LLM兜底"), ("entities_json", "抽取实体 JSON"),
-     ("llm_prompt", "LLM 兜底最小化 prompt"), ("matched_rule", "命中规则"),
-     ("kb_target", "知识库目标(K1~K5)")],
-    pos=(240, 300)))
-# 级联条件分支：每个 selector port-1 命中即路由到对应子流，port=0 进入下一判定
-mini.append(selector_node2(2003, "REQ_REPORT分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("REQ_REPORT"))])]))
-mini.append(subflow_node(2004, "需求提报", "需求提报（环节1）：路由自 wf_main_intent REQ_REPORT", "wf_sub_00",
-    [inp("req_id", "批次号（会话内可生成）", ref_block=nid(2002), ref_rel="entities_json")],
-    [("req_id", "批次号")], pos=(2004, 300)))
-mini.append(selector_node2(2005, "APPROVAL分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("APPROVAL"))])]))
-mini.append(subflow_node(2006, "上线审批", "上线审批（环节8/9）：路由自 wf_main_intent APPROVAL", "wf_sub_06",
-    [inp("req_id", "执行批次号（实体 req_id）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("chat_id", "会话消息ID", ref_block=nid(2001), ref_rel="session_json")],
-    [("approval_id", "审批单号"), ("status", "审批状态")], pos=(2006, 300)))
-mini.append(selector_node2(2007, "QUERY_APPROVAL分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("QUERY_APPROVAL"))])]))
-mini.append(subflow_node(2008, "审批进度查询", "审批进度查询（环节8查询）：路由自 wf_main_intent QUERY_APPROVAL", "wf_sub_08",
-    [inp("approval_id", "审批单号（实体）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("product_id", "销售品ID（实体）", ref_block=nid(2002), ref_rel="entities_json")],
-    [("approval_summary", "审批状态摘要")], pos=(2008, 300)))
-mini.append(selector_node2(2009, "QUERY_MONITOR分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("QUERY_MONITOR"))])]))
-mini.append(subflow_node(2010, "监控运维", "监控运维（环节9）：路由自 wf_main_intent QUERY_MONITOR", "wf_sub_07",
-    [inp("product_id", "销售品ID（实体）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("chat_id", "会话消息ID", ref_block=nid(2001), ref_rel="session_json")],
-    [("ops_report", "运营报告/摘要")], pos=(2010, 300)))
-mini.append(selector_node2(2011, "QUERY_OFFER分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("QUERY_OFFER"))])]))
-mini.append(subflow_node(2012, "存量产品查询", "存量产品查询（只读）：路由自 wf_main_intent QUERY_OFFER", "wf_sub_09",
-    [inp("product_id", "产品ID（实体）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("name", "产品名称（实体 offer_name）", ref_block=nid(2002), ref_rel="entities_json")],
-    [("query_reply", "查询回显")], pos=(2012, 300)))
-mini.append(selector_node2(2013, "CONFIRM_EXEC分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("CONFIRM_EXEC"))])]))
-mini.append(subflow_node(2014, "执行主干", "执行主干（配置→稽核→测试→资费）：路由自 wf_main_intent CONFIRM_EXEC", "wf_merged_exec",
-    [inp("req_id", "执行批次号（实体）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("confirmed", "确认标志（=confirmed）", ref_block=nid(2002), ref_rel="confirmed")],
-    [("status", "执行状态"), ("summary", "四环节汇总")], pos=(2014, 300)))
-mini.append(selector_node2(2015, "RESUME_EXEC分派",
-    [dep_node(2002, "意图解析", ["intent"])],
-    [(-1, [cond_item(cond_ref(2002, "intent", "意图解析"), 1, cond_str("RESUME_EXEC"))])]))
-mini.append(subflow_node(2016, "执行主干续跑", "执行主干续跑（失败环节重跑）：路由自 wf_main_intent RESUME_EXEC", "wf_merged_exec",
-    [inp("req_id", "执行批次号（实体）", ref_block=nid(2002), ref_rel="entities_json"),
-     inp("confirmed", "确认标志", ref_block=nid(2002), ref_rel="confirmed")],
-    [("status", "执行状态"), ("summary", "四环节汇总")], pos=(2016, 300)))
-# 其余意图（ASK_INTENT 澄清 / needs_llm 兜底 / QNA / REJECT / OUT_OF_SCOPE）→ LLM 应答节点（2017）
-mini.append(llm_node(2017, "意图澄清/应答",
-    "你是产销品意图调度收口智能体。规则未能明确路由到具体子流，需按情形给出收口应答。输入：intent={intent}，needs_llm={needs_llm}，llm_prompt={llm_prompt}，route={route}，matched_rule={matched_rule}，kb_target={kb_target}，用户消息={message}。\n"
-    "按下列情形处理（仅依据输入，禁止自由文本/禁止执行业务）：\n"
-    "- intent=ASK_INTENT → 向用户澄清：\"您是要查询该产品，还是要进行配置？请明确回复【查询】或【配置】。\"\n"
-    "- needs_llm=true（规则未命中）→ 基于 llm_prompt 在封闭枚举（ASK_INTENT/REQ_REPORT/CONFIRM_EXEC/RESUME_EXEC/APPROVAL/QUERY_APPROVAL/QUERY_MONITOR/QUERY_OFFER/ACCEPTANCE_PLAYBACK/QNA）内单选意图，并回填实体，输出\"请确认：您是要{{选定的意图动作}}吗？\"\n"
-    "- intent=QNA（kb_target={kb_target}）→ 依据对应知识库要点简答，无法回答时提示\"可提供更多上下文\"。\n"
-    "- intent=REJECT → 明确不执行，输出\"好的，已取消，未执行任何操作。\"\n"
-    "- intent=OUT_OF_SCOPE → 输出\"该问题超出产销品场景范围，我暂无法处理。\"\n"
-    "输出要求：仅输出收口应答正文（对应出参 reply），不输出其他多余文字。",
-    [inp("intent", "意图（节点2002）", ref_block=nid(2002), ref_rel="intent"),
-     inp("needs_llm", "需LLM兜底（节点2002）", ref_block=nid(2002), ref_rel="needs_llm"),
-     inp("llm_prompt", "兜底prompt（节点2002）", ref_block=nid(2002), ref_rel="llm_prompt"),
-     inp("route", "路由（节点2002）", ref_block=nid(2002), ref_rel="route"),
-     inp("matched_rule", "命中规则（节点2002）", ref_block=nid(2002), ref_rel="matched_rule"),
-     inp("kb_target", "知识库目标（节点2002）", ref_block=nid(2002), ref_rel="kb_target"),
-     inp("message", "用户消息（节点2001）", ref_block=nid(2001), ref_rel="message")],
-    [out("reply", "收口应答正文")], pos=(2017, 300)))
-mini.append(end_node(2018, "结束(意图调度完成)",
-    [inp("intent", "判定意图", ref_block=nid(2002), ref_rel="intent"),
-     inp("route", "路由", ref_block=nid(2002), ref_rel="route"),
-     inp("reply", "收口应答（未路由到子流时）", ref_block=nid(2017), ref_rel="reply")],
-    "{reply}"))
-filesMain = workflow(
-    "产销品-意图调度主流程", "意图调度主流程（阶段6 新增，由原 skill dispatcher.py 确定性逻辑重塑为 CODE_DISPATCHER 代码节点 + 意图路由表）。单入参 message(+session_json)：CODE_DISPATCHER 确定性意图解析（封闭枚举12意图+确认门禁+实体抽取+产品文档/描述判定+KB分流+LLM最小化兜底）→级联条件分支按 intent 路由到各子流：REQ_REPORT→wf_sub_00（需求提报）/APPROVAL→wf_sub_06（上线审批）/QUERY_APPROVAL→wf_sub_08（审批进度查询）/QUERY_MONITOR→wf_sub_07（监控运维）/QUERY_OFFER→wf_sub_09（存量查询）/CONFIRM_EXEC|RESUME_EXEC→wf_merged_exec（执行主干）；其余（ASK_INTENT澄清/needs_llm兜底/QNA/REJECT/OUT_OF_SCOPE）→LLM 收口应答节点并结束。", "wf_main_intent", mini,
-    [edge(2001,2002),
-     edge(2002,2003), edge(2003,2004,-1), edge(2003,2005,0),
-     edge(2005,2006,-1), edge(2005,2007,0),
-     edge(2007,2008,-1), edge(2007,2009,0),
-     edge(2009,2010,-1), edge(2009,2011,0),
-     edge(2011,2012,-1), edge(2011,2013,0),
-     edge(2013,2014,-1), edge(2013,2015,0),
-     edge(2015,2016,-1), edge(2015,2017,0),
-     edge(2017,2018)])
-
+# 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10；意图调度交由智能体层，无 wf_main_intent）
 # ============================================================
-# 写出（阶段0~6：00~10 + wf_main_intent）
-# ============================================================
-for fn, data in [("wf_main_intent_意图调度.json", filesMain),
-                 ("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分析.json", files01),
+for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分析.json", files01),
                  ("wf_sub_02_智能配置.json", files2f), ("wf_sub_03_规格稽核.json", files3f),
                  ("wf_sub_04_自动测试.json", files4f), ("wf_sub_05_资费校准.json", files5f),
                  ("wf_sub_06_上线审批.json", files6f), ("wf_sub_07_监控运维.json", files7f),

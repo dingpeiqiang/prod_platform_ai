@@ -5,18 +5,18 @@
 > - **第 2 章 平台配置清单**（原《产销品加载AI应用-平台配置清单.md》）——数字员工创建、工作流 JSON 导入、知识库挂载与部署后自测逐项核对。
 >
 > 版本：V2.0 工作流重塑　日期：2026-09-18
-> 相关：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.4、《智能体工作流集V1.6》（12 个工作流 JSON）
+> 相关：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.4、《智能体工作流集V1.6》（11 个子工作流 JSON）
 
 ---
 
 # 第 1 章 开发工作清单
 
-> 平台：12 个工作流 JSON（`智能体工作流集V1.6/`，gen_workflows_v2.py 生成）+ 后端 /api/v1/appstore/* 适配端点
+> 平台：11 个子工作流 JSON（`智能体工作流集V1.6/`，gen_workflows_v2.py 生成）+ 后端 /api/v1/appstore/* 适配端点
 > 版本：V2.0　日期：2026-09-18
 > 依据：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.4、《场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/gen_workflows_v2.py》
 > 用途：需要**代码开发**的接口/服务/数据/工作流工作清单（平台工作流导入与联调见第 2 章，本清单不含）
 >
-> V2.0 变更（2026-09-18）：**工作流重塑（V2.0）**——① 实现载体由「Skills 技能包 + 脚本子命令」整体废弃，改为 **12 个工作流 JSON**（wf_main_intent_意图路由 + wf_sub_00~wf_sub_10，由 gen_workflows_v2.py 在 `工作流配置/智能体工作流集V1.6/` 生成）；② 原脚本内嵌逻辑（build_plan/extract_record/poll_test_progress/审批轮询/下载等）改以 **type=6 代码节点**内嵌于工作流（CODE_MERGE_NESTED/CODE_RENDER_TABLE/CODE_VALIDATE_ELEMENTS/CODE_GET_TEMPLATE/CODE_RENDER_REQ/CODE_MAP_FIXED_CASES/CODE_EXTRACT_RECORD/CODE_POLL_PROGRESS/CODE_DISPATCHER/CODE_SUMMARY_APPROVAL/CODE_FUSION_GROUP_ECHO/CODE_APPROVAL_POLL/CODE_DOWNLOAD_LAUNCH_SCRIPT/CODE_DOWNLOAD_TEST_REPORT/CODE_OP_* 等）；③ 后端新增 **7 个适配端点**（AppStoreV16Controller，POST /api/v1/appstore/* 的 ops/root-cause、ops/work-orders、shelf-compliance、validate-nested、explain、report/download、script/download），均已实现、编译通过、git 提交（commit ee6f5a8），待后端重新部署使 6174 生效；④ 网关 BASE_URL=http://10.86.13.201:31281/api/v1/appstore/*（需确认网关代理到 6174）；⑤ 知识库迁至 `knowledge/`（原 references/ 废弃）。
+> V2.0 变更（2026-09-18）：**工作流重塑（V2.0）**——① 实现载体由「Skills 技能包 + 脚本子命令」整体废弃，改为 **11 个子工作流 JSON**（wf_sub_00~wf_sub_10，由 gen_workflows_v2.py 在 `工作流配置/智能体工作流集V1.6/` 生成，无意图调度主流程，由智能体按提示词【意图→工作流映射表】语义识别直调）；② 原脚本内嵌逻辑（build_plan/extract_record/poll_test_progress/审批轮询/下载等）改以 **type=6 代码节点**内嵌于工作流（CODE_MERGE_NESTED/CODE_RENDER_TABLE/CODE_VALIDATE_ELEMENTS/CODE_GET_TEMPLATE/CODE_RENDER_REQ/CODE_MAP_FIXED_CASES/CODE_EXTRACT_RECORD/CODE_POLL_PROGRESS/CODE_SUMMARY_APPROVAL/CODE_FUSION_GROUP_ECHO/CODE_APPROVAL_POLL/CODE_DOWNLOAD_LAUNCH_SCRIPT/CODE_DOWNLOAD_TEST_REPORT/CODE_OP_* 等）；③ 后端新增 **7 个适配端点**（AppStoreV16Controller，POST /api/v1/appstore/* 的 ops/root-cause、ops/work-orders、shelf-compliance、validate-nested、explain、report/download、script/download），均已实现、编译通过、git 提交（commit ee6f5a8），待后端重新部署使 6174 生效；④ 网关 BASE_URL=http://10.86.13.201:31281/api/v1/appstore/*（需确认网关代理到 6174）；⑤ 知识库迁至 `knowledge/`（原 references/ 废弃）。
 > V1.10 变更（2026-09-14）：**配置上线脚本下载链接 + 受理验证归并为自动测试子集**——① 接口3 save_product_config 落地成功时后端生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url`；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，未落地 404）；③ flow-B 环节1 输出模板新增"配置上线脚本下载链接"行；④ 执行主干改回四环节（智能配置→稽核→资费校准→自动测试），受理验证=环节4 测试报告内子集小节，不设独立环节5 与触发词；flow-C 看板"受理验证"行并入"自动测试（含受理验证）"（4 项 ✅）。
 > V1.9 变更（2026-09-14）：字段体系全量重构对齐 V3.0 口径——① 接口1 出参 offerInfo fields 由四类18字段改 3 模块/9 分类 24 字段（toFields18 重写）；② 后端 FieldOntologyService 字段注册表重构（套餐档位唯一待补充项、套餐编码默认"系统待生成"、来源两态【原始需求】/【AI补全】）；③ cpcp_api.py build_plan 改五列模块表格输出（CATEGORY_MODULE/SOURCE_LABEL 常量）；④ 工具3 确认门禁描述按 V2.2 修订（实际已移除，本版同步清理残留描述）；⑤ 触发词"确认配置/上线审批/确认上线"对齐。
 
@@ -24,7 +24,7 @@
 
 ## 1.0 开发范围总述（V2.0 工作流重塑版口径）
 
-- 实现方式（V2.0 起基线）：**12 个工作流 JSON**——原「Skills 技能包 + 脚本子命令」承载层整体废弃，改为 **12 个工作流 JSON**（`wf_main_intent_意图路由` + `wf_sub_00~wf_sub_10`，由 `gen_workflows_v2.py` 在 `工作流配置/智能体工作流集V1.6/` 生成）；确定性逻辑内嵌为 **type=6 代码节点**（见 1.4 节清单）；后端 14 条能力接口模拟实现**原样保留**（契约不变），并新增 7 个适配端点；
+- 实现方式（V2.0 起基线）：**11 个子工作流 JSON**——原「Skills 技能包 + 脚本子命令」承载层整体废弃，改为 **11 个子工作流 JSON**（`wf_sub_00~wf_sub_10`，由 `gen_workflows_v2.py` 在 `工作流配置/智能体工作流集V1.6/` 生成）；无意图调度主流程，由**智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调**各子工作流；确定性逻辑内嵌为 **type=6 代码节点**（见 1.4 节清单）；后端 14 条能力接口模拟实现**原样保留**（契约不变），并新增 7 个适配端点；
 - 原脚本子命令开发项（build_plan/extract_record/poll_test_progress/cpcp_api.py 各子命令）**不再作为独立开发项**——已改为工作流内嵌代码节点与后端端点承载（对应 CODE_GET_TEMPLATE/CODE_RENDER_REQ/CODE_MAP_FIXED_CASES/CODE_EXTRACT_RECORD/CODE_POLL_PROGRESS/CODE_DOWNLOAD_* 等）；
 - 13 个工具对应的 HTTP 能力接口**全部自研实现并采用模拟结果输出**，不再对接外部 ApiID；
 - 模拟服务统一部署于 `http://10.86.13.201:31281/api/v1/appstore/*`（网关，需确认代理到后端端口 **6174**；已有 Mock 服务框架，其上补齐/改造 14 条路由 + 新增 7 条适配端点）；
@@ -101,16 +101,16 @@
 
 ## 1.3 工作流塑造与内嵌代码节点（V2.0：废弃 skills/cpcp-product-worker 与 scripts/cpcp_api.py 子命令层）
 
-> 原「Skills 技能包 + 脚本子命令」承载层整体废弃，确定性逻辑改由 **12 个工作流 JSON（gen_workflows_v2.py 在 `工作流配置/智能体工作流集V1.6/` 生成）内嵌 type=6 代码节点**承载。12 个工作流：`wf_main_intent_意图路由` + `wf_sub_00~wf_sub_10`（上报总结/需求分析/稽核/资费校准/自动测试/审批/监控运维/上线单查询/产品查询/嵌套校验等）。
+> 原「Skills 技能包 + 脚本子命令」承载层整体废弃，确定性逻辑改由 **11 个子工作流 JSON（gen_workflows_v2.py 在 `工作流配置/智能体工作流集V1.6/` 生成）内嵌 type=6 代码节点**承载。11 个子工作流：`wf_sub_00~wf_sub_10`（上报总结/需求分析/稽核/资费校准/自动测试/审批/监控运维/上线单查询/产品查询/嵌套校验等）。无意图调度主流程，由智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调。
 
 | # | 工作项 | 说明 | 状态 |
 | --- | --- | --- | --- |
-| 1 | `gen_workflows_v2.py` 工作流生成器 | 由 Python 脚本统一生成 12 个工作流 JSON；BASE_URL=网关 `http://10.86.13.201:31281/api/v1/appstore/*`（需确认代理到 6174）；代码节点以 urllib 直连后端适配端点 | ✅ 已生成（`工作流配置/智能体工作流集V1.6/` 12 个 JSON） |
+| 1 | `gen_workflows_v2.py` 工作流生成器 | 由 Python 脚本统一生成 11 个子工作流 JSON；BASE_URL=网关 `http://10.86.13.201:31281/api/v1/appstore/*`（需确认代理到 6174）；代码节点以 urllib 直连后端适配端点 | ✅ 已生成（`工作流配置/智能体工作流集V1.6/` 11 个 JSON） |
 | 2 | 代码节点·方案/字段组装 | CODE_GET_TEMPLATE（模板获取）、CODE_RENDER_REQ（req_id 生成 PLAN+时间戳+3位随机 & plan_json 组装）、CODE_MAP_FIXED_CASES（固定用例映射）、CODE_MERGE_NESTED（嵌套结果合并）、CODE_RENDER_TABLE（五列模块表格渲染） | ✅ 已内嵌 |
 | 3 | 代码节点·校验/提取 | CODE_VALIDATE_ELEMENTS（字段要素校验）、CODE_EXTRACT_RECORD（取 list[0].result_json，空报 E5）；对应原 extract_record | ✅ 已内嵌 |
 | 4 | 代码节点·轮询/汇总 | CODE_POLL_PROGRESS（测试进度轮询，对应原 poll_test_progress）、CODE_APPROVAL_POLL（审批轮询）、CODE_SUMMARY_APPROVAL（审批汇总）、CODE_FUSION_GROUP_ECHO（融合/单品分组回显） | ✅ 已内嵌 |
-| 5 | 代码节点·运维/下载（OP_*） | CODE_DISPATCHER（意图分发）、CODE_OP_ROOT_CAUSE（根因分析）、CODE_OP_CREATE_WO（工单创建）、CODE_OP_SHELF_COMPLIANCE（上架合规）、CODE_OP_QUERY_OFFER（产品查询）、CODE_OP_VALIDATE_NESTED（嵌套校验）、CODE_DOWNLOAD_TEST_REPORT（测试报告下载）、CODE_DOWNLOAD_LAUNCH_SCRIPT（上线脚本下载） | ✅ 已内嵌 |
-| 6 | 网关联调 | 网关 BASE_URL 代理至后端 6174 确认；12 工作流内代码节点调用 7 个新增适配端点与 14 条既有路由逐一连通 | ⏳ 待后端重启与联调 |
+| 5 | 代码节点·运维/下载（OP_*） | CODE_OP_ROOT_CAUSE（根因分析）、CODE_OP_CREATE_WO（工单创建）、CODE_OP_SHELF_COMPLIANCE（上架合规）、CODE_OP_QUERY_OFFER（产品查询）、CODE_OP_VALIDATE_NESTED（嵌套校验）、CODE_DOWNLOAD_TEST_REPORT（测试报告下载）、CODE_DOWNLOAD_LAUNCH_SCRIPT（上线脚本下载） | ✅ 已内嵌 |
+| 6 | 网关联调 | 网关 BASE_URL 代理至后端 6174 确认；11 个子工作流内代码节点调用 7 个新增适配端点与 14 条既有路由逐一连通 | ⏳ 待后端重启与联调 |
 
 ---
 
@@ -121,8 +121,8 @@
 | 阶段1 基础搭建 | 种子数据集 #1 + 接口骨架 | 3d |
 | 阶段2 接口开发 | 接口 1~14 开发与自测 + 数据工程 #2~#4 | 5d |
 | 阶段3 知识库建设 | knowledge/K1~K5 目录文档就位（文件复制级，见第 2 章；原 references/ 废弃） | 1d |
-| 阶段4 工作流塑造 | 1.3 节 12 个工作流 JSON 生成（gen_workflows_v2.py）+ type=6 代码节点内嵌 + 后端 7 个适配端点 | 4d |
-| 阶段5 部署与联调 | 12 工作流导入 + 后端重启（使 6174 生效）+ 网关代理确认 + 意图路由/链路联调（见第 2 章相关节） | 4d |
+| 阶段4 工作流塑造 | 1.3 节 11 个子工作流 JSON 生成（gen_workflows_v2.py）+ type=6 代码节点内嵌 + 后端 7 个适配端点 | 4d |
+| 阶段5 部署与联调 | 11 个子工作流导入 + 后端重启（使 6174 生效）+ 网关代理确认 + 智能体语义识别直调/链路联调（见第 2 章相关节） | 4d |
 | 阶段6 验证与优化 | 18 套餐一致性自测跑通 + 正反向用例 | 4d |
 | **合计** | | **约 21 个工作日**（其中代码开发约 12d；工作流已生成、后端 7 端点已编码，待重启联调） |
 
@@ -136,7 +136,7 @@
 - [ ] 18 销售品一致性自测全绿（任一套餐返回结构化结果、资费规则值一致、无写死单一样例回退）
 - [ ] presetValue 抽查：900102308（5G-A）与 900117022（权益随心选）两类套餐与《产品信息.txt》逐项一致
 - [ ] 未收录销售品 ID 输入：接口 4 返回 4001，接口 1 返回空列表或明确降级提示，不返回伪造数据
-- [ ] 12 个工作流 JSON 均由 gen_workflows_v2.py 稳定生成（不手工改 JSON），type=6 代码节点内嵌完整
+- [ ] 11 个子工作流 JSON 均由 gen_workflows_v2.py 稳定生成（不手工改 JSON），type=6 代码节点内嵌完整
 - [ ] 代码节点与后端契约一致：CODE_OP_* / CODE_DOWNLOAD_* / CODE_POLL_PROGRESS 等逐一连通对应端点，路径/入参/出参与细化设计映射表逐条比对（含 PARAM_MISSING/5002/5006/5004 错误码验证）
 - [ ] 工具9 四环节门禁（工具层硬校验）：四环节结果不全调 submit_approval 一律拒绝；跳步调用均有拦截记录（工具7 确认门禁已按 V2.2 移除，仅验证幂等与 plan_json 合法性校验）
 - [ ] V1.9 字段重构验证：ontology/fields 接口返回 24 字段注册表（3 模块/9 分类）；similar_offer offerInfo 为 24 字段数组；来源仅【原始需求】/【AI补全】两态；仅套餐档位可"待补充"；套餐编码默认"系统待生成"
@@ -148,14 +148,14 @@
 
 # 第 2 章 平台配置清单
 
-> 平台：工作流 JSON 导入（12 个工作流）+ knowledge/ 知识库挂载 + 后端适配端点就绪
+> 平台：工作流 JSON 导入（11 个子工作流）+ knowledge/ 知识库挂载 + 后端适配端点就绪
 > 版本：V2.0 工作流重塑　日期：2026-09-18
-> 依据：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.4（第 5 章部署清单）、《智能体工作流集V1.6》（12 个工作流 JSON + CODE_DISPATCHER 意图调度）
+> 依据：《产销品加载AI应用开发方案.md》V3.0、《产销品加载AI应用-细化设计方案.md》V2.4（第 5 章部署清单）、《智能体工作流集V1.6》（11 个子工作流 JSON）
 > 用途：数字员工创建表单填写 + 工作流 JSON 导入 + 知识库挂载 + 后端新端点就绪逐项核对。
 
-> **V2.0 工作流重塑履历（本次更新）**：实现载体由「Skills 技能包（skills/cpcp-product-worker，含 SKILL.md/scripts/references + CPCP_BASE_URL 环境变量）」重塑为「12 个工作流 JSON + knowledge/ 知识库 + 后端适配端点」。
-> - **废弃**：skills/cpcp-product-worker 技能包目录、SKILL.md 部署项、scripts/ 自检脚本（test_cpcp_api_local.py、cpcp_api.py）、references/ 知识库、`CPCP_BASE_URL` 环境变量。
-> - **新增**：`场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下 12 个工作流 JSON 导入（wf_main_intent_意图调度 + wf_sub_00~wf_sub_10）；意图经 wf_main_intent 的 `CODE_DISPATCHER` 确定性解析路由至各 wf_sub_*。
+> **V2.0 工作流重塑履历（本次更新）**：实现载体由「Skills 技能包（skills/cpcp-product-worker，含 SKILL.md/scripts/references + CPCP_BASE_URL 环境变量）」重塑为「11 个子工作流 JSON + knowledge/ 知识库 + 后端适配端点」。
+> - **废弃**：skills/cpcp-product-worker 技能包目录、SKILL.md 部署项、scripts/ 自检脚本（test_cpcp_api_local.py、cpcp_api.py）、references/ 知识库、`CPCP_BASE_URL` 环境变量、`wf_main_intent` 意图调度工作流及其 `CODE_DISPATCHER` 确定性意图路由。
+> - **新增**：`场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下 11 个子工作流 JSON 导入（wf_sub_00~wf_sub_10）；无意图调度主流程，由智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调各 wf_sub_*。
 > - **知识库迁至** `knowledge/`（原 references/ 废弃）：K1~K5 五类知识库 + K5 存量切片、templates 模板注册表、ontology-fields.json（本体字段，以 FieldOntologyService 接口为唯一实源）、seed_offer_groups.json（融合组规则）、存量产品目录。
 > - **后端新增适配端点**（AppStoreV16Controller 已实现并提交，需后端重启生效）：`/api/v1/appstore/ops/root-cause`、`/ops/work-orders`、`/shelf-compliance`、`/validate-nested`、`/explain`、`/report/download`、`/script/download`。
 > - **网关**：`BASE_URL=http://10.86.13.201:31281/api/v1/appstore/*`（需确认代理到 6174）。
@@ -164,26 +164,26 @@
 
 ## 2.1 数字员工创建表单（平台创建助手界面逐字段填写值）
 
-> 本节为在平台上"创建数字员工/助手"时表单各字段的填写值，取值来源见"来源"列（业务口径权威定义见开发方案 3.1/3.2/3.3 节，运行时承载见 wf_main_intent 工作流）。
+> 本节为在平台上"创建数字员工/助手"时表单各字段的填写值，取值来源见"来源"列（业务口径权威定义见开发方案 3.1/3.2/3.3 节，运行时承载见 3.2 提示词【意图→工作流映射表】直调下各 wf_sub_* 子工作流）。
 
 ### 2.1.1 基本信息
 
 | 表单字段 | 填写值 | 来源 |
 | --- | --- | --- |
-| 助手 ID（标识） | `cpcp_product_worker`（对应意图调度工作流 `wf_main_intent_意图调度`） | 开发方案 3.1 节；wf_main_intent 命名 |
+| 助手 ID（标识） | `cpcp_product_worker`（对应智能体按 3.2 提示词【意图→工作流映射表】语义识别直调 11 个子工作流） | 开发方案 3.1 节 |
 | 助手名称 | 产销品数字员工 | 开发方案 3.1 节 |
-| 助手描述/功能介绍 | 面向产销品域的数字员工，支持从需求提报、需求分析（五列模块表格《加载方案》）、用户确认、智能配置（配置落地）、配置规格稽核、资费校准、自动测试（含受理验证子集）到上线审批（上线校验看板）、监控运维方案、存量合规扫描的全流程自动化操作。 | 开发方案 3.1 节（意图触发描述：当用户提出销售品需求提报、执行方案确认、执行主干触发、上线审批发起、审批进度/运行监控查询、存量合规扫描或产销品业务问答时，经 wf_main_intent 分派） |
+| 助手描述/功能介绍 | 面向产销品域的数字员工，支持从需求提报、需求分析（五列模块表格《加载方案》）、用户确认、智能配置（配置落地）、配置规格稽核、资费校准、自动测试（含受理验证子集）到上线审批（上线校验看板）、监控运维方案、存量合规扫描的全流程自动化操作。 | 开发方案 3.1 节（意图触发描述：当用户提出销售品需求提报、执行方案确认、执行主干触发、上线审批发起、审批进度/运行监控查询、存量合规扫描或产销品业务问答时，由智能体按 3.2 提示词【意图→工作流映射表】语义识别直调对应 wf_sub_*） |
 | 发布范围 | 所有人可见 | 开发方案 3.1 节 |
 | 模型配置 | 温度 0.2（严谨输出）、多轮对话 20 轮、top_p 适度调小 | 开发方案 3.3 节；细化设计 3.4.6 节 |
 
 ### 2.1.2 角色与能力（系统提示词，角色+技能+限制模式）
 
-完整提示词以开发方案 3.2 节为权威（wf_main_intent 为等价运行时入口），创建表单按以下三段填写：
+完整提示词以开发方案 3.2 节为权威（智能体按提示词【意图→工作流映射表】语义识别直调各 wf_sub_*），创建表单按以下三段填写：
 
 **① 角色（填入"角色/人设"栏）：**
 
 ```
-你是安徽电信产销品域数字员工，负责销售品从需求到上线的端到端自动化加载。你不直接操作 CRM、不代用户做业务决策；全部工作通过工作流 API 编排 + 按需读取知识库完成，你只做意图识别、流程编排与结果解读。意图分派由 wf_main_intent 的 CODE_DISPATCHER 确定性完成，不猜测路由。
+你是安徽电信产销品域数字员工，负责销售品从需求到上线的端到端自动化加载。你不直接操作 CRM、不代用户做业务决策；全部工作通过工作流 API 编排 + 按需读取知识库完成，你只做意图识别、流程编排与结果解读。意图识别由你按提示词【意图→工作流映射表】语义识别后直调对应 wf_sub_* 子工作流，不猜测业务结论。
 ```
 
 **② 能力/技能（填入"技能/能力"栏，按意图路由填写，对应 wf_sub_* 子工作流）：**
@@ -216,8 +216,8 @@
 
 | 表单字段 | 填写值 | 来源 |
 | --- | --- | --- |
-| 工作流集 | 导入 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下 12 个工作流 JSON：`wf_main_intent_意图调度` + `wf_sub_00_~wf_sub_10_` | 智能体工作流集V1.6（gen_workflows.py / gen_workflows_v2.py 生成） |
-| 意图调度入口 | `wf_main_intent_意图调度`：经 `CODE_DISPATCHER` 确定性意图解析，将用户意图路由至各 `wf_sub_*` 子工作流 | wf_main_intent |
+| 工作流集 | 导入 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下 11 个子工作流 JSON：`wf_sub_00_~wf_sub_10_`（无意图调度主流程） | 智能体工作流集V1.6（gen_workflows.py / gen_workflows_v2.py 生成） |
+| 意图调度入口 | 无（已移除 `wf_main_intent` 意图调度）；由智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别后直调各 `wf_sub_*` 子工作流 | 开发方案 3.2 节提示词 |
 | 子工作流 | wf_sub_00~wf_sub_10（需求提报/需求分析/智能配置/稽核/自动测试/资费校准/上线审批/监控运维/进度查询/存量查询/存量合规扫描） | 智能体工作流集V1.6 |
 | 知识库挂载 | 挂载 `knowledge/`（原 references/ 废弃）：K1规范(3)/K2资费(2)/K3测试(2)/K4存量(18单文件)/K5FAQ(1) + K5存量切片 + templates 注册表 + ontology-fields.json + seed_offer_groups.json + 存量产品目录_清洗后.json | knowledge/README_知识库挂载说明.md |
 | 模板注册表 | `方案/templates/`：_registry.json / _index.json + 6 份 schema + 样例/测试元素 | templates 目录 |
@@ -227,7 +227,7 @@
 
 | 表单字段 | 填写值 | 来源 |
 | --- | --- | --- |
-| 开场白 | 您好，我是产销品数字员工，可以帮您完成销售品从需求提报、加载方案生成、智能配置、规格稽核、资费校准、自动测试（含受理验证）到上线审批的全流程操作。您可以直接描述需求，或发送：- 查询审批进度（需审批单号或销售品ID）- 查询销售品监控结果（需销售品ID）- 重新执行上次失败环节 | 开发方案 3.3 节（wf_main_intent 开场白口径） |
+| 开场白 | 您好，我是产销品数字员工，可以帮您完成销售品从需求提报、加载方案生成、智能配置、规格稽核、资费校准、自动测试（含受理验证）到上线审批的全流程操作。您可以直接描述需求，或发送：- 查询审批进度（需审批单号或销售品ID）- 查询销售品监控结果（需销售品ID）- 重新执行上次失败环节 | 开发方案 3.3 节 |
 | 引导问题（3 条） | 1) 查询审批进度（需审批单号或销售品ID）　2) 查询销售品监控结果（需销售品ID）　3) 重新执行上次失败环节 | 开发方案 3.3 节 |
 
 ### 2.1.5 常见问题（FAQ，12 条）
@@ -254,7 +254,7 @@
 - [ ] 助手 ID/名称/描述与 2.1.1 一致；发布范围"所有人可见"；
 - [ ] 角色与限制逐字引用 2.1.2（核心纪律 5 条 + 拒答话术不得删改）；
 - [ ] 能力项与意图路由与 wf_sub_* 子工作流一一对应（执行主干为四环节，受理验证为自动测试子集；超范围问题命中拒答话术）；
-- [ ] 12 个工作流 JSON 已导入，`wf_main_intent_意图调度` 为入口，`CODE_DISPATCHER` 可路由到各 wf_sub_*；
+- [ ] 11 个子工作流 JSON 已导入，无意图调度主流程，由智能体按 3.2 提示词【意图→工作流映射表】语义识别直调各 wf_sub_*；
 - [ ] 知识库 `knowledge/` 已挂载（含 templates 注册表、ontology-fields.json、seed_offer_groups.json、存量产品目录）；
 - [ ] 开场白与 3 条引导问题与 2.1.4 逐字一致；
 - [ ] FAQ 12 条录入完成，直接返回=否；抽查 Q2/Q10 回答命中 K4/K5 对应描述；Q3/Q6/Q12 为 V3.0 口径（套餐档位/AI补全、双重门禁、四环节含受理验证子集+监控运维方案）。
@@ -300,9 +300,9 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 
 | # | 部署项 | 配置值 | 核对要点 |
 | --- | --- | --- | --- |
-| 1 | 意图调度工作流 | 导入 `wf_main_intent_意图调度.json` | 经 `CODE_DISPATCHER` 确定性意图解析，路由至各 wf_sub_*；为唯一入口 |
-| 2 | 子工作流 | 导入 `wf_sub_00_~wf_sub_10_` 共 11 个（需求提报/需求分析/智能配置/稽核/自动测试/资费校准/上线审批/监控运维/进度查询/存量查询/存量合规扫描） | 每份子工作流"步骤=原节点"与细化设计 3.1 映射索引一致；由 wf_main_intent 分派调度 |
-| 3 | 工作流一致性 | `gen_workflows.py` / `gen_workflows_v2.py` 生成的 12 份 JSON 与后端端点契约（AppStoreV16Controller）逐字段对齐 | 出参 snake_case（契约明文），业务字段 camelCase 与既有导出契约保持一致 |
+| 1 | 意图调度主流程 | 无（不导入 `wf_main_intent`，意图调度主流程已移除） | 由智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调各 wf_sub_*；无唯一入口主流程 |
+| 2 | 子工作流 | 导入 `wf_sub_00_~wf_sub_10_` 共 11 个（需求提报/需求分析/智能配置/稽核/自动测试/资费校准/上线审批/监控运维/进度查询/存量查询/存量合规扫描） | 每份子工作流"步骤=原节点"与细化设计 3.1 映射索引一致；由智能体按 3.2 提示词【意图→工作流映射表】语义识别直调 |
+| 3 | 工作流一致性 | `gen_workflows.py` / `gen_workflows_v2.py` 生成的 11 份 JSON 与后端端点契约（AppStoreV16Controller）逐字段对齐；**源码驱动纪律**：JSON 为生成器产物，禁止手改 `智能体工作流集V1.6/*.json`，改业务→改生成器→重新生成→全量校验 ALL_OK | 出参 snake_case（契约明文），业务字段 camelCase 与既有导出契约保持一致 |
 
 ### 2.3.2 知识库挂载（`knowledge/`，原 references/ 废弃）
 
@@ -331,21 +331,21 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 ## 2.4 部署后自测
 
 ### 2.4.1 工作流导入与后端就绪自测
-- [ ] 12 个工作流 JSON 全部导入成功，`wf_main_intent_意图调度` 设为主入口；
+- [ ] 11 个子工作流 JSON 全部导入成功，无意图调度主流程，由智能体按 3.2 提示词【意图→工作流映射表】语义识别直调；
 - [ ] 7 个 V2.0 适配端点自测通过（2.2 节 curl 命令全部 backend_pending=0）；
 - [ ] 知识库 5 类（K1~K5）+ K5 存量切片 + templates + ontology-fields.json + seed_offer_groups.json 挂载完整。
 
 ### 2.4.2 按需加载验证
-- [ ] wf_main_intent 常驻不膨胀；命中意图仅分派对应单份 wf_sub_* 子工作流；
+- [ ] 智能体按 3.2 提示词【意图→工作流映射表】语义识别直调，常驻不膨胀；命中意图仅直调对应单份 wf_sub_* 子工作流；
 - [ ] K4 仅按 product_id 读取单文件（禁止全量读取 18 份）；
 - [ ] 大报文（plan_json/config_json/fields/report）一律走后端 save/query 或 `--file` 类端点文件传参，不经模型上下文中转。
 
-### 2.4.3 意图路由联调（对齐 wf_main_intent 的 CODE_DISPATCHER 路由表）
-- [ ] 提报/修改需求 → 分派 wf_sub_01（需求分析，含 validate-nested / explain，出口A 不保存不产出 req_id）；
-- [ ] 确认执行 / 重新执行 → 分派 wf_sub_02/03/05/04（四环节串行环节1→2→3→4，每环节打印结果）；
-- [ ] 发起审批 → 分派 wf_sub_06（仅四环节全成且用户明确确认后）；
-- [ ] 查询审批进度 / 运行监控 → 分派 wf_sub_08 / wf_sub_07（轻量支线，缺失参数先追问不编造）；
-- [ ] 存量合规扫描 → 分派 wf_sub_10（shelf-compliance）；存量销售品查询 → 分派 wf_sub_09；
+### 2.4.3 意图路由联调（对齐 3.2 提示词【意图→工作流映射表】智能体语义识别直调）
+- [ ] 提报/修改需求 → 直调 wf_sub_01（需求分析，含 validate-nested / explain，出口A 不保存不产出 req_id）；
+- [ ] 确认执行 / 重新执行 → 直调 wf_sub_02/03/05/04（四环节串行环节1→2→3→4，每环节打印结果）；
+- [ ] 发起审批 → 直调 wf_sub_06（仅四环节全成且用户明确确认后）；
+- [ ] 查询审批进度 / 运行监控 → 直调 wf_sub_08 / wf_sub_07（轻量支线，缺失参数先追问不编造）；
+- [ ] 存量合规扫描 → 直调 wf_sub_10（shelf-compliance）；存量销售品查询 → 直调 wf_sub_09；
 - [ ] 业务问答 → 按类别直读 K1~K5；超范围 → 拒答话术。
 
 ### 2.4.4 关键链路联调（对齐细化设计 3.5 程序级用例）
@@ -354,6 +354,16 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 - [ ] 硬校验专项：四环节不全调 `approval/submit` 被后端拒绝；
 - [ ] 监控运维专项：product/monitor → ops/root-cause → ops/work-orders 链路（wf_sub_07）输出归因/工单；
 - [ ] 细化设计 3.5 节程序级用例 #1~#21 全部通过（含四环节硬校验、十八套餐兼容）。
+
+### 2.4.5 配置规范符合性自测（对齐《SitechAI开发平台配置规范.md》）
+- [ ] **源码驱动**：11 个子工作流 JSON 均由 `gen_workflows_v2.py` 生成；改业务逻辑后重新生成并对 11 份 JSON 做全量结构校验，全部 ALL_OK；无一例手改 JSON；
+- [ ] **节点契约**：全库仅使用 type 0/1/2/3/6/9/13，无未枚举类型、无平台循环节点（轮询仅 CODE_POLL_PROGRESS asyncio.sleep 5s×360/30min）；
+- [ ] **入参两态/引用三层一致**：抽查跨节点引用，blockID、nameValue[0]、currValue 前缀=上游 id，`nameValue[1]`=上游 id+出参名（snake_case）；array 出参均配 item 树（ARRAY_ITEM_FIELDS 白名单）；
+- [ ] **条件分支**：全部 2 条件分支 sourcePort=-1（否则）/0（如果）正确；
+- [ ] **nid**：满足 `a1b2c3d4-0000-4000-8000-{12位seq}` 形态且 seq 按子流分段；
+- [ ] **代码节点**：type=6 均 `async def main(args)`/`args.params`，urllib.request 用 `BASE_URL` 占位符经网关访问 `/api/v1/appstore/*`，JSON 出参名带 `_json` 存 JSON 字符串，后端不可达一律 `backend_pending=1` 优雅回退（离线 Demo 可跑）；
+- [ ] **LLM 节点纪律**：`model=qwen3-30b-a3b`、温度 0.2、top_p 0.5、max_tokens 2048，提示词末尾"仅输出对应出参"；
+- [ ] **req_id**：统一 PLAN+yyyyMMddHHmmss+3 位随机，由代码节点系统时钟生成、LLM 不参与。
 
 ---
 
@@ -367,16 +377,17 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 - [ ] 18 套餐一致性自测脚本全绿；presetValue 抽查（900102308/900117022）与《产品信息.txt》一致
 
 **阶段B 工作流与知识库挂载**
-- [ ] 数字员工创建完成（表单 2.1 节），12 个工作流 JSON 导入完成（2.3.1 节逐项核对）
+- [ ] 数字员工创建完成（表单 2.1 节），11 个子工作流 JSON 导入完成（2.3.1 节逐项核对）
 - [ ] 知识库 5 类 + K5 存量切片 + templates + ontology-fields.json + seed_offer_groups.json 挂载完成（2.3.2 节逐项核对）
 - [ ] K4 18 个销售品单文件齐全；固定问答回归 3 组通过（例：查 900102308 套外资费 → 命中阶梯计费描述）
+- [ ] 配置规范符合性自测 2.4.5 节逐项勾选（源码驱动 / 节点契约 / 引用三层一致 / sourcePort / nid / 代码节点 / LLM 纪律 / req_id 均由生成器与配置对齐保证）
 
 **阶段C 联调**
-- [ ] wf_main_intent 意图路由全部分派联调通过（2.4.3 节逐项勾选）
+- [ ] 智能体按 3.2 提示词【意图→工作流映射表】语义识别直调全部联调通过（2.4.3 节逐项勾选）
 - [ ] 各 wf_sub_* 子工作流链路验证通过（与后端 V1.6+V2.0 端点契约一致，映射见细化设计 3.1 节）
 - [ ] 续跑/硬校验/监控运维专项通过（2.4.4 节）
 
 **阶段D 验收**
 - [ ] 细化设计 3.5 节用例 #1~#21 全部通过
 - [ ] 按《产销品加载AI应用-端到端演示剧本》完成全流程彩排（含反向分支速查表 10 项）
-- [ ] 上线：12 个工作流 JSON 与 knowledge/ 纳入 git 版本管理；后续替换真实实现仅改 `BASE_URL`，工作流 JSON/知识库零改动
+- [ ] 上线：11 个子工作流 JSON 与 knowledge/ 纳入 git 版本管理；后续替换真实实现仅改 `BASE_URL`，工作流 JSON/知识库零改动

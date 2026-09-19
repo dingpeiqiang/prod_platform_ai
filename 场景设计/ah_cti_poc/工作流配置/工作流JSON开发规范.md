@@ -107,9 +107,12 @@
 > 引用入参必须三层一致：`blockID`、`nameValue[0]`、`currValue` 前缀均为上游 `id`；
 > `nameValue[1]`/`currValue` 的整体为 `{上游id},{出参名}`。
 
-### 5.2 出参：`out(name, desc, ptype)`
+### 5.2 出参：`out()` / `code_out()`
 
-- LLM/代码节点出参用 `out(name, desc)`，导出为 `{"name","description","type","content":""}` 扁平对象。
+- LLM/插件节点出参用 `out(name, desc, ptype)`，导出为 `{"name","description","type","content":""}` 扁平对象。
+- **代码节点（type=6）出参必须用 `code_out(name, seq, ptype)`**（`gen_workflows.py` 定义），导出为 `{"relName": "<nodeId>,<name>", "name": "<name>", "type": ptype}`。
+  - 平台按 `relName`（`<nodeId>,<出参名>`）匹配下游引用入参；**严禁**给代码节点传元组 `("name","desc")`，否则下游引用该出参的入参在平台上显示"未关联"（历次修复点）。
+  - `seq` 必须是该代码节点自身序号（`code_node` 第 1 个参数，即节点 id 尾号）。
 - 插件节点用 `out` 三元组并在 `plugin_out` 中声明 `sechema` item 树（array 出参必须给 item 叶子）。
 
 ### 5.3 插件出参 item 树（重要）
@@ -246,6 +249,25 @@ llm_node(seq, title, prompt, in_refs, outputs, sys_prompt="", model="qwen3-30b-a
 - **模型字段**：`model`（LLM 节点默认模型，固定 `qwen3-30b-a3b`；由 `llm_node` 生成器统一写入，平台运行时按此模型执行 LLM 节点）。
 - 提示词末尾约定"输出要求：仅输出…对应出参…，不输出其他多余文字"，保证单出参/多出参隔离（对齐现有所有 LLM 节点）。
 
+### 10.1 出参绑定契约（重要，历次踩坑点）
+
+平台对 LLM 节点出参的绑定语义（已实测确认）：
+
+- 平台回包为 `{出参名: <模型返回>}`，即把模型返回装配到声明的出参上。
+- **模型返回纯文本**时：整段文本直接作为该出参值（对齐 `audit_suggest`、`risk_summary`、`combo_report` 等导出节点）。
+- **模型返回 JSON 对象**时：平台按**出参名做键匹配**取值；若返回对象的顶层键与出参名**不一致**，该出参取不到 → 值为空（`{"elements_json": ""}`）。
+
+据此约定：
+
+1. **单出参承载一段 JSON 文本**（如 `elements_json`、`plan_json`，下游需 `json.loads`）：让模型只输出顶层键 = 出参名、值为该 JSON 的字符串，形如
+   `{"elements_json": "{\"name\":\"...\",\"price\":\"...\"}"}`。
+   切勿让模型直接输出顶层为字段键的裸对象（`{"name":...}`），否则平台键匹配不到 `elements_json` → 空。
+2. **让模型输出多字段**：应声明为多出参（每个字段一个 `out`），prompt 让模型按出参名返回对应键，不要用一个出参去吞整个对象。
+3. **纯文本出参**：让模型直接返回文本，不要包成 JSON 对象。
+4. 一律加"严禁 Markdown 代码块包裹（```json``` 围栏）"，避免把 JSON 文本包进代码块导致解析失败。
+
+> 已在 `需求字段抽取`（wf_sub_00）落地：单出参 `elements_json`，prompt 要求输出 `{"elements_json": "{\"...\"}"}` 两层结构。
+
 ---
 
 ## 十一、结束节点规范
@@ -258,6 +280,26 @@ end_node(seq, title, inputs, out_content)
 - `out_content`：模板字符串，用 `{入参名}` 占位（如 `"《执行方案》已生成（req_id：{req_id}）\n\n{plan_md}"`）。
 - 常附加 `【下一步】`/`【确认执行】` 引导语，衔接下游子流。
 - 分支结束节点各自独立 `end_node`（如 `结束(有待补充)` / `结束(无待补充)`），title 区分语义。
+
+### 11.1 占位符语法红线（历次踩坑点）
+
+平台按 `{入参名}` **精确匹配** `inputs` 中已绑定的参数名做替换。**严禁**把条件提示、说明文字、中文逗号、引号写进花括号**内部**：
+
+```text
+❌ 错误：{quality_gate，为空省略}　{valid，为空显示"未执行（…）"}　{value_dl}
+```
+
+占位符内任何多余字符（含中文逗号、引号、"为空省略"等备注）都会使模板引擎匹配不到对应入参，导致**结束节点渲染/导入异常、节点无法显示**。正确写法是**提示文字全部移到花括号外**：
+
+```text
+✅ 正确：{quality_gate}（为空省略）　{valid}（为空显示"未执行（…）"）　{download_url}（为空填写"暂不可用"）
+```
+
+要点：
+1. 花括号内**只能**是 `inputs` 中真实存在的入参名（字母数字下划线），且必须逐字一致（含大小写）。
+2. 空值兜底文案一律放花括号外，如 `（为空省略）`、`（为空显示"…"）`、`（为空填写"…"）`。
+3. 引用入参名必须以 `inp(..., ref_block=..., ref_rel=...)` 声明，且 `ref_rel` 与上游出参名一致（复用 5.1 三层一致规则）。
+4. 确需插入 JSON（如 xsbot-panel 外链）时，用 ```xsbot-panel 代码块包裹，块内 JSON 的 `"key": "{chat_id}"` 属合法占位引用，不受本规则约束。
 
 ---
 
@@ -292,6 +334,7 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
    - 所有 `inp(..., ref_block=nid(x))` 的 `x` 是有效上游节点。
    - 所有引用出参（`ref_rel`）在对应上游节点 `outputs` 中已声明。
    - 插件 array 出参 `sechema` 有 item 树（对齐 `ARRAY_ITEM_FIELDS`）。
+   - **结束节点占位符校验**：对每个 type=9 节点，提取 `outputs.content` 中所有 `{...}` 占位符（跳过 `xsbot-panel` 代码块内的内嵌 JSON），逐个核对是否与 `inputs[].name` 逐字一致（含大小写）；不一致即 FAIL（对齐 11.1，防止"节点无法显示"）。
 4. 到平台上逐个导入并人工核对（条件分支 sourcePort 语义、结束节点模板、子流路由）。
 
 > 交叉引用错误（断链）是最高频问题：新增节点后务必同步更新 `edge(...)`，以及上游的出参声明、下有的 `inp(...ref_block=...)`。
@@ -308,5 +351,9 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 
 ---
 
-**最后更新**：2026-09-18
-**版本**：v1.0
+**最后更新**：2026-09-19
+**版本**：v1.1
+
+### 变更记录
+- v1.1（2026-09-19）：新增 11.1 结束节点占位符语法红线（占用说明提示不得写入花括号内部，否则平台模板匹配失败导致节点无法显示）；十四节同步新增"结束节点占位符校验"项；修复 wf_sub_01/04/06/07 结束节点模板并重新生成。
+- v1.0（2026-09-18）：首版，对齐 gen_workflows_v2.py 生成器与 12 个工作流。
