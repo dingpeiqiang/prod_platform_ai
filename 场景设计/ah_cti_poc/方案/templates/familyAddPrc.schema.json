@@ -344,7 +344,7 @@
        ]
       }
      },
-     "x-label": "权益(equityContent)"
+     "x-label": "权益"
     },
     "acctMonth": {
      "type": "object",
@@ -571,14 +571,14 @@
       },
       "conditionCode": {
        "type": "string",
-       "x-label": "附件条件ID",
+       "x-label": "附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
       },
       "subConditionCodes": {
        "type": "string",
-       "x-label": "子附件条件ID",
+       "x-label": "子附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
@@ -695,14 +695,14 @@
       },
       "conditionCode": {
        "type": "string",
-       "x-label": "附件条件ID",
+       "x-label": "附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
       },
       "subConditionCodes": {
        "type": "string",
-       "x-label": "子附件条件ID",
+       "x-label": "子附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"

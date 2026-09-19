@@ -277,7 +277,7 @@
      "x-required": true
     }
    },
-   "x-label": "手机成员(phoneMbrInfo)",
+   "x-label": "手机成员",
    "required": [
     "ifChangeBasePrc",
     "inProdPrcId",
@@ -718,7 +718,7 @@
        "x-show-when": "在优惠有效期不是长期有效时显示，并验证为正整数"
       }
      },
-     "x-label": "保底(dlowFavFee)",
+     "x-label": "保底",
      "required": [
       "fav1Fee",
       "fav1ItemType",
@@ -751,14 +751,14 @@
       },
       "conditionCode": {
        "type": "string",
-       "x-label": "附件条件ID",
+       "x-label": "附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
       },
       "subConditionCodes": {
        "type": "string",
-       "x-label": "子附件条件ID",
+       "x-label": "子附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
@@ -875,14 +875,14 @@
       },
       "conditionCode": {
        "type": "string",
-       "x-label": "附件条件ID",
+       "x-label": "附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
       },
       "subConditionCodes": {
        "type": "string",
-       "x-label": "子附件条件ID",
+       "x-label": "子附件条件编码",
        "x-element": "text",
        "description": "",
        "x-scene": "查询返回字段"
