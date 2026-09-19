@@ -137,7 +137,7 @@
 - [ ] presetValue 抽查：900102308（5G-A）与 900117022（权益随心选）两类套餐与《产品信息.txt》逐项一致
 - [ ] 未收录销售品 ID 输入：接口 4 返回 4001，接口 1 返回空列表或明确降级提示，不返回伪造数据
 - [ ] 11 个子工作流 JSON 均由 gen_workflows_v2.py 稳定生成（不手工改 JSON），type=6 代码节点内嵌完整
-- [ ] 代码节点与后端契约一致：CODE_OP_* / CODE_DOWNLOAD_* / CODE_POLL_PROGRESS 等逐一连通对应端点，路径/入参/出参与细化设计映射表逐条比对（含 PARAM_MISSING/5002/5006/5004 错误码验证）
+- [ ] 代码节点与后端契约一致：CODE_OP_* / CODE_DOWNLOAD_* / CODE_POLL_PROGRESS 等逐一连通对应端点，路径/入参/出参与细化设计映射表逐条比对（含 PARAM_MISSING/5002/5004 错误码验证）
 - [ ] 工具9 四环节门禁（工具层硬校验）：四环节结果不全调 submit_approval 一律拒绝；跳步调用均有拦截记录（工具7 确认门禁已按 V2.2 移除，仅验证幂等与 plan_json 合法性校验）
 - [ ] V1.9 字段重构验证：ontology/fields 接口返回 24 字段注册表（3 模块/9 分类）；similar_offer offerInfo 为 24 字段数组；来源仅【原始需求】/【AI补全】两态；仅套餐档位可"待补充"；套餐编码默认"系统待生成"
 - [ ] 幂等：工具7 同 plan_json、工具9 同 product_id 重复提交不产生重复记录
@@ -269,7 +269,7 @@
 | --- | --- | --- |
 | 1 | 14 工具模拟路由（自研模拟实现，V1.6 口径） | similar/offer/query、audit/realtime、test/offer/start\|scenes\|progress\|result、product/config/save、billing/rules/verify、approval/submit\|status、product/monitor、alert/send、ontology/fields 共 14 条路由连通；模拟种子数据兼容《产品信息.txt》18 个销售品 |
 | 2 | 节点结果存储查询（后端通用 API） | POST `/result/save`、GET `/result/query`；NodeResultService（MyBatis-Plus）落库 `pd_ai_node_results` 表（H2/MySQL 双 DDL 已执行），服务重启结果不丢失 |
-| 3 | 后端硬校验 | req_id 格式校验（PLAN\d{17}，非法返回 5002）；requirement 环节同键不同内容拦截（5006）；工具7 确认门禁已移除（confirmed 任意值可落地，保留幂等与 plan_json 合法性校验，NOT_CONFIRMED 不再出现）；工具9 校验 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送 |
+| 3 | 后端硬校验 | req_id 格式校验（PLAN\d{17}，非法返回 5002）；requirement 环节同键重写一律删除旧记录后重新插入（同键覆盖，原 5006 冲突拦截已移除）；工具7 确认门禁已移除（confirmed 任意值可落地，保留幂等与 plan_json 合法性校验，NOT_CONFIRMED 不再出现）；工具9 校验 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送 |
 | 4 | **V2.0 新增适配端点**（AppStoreV16Controller 已实现并提交，**需后端重启生效**） | `/ops/root-cause`（异动根因本体推理，wf_sub_07 节点706）；`/ops/work-orders`（创建处置工单，wf_sub_07 节点708）；`/shelf-compliance`（存量合规扫描，wf_sub_10 节点1002）；`/validate-nested`（嵌套报文本体校验，wf_sub_01 节点109）；`/explain`（配置业务解释，flow-A）；`/report/download`（测试报告下载，wf_sub_04 节点316）；`/script/download`（配置/上线脚本下载，wf_sub_06 节点621） |
 | 5 | 模拟数据工程 | 种子数据集 seed_offers.json（18 销售品全量规则）、preset_map.json（18×10 测点预期值）、演示场景开关（稽核驳回/资费冲突/测点不一致/监控异常可注入）、18 套餐一致性自测脚本全绿；seed_offer_groups.json（融合组规则）供 wf_sub_02/03/05 融合组校验引用 |
 
@@ -373,7 +373,7 @@ curl -X POST ${BASE_URL}/script/download       -d '{"offer_id":"900102308"}'
 - [ ] 数字员工创建表单已按 2.1 节逐字段填写（2.1.6 核对要点全部勾选）
 - [ ] 14 条路由 + 节点结果存储（save/query）连通自测通过
 - [ ] **7 个 V2.0 适配端点已重启生效并连通自测通过（2.2 节）**
-- [ ] 后端硬校验就绪（5002/5006/四环节门禁/幂等；工具7 确认门禁已按 V2.2 移除并验证）
+- [ ] 后端硬校验就绪（5002/四环节门禁/幂等；requirement 同键重写覆盖；工具7 确认门禁已按 V2.2 移除并验证）
 - [ ] 18 套餐一致性自测脚本全绿；presetValue 抽查（900102308/900117022）与《产品信息.txt》一致
 
 **阶段B 工作流与知识库挂载**

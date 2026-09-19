@@ -568,11 +568,11 @@ def build_storage_plugin(tool_id, tool_name, tool_code, desc, path, method, req_
 
 plugins.append(build_storage_plugin(
     "node-result-save-0001", "节点结果存储", "save_node_result",
-    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.8 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并，由 wf_sub_01 拆分代码节点以系统时钟生成，每次分析重新生成，LLM 不参与生成），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test；后端硬校验 req_id 格式（非法返回 5002）与 requirement 环节同键不同内容冲突（返回 5006）",
+    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.8 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并，由 wf_sub_01 拆分代码节点以系统时钟生成，每次分析重新生成，LLM 不参与生成），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test；后端硬校验 req_id 格式（非法返回 5002）；requirement 环节同键重写一律删除旧记录后重新插入（同键覆盖语义，原 5006 冲突拦截已移除）",
     "/api/v1/appstore/result/save", "POST",
     {
         "req_id": schema_param("req_id", "string",
-            "需求唯一标识（V1.8 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识，取自执行方案 plan_json 的 req_id 键，由代码节点生成）；非法格式返回 5002；requirement 环节同键不同内容返回 5006", True),
+            "需求唯一标识（V1.8 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识，取自执行方案 plan_json 的 req_id 键，由代码节点生成）；非法格式返回 5002；requirement 环节同键重写一律删除旧记录后重新插入（同键覆盖，原 5006 已移除）", True),
         "node_name": schema_param("node_name", "string",
             "环节名：requirement/config/spec/fee/test；为空返回 5003", True),
         "result_json": schema_param("result_json", "string",

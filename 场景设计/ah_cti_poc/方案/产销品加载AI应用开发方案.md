@@ -97,7 +97,7 @@
 | 代码节点（004a 拆分 / CODE_EXTRACT_RECORD / 0304 轮询） | 全部内嵌为工作流 **type=6 代码节点**：CODE_MERGE_NESTED / CODE_RENDER_TABLE / CODE_VALIDATE_ELEMENTS / CODE_GET_TEMPLATE / CODE_RENDER_REQ / CODE_MAP_FIXED_CASES / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_OP_VALIDATE_NESTED / CODE_SUMMARY_APPROVAL / CODE_DOWNLOAD_* 等 |
 | 平台知识库 K1~K5（5.1 节） | `knowledge/` 目录（K1规范|K2资费|K3测试|K4存量|K5FAQ 知识库 + `ontology-fields.json`/`ontology-fields.md`/`seed_offer_groups.json`/templates 注册表等结构化资产），由工作流代码节点 / 后端服务按需读取 |
 | 知识库向量召回/切片 | 确定性代码节点 / 后端服务按需读取（K4 按销售品 ID 单文件精确定位，禁止全量读取） |
-| 平台门禁（确认标记/四环节校验） | 后端硬校验保留不变（5002/5006/四环节门禁/幂等），确认门禁沿用 V2.2 口径由智能体提示词【调度纪律】保证（确认语义未命中不触发执行主干），防跳步由后端四环节硬校验兜底 |
+| 平台门禁（确认标记/四环节校验） | 后端硬校验保留不变（5002/四环节门禁/幂等），确认门禁沿用 V2.2 口径由智能体提示词【调度纪律】保证（确认语义未命中不触发执行主干），防跳步由后端四环节硬校验兜底 |
 
 **重塑核心原则**：业务逻辑零改动（3 模块/9 分类/24 字段、待补充判定、本体推理引擎、req_id 统一键、异常矩阵原样保留）；接口契约零改动（路径/入参/出参与 2.1 节一致，替换真实实现仅改网关 BASE_URL）；确定性逻辑（merge_nested/render_table/validate_elements/get_template/render_requirement_report/map_fixed_cases/extract_record/dispatcher/poll_progress 等）由技能包脚本子命令迁移为工作流 type=6 代码节点，同一份 Python 逻辑整体内嵌、行为可审计。
 
@@ -326,7 +326,7 @@
 | --- | --- |
 | 保存（save_node_result） | POST `/api/v1/appstore/result/save`（入参 req_id/node_name/result_json/status）；wf_sub_01 写执行方案（req_id=入参、node_name=requirement）；wf_sub_02~05 子流内部环节结果存储节点写本环节结果（req_id=入参，node_name=config/spec/fee/test）；wf_sub_06 写上线报告（node_name=report） |
 | 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`（入参 req_id/node_name/latest_only，出参 total/list）；各子工作流开始后按 req_id 自查上游结果 |
-| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数；**由 wf_sub_01 拆分代码节点以系统时钟生成（datetime.now + 3位随机数，每次分析重新生成、保证唯一、LLM 不参与生成）**；后端唯一性硬校验：PLAN 格式校验（非法返回 5002）+ 同 req_id 重写不同执行方案拒绝（返回 5006）；同键覆盖写 |
+| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数；**由 wf_sub_01 拆分代码节点以系统时钟生成（datetime.now + 3位随机数，每次分析重新生成、保证唯一、LLM 不参与生成）**；后端硬校验：PLAN 格式校验（非法返回 5002）；requirement 环节同键重写一律删除旧记录后重新插入（同键覆盖写） |
 | 说明 | 平台已有通用插件，直接挂载使用，**不再自研** save_plan_json/get_plan_json；后端已落库持久化（pd_ai_node_results 表，H2/MySQL 双 DDL），服务重启不丢失 |
 
 ### 4.4 自研能力接口工具定义（6 个）
@@ -870,7 +870,7 @@
 - [x] 确定性逻辑内嵌为 type=6 代码节点（CODE_EXTRACT_RECORD/CODE_VALIDATE_ELEMENTS/CODE_MERGE_NESTED/CODE_RENDER_TABLE/CODE_GET_TEMPLATE/CODE_RENDER_REQ/CODE_MAP_FIXED_CASES/CODE_POLL_PROGRESS/CODE_FUSION_GROUP_ECHO/CODE_OP_ROOT_CAUSE/CODE_OP_CREATE_WO/CODE_OP_SHELF_COMPLIANCE/CODE_OP_VALIDATE_NESTED/CODE_SUMMARY_APPROVAL/CODE_OP_QUERY_OFFER 等），取代原技能包脚本子命令
 - [x] 智能体按 3.2 提示词【意图→工作流映射表】语义识别直调（需求提报/确认配置/失败续跑/上线审批/审批进度/监控运维/存量查询/存量合规/QNA 等），确定性纪律由【调度纪律】+ 后端硬校验兜底
 - [x] 环节覆盖：需求提报（wf_sub_00 含需求工单审批 approval-type=requirement）、需求分析（wf_sub_01 模板轨）、智能配置（wf_sub_02 融合成员回显）、规格稽核（wf_sub_03 组维度）、资费校准（wf_sub_05 成员分组）、自动测试（wf_sub_04 31 条固定用例+九章节报告）、上线审批（wf_sub_06 双轨+自动上线+监控方案）、监控运维（wf_sub_07 根因闭环）、审批进度查询（wf_sub_08 双轨）、存量查询（wf_sub_09 只读）、存量合规（wf_sub_10）
-- [ ] 14 个既有契约端点＋7 个适配端点逐一连通后端（含错误码 PARAM_MISSING/5002/5006/ONTOLOGY_EMPTY 验证）
+- [ ] 14 个既有契约端点＋7 个适配端点逐一连通后端（含错误码 PARAM_MISSING/5002/ONTOLOGY_EMPTY 验证）
 - [ ] 端到端联调：正向全流程 + 反向用例（未确认不配置、跳步审批被拒、稽核驳回中断引导、续跑不重复写）+ 18 销售品兼容回归（对齐 8.1/8.2 节）
 - [ ] 按《端到端演示剧本》完成全流程彩排（含反向分支）
 - [ ] 发布上线并接入监控运维

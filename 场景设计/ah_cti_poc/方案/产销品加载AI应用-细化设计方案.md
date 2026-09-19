@@ -66,7 +66,7 @@
   ├── 后端服务（AppStoreV16Controller /api/v1/appstore/*）：13 工具模拟实现（18 销售品种子）
   │     + 7 个新增适配端点（ops/root-cause、ops/work-orders、shelf-compliance、validate-nested、
   │     explain、report/download、script/download）+ NodeResultService（pd_ai_node_results 持久化）
-  │     + 后端硬校验（req_id 格式 5002/唯一性冲突 5006/四环节门禁/幂等；确认门禁已移除）
+  │     + 后端硬校验（req_id 格式 5002/同键重写覆盖/四环节门禁/幂等；确认门禁已移除）
   └── 模型纪律：温度 0.2（严谨输出）、出参逐字引用不加工、仅依据出参字段判定成败
 ```
 
@@ -327,7 +327,7 @@
 | 来源 | 后端通用 API，**不自研**（V1.3 起替代原自研 save_plan_json/get_plan_json）；V1.6 起后端由 `NodeResultService`（MyBatis-Plus）落库 `pd_ai_node_results` 表持久化（H2/MySQL 双 DDL），服务重启结果不丢失；V2.0 起由子工作流插件节点（save_node_result / query_node_result）直连后端调用 |
 | 保存（save_node_result） | POST `/api/v1/appstore/result/save`，入参 req_id/node_name/result_json/status（默认 ok）；**V1.7 环节结果存储已下沉到各子工作流内部**：wf_sub_00(req_id=CODE_RENDER_REQ 生成键, node_name=requirement_report)、wf_sub_01(node_name=requirement)、wf_sub_02~05 各环节（req_id=入参统一键, node_name=config/spec/fee/test）、wf_sub_06 报告存储(node_name=report) |
 | 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`，入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文）；**各子工作流开始后自查上游环节结果（可用 `CODE_EXTRACT_RECORD` 代码节点提取原文）** |
-| key（req_id）规范 | 统一键：需求提报与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数（如 `PLAN20260913143025087`，由 wf_sub_00 `CODE_RENDER_REQ` 以系统时钟生成、每次唯一，LLM 不参与生成，环节1 生成后 2~9 全程沿用）；同键**覆盖写**；后端硬校验 PLAN 格式（5002）与唯一性冲突（5006） |
+| key（req_id）规范 | 统一键：需求提报与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数（如 `PLAN20260913143025087`，由 wf_sub_00 `CODE_RENDER_REQ` 以系统时钟生成、每次唯一，LLM 不参与生成，环节1 生成后 2~9 全程沿用）；同键**覆盖写**；后端硬校验 PLAN 格式（5002） |
 | node_name 枚举 | requirement_report（V2.0 新增，需求工单）/ requirement / config / spec / fee / test / **report**（V1.6 新增） |
 | value 大小 | result_json ≤64KB（超限返回 5004）；执行方案 JSON 一般 <20KB，超限时压缩仅保留 fields/similar_offers/pending_fields 三段 |
 | 读写一致性自测 | 保存后立即按 req_id+node_name 查询，比对 result_json 一致；服务重启后可查询（持久化验证） |
@@ -733,9 +733,8 @@ req_id 以会话最近一次值为准，智能体语义识别禁止重新生成�
 后端唯一性硬校验（NodeResultService.save，双保险）：
 ```
 ① 格式校验：req_id 须匹配 PLAN\d{17}（PLAN+14位时间戳+3位随机数），非法返回 5002；
-② 唯一性冲突拦截：requirement 环节同 req_id 重写且 result_json 内容不同（照抄历史
-   req_id 写入新方案）→ 拒绝并返回 5006，防止旧方案被静默覆盖；
-   修改方案场景为同内容覆盖，不受影响。
+② requirement 环节同 req_id 重写：无论 result_json 内容是否相同，一律删除旧记录后
+   重新插入（同键覆盖语义），避免旧方案与确认标记/环节结果错位（原 5006 冲突拦截已移除）。
 ```
 
 #### 3.4.2 待补充字段判定逻辑与组合补全策略（wf_sub_01 提示词内含，此处为程序化校验口径，V2.0 更新）
@@ -1042,7 +1041,7 @@ for i in range(max_retry):
 | 4 | knowledge/ 知识库 | K1规范/K2资费/K3测试/K4存量/K5FAQ/K5存量报文 + ontology-fields + seed_offer_groups + 存量产品目录_清洗后（随包迁移） | K4 需确认 18 个销售品单文件齐全；原 references/、skills/ 已废弃 |
 | 5 | 生成器 | `gen_workflows_v2.py`（阶段1.3 代码节点内嵌 CODE_RENDER_REQ/CODE_GET_TEMPLATE/CODE_MERGE_NESTED/CODE_RENDER_TABLE 等） | 固定用例映射（CODE_MAP_FIXED_CASES 节点315 31 条）与九章节报告模板内嵌一致 |
 | 6 | 网关地址 | `BASE_URL=http://10.86.13.201:31281`（代理 `/api/v1/appstore/*` 到后端） | 指向后端模拟服务；替换真实实现仅改此值 |
-| 7 | 后端依赖 | 13 工具模拟服务 + 7 新适配端点（AppStoreV16Controller）+ NodeResultService（pd_ai_node_results 表，H2/MySQL DDL 已执行） | 联通自测通过；硬校验（5002/5006/四环节门禁/幂等）生效 |
+| 7 | 后端依赖 | 13 工具模拟服务 + 7 新适配端点（AppStoreV16Controller）+ NodeResultService（pd_ai_node_results 表，H2/MySQL DDL 已执行） | 联通自测通过；硬校验（5002/四环节门禁/幂等）生效 |
 | 8 | 模型纪律 | 温度 0.2（严谨输出） | 出参逐字引用不加工；仅依据出参字段判成败 |
 | 9 | 环境 | 工作流平台/Agent 运行时加载 11 个子工作流 JSON + knowledge/ + 后端服务 | 11 个子工作流 JSON 全量导入后端/agent 框架 |
 | 10 | 引导问题 | 智能体语义识别开场引导（查询审批进度/监控结果/重新执行） | 覆盖"确认配置"演示路径 |
@@ -1089,7 +1088,7 @@ for i in range(max_retry):
 | 确认上线 | 审批状态==通过后用户对话"确认上线"（V2.2 新增；触发监控运维方案生成，审批未通过严禁生成） |
 | 续跑指令 | retry_from_fail（从失败环节续跑）/ revise_plan（修改执行方案）（V1.1 新增；按 fail_node 映射续跑对应子工作流） |
 | 失败环节编码 | STAGE1_CONFIG / STAGE2_AUDIT / STAGE3_FEE / STAGE4_TEST（V1.1 新增；对应 wf_sub_02/03/05/04） |
-| 错误码/分支 | PARAM_MISSING / HTTP_xxx / NET_ERROR / TIMEOUT / PARSE_ERROR / 5002（req_id 格式）/ 5004（64KB 超限）/ 5006（唯一性冲突）；CODE_POLL_PROGRESS 分支（done/failed/连续失败 E12/超时 E13） |
+| 错误码/分支 | PARAM_MISSING / HTTP_xxx / NET_ERROR / TIMEOUT / PARSE_ERROR / 5002（req_id 格式）/ 5004（64KB 超限）；CODE_POLL_PROGRESS 分支（done/failed/连续失败 E12/超时 E13） |
 | 审批状态 | 审批中 / 通过 / 驳回（V1.1 新增） |
 | 测试场景编码 | S_O_TC（套餐新装）/ S_ADD_CARD（副卡加装）/ S_U_TC（套餐退订）/ S_GROUP_BIND（融合组绑定）/ S_ADDON_SUB（融合附加订购） |
 | 测点编码 | P_EFF_DATE / P_EXP_DATE / P_STATUS / P_MAIN_PROD / P_RELY_REL / P_MUTEX_REL / P_ORD_CNT / P_OFFER_NAME / P_OFFER_TYPE / P_PAY_MODE |
@@ -1140,7 +1139,7 @@ for i in range(max_retry):
 - [ ] submit_release_approval 审批发起校验（四环节硬校验拒绝）验证通过（工具9）
 - [ ] 节点结果存储读写一致（#9；服务重启后可查询）
 - [ ] 每个必填入参 PARAM_MISSING 提示验证（#10；插件/结束节点判定）
-- [ ] NodeResultService 持久化联通（pd_ai_node_results 表，H2/MySQL DDL 已执行；硬校验 5002/5006/四环节门禁/幂等生效）
+- [ ] NodeResultService 持久化联通（pd_ai_node_results 表，H2/MySQL DDL 已执行；硬校验 5002/四环节门禁/幂等生效）
 
 ### B. 工作流配置（JSON/代码节点）阶段（对应主方案阶段4）
 - [ ] `gen_workflows_v2.py` 重建后 11 个子工作流 JSON 全量校验（边/节点编号正确，含 wf_sub_01 节点106~113、wf_sub_04 节点315、wf_sub_06/07/09/10 关键代码节点），全部 ALL_OK

@@ -62,9 +62,8 @@ public class NodeResultService {
      * 接口一：节点结果存储 save_node_result。
      * <p>
      * V1.7 唯一性保障：req_id 须为 PLAN+yyyyMMddHHmmss+3位随机数 格式（LLM 按当前时刻生成，每次不同）；
-     * requirement 环节（执行方案）重写时仅允许"同内容覆盖"（修改方案场景），
-     * 若同 req_id 下已存在内容不同的执行方案（LLM 照抄历史 req_id 写入新方案）→ 拒绝返回 5006，
-     * 防止旧方案被静默覆盖导致确认标记/环节结果与方案错位。
+     * requirement 环节（执行方案）重写时，若同 req_id 下已存在旧方案（无论内容是否相同），
+     * 一律删除旧记录后重新插入（同键覆盖语义），避免旧方案与确认标记/环节结果错位。
      *
      * @return {code, msg, record_id, saved_at} 或 {code, msg} 失败体
      */
@@ -78,15 +77,6 @@ public class NodeResultService {
             return fail(5003, "invalid node_name");
         }
         String result = resultJson == null ? "" : resultJson;
-        // 唯一性硬校验：执行方案环节同 req_id 重写且内容不同 → 拒绝（修改方案场景为同内容覆盖，不受影响）
-        if ("requirement".equals(node)) {
-            NodeResultRecord existed = findLatestByReqNode(req, node);
-            if (existed != null && !result.equals(existed.getResultJson())) {
-                log.warn("[NodeResultService] req_id 唯一性冲突：req_id={} 已存在不同执行方案，拒绝覆盖写", req);
-                return fail(5006, "duplicate req_id with different plan: " + req
-                        + "（该存储键已绑定其他执行方案，请重新生成 req_id 或沿用原方案）");
-            }
-        }
         return doSave(req, node, null, result, status);
     }
 
