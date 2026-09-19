@@ -290,20 +290,6 @@
       {
         "outputs": [
           {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "record_id",
             "cname": "存储记录ID",
             "sechema": [],

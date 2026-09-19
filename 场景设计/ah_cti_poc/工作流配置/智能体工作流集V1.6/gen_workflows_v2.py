@@ -4,14 +4,15 @@
 #   - wf_sub_00 需求提报（环节1，新增）：需求文本 → LLM 抽取需求字段(snake_case)
 #     → render_requirement_report 代码节点（确定性渲染需求提报单）→ 待补充判定
 #     → 发起需求工单审批(approval-type=requirement) → 审批门禁衔接 wf_sub_01
-#   - wf_sub_01 需求分析（环节2，模板轨重写）：产品识别(LLM) → 双源相似检索
-#     (query_offer 本地优先 → similar_offer 兜底) → get_template 取模板 → 要素提取(LLM)
-#     → merge_nested 合并 → render_table 渲染 → 保存 requirement（延续 wf_sub_00 的 req_id）
+#   - wf_sub_01 需求分析（环节2，模板轨精简版）：读取需求工单 → 产品识别(LLM)
+#     → 相似产品检索(query_similar_offer) → 取模板 → 要素提取(LLM)
+#     → 要素校验与方案合并(CODE_EXTRACT_MERGE 合一) → render_table 渲染
+#     → 保存 requirement（延续 wf_sub_00 的 req_id）
 #
 # 阶段1.3 抽为代码节点的确定性逻辑（从 skill 脚本直搬，去 argparse/CLI，改 async main(args)）：
 #   CODE_RENDER_REQ    <- scripts/render_requirement_report.py  render()
 #   CODE_GET_TEMPLATE  <- 模板注册表选择（读 方案/templates/_registry.json + schema 文件）
-#   CODE_MERGE_NESTED  <- scripts/merge_nested.py  merge()
+#   CODE_EXTRACT_MERGE <- scripts/validate_elements.py + scripts/merge_nested.py（校验+合并合一）
 #   CODE_RENDER_TABLE  <- scripts/render_table.py  render()
 #
 # 依赖模板块引入：nid/inp/out/start_node/end_node/llm_node/plugin_node/code_node/
@@ -186,8 +187,13 @@ CODE_GET_TEMPLATE = (
     "\n"
     "def _pick(req):\n"
     "    r = str(req or '').strip()\n"
+    "    # ① 精确匹配（模板标识/中文名/产品类型）\n"
     "    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n"
     "        if r == tid or r == cn or r == pt:\n"
+    "            return tid, cn, pt\n"
+    "    # ② 兜底：子串包含（容忍上游出参夹带标签/说明文字）\n"
+    "    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n"
+    "        if tid in r or (cn and cn in r) or (pt and pt in r):\n"
     "            return tid, cn, pt\n"
     "    return 'personMainPrc', '个人主资费', '个人主套餐'\n"
     "\n"
@@ -240,228 +246,9 @@ CODE_GET_TEMPLATE = (
 )
 CODE_GET_TEMPLATE = CODE_GET_TEMPLATE.replace("BASE_URL", BASE_URL)
 
-# ---------------- CODE_MERGE_NESTED：嵌套报文合并 ----------------
-# 来源 scripts/merge_nested.py（V1.0，去 argparse）
-# 输入：schema_json（模板 schema）、elements_json（LLM 提取配置要素嵌套/扁平 JSON）、
-#       offer_json（相似产品逻辑模型报文，嵌套或 {templateId:{...}} 包裹）
-# 输出：payload（按模板嵌套结构实例化报文 JSON 字符串）、_meta（JSON 字符串，逐叶子 source）、
-#       pending_required（必填待补充路径逗号串）
-CODE_MERGE_NESTED = (
-    "import json\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "PRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')\n"
-    "PRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')\n"
-    "CHARGE_DESC_KEYWORDS = ('超套', '套外', '资费', '计费', '收费')\n"
-    "EMPTY_MARKS = ('', '待补充', '系统待生成')\n"
-    "SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\n"
-    "SYSTEM_GEN_KEYS = ('orderNo',)\n"
-    "SAME_PARAMETER_PAIRS = (\n"
-    "    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n"
-    ")\n"
-    "\n"
-    "def _today_str():\n"
-    "    # x-default-rule=system_date 用的当前日期（YYYY-MM-DD）\n"
-    "    import datetime\n"
-    "    return datetime.date.today().strftime('%Y-%m-%d')\n"
-    "\n"
-    "def is_price(label, key):\n"
-    "    for text in (label, key):\n"
-    "        t = text or ''\n"
-    "        if any(m in t for m in PRICE_EXCLUDE_MARKS):\n"
-    "            continue\n"
-    "        if any(kw in t for kw in PRICE_KEYWORDS):\n"
-    "            return True\n"
-    "    return False\n"
-    "\n"
-    "def strip(v):\n"
-    "    if v is None:\n"
-    "        return ''\n"
-    "    if isinstance(v, bool):\n"
-    "        return '是' if v else '否'\n"
-    "    if isinstance(v, (int, float)):\n"
-    "        return v\n"
-    "    s = str(v).strip()\n"
-    "    return '' if s in EMPTY_MARKS else s\n"
-    "\n"
-    "def _charge_desc_covers(prop, cur, elements_map):\n"
-    "    # V9.2：必填枚举字段为空时，若需求已在同体系'计费说明型'自由文本字段（*chargeStandard）\n"
-    "    # 写入含 超套/套外/资费/计费/收费 关键词的原文，判为已覆盖，不进待补充。\n"
-    "    if not prop.get('enum'):\n"
-    "        return False\n"
-    "    label = str(prop.get('x-label', '') or '') + cur\n"
-    "    if not [w for w in CHARGE_DESC_KEYWORDS if w in label]:\n"
-    "        return False\n"
-    "    for epath, evalue in elements_map.items():\n"
-    "        if not epath.endswith('chargeStandard'):\n"
-    "            continue\n"
-    "        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):\n"
-    "            return True\n"
-    "    return False\n"
-    "\n"
-    "def flatten_elements(node, prefix='', out=None):\n"
-    "    if out is None:\n"
-    "        out = {}\n"
-    "    if not isinstance(node, dict):\n"
-    "        return out\n"
-    "    for k, v in node.items():\n"
-    "        path = (prefix + '.' + k) if prefix else k\n"
-    "        if isinstance(v, dict):\n"
-    "            flatten_elements(v, path, out)\n"
-    "        else:\n"
-    "            val = strip(v)\n"
-    "            if val != '':\n"
-    "                out[path] = val\n"
-    "    return out\n"
-    "\n"
-    "def flatten_offer(node, prefix='', out=None):\n"
-    "    if out is None:\n"
-    "        out = {}\n"
-    "    if isinstance(node, dict):\n"
-    "        for k, v in node.items():\n"
-    "            path = (prefix + '.' + k) if prefix else k\n"
-    "            flatten_offer(v, path, out)\n"
-    "    elif isinstance(node, list):\n"
-    "        for i, v in enumerate(node):\n"
-    "            flatten_offer(v, '%s[%d]' % (prefix, i), out)\n"
-    "    else:\n"
-    "        val = strip(node)\n"
-    "        if val != '':\n"
-    "            out[prefix] = val\n"
-    "    return out\n"
-    "\n"
-    "def merge_body(schema, elements_map, offer_map, meta, path='', pending=None):\n"
-    "    if pending is None:\n"
-    "        pending = []\n"
-    "    out = {}\n"
-    "    props = schema.get('properties') or {}\n"
-    "    for key, sub in props.items():\n"
-    "        cur = (path + '.' + key) if path else key\n"
-    "        label = sub.get('x-label', key)\n"
-    "        if sub.get('type') == 'object':\n"
-    "            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending)\n"
-    "            continue\n"
-    "        val = elements_map.get(cur)\n"
-    "        source = '原始需求' if val is not None else ''\n"
-    "        if val is None and not is_price(label, key):\n"
-    "            oval = offer_map.get(cur)\n"
-    "            if oval is not None:\n"
-    "                val, source = oval, 'AI补全'\n"
-    "        if val is None and sub.get('default') is not None:\n"
-    "            val, source = sub['default'], '默认值'\n"
-    "        if val is None and sub.get('x-default-rule'):\n"
-    "            rule = sub['x-default-rule']\n"
-    "            val = _today_str() if rule == 'system_date' else rule\n"
-    "            source = '默认值'\n"
-    "        if val is None:\n"
-    "            val, source = '', ''\n"
-    "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n"
-    "                if not _charge_desc_covers(sub, cur, elements_map):\n"
-    "                    pending.append(cur)\n"
-    "        out[key] = val\n"
-    "        if source:\n"
-    "            meta[cur] = {'label': label, 'value': val, 'source': source}\n"
-    "    return out\n"
-    "\n"
-    "def _num(v):\n"
-    "    if isinstance(v, bool) or v is None:\n"
-    "        return None\n"
-    "    try:\n"
-    "        return float(str(v).strip())\n"
-    "    except (TypeError, ValueError):\n"
-    "        return None\n"
-    "\n"
-    "def _path_get(node, path):\n"
-    "    for part in path.split('.'):\n"
-    "        if not isinstance(node, dict) or part not in node:\n"
-    "            return None\n"
-    "        node = node[part]\n"
-    "    return node\n"
-    "\n"
-    "def _path_set(node, path, value):\n"
-    "    parts = path.split('.')\n"
-    "    cur = node\n"
-    "    for part in parts[:-1]:\n"
-    "        if not isinstance(cur, dict):\n"
-    "            return\n"
-    "        cur = cur.setdefault(part, {})\n"
-    "    if isinstance(cur, dict):\n"
-    "        cur[parts[-1]] = value\n"
-    "\n"
-    "def reconcile_same_parameter(merged, meta, pending):\n"
-    "    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:\n"
-    "        na, nb = _num(_path_get(merged, path_a)), _num(_path_get(merged, path_b))\n"
-    "        src_a = (meta.get(path_a) or {}).get('source', '')\n"
-    "        src_b = (meta.get(path_b) or {}).get('source', '')\n"
-    "        def _authority():\n"
-    "            if na is None and nb is None:\n"
-    "                return None\n"
-    "            pri = {'原始需求': 0, '存量提取': 0, 'AI补全': 1, '同源派生': 2, '默认值': 2}\n"
-    "            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)\n"
-    "            if na is not None and nb is not None:\n"
-    "                if na == nb:\n"
-    "                    return None\n"
-    "                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)\n"
-    "            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)\n"
-    "        auth = _authority()\n"
-    "        if auth is None:\n"
-    "            continue\n"
-    "        value, apath, alabel = auth\n"
-    "        for path, label in ((path_a, label_a), (path_b, label_b)):\n"
-    "            if _num(_path_get(merged, path)) != value:\n"
-    "                _path_set(merged, path, value)\n"
-    "                meta[path] = {'label': label, 'value': value, 'source': '同源派生(%s)' % alabel}\n"
-    "                if path in pending:\n"
-    "                    pending.remove(path)\n"
-    "\n"
-    "def unwrap_offer(offer):\n"
-    "    # 节点105 出参为 similarOffer 包裹时，优先取存量逻辑模型报文 offerModel，回退扁平 offerInfo\n"
-    "    if isinstance(offer, dict) and 'similarOffer' in offer and isinstance(offer['similarOffer'], dict):\n"
-    "        inner = offer['similarOffer']\n"
-    "        if isinstance(inner.get('offerModel'), dict):\n"
-    "            return inner['offerModel']\n"
-    "        if 'offerInfo' in inner:\n"
-    "            return inner['offerInfo']\n"
-    "    return offer\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    def load(text):\n"
-    "        if not isinstance(text, str) or not text.strip():\n"
-    "            return {}\n"
-    "        try:\n"
-    "            return json.loads(text)\n"
-    "        except Exception:\n"
-    "            try:\n"
-    "                t = text.strip()\n"
-    "                if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
-    "                    t = t.split(':', 1)[1].strip()\n"
-    "                return json.loads(t)\n"
-    "            except Exception:\n"
-    "                return {}\n"
-    "    schema = load(p.get('schema_json') or '')\n"
-    "    elements = load(p.get('elements_json') or '')\n"
-    "    offer = unwrap_offer(load(p.get('offer_json') or ''))\n"
-    "    template_id = schema.get('x-template', '')\n"
-    "    if isinstance(offer, dict) and template_id in offer:\n"
-    "        offer = offer[template_id]\n"
-    "    elements_map = flatten_elements(elements)\n"
-    "    offer_map = flatten_offer(offer)\n"
-    "    meta, pending = {}, []\n"
-    "    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending)\n"
-    "    reconcile_same_parameter(merged, meta, pending)\n"
-    "    ret: Output = {\n"
-    "        \"payload\": json.dumps(merged, ensure_ascii=False),\n"
-    "        \"meta\": json.dumps(meta, ensure_ascii=False),\n"
-    "        \"pending_required\": ','.join(pending),\n"
-    "        \"template\": template_id,\n"
-    "    }\n"
-    "    return ret"
-)
-
 # ---------------- CODE_RENDER_TABLE：逻辑模型报文→业务分节表格 ----------------
 # 来源 scripts/render_table.py（V3.0，去 argparse）
-# 输入：schema_json、payload（merge_nested 输出报文 JSON）、meta（溯源 JSON）、
+# 输入：schema_json、payload（合并节点输出报文 JSON）、meta（溯源 JSON）、
 #       similar_offer（相似产品信息 JSON，用于来源列拼接）、title
 # 输出：table_text（markdown 分节多表）
 CODE_RENDER_TABLE = (
@@ -511,6 +298,13 @@ CODE_RENDER_TABLE = (
     "def collect(schema, data, pending, meta=None, sim_ref=''):\n"
     "    sections = []\n"
     "    meta = meta or {}\n"
+    "    def hidden(obj_schema, sub, key, obj_data, path):\n"
+    "        # x-show-when 语义判定：'选择非全省时展示' 且 groupId=全省 -> 隐藏（不计待补充）\n"
+    "        cond = sub.get('x-show-when')\n"
+    "        if not cond or '非全省' not in str(cond):\n"
+    "            return False\n"
+    "        g = obj_data.get('groupId') if isinstance(obj_data, dict) else ''\n"
+    "        return '全省' in str(g or '')\n"
     "    def walk(obj_schema, obj_data, depth, path, sec):\n"
     "        for key, sub in obj_schema.get('properties', {}).items():\n"
     "            label = sub.get('x-label', key)\n"
@@ -530,7 +324,7 @@ CODE_RENDER_TABLE = (
     "                if key in SKIP_KEYS or not isinstance(obj_data, dict):\n"
     "                    continue\n"
     "                if key not in obj_data or obj_data[key] in ('', None):\n"
-    "                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS:\n"
+    "                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS and not hidden(obj_schema, sub, key, obj_data, path):\n"
     "                        pending.append((INDENT_UNIT * depth) + label)\n"
     "                    continue\n"
     "                val = fmt_value(obj_data[key])\n"
@@ -661,7 +455,7 @@ s00.append(plugin_node(5, "保存需求工单", "save_node_result",
      inp("node_name", "环节名=requirement_report（需求提报单）", content="requirement_report"),
      inp("result_json", "需求字段 JSON（=代码节点渲染后归一 elements）", ref_block=nid(3), ref_rel="elements"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
+    [ ("record_id", "存储记录ID", "string")]))
 # 无待补充分支：发需求工单审批（approval-type=requirement，双轨之需求轨）
 s00.append(plugin_node(6, "需求工单审批", "submit_release_approval",
     "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）；req_id=需求单号，report_url=需求提报单文本；插件层按 approval-type 路由双轨门禁",
@@ -690,23 +484,15 @@ files00 = workflow(
     "wf_sub_00", s00, e00)
 
 # ============================================================
-# wf_sub_01 需求分析（环节2，模板轨重写）
+# wf_sub_01 需求分析（环节2，模板轨精简版，8 节点）
 #   流程：开始(req_id) → 读取需求工单(requirement_report) → 提取需求字段
-#     → 产品识别(LLM：识别产品类型并选模板) → 双源相似检索(query_offer 本地优先 → similar_offer 兜底)
+#     → 产品识别(LLM：识别产品类型并选模板) → 相似产品检索(similar_offer 存量报文)
 #     → 取模板(get_template) → 要素提取(LLM：按模板 x-label 提取配置要素嵌套JSON)
-#     → merge_nested(代码节点合并需求要素+相似产品报文) → render_table(代码节点渲染分节表格)
+#     → 要素校验与方案合并(CODE_EXTRACT_MERGE：六项质量校验+递归合并合一)
+#     → render_table(代码节点渲染分节表格)
 #     → 保存 requirement（延续 req_id，不再自生成）→ 结束（输出方案表格+待补充）
 # ============================================================
-PLAN_ELICIT_PROMPT = (
-    "你是产销品需求分析助手（环节2 需求分析-模板轨），只做一件事：把已提报的需求字段翻译为模板要素提取 JSON，不做决策、不渲染。"
-)
-
-# ---------------- CODE_VALIDATE_ELEMENTS：wf_sub_01 要素提取质量校验闸 ----------------
-# 来源 skill validate_elements.py（flow-A 第④步后置闸，纯确定性六项校验）。接入 wf_sub_01
-# 要素提取(107)之后、merge_nested(108)之前：非法路径剔除/数值合法/是否类归一提示/可提取命中率
-# 质量门禁(E31)/价格交叉核对。schema_json 与 elements_json 由节点入参传入（不做文件 IO，
-# 对齐 CODE_MERGE_NESTED 以入参取 schema 的模式）。
-CODE_VALIDATE_ELEMENTS = (
+CODE_EXTRACT_MERGE = (
     "import json\n"
     "import re\n"
     "from typing import Any, Dict\n"
@@ -726,6 +512,20 @@ CODE_VALIDATE_ELEMENTS = (
     "    r\"(favValidityVAlue|fixValidityVAlue)$\",\n"
     ")\n"
     "YES_HINT_WORDS = ('允许', '开通', '支持', '可以', '可办')\n"
+    "PRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')\n"
+    "PRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')\n"
+    "CHARGE_DESC_KEYWORDS = ('超套', '套外', '资费', '计费', '收费')\n"
+    "EMPTY_MARKS = ('', '待补充', '系统待生成')\n"
+    "SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\n"
+    "SYSTEM_GEN_KEYS = ('orderNo',)\n"
+    "SAME_PARAMETER_PAIRS = (\n"
+    "    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n"
+    ")\n"
+    "\n"
+    "# 业务默认值：存量产品发布地市默认为全省，schema 支持全省口径（groupIdMessage 随之隐藏）\n"
+    "BUSINESS_DEFAULTS = {\n"
+    "    'releaseInfo.groupId': '全省',\n"
+    "}\n"
     "\n"
     "def _is_non_extractable(path):\n"
     "    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n"
@@ -772,32 +572,307 @@ CODE_VALIDATE_ELEMENTS = (
     "        m = re.match(r'^(\\d+(?:\\.\\d+)?)\\s*元?$', s)\n"
     "        return float(m.group(1)) if m else None\n"
     "\n"
+    "def _today_str():\n"
+    "    import datetime\n"
+    "    return datetime.date.today().strftime('%Y-%m-%d')\n"
+    "\n"
+    "def is_price(label, key):\n"
+    "    for text in (label, key):\n"
+    "        t = text or ''\n"
+    "        if any(m in t for m in PRICE_EXCLUDE_MARKS):\n"
+    "            continue\n"
+    "        if any(kw in t for kw in PRICE_KEYWORDS):\n"
+    "            return True\n"
+    "    return False\n"
+    "\n"
+    "def strip(v):\n"
+    "    if v is None:\n"
+    "        return ''\n"
+    "    if isinstance(v, bool):\n"
+    "        return '是' if v else '否'\n"
+    "    if isinstance(v, (int, float)):\n"
+    "        return v\n"
+    "    s = str(v).strip()\n"
+    "    return '' if s in EMPTY_MARKS else s\n"
+    "\n"
+    "def _charge_desc_covers(prop, cur, elements_map):\n"
+    "    if not prop.get('enum'):\n"
+    "        return False\n"
+    "    label = str(prop.get('x-label', '') or '') + cur\n"
+    "    if not [w for w in CHARGE_DESC_KEYWORDS if w in label]:\n"
+    "        return False\n"
+    "    for epath, evalue in elements_map.items():\n"
+    "        if not epath.endswith('chargeStandard'):\n"
+    "            continue\n"
+    "        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):\n"
+    "            return True\n"
+    "    return False\n"
+    "\n"
+    "def flatten_elements(node, prefix='', out=None):\n"
+    "    if out is None:\n"
+    "        out = {}\n"
+    "    if not isinstance(node, dict):\n"
+    "        return out\n"
+    "    for k, v in node.items():\n"
+    "        path = (prefix + '.' + k) if prefix else k\n"
+    "        if isinstance(v, dict):\n"
+    "            flatten_elements(v, path, out)\n"
+    "        else:\n"
+    "            val = strip(v)\n"
+    "            if val != '':\n"
+    "                out[path] = val\n"
+    "    return out\n"
+    "\n"
+    "def flatten_offer(node, prefix='', out=None):\n"
+    "    if out is None:\n"
+    "        out = {}\n"
+    "    if isinstance(node, dict):\n"
+    "        for k, v in node.items():\n"
+    "            path = (prefix + '.' + k) if prefix else k\n"
+    "            flatten_offer(v, path, out)\n"
+    "    elif isinstance(node, list):\n"
+    "        for i, v in enumerate(node):\n"
+    "            flatten_offer(v, '%s[%d]' % (prefix, i), out)\n"
+    "    else:\n"
+    "        val = strip(node)\n"
+    "        if val != '':\n"
+    "            out[prefix] = val\n"
+    "    return out\n"
+    "\n"
+    "def _visible(cond_map, out_map, cur):\n"
+    "    # 依据节点级 x-show-when 判定当前字段是否展示（不展示即不计入待补充）\n"
+    "    cond = cond_map.get(cur)\n"
+    "    if not cond:\n"
+    "        return True\n"
+    "    parent = cur.rsplit('.', 1)[0] if '.' in cur else ''\n"
+    "    gkey = (parent + '.groupId') if parent else 'groupId'\n"
+    "    gval = str(out_map.get(gkey) or '')\n"
+    "    # 语义：'选择非全省时展示' -> groupId=全省 时隐藏\n"
+    "    if '非全省' in str(cond):\n"
+    "        return '全省' not in gval\n"
+    "    return True\n"
+    "\n"
+    "def merge_body(schema, elements_map, offer_map, meta, path='', pending=None, cond_map=None, out_map=None):\n"
+    "    if pending is None:\n"
+    "        pending = []\n"
+    "    if cond_map is None:\n"
+    "        cond_map = {}\n"
+    "    if out_map is None:\n"
+    "        out_map = {}\n"
+    "    out = {}\n"
+    "    props = schema.get('properties') or {}\n"
+    "    for key, sub in props.items():\n"
+    "        cur = (path + '.' + key) if path else key\n"
+    "        label = sub.get('x-label', key)\n"
+    "        if sub.get('x-show-when'):\n"
+    "            cond_map[cur] = sub['x-show-when']\n"
+    "        if sub.get('type') == 'object':\n"
+    "            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending, cond_map, out_map)\n"
+    "            continue\n"
+    "        val = elements_map.get(cur)\n"
+    "        source = '原始需求' if val is not None else ''\n"
+    "        if val is None and not is_price(label, key):\n"
+    "            oval = offer_map.get(cur)\n"
+    "            if oval is not None:\n"
+    "                val, source = oval, 'AI补全'\n"
+    "        if val is None and sub.get('default') is not None:\n"
+    "            val, source = sub['default'], '默认值'\n"
+    "        if val is None and sub.get('x-default-rule'):\n"
+    "            rule = sub['x-default-rule']\n"
+    "            val = _today_str() if rule == 'system_date' else rule\n"
+    "            source = '默认值'\n"
+    "        if val is None and cur in BUSINESS_DEFAULTS:\n"
+    "            val, source = BUSINESS_DEFAULTS[cur], '默认值'\n"
+    "        if val is None:\n"
+    "            val, source = '', ''\n"
+    "        out_map[cur] = val\n"
+    "        if val == '' and source == '':\n"
+    "            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS:\n"
+    "                if not _charge_desc_covers(sub, cur, elements_map) and _visible(cond_map, out_map, cur):\n"
+    "                    pending.append(cur)\n"
+    "        out[key] = val\n"
+    "        if source:\n"
+    "            meta[cur] = {'label': label, 'value': val, 'source': source}\n"
+    "    return out\n"
+    "\n"
+    "def _path_get(node, path):\n"
+    "    for part in path.split('.'):\n"
+    "        if not isinstance(node, dict) or part not in node:\n"
+    "            return None\n"
+    "        node = node[part]\n"
+    "    return node\n"
+    "\n"
+    "def _path_set(node, path, value):\n"
+    "    parts = path.split('.')\n"
+    "    cur = node\n"
+    "    for part in parts[:-1]:\n"
+    "        if not isinstance(cur, dict):\n"
+    "            return\n"
+    "        cur = cur.setdefault(part, {})\n"
+    "    if isinstance(cur, dict):\n"
+    "        cur[parts[-1]] = value\n"
+    "\n"
+    "def reconcile_same_parameter(merged, meta, pending):\n"
+    "    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:\n"
+    "        na, nb = _to_number(_path_get(merged, path_a)), _to_number(_path_get(merged, path_b))\n"
+    "        src_a = (meta.get(path_a) or {}).get('source', '')\n"
+    "        src_b = (meta.get(path_b) or {}).get('source', '')\n"
+    "        def _authority():\n"
+    "            if na is None and nb is None:\n"
+    "                return None\n"
+    "            pri = {'原始需求': 0, '存量提取': 0, 'AI补全': 1, '同源派生': 2, '默认值': 2}\n"
+    "            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)\n"
+    "            if na is not None and nb is not None:\n"
+    "                if na == nb:\n"
+    "                    return None\n"
+    "                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)\n"
+    "            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)\n"
+    "        auth = _authority()\n"
+    "        if auth is None:\n"
+    "            continue\n"
+    "        value, apath, alabel = auth\n"
+    "        for path, label in ((path_a, label_a), (path_b, label_b)):\n"
+    "            if _to_number(_path_get(merged, path)) != value:\n"
+    "                _path_set(merged, path, value)\n"
+    "                meta[path] = {'label': label, 'value': value, 'source': '同源派生(%s)' % alabel}\n"
+    "                if path in pending:\n"
+    "                    pending.remove(path)\n"
+    "\n"
+    "def unwrap_offer(offer):\n"
+    "    # 归一化：优先取 offerModel（按模板实例化的逻辑模型报文，键=模板字段名），\n"
+    "    # 其次 offerInfo（同构字段）；兼容两种包裹层级——\n"
+    "    # ① {similarOffer:{offerModel/offerInfo:...}}（工具外层再包一层）\n"
+    "    # ② {similarOfferId,...,offerModel/offerInfo:...}（相似检索直接返回的扁平静态）\n"
+    "    def _pick(d):\n"
+    "        if not isinstance(d, dict):\n"
+    "            return None\n"
+    "        if isinstance(d.get('offerModel'), dict):\n"
+    "            return d['offerModel']\n"
+    "        if isinstance(d.get('offerInfo'), dict):\n"
+    "            return d['offerInfo']\n"
+    "        return None\n"
+    "    if isinstance(offer, dict):\n"
+    "        picked = _pick(offer)\n"
+    "        if picked is not None:\n"
+    "            return picked\n"
+    "        inner = offer.get('similarOffer')\n"
+    "        picked = _pick(inner)\n"
+    "        if picked is not None:\n"
+    "            return picked\n"
+    "    return offer\n"
+    "\n"
+    "def _load(text):\n"
+    "    # 兼容上游直接透传 dict/list（节点出参未序列化时的常见情形）\n"
+    "    if isinstance(text, (dict, list)):\n"
+    "        return text\n"
+    "    if not isinstance(text, str) or not text.strip():\n"
+    "        return {}\n"
+    "    t = text.strip()\n"
+    "    # 剥离标签行前缀，如 \"elements_json: {...}\"\n"
+    "    if ':' in t and not t.lstrip().startswith('{') and not t.lstrip().startswith('['):\n"
+    "        t = t.split(':', 1)[1].strip()\n"
+    "    # 去除 Markdown 代码块围栏\n"
+    "    t = re.sub(r'^```[a-zA-Z]*\\s*', '', t)\n"
+    "    t = re.sub(r'\\s*```$', '', t)\n"
+    "    try:\n"
+    "        return json.loads(t)\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    # 回退①：截取首个 { 到末个 } 的子串\n"
+    "    s, e = t.find('{'), t.rfind('}')\n"
+    "    if s != -1 and e > s:\n"
+    "        try:\n"
+    "            return json.loads(t[s:e + 1])\n"
+    "        except Exception:\n"
+    "            pass\n"
+    "    # 回退②：截断 JSON 抢救——补齐未闭合的字符串/容器\n"
+    "    s = t.find('{')\n"
+    "    if s != -1:\n"
+    "        salvaged = _salvage_json(t[s:])\n"
+    "        if salvaged is not None:\n"
+    "            return salvaged\n"
+    "    return {}\n"
+    "\n"
+    "def _salvage_json(text):\n"
+    "    # 逐字符扫描，遇未闭合字符串/括号则补齐，再尝试解析（抢救被 max_tokens 截断的 JSON）\n"
+    "    stack, in_str, esc = [], False, False\n"
+    "    for ch in text:\n"
+    "        if in_str:\n"
+    "            if esc:\n"
+    "                esc = False\n"
+    "            elif ch == '\\\\':\n"
+    "                esc = True\n"
+    "            elif ch == '\"':\n"
+    "                in_str = False\n"
+    "            continue\n"
+    "        if ch == '\"':\n"
+    "            in_str = True\n"
+    "        elif ch in '{[':\n"
+    "            stack.append(ch)\n"
+    "        elif ch in '}]':\n"
+    "            if stack:\n"
+    "                stack.pop()\n"
+    "    # 从末尾向前回溯，寻找可解析的最长前缀\n"
+    "    for cut in range(len(text), 0, -1):\n"
+    "        frag = text[:cut].rstrip()\n"
+    "        frag = re.sub(r',\\s*$', '', frag)\n"
+    "        # 去掉尾部不完整的键（形如 ,\"key\" 或 ,\"key\": 或 ,{\"key\"）\n"
+    "        frag = re.sub(r',\\s*\"[^\"]*\"\\s*:?\\s*$', '', frag)\n"
+    "        frag = re.sub(r',\\s*\\{[^}]*$', '', frag)\n"
+    "        frag = frag.rstrip().rstrip(',')\n"
+    "        st, ins, es = [], False, False\n"
+    "        for ch in frag:\n"
+    "            if ins:\n"
+    "                if es:\n"
+    "                    es = False\n"
+    "                elif ch == '\\\\':\n"
+    "                    es = True\n"
+    "                elif ch == '\"':\n"
+    "                    ins = False\n"
+    "                continue\n"
+    "            if ch == '\"':\n"
+    "                ins = True\n"
+    "            elif ch in '{[':\n"
+    "                st.append(ch)\n"
+    "            elif ch in '}]':\n"
+    "                if st:\n"
+    "                    st.pop()\n"
+    "        if ins:\n"
+    "            frag += '\"'\n"
+    "        frag += ''.join('}' if c == '{' else ']' for c in reversed(st))\n"
+    "        try:\n"
+    "            obj = json.loads(frag)\n"
+    "            if isinstance(obj, dict) and obj:\n"
+    "                return obj\n"
+    "        except Exception:\n"
+    "            continue\n"
+    "    return None\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
-    "    try:\n"
-    "        schema = json.loads(str(p.get('schema_json') or '{}'))\n"
-    "    except Exception:\n"
-    "        schema = {}\n"
-    "    try:\n"
-    "        elements = json.loads(str(p.get('elements_json') or '{}'))\n"
-    "    except Exception:\n"
-    "        elements = {}\n"
+    "    schema = _load(p.get('schema_json') or '')\n"
+    "    elements = _load(p.get('elements_json') or '')\n"
+    "    if isinstance(elements, dict) and 'elements_json' in elements:\n"
+    "        inner = elements['elements_json']\n"
+    "        if isinstance(inner, str):\n"
+    "            inner = _load(inner)\n"
+    "        if isinstance(inner, dict):\n"
+    "            elements = inner\n"
+    "    # ① 质量校验（validate_elements 六项校验 + E31 命中率门禁）\n"
     "    threshold = float(p.get('threshold') or 0.30)\n"
     "    leaves = _collect_leaves(schema)\n"
     "    flat = _flatten(elements)\n"
-    "    warnings, removed = [], []\n"
-    "    yes_norm_hints, price_cross = [], []\n"
+    "    removed, yes_norm_hints, price_cross = [], [], []\n"
     "    valid_paths = {}\n"
     "    for path, val in flat.items():\n"
     "        prop = leaves.get(path)\n"
     "        if prop is None:\n"
     "            removed.append({'path': path, 'value': val, 'reason': 'invalid_path'})\n"
     "            continue\n"
-    "        valid_paths[path] = (val, prop)\n"
-    "    for path, (val, prop) in list(valid_paths.items()):\n"
     "        if prop.get('type') == 'number' and _to_number(val) is None:\n"
     "            removed.append({'path': path, 'value': val, 'reason': 'invalid_number'})\n"
-    "            del valid_paths[path]\n"
+    "            continue\n"
+    "        valid_paths[path] = (val, prop)\n"
     "    for path, (val, prop) in valid_paths.items():\n"
     "        label = prop.get('x-label') or ''\n"
     "        enum = prop.get('enum') or []\n"
@@ -818,108 +893,38 @@ CODE_VALIDATE_ELEMENTS = (
     "                                      'optionalInfo.acctMonth.fixFee'],\n"
     "                            'values': [pmf, ff],\n"
     "                            'note': '套餐月费与固定费不一致，请人工确认（不阻断）'})\n"
-    "    result = 'FAIL' if gate == 'FAIL' else ('PASS_WITH_WARNINGS' if removed else 'PASS')\n"
-    "    missing_required = []\n"
-    "    if gate == 'FAIL':\n"
-    "        missing_required = [\n"
-    "            {'path': p, 'label': (leaves[p].get('x-label') or p),\n"
-    "             'type': (leaves[p].get('type') or ''),\n"
-    "             'enum': (leaves[p].get('enum') or [])[:6],\n"
-    "             'hint': '原文是否提到该字段（可同义改写）；类型=%s' % (leaves[p].get('type') or '')}\n"
-    "            for p in extractable_required if p not in valid_paths\n"
-    "        ]\n"
+    "    ve_result = 'FAIL' if gate == 'FAIL' else ('PASS_WITH_WARNINGS' if removed else 'PASS')\n"
+    "    ve_stats = json.dumps({\n"
+    "        'extracted_total': len(flat),\n"
+    "        'valid_total': len(valid_paths),\n"
+    "        'removed_total': len(removed),\n"
+    "        'required_total': sum(1 for x in leaves.values() if x.get('x-required')),\n"
+    "        'extractable_required_total': len(extractable_required),\n"
+    "        'extractable_required_hit': len(hit),\n"
+    "        'extractable_hit_rate': round(rate, 4),\n"
+    "        'threshold': threshold,\n"
+    "    }, ensure_ascii=False)\n"
+    "    # ② 报文合并（merge_nested：schema 骨架 + 需求要素优先 + 相似品补全 + 同源派生）\n"
+    "    offer = unwrap_offer(_load(p.get('offer_json') or ''))\n"
+    "    template_id = schema.get('x-template', '')\n"
+    "    if isinstance(offer, dict) and template_id in offer:\n"
+    "        offer = offer[template_id]\n"
+    "    elements_map = flatten_elements(elements)\n"
+    "    offer_map = flatten_offer(offer)\n"
+    "    meta, pending = {}, []\n"
+    "    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending)\n"
+    "    reconcile_same_parameter(merged, meta, pending)\n"
     "    ret: Output = {\n"
-    "        'result': result,\n"
+    "        'payload': json.dumps(merged, ensure_ascii=False),\n"
+    "        'meta': json.dumps(meta, ensure_ascii=False),\n"
+    "        'pending_required': ','.join(pending),\n"
+    "        'template': template_id,\n"
     "        'quality_gate': gate,\n"
-    "        'stats': json.dumps({\n"
-    "            'extracted_total': len(flat),\n"
-    "            'valid_total': len(valid_paths),\n"
-    "            'removed_total': len(removed),\n"
-    "            'required_total': sum(1 for p in leaves.values() if p.get('x-required')),\n"
-    "            'extractable_required_total': len(extractable_required),\n"
-    "            'extractable_required_hit': len(hit),\n"
-    "            'extractable_hit_rate': round(rate, 4),\n"
-    "            'threshold': threshold,\n"
-    "        }, ensure_ascii=False),\n"
-    "        'missing_required': json.dumps(missing_required, ensure_ascii=False),\n"
-    "        'removed': json.dumps(removed, ensure_ascii=False),\n"
-    "        'yes_norm_hints': json.dumps(yes_norm_hints, ensure_ascii=False),\n"
-    "        'price_cross_check': json.dumps(price_cross, ensure_ascii=False),\n"
+    "        've_result': ve_result,\n"
+    "        've_stats': ve_stats,\n"
     "    }\n"
     "    return ret"
 )
-
-# ---------------- CODE_OP_VALIDATE_NESTED：wf_sub_01 本体校验闸（R-C04/C06） ----------------
-# 后端 ProductOntologyController 已有 POST /api/v1/product-ontology/config/validate-nested，
-# 经 appstore 网关暴露为 BASE_URL/api/v1/appstore/validate-nested。此处代码节点做 HTTP 调用，
-# 端点不可达时优雅回退 backend_pending=1（离线 Demo 与诚实占位口径不变）。
-CODE_OP_VALIDATE_NESTED = (
-    "import json, urllib.request\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "VALIDATE_URL = 'BASE_URL/api/v1/appstore/validate-nested'\n"
-    "\n"
-    "def _load_payload(text):\n"
-    "    if isinstance(text, dict):\n"
-    "        return text\n"
-    "    if not isinstance(text, str) or not text.strip():\n"
-    "        return {}\n"
-    "    try:\n"
-    "        return json.loads(text)\n"
-    "    except Exception:\n"
-    "        try:\n"
-    "            t = text.strip()\n"
-    "            if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
-    "                t = t.split(':', 1)[1].strip()\n"
-    "            return json.loads(t)\n"
-    "        except Exception:\n"
-    "            return {}\n"
-    "\n"
-    "def _fetch(payload, template_id):\n"
-    "    body = json.dumps({'payload': payload, 'template_id': template_id}).encode('utf-8')\n"
-    "    req = urllib.request.Request(VALIDATE_URL, data=body, method='POST',\n"
-    "                                 headers={'Content-Type': 'application/json'})\n"
-    "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
-    "        return json.loads(resp.read().decode('utf-8'))\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    payload = _load_payload(p.get('payload'))\n"
-    "    template_id = str(p.get('template_id') or '')\n"
-    "    if not payload:\n"
-    "        ret: Output = {\n"
-    "            'backend_pending': '1',\n"
-    "            'valid': '',\n"
-    "            'error_list': '[]',\n"
-    "            'explain': '',\n"
-    "            'note': 'merge_nested 报文本体解析失败或为空，未执行本体校验；请人工核对必填项',\n"
-    "        }\n"
-    "        return ret\n"
-    "    try:\n"
-    "        info = _fetch(payload, template_id)\n"
-    "    except Exception:\n"
-    "        info = None\n"
-    "    if not info:\n"
-    "        ret: Output = {\n"
-    "            'backend_pending': '1',\n"
-    "            'valid': '',\n"
-    "            'error_list': '[]',\n"
-    "            'explain': '',\n"
-    "            'note': '本体校验闸(validate_nested)端点暂不可达，未执行本体校验；方案仍按原链路给出（单产品闭合）',\n"
-    "        }\n"
-    "    else:\n"
-    "        def _arr(v):\n"
-    "            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n"
-    "        ret: Output = {\n"
-    "            'backend_pending': '0',\n"
-    "            'valid': str(info.get('valid') or ''),\n"
-    "            'error_list': _arr(info.get('error_list')),\n"
-    "            'explain': _arr(info.get('explain')),\n"
-    "            'note': str(info.get('message') or ''),\n"
-    "        }\n"
-    "    return ret"
-)
-CODE_OP_VALIDATE_NESTED = CODE_OP_VALIDATE_NESTED.replace("BASE_URL", BASE_URL)
 
 s01 = []
 s01.append(start_node(101, [
@@ -933,12 +938,12 @@ s01.append(plugin_node(102, "读取需求工单", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=requirement_report（需求提报单）", content="requirement_report"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为需求字段原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为需求字段原文）", "string")],
     method="get"))
+# 取需求字段原文：派生 record_json 供产品识别/要素提取复用（node 103）
 s01.append(code_node(103, "提取需求字段原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
-    [code_out("record_json", 103), code_out("offer_id", 103)],
+    [code_out("record_json", 103)],
     pos=(390, 135)))
 # 产品识别（LLM）：识别产品类型 → 选模板 + 生成要素提取所需上下文
 s01.append(llm_node(104, "产品识别与模板选择",
@@ -951,26 +956,27 @@ s01.append(llm_node(104, "产品识别与模板选择",
     "- familyBasePrc：家庭基础套餐（产品类型=家庭基础套餐，来源5.3.5.1，含融合成员）\n"
     "- familyAddPrc：家庭附加业务（产品类型=家庭附加资费，来源5.3.5.2）\n"
     "判定规则：需求字段 product_type 直接匹配模板 product_type → 锁定唯一模板；product_type 缺失时按 name/系列/内容关键词推断；无法判定默认 personMainPrc。\n"
-    "输出要求：仅输出两个出参——\n"
-    "1. template_id：六选一模板标识；\n"
-    "2. need_summary：一段需求要素摘要（产品类型+模板+资费+资源要点，供相似检索检索词，≤2000字符）。",
+    "输出要求：只输出一个 JSON 对象，对象仅含两个键——\n"
+    "1. template_id：六选一模板标识（字符串，如 \"personMainPrc\"）；\n"
+    "2. need_summary：一段需求要素摘要（产品类型+模板+资费+资源要点，供相似检索检索词，≤2000字符，字符串）。\n"
+    "严禁输出其他文字、编号列表、标签前缀（如 \"1. template_id：\"）、解释或 Markdown 代码块围栏；严禁把两个出参塞进同一段文本。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json")],
     [out("template_id", "选定的模板标识（personMainPrc 等六选一）"), out("need_summary", "需求要素摘要（相似检索检索词）")]))
-# 双源相似检索：query_offer 本地优先 → similar_offer 兜底（无循环，双插件并行由外层智能体按需或串行）
+# 相似产品检索：以需求摘要+模板检索最相似存量产品，返回同构逻辑模型报文供合并补全
 s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
-    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；模板轨用于提取相似产品逻辑模型报文供 merge_nested 按 JSONPath 对位补全",
+    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；供要素合并节点按 JSONPath 对位补全",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
     [inp("businessDesc", "业务需求描述（=节点104需求要素摘要）", ref_block=nid(104), ref_rel="need_summary"),
      inp("templateId", "模板标识（=节点104选定），后端按此模板返回存量逻辑模型报文 offerModel", ref_block=nid(104), ref_rel="template_id")],
-    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+    [
      ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文）", "object")]))
-# 取模板：get_template 代码节点读取已迁移模板 schema
+# 获取配置模板：读已迁移模板 schema，供要素提取与合并共用
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
     [inp("template_id", "模板标识（节点104选定）", ref_block=nid(104), ref_rel="template_id"),
      inp("template_base", "模板目录（方案/templates，随包迁移）", content=r"D:\工作\sitech\项目\研发\git_workspace\AI\prod_platform_ai\场景设计\ah_cti_poc\方案\templates")],
-    [code_out("template_id", 106), code_out("template_name_cn", 106), code_out("template_product_type", 106), code_out("schema_json", 106), code_out("schema_file", 106), code_out("missing", 106)],
+    [code_out("template_id", 106), code_out("schema_json", 106), code_out("missing", 106)],
     pos=(530, 300)))
-# 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON（merge_nested 输入契约）
+# 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON
 s01.append(llm_node(107, "配置要素提取",
     "你是产销品需求分析助手（环节2 要素提取）。基于需求字段（{elements_record}）与选定模板 schema（{schema_json}），严格按模板 schema 提取配置要素。\n"
     "【硬性约束】输出 JSON 的 key 必须**逐字复制模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources/effective_way/out_price 等一律禁止），**严禁**改写成中文键；对位靠 x-label 语义理解，但落键必须是 schema 英文键。\n"
@@ -980,67 +986,51 @@ s01.append(llm_node(107, "配置要素提取",
     "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素 JSON 的**字符串**（形如 {\"elements_json\":\"{\\\"baseInfo\\\":{...}}\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。",
     [inp("elements_record", "引用节点103需求字段原文", ref_block=nid(103), ref_rel="record_json"),
      inp("schema_json", "引用节点106模板 schema", ref_block=nid(106), ref_rel="schema_json")],
-    [out("elements_json", "配置要素（与模板嵌套结构同构的JSON，仅需求原文有值项）")]))
-# 要素提取质量校验闸：107 要素提取后、merge_nested 前（validate_elements，纯确定性六项校验，E31 质量门禁）
-s01.append(code_node(108, "要素提取质量校验", CODE_VALIDATE_ELEMENTS,
+    [out("elements_json", "配置要素（与模板嵌套结构同构的JSON，仅需求原文有值项）")], max_tokens=8192))
+# 要素质量校验 + 报文合并（合一代码节点：validate_elements 六项校验 + merge_nested 递归合并）
+s01.append(code_node(108, "要素校验与方案合并", CODE_EXTRACT_MERGE,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素（节点107提取）", ref_block=nid(107), ref_rel="elements_json"),
+     inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer"),
      inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30")],
-    [code_out("result", 108), code_out("quality_gate", 108), code_out("stats", 108), code_out("missing_required", 108), code_out("removed", 108), code_out("yes_norm_hints", 108), code_out("price_cross_check", 108)],
-    pos=(650, 300)))
-# merge_nested：代码节点合并需求要素 + 相似产品报文
-s01.append(code_node(109, "方案报文合并", CODE_MERGE_NESTED,
-    [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
-     inp("elements_json", "配置要素（节点107提取，已过质量校验）", ref_block=nid(107), ref_rel="elements_json"),
-     inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer")],
-    [code_out("payload", 109), code_out("meta", 109), code_out("pending_required", 109), code_out("template", 109)],
+    [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108)],
     pos=(690, 300)))
-# 本体校验闸：merge_nested 后、render_table 前（validate_nested，R-C04/C06；端点不可达时回退占位，方案仍按原链路给出）
-s01.append(code_node(110, "本体校验闸 validate_nested", CODE_OP_VALIDATE_NESTED,
-    [inp("payload", "merge_nested 报文（节点109）", ref_block=nid(109), ref_rel="payload"),
-     inp("template_id", "模板标识（节点106）", ref_block=nid(106), ref_rel="template_id")],
-    [code_out("backend_pending", 110), code_out("valid", 110), code_out("error_list", 110), code_out("explain", 110), code_out("note", 110)],
-    pos=(770, 300)))
-# render_table：代码节点渲染业务分节表格
-s01.append(code_node(111, "方案表格渲染", CODE_RENDER_TABLE,
+# 方案表格渲染：按模板 schema 分节渲染业务可读表格
+s01.append(code_node(109, "方案表格渲染", CODE_RENDER_TABLE,
     [inp("schema_json", "模板 schema（节点106）", ref_block=nid(106), ref_rel="schema_json"),
-     inp("payload", "merge_nested 报文（节点109）", ref_block=nid(109), ref_rel="payload"),
-     inp("meta", "溯源（节点109）", ref_block=nid(109), ref_rel="meta"),
+     inp("payload", "合并报文（节点108）", ref_block=nid(108), ref_rel="payload"),
+     inp("meta", "溯源（节点108）", ref_block=nid(108), ref_rel="meta"),
      inp("similar_offer", "相似产品（节点105，来源列拼接）", ref_block=nid(105), ref_rel="similarOffer"),
      inp("title", "方案标题", content="产销品配置方案（模板轨）")],
-    [code_out("table_text", 111), code_out("pending_count", 111)],
+    [code_out("table_text", 109), code_out("pending_count", 109)],
     pos=(920, 300)))
 # 保存 requirement（延续 req_id，node_name=requirement 与既有 wf_sub_02~05 自查链路口径一致）
-s01.append(plugin_node(112, "保存执行方案", "save_node_result",
-    "节点结果存储（复用）：req_id=开始节点 req_id（环节1延续，不重新生成），node_name=requirement（执行方案），result_json=merge_nested payload + render_table 表格组装 JSON；供 wf_sub_02 智能配置自查链路与 wf_sub_06 门禁按 req_id+requirement 读取",
+s01.append(plugin_node(110, "保存执行方案", "save_node_result",
+    "节点结果存储（复用）：req_id=开始节点 req_id（环节1延续，不重新生成），node_name=requirement（执行方案），result_json=合并报文 payload（实例化逻辑模型）；供 wf_sub_02 智能配置自查链路与 wf_sub_06 门禁按 req_id+requirement 读取",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "需求单号/方案批次号（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=requirement（执行方案）", content="requirement"),
-     inp("result_json", "执行方案JSON=合并报文+表格（节点109 payload 组装）", ref_block=nid(109), ref_rel="payload"),
+     inp("result_json", "执行方案JSON=实例化逻辑模型报文（节点108 payload）", ref_block=nid(108), ref_rel="payload"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")],
+    [ ("record_id", "存储记录ID", "string")],
     pos=(1080, 135)))
-s01.append(end_node(113, "结束(方案已生成)",
+s01.append(end_node(111, "结束(方案已生成)",
     [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
-     inp("table_text", "配置方案表格", ref_block=nid(111), ref_rel="table_text"),
-     inp("pending_required", "必填待补充", ref_block=nid(109), ref_rel="pending_required"),
+     inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
+     inp("pending_required", "必填待补充", ref_block=nid(108), ref_rel="pending_required"),
      inp("template_id", "模板", ref_block=nid(106), ref_rel="template_id"),
-     inp("valid", "本体校验结论（节点110）", ref_block=nid(110), ref_rel="valid"),
-     inp("error_list", "本体校验违规项（节点110）", ref_block=nid(110), ref_rel="error_list"),
-     inp("val_note", "本体校验说明（节点110）", ref_block=nid(110), ref_rel="note"),
      inp("quality_gate", "要素提取质量门禁（节点108）", ref_block=nid(108), ref_rel="quality_gate"),
-     inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="stats")],
+     inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="ve_stats")],
     "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n"
-    "【要素提取质量校验】门禁：{quality_gate}（为空省略）；统计：{ve_stats}（为空省略）\n"
-    "【本体校验】valid={valid}（为空显示\"未执行（validate_nested 端点暂不可达，请人工核对必填项）\"）；违规项：{error_list}（为空省略）；说明：{val_note}（为空省略）\n\n"
+    "【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n"
     "【待补充必填】{pending_required}\n请核对以上方案：\n"
     "- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n"
     "- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。"))
 e01 = [edge(101, 102), edge(102, 103), edge(103, 104),
        edge(104, 105), edge(105, 106), edge(106, 107),
-       edge(107, 108), edge(108, 109), edge(109, 110), edge(110, 111), edge(111, 112), edge(112, 113)]
+       edge(107, 108), edge(108, 109), edge(109, 110), edge(110, 111)]
 files01 = workflow(
-    "产销品-需求分析", "子工作流1（模板轨重写）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)并提取需求字段→产品识别LLM(选模板)→相似产品检索(query_similar_offer兜底,供merge补全)→get_template代码节点读已迁移模板→配置要素提取LLM(按模板x-label,嵌套同构)→要素提取质量校验代码节点(validate_elements派生,六项校验+E31可提取命中率门禁)→merge_nested代码节点合并(需求要素+相似报文,价格不照搬)→validate_nested本体校验闸代码节点(R-C04/C06,HTTP调用appstore端点,不可达回退占位)→render_table代码节点渲染业务分节表格→保存requirement(延续req_id,衔接wf_sub_02~05自查链路)→结束输出方案+待补充+要素质量+本体校验结论。",
+    "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)并提取需求字段→产品识别LLM(选模板)→相似产品检索(query_similar_offer,供合并补全)→获取配置模板(读已迁移模板schema)→配置要素提取LLM(按模板x-label,嵌套同构)→要素校验与方案合并(合一代码节点:validate_elements六项校验+E31命中率门禁+merge_nested递归合并,需求优先/价格不照搬/相似品补全)→方案表格渲染(业务分节表格)→保存requirement(延续req_id,衔接wf_sub_02~05自查链路)→结束输出方案+待补充+要素质量结论。",
     "wf_sub_01", s01, e01)
 
 
@@ -1112,8 +1102,7 @@ s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=requirement", content="requirement"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
     method="get"))
 s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
@@ -1142,7 +1131,7 @@ s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
      inp("node_name", "环节名=config（智能配置）", content="config"),
      inp("result_json", "环节结果JSON=完整落地配置JSON（含offer_id及可选group）", ref_block=nid(103), ref_rel="product_config"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(1060, 135)))
+    [ ("record_id", "存储记录ID", "string")], pos=(1060, 135)))
 s2f.append(end_node(104, "结束(配置落地完成)",
     [inp("product_id", "CRM产品ID", ref_block=nid(103), ref_rel="product_id"),
      inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
@@ -1169,8 +1158,7 @@ s3f.append(plugin_node(206, "读取配置环节结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
     method="get", pos=(240, 135)))
 s3f.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点206查询出参 list（记录数组JSON）", ref_block=nid(206), ref_rel="list")],
@@ -1201,7 +1189,7 @@ s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
      inp("node_name", "环节名=spec（规格稽核）", content="spec"),
      inp("result_json", "环节结果JSON=稽核总结（含融合组维度行）", ref_block=nid(203), ref_rel="audit_suggest"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(900, 135)))
+    [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s3f.append(end_node(204, "结束(稽核完成)",
     [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
      inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
@@ -1225,8 +1213,7 @@ s5f.append(plugin_node(406, "读取配置环节结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
     method="get"))
 s5f.append(code_node(407, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点406查询出参 list（记录数组JSON）", ref_block=nid(406), ref_rel="list")],
@@ -1252,7 +1239,7 @@ s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
      inp("node_name", "环节名=fee（资费校准）", content="fee"),
      inp("result_json", "环节结果JSON=风险解读（融合组按成员分组）", ref_block=nid(403), ref_rel="risk_summary"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(900, 135)))
+    [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论", ref_block=nid(402), ref_rel="pass"),
      inp("risk_list", "风险清单", ref_block=nid(402), ref_rel="risk_list"),
@@ -1487,7 +1474,7 @@ CODE_MAP_FIXED_CASES = (
 
 # ---------------- CODE_DOWNLOAD_TEST_REPORT：测试报告下载（阶段1.2） ----------------
 # 后端暴露下载端点后返回下载地址；端点不可达时回退为下载引导文本（offline Demo 口径），
-# download_url 空、note 给出离线引导。对齐 CODE_OP_VALIDATE_NESTED 的 urllib POST + 优雅回退模式。
+# download_url 空、note 给出离线引导。对齐 urllib POST + 优雅回退模式。
 CODE_DOWNLOAD_TEST_REPORT = (
     "import json, urllib.request, urllib.parse\n"
     "from typing import Any, Dict\n"
@@ -1525,14 +1512,16 @@ CODE_DOWNLOAD_TEST_REPORT = (
 CODE_DOWNLOAD_TEST_REPORT = CODE_DOWNLOAD_TEST_REPORT.replace("BASE_URL", BASE_URL)
 
 # ============================================================
-# wf_sub_04 自动测试（阶段4 重写：正式版 9 章节报告）
+# wf_sub_04 自动测试（阶段4 精简版：正式版 9 章节报告）
 #   流程：开始(req_id) → 读取 config 环节结果(309) → 提取原文+offer_id(310)
-#     → 发起测试(302 offer_test 取 globalId) → 查询场景(303 get_test_scenes)
-#     → 自检 spec(311/312 query_node_result node_name=spec → 提取) → 自检 fee(313/314)
-#     → 轮询进度(304 CODE_POLL_PROGRESS) → 查询结果(305 get_test_result 取 testScenes/orderId/offerInstId/offerName)
+#     → 发起测试(302 offer_test 取 globalId) → 轮询进度(304 CODE_POLL_PROGRESS)
+#     → 查询结果(305 get_test_result 取 testScenes/orderId/offerInstId/offerName)
 #     → CODE_MAP_FIXED_CASES(315 确定性 31 条固定用例 + 结论 + 缺陷 + 场景覆盖 + E26 核对)
 #     → LLM(306 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版，受理验证独立成节)
-#     → 存储(308 node_name=test) → 结束(307)
+#     → 存储(308 node_name=test) → 下载测试报告(316) → 结束(307)
+#   注：原「查询场景(303)」「自检 spec(311/312)」「自检 fee(313/314)」四个环节出参无任何
+#   下游消费，属链路冗余，已删除；315 的 spec_record/fee_record 入参同步移除，
+#   306 报告中的稽核/资费引用改为基于 315 确定性映射结果（维度统计/缺陷清单）。
 # ============================================================
 s4f = []
 s4f.append(start_node(301, [
@@ -1546,8 +1535,7 @@ s4f.append(plugin_node(309, "读取配置环节结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
     method="get", pos=(240, 135)))
 s4f.append(code_node(310, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点309查询出参 list（记录数组JSON）", ref_block=nid(309), ref_rel="list")],
@@ -1558,42 +1546,8 @@ s4f.append(plugin_node(302, "发起测试", "offer_test",
     "工具3：自研模拟测试发起，返回模拟测试流水 globalId；offerId 取自 config 环节结果（节点310解析的offer_id）",
     BASE_URL + "/api/v1/appstore/test/offer/start",
     [inp("offerId", "销售品ID（节点310从落地结果解析的offer_id）", ref_block=nid(310), ref_rel="offer_id")],
-    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+    [
      ("globalId", "测试流水号", "string")]))
-# 查询测试场景
-s4f.append(plugin_node(303, "查询测试场景", "get_test_scenes",
-    "工具4：查询受理验证覆盖范围（套餐新装/副卡加装/套餐退订/融合组绑定等）；testScenes 照列供报告第四章场景清单",
-    BASE_URL + "/api/v1/appstore/test/offer/scenes",
-    [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
-    [("resultCode", "0成功/1失败", "string"), ("testScenes", "场景列表（照列出参，禁止虚构）", "array")]))
-# 自检 spec 环节结果（供 31 条固定用例客服/受理分项 error_list 填充）
-s4f.append(plugin_node(311, "自检稽核结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（list[0].result_json 可含 error_list 原JSON或稽核总结文本）",
-    BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
-     inp("node_name", "环节名=spec", content="spec"),
-     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
-    method="get", pos=(240, 380)))
-s4f.append(code_node(312, "提取稽核原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点311查询出参 list（记录数组JSON）", ref_block=nid(311), ref_rel="list")],
-    [code_out("record_json", 312)],
-    pos=(390, 380)))
-# 自检 fee 环节结果（供 31 条固定用例计费分项 compare_list/risk_list 填充）
-s4f.append(plugin_node(313, "自检资费结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（list[0].result_json 可含 compare_list/risk_list 原JSON或风险解读文本）",
-    BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
-     inp("node_name", "环节名=fee", content="fee"),
-     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
-    method="get", pos=(240, 505)))
-s4f.append(code_node(314, "提取资费原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点313查询出参 list（记录数组JSON）", ref_block=nid(313), ref_rel="list")],
-    [code_out("record_json", 314)],
-    pos=(390, 505)))
 # 轮询测试进度（代码节点内嵌轮询，5s 间隔 / 30 分钟超时）
 s4f.append(code_node(304, "轮询测试进度", CODE_POLL_PROGRESS,
     [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
@@ -1604,15 +1558,13 @@ s4f.append(plugin_node(305, "查询测试结果", "get_test_result",
     "工具6：done=true 后调用一次；返回逐场景结果 testScenes（含测点明细 testCasePointResults）、受理凭证 orderId/offerInstId、被测销售品 offerName；presetValue 取自《产品信息.txt》该销售品规则值",
     BASE_URL + "/api/v1/appstore/test/offer/result",
     [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
-    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+    [
      ("testRequestId", "测试请求ID", "string"), ("offerName", "被测销售品名称", "string"),
      ("orderId", "受理订单号", "string"), ("offerInstId", "销售品实例ID", "string"),
      ("testScenes", "逐场景结果含测点明细（照列出参）", "array")]))
 # CODE_MAP_FIXED_CASES：确定性构建 31 条固定用例表 + 结论 + 缺陷 + 场景覆盖 + E26 核对
 s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
     [inp("test_result_json", "get_test_result 出参（节点305，含 testScenes/orderId/offerInstId/offerName）", ref_block=nid(305), ref_rel="testScenes"),
-     inp("spec_record", "稽核环节原文（节点312提取，可含 error_list）", ref_block=nid(312), ref_rel="record_json"),
-     inp("fee_record", "资费环节原文（节点314提取，可含 compare_list/risk_list）", ref_block=nid(314), ref_rel="record_json"),
      inp("offer_id", "被测销售品ID（节点310解析）", ref_block=nid(310), ref_rel="offer_id"),
      inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json")],
     [code_out("cases_json", 315), code_out("dimension_summary", 315), code_out("overall_conclusion", 315), code_out("defect_list", 315), code_out("p0_pass", 315), code_out("e26", 315), code_out("e26_note", 315), code_out("scene_cover", 315)],
@@ -1622,10 +1574,10 @@ s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
     "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）、31条固定用例确定性映射结果（cases_json={cases_json}，dimension_summary={dimension_summary}，overall_conclusion={overall_conclusion}，defect_list={defect_list}，scene_cover={scene_cover}，e26={e26}）与受理凭证（orderId={orderId}，offerInstId={offerInstId}），按 K3 模板 V2.0 生成《销售品自动化测试报告》正式版，9 章节结构：\n"
     "一、报告概述（目的/范围/依据/等级定义 P0拦截/P1警告/P2提示）；\n"
     "二、基础信息（12 项：报告编号 TEST-REP-当日-序号/测试任务ID {testRequestId}/被测销售品名称 {offerName}/销售品编码 {offerId}/产品类型（取配置 plan_json 套餐属性）/所属业务域 产销品域/所属部门 产商品中心CRM_POS/生效时间（配置套餐生效规则摘要）/测试方式 全自动智能测试/测试时间 报告生成时间/关联加载方案 {req_id}/测试流水号 {globalId}）；\n"
-    "三、测试总体结论（总校验用例数=各场景 testCaseCount 合计逐字引用；通过=say各场景 successTestCaseCount 合计；警告=0；阻断=各场景 failTestCaseCount 合计；通过率；整体上线结论={overall_conclusion}）；\n"
-    "四、分项测试结果：4.1 受理验证（ACC-001~012，结果逐行引用 cases_json 中 ACC 行 result 原值，未覆盖标'本销售品未覆盖'，不判❌不计入阻断；受理凭证 orderId={orderId}、offerInstId={offerInstId}，为空按E14标注'未获取到受理凭证，需人工核实'）；4.2 计费验证（BILL-001~010，结果引用 cases_json BILL 行，可引用自检资费原文 spec 数据 compare_list/risk_list={fee_record}）；4.3 客服验证（CUST-001~009，结果引用 cases_json CUST 行，可引用自检稽核原文 error_list={spec_record}）；\n"
+    "三、测试总体结论（总校验用例数=各场景 testCaseCount 合计逐字引用；通过=各场景 successTestCaseCount 合计；警告=0；阻断=各场景 failTestCaseCount 合计；通过率；整体上线结论={overall_conclusion}）；\n"
+    "四、分项测试结果：4.1 受理验证（ACC-001~012，结果逐行引用 cases_json 中 ACC 行 result 原值，未覆盖标'本销售品未覆盖'，不判❌不计入阻断；受理凭证 orderId={orderId}、offerInstId={offerInstId}，为空按E14标注'未获取到受理凭证，需人工核实'）；4.2 计费验证（BILL-001~010，结果引用 cases_json BILL 行）；4.3 客服验证（CUST-001~009，结果引用 cases_json CUST 行）；\n"
     "五、缺陷问题明细清单（引用 defect_list，无则写'无'）；\n"
-    "六、业务风险汇总（risk_list={fee_record} 连同 P1 ❌ 项；无警告级风险固定输出'未发现警告级风险。'）；\n"
+    "六、业务风险汇总（引用 defect_list 中 P1 ❌ 项；无警告级风险固定输出'未发现警告级风险。'）；\n"
     "七、整改修复建议（无阻断/警告问题固定输出'无需整改'；有则逐条给出可落地整改建议）；\n"
     "八、最终测试结论与审批建议（三选一={overall_conclusion}，判定规则见 K3 规范第6章；e26=0 时结论须从严标注并提示人工核实，不输出通过性明细）；\n"
     "九、版本说明（V1.0）。\n"
@@ -1644,9 +1596,7 @@ s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
      inp("overall_conclusion", "整体结论（节点315）", ref_block=nid(315), ref_rel="overall_conclusion"),
      inp("defect_list", "缺陷清单（节点315）", ref_block=nid(315), ref_rel="defect_list"),
      inp("scene_cover", "场景覆盖核对（节点315）", ref_block=nid(315), ref_rel="scene_cover"),
-     inp("e26", "被测一致性（节点315）", ref_block=nid(315), ref_rel="e26"),
-     inp("spec_record", "稽核原文（节点312，error_list）", ref_block=nid(312), ref_rel="record_json"),
-     inp("fee_record", "资费原文（节点314，compare_list/risk_list）", ref_block=nid(314), ref_rel="record_json")],
+     inp("e26", "被测一致性（节点315）", ref_block=nid(315), ref_rel="e26")],
     [out("test_report", "《销售品自动化测试报告》正式版 9 章节正文（含受理验证独立成节）")],
     pos=(1140, 300)))
 # 存储 test 环节结果（node_name=test，衔接 wf_sub_06 四环节门禁）
@@ -1657,13 +1607,13 @@ s4f.append(plugin_node(308, "环节结果存储", "save_node_result",
      inp("node_name", "环节名=test（自动测试）", content="test"),
      inp("result_json", "环节结果JSON=正式版测试报告", ref_block=nid(306), ref_rel="test_report"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")],
+    [ ("record_id", "存储记录ID", "string")],
     pos=(1380, 135)))
 # 下载测试报告（阶段1.2）：调用下载端点，不可达回退为下载引导
 s4f.append(code_node(316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
     [inp("record_id", "环节存储记录ID（节点308）", ref_block=nid(308), ref_rel="record_id"),
      inp("offer_id", "被测销售品ID（节点310）", ref_block=nid(310), ref_rel="offer_id")],
-    [code_out("backend_pending", 316), code_out("download_url", 316), code_out("note", 316)],
+    [code_out("download_url", 316), code_out("note", 316)],
     pos=(1520, 300)))
 s4f.append(end_node(307, "结束(测试完成)",
     [inp("offerId", "被测销售品ID", ref_block=nid(310), ref_rel="offer_id"),
@@ -1676,10 +1626,10 @@ s4f.append(end_node(307, "结束(测试完成)",
     "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
     "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。"))
 files4f = workflow(
-    "产销品-自动测试", "子工作流4（阶段4 重写正式版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→get_test_scenes 场景清单→自检 spec(311/312)+fee(313/314)读取供 31 条固定用例填充→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
-    [edge(301,309), edge(309,310), edge(310,302), edge(302,303), edge(303,311),
-     edge(311,312), edge(312,313), edge(313,314), edge(314,304), edge(304,305),
-     edge(305,315), edge(315,306), edge(306,308), edge(308,316), edge(316,307)])
+    "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
+    [edge(301,309), edge(309,310), edge(310,302), edge(302,304),
+     edge(304,305), edge(305,315), edge(315,306), edge(306,308),
+     edge(308,316), edge(316,307)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
@@ -1993,8 +1943,7 @@ s6f.append(plugin_node(602, "自查配置结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=config", content="config"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    [ ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
     method="get", pos=(240, 135)))
 s6f.append(code_node(603, "提取配置原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点602查询出参 list", ref_block=nid(602), ref_rel="list")],
@@ -2006,8 +1955,7 @@ s6f.append(plugin_node(604, "自查稽核结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=spec", content="spec"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON", "string")],
+    [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 260)))
 s6f.append(code_node(605, "提取稽核原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点604查询出参 list", ref_block=nid(604), ref_rel="list")],
@@ -2019,8 +1967,7 @@ s6f.append(plugin_node(606, "自查资费结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=fee", content="fee"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON", "string")],
+    [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 385)))
 s6f.append(code_node(607, "提取资费原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点606查询出参 list", ref_block=nid(606), ref_rel="list")],
@@ -2032,8 +1979,7 @@ s6f.append(plugin_node(608, "自查测试结果", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=test", content="test"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON", "string")],
+    [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 510)))
 s6f.append(code_node(609, "提取测试原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点608查询出参 list", ref_block=nid(608), ref_rel="list")],
@@ -2045,8 +1991,7 @@ s6f.append(plugin_node(610, "自查执行方案", "query_node_result",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=requirement", content="requirement"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
-     ("total", "命中记录数", "string"), ("list", "记录数组JSON", "string")],
+    [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 635)))
 s6f.append(code_node(611, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点610查询出参 list", ref_block=nid(610), ref_rel="list")],
@@ -2090,7 +2035,7 @@ s6f.append(plugin_node(614, "报告存储", "save_node_result",
      inp("node_name", "环节名=report（上线审批建议）", content="report"),
      inp("result_json", "环节结果JSON=上线审批建议", ref_block=nid(613), ref_rel="approval_suggest"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(840, 385)))
+    [ ("record_id", "存储记录ID", "string")], pos=(840, 385)))
 # 615 审批推送 approval-type=launch
 s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
     "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id；product_id=节点612从config提取，report_url=节点613审批建议",

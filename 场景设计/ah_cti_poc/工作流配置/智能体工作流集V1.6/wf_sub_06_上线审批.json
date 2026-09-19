@@ -43,27 +43,6 @@
       {
         "outputs": [
           {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "total",
-            "cname": "命中记录数",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "list",
             "cname": "记录数组JSON（取[0].result_json为环节结果原文）",
             "sechema": [],
@@ -180,27 +159,6 @@
       {
         "outputs": [
           {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "total",
-            "cname": "命中记录数",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "list",
             "cname": "记录数组JSON",
             "sechema": [],
@@ -311,27 +269,6 @@
       },
       {
         "outputs": [
-          {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "total",
-            "cname": "命中记录数",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
           {
             "name": "list",
             "cname": "记录数组JSON",
@@ -444,27 +381,6 @@
       {
         "outputs": [
           {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "total",
-            "cname": "命中记录数",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
             "name": "list",
             "cname": "记录数组JSON",
             "sechema": [],
@@ -575,27 +491,6 @@
       },
       {
         "outputs": [
-          {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "total",
-            "cname": "命中记录数",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
           {
             "name": "list",
             "cname": "记录数组JSON",
@@ -894,20 +789,6 @@
       },
       {
         "outputs": [
-          {
-            "name": "code",
-            "cname": "0成功",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "msg",
-            "cname": "状态描述",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
           {
             "name": "record_id",
             "cname": "存储记录ID",
