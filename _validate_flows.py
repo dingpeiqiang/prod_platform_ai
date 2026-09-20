@@ -4,7 +4,8 @@ base = r'D:\工作\sitech\项目\研发\git_workspace\AI\prod_platform_ai\场景
 files = ['wf_sub_00_需求提报.json', 'wf_sub_01_需求分析.json', 'wf_sub_02_智能配置.json',
          'wf_sub_03_规格稽核.json', 'wf_sub_04_自动测试.json', 'wf_sub_05_资费校准.json',
          'wf_sub_06_上线审批.json', 'wf_sub_07_监控运维.json', 'wf_sub_08_审批进度查询.json',
-         'wf_sub_09_存量产品查询.json', 'wf_sub_10_存量合规扫描.json']
+         'wf_sub_09_存量产品查询.json', 'wf_sub_10_存量合规扫描.json',
+         'wf_sub_11_发起需求审批.json']
 ALLOWED = {0, 1, 2, 3, 6, 9, 13}
 
 

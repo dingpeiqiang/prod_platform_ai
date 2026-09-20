@@ -7,8 +7,6 @@ sys.stdout.reconfigure(encoding='utf-8')
 fails = total = 0
 
 for path in sorted(glob.glob(os.path.join(here, 'wf_sub_*.json'))):
-    if 'wf_sub_11' in os.path.basename(path):
-        continue
     d = json.load(open(path, encoding='utf-8'))
     s = d['workFlowSchemaJSON']
     for n in s['nodes']:

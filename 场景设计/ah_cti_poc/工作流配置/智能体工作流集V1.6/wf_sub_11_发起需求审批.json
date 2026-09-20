@@ -21,9 +21,9 @@
             "blockID": "",
             "relName": "",
             "name": "chat_id",
-            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "description": "{chatId}",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],
@@ -248,7 +248,7 @@
             "blockID": "",
             "relName": "",
             "name": "approval_type",
-            "description": "审批类型=requirement（需求工单审批）",
+            "description": "审批类型=requirement（需求工单审批，区别于 launch 上线审批）",
             "type": "string",
             "required": true,
             "content": "requirement"
@@ -294,7 +294,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），输出需求工单审批发起回执：\n【环节1/9·需求提报】✅ 执行成功\n\n《销售品需求提报单》已完成需求工单审批发起：\n- 需求单号：{req_id}\n- 需求工单审批单号：{approval_id}，状态：{status}\n\n收尾固定块：> **建议处理：** 需求工单审批已提交，建议查询审批进度确认是否通过；审批通过后即可进入【需求分析】（可回复【查询审批进度】查状态，审批通过后回复【开始配置】）\n约束：逐字引用出参，禁止编造审批单号/状态；未取得 approval_id 时按失败口径输出并引导【重新执行】。\n输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。"
+              "content": "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），输出需求工单审批发起回执：\n【环节1/8·需求提报】✅ 需求工单审批已发起\n- 需求单号：{req_id}\n- 需求工单审批单号：{approval_id}，状态：{status}\n- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n约束：逐字引用出参，禁止编造审批单号/状态；未取得 approval_id 时按失败口径输出并引导【重新执行】。\n输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -360,10 +360,64 @@
         "type": 1
       },
       {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001109,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id                + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求工单审批\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000001109",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "{content}"
+          "content": "{approval_receipt}\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -373,18 +427,32 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-00000000b00e",
-            "relName": "content",
-            "name": "content",
-            "description": "代码节点生成的 xsbot-panel 完整内容（话术+面板）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001105",
+            "relName": "approval_receipt",
+            "name": "approval_receipt",
+            "description": "审批发起回执正文",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-00000000b00e",
-              "a1b2c3d4-0000-4000-8000-00000000b00e,content"
+              "a1b2c3d4-0000-4000-8000-000000001105",
+              "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-00000000b00e,content"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001109",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001109",
+              "a1b2c3d4-0000-4000-8000-000000001109,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001109,panel"
           }
         ],
         "checkErr": false,
@@ -398,51 +466,11 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001106",
         "dependencyData": []
-      },
-      {
-        "outputs": [
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-00000000b00e,content",
-            "name": "content",
-            "type": "string"
-          }
-        ],
-        "code": "import json\n\n\ndef _sub(tpl, vals):\n    s = tpl\n    for k in vals:\n        s = s.replace('{' + k + '}', vals[k])\n    return s\n\nSEG_0_TPL = '{approval_receipt}\\n\\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：'\n\n\nPARTS = [\n    ('text', SEG_0_TPL),\n    ('panel', PANEL_00_TPL),\n]\n\nasync def main(args):\n    p = args.params\n\n    def _s(k):\n        v = p.get(k)\n        return '' if v is None else str(v)\n\n    vals = {\n        'approval_receipt': _s('approval_receipt'),\n    }\n\n    def _render_panel(tpl):\n        return \"\\n```xsbot-panel\\n\" + json.dumps(json.loads(_sub(tpl, vals)), ensure_ascii=False) + \"\\n```\\n\"\n\n    buf = []\n    for kind, tpl in PARTS:\n        if kind == 'text':\n            buf.append(_sub(tpl, vals))\n        else:\n            buf.append(_render_panel(tpl))\n    content = \"\".join(buf)\n\n    return {\n        'content': content\n    }",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000001105",
-            "relName": "approval_receipt",
-            "name": "approval_receipt",
-            "description": "代码节点变量 approval_receipt（来源 105,approval_receipt）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000001105",
-              "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
-          }
-        ],
-        "checkErr": false,
-        "nodeMeta": {
-          "description": "代码节点：确定性生成 xsbot-panel 面板 JSON（替代 LLM 拼装，保证面板结构与 URL 稳定）",
-          "title": "xsbot-panel 内容生成"
-        },
-        "language": 1,
-        "id": "a1b2c3d4-0000-4000-8000-00000000b00e",
-        "position": {
-          "x": 1595,
-          "y": 300
-        },
-        "dependencyData": [],
-        "type": 6
       }
     ],
     "edges": [
@@ -468,13 +496,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-00000000b00e",
+        "endId": "a1b2c3d4-0000-4000-8000-000000001109",
         "startId": "a1b2c3d4-0000-4000-8000-000000001105"
       },
       {
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000001106",
-        "startId": "a1b2c3d4-0000-4000-8000-00000000b00e"
+        "startId": "a1b2c3d4-0000-4000-8000-000000001109"
       }
     ],
     "flowId": "wf_sub_11",

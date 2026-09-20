@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-需求提报",
-  "flowRemark": "子工作流0：需求提报（环节1，新增，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)并发需求工单审批(approval-type=requirement)→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
+  "flowRemark": "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -30,9 +30,9 @@
             "blockID": "",
             "relName": "",
             "name": "chat_id",
-            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "description": "{chatId}",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],
@@ -375,121 +375,6 @@
       {
         "outputs": [
           {
-            "name": "approval_id",
-            "cname": "审批单号",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "status",
-            "cname": "提交状态",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          }
-        ],
-        "submit_way": "post",
-        "flowJson": null,
-        "authentic_info": "",
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "offer_id",
-            "description": "销售品ID（需求阶段未落地，传需求单号 req_id 占位）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "report_text",
-            "name": "report_url",
-            "description": "需求提报单（代码节点渲染 report_text）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,report_text"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,report_text"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "req_id",
-            "description": "需求单号（=代码节点生成 req_id）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "approve_confirmed",
-            "description": "审批发起确认标志true",
-            "type": "string",
-            "required": true,
-            "content": "true"
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "approval_flow",
-            "description": "审批流默认standard",
-            "type": "string",
-            "required": true,
-            "content": "standard"
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "approval_type",
-            "description": "审批类型=requirement（需求工单审批，区别于 launch 上线审批）",
-            "type": "string",
-            "required": true,
-            "content": "requirement"
-          }
-        ],
-        "checkErr": false,
-        "nodeMeta": {
-          "title": "需求工单审批",
-          "code": "submit_release_approval",
-          "description": "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）；req_id=需求单号，report_url=需求提报单文本；插件层按 approval-type 路由双轨门禁",
-          "version": "1"
-        },
-        "authentic_info_new": {
-          "auth_type": "1",
-          "auth_info": {
-            "inparams": [],
-            "params": [],
-            "outparams": []
-          }
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000000006",
-        "position": {
-          "x": 1815,
-          "y": 430
-        },
-        "dependencyData": [],
-        "type": 3,
-        "url": "http://10.86.13.201:31281/api/v1/appstore/approval/submit"
-      },
-      {
-        "outputs": [
-          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000009,panel",
             "name": "panel",
             "type": "string"
@@ -525,20 +410,6 @@
               "a1b2c3d4-0000-4000-8000-000000000003,req_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "offer_id",
-            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
           }
         ],
         "checkErr": false,
@@ -549,8 +420,8 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000009",
         "position": {
-          "x": 2175,
-          "y": 300
+          "x": 1815,
+          "y": 430
         },
         "dependencyData": [],
         "type": 6
@@ -559,7 +430,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n{panel}"
+          "content": "《销售品需求提报单》已生成（需求单号：{req_id}）。\n\n{report_text}\n\n**是否发起【需求工单审批】？**\n回复【发起需求审批】即发起需求工单审批（审批通过后衔接需求分析生成《加载方案》）；未回复确认前不会自动发起审批。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -597,20 +468,6 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000003,report_text"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000006",
-            "relName": "approval_id",
-            "name": "approval_id",
-            "description": "审批单号",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000006",
-              "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
-          },
-          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
             "relName": "panel",
             "name": "panel",
@@ -629,14 +486,14 @@
         "prompt_system": "",
         "nodeMeta": {
           "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
-          "title": "结束(无待补充-提报成功)"
+          "title": "结束(无待补充-止于确认点)"
         },
         "type": 9,
         "top_p": 1,
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000007",
@@ -672,20 +529,6 @@
             "relName": "req_id",
             "name": "req_id",
             "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "req_id",
-            "name": "offer_id",
-            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -821,13 +664,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000006",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000009",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000006"
+        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
       },
       {
         "sourcePort": null,

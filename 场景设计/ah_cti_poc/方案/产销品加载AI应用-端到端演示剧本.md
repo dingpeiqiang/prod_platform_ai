@@ -1,10 +1,10 @@
 # 产销品加载 AI 应用 · 端到端演示剧本
 
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 实现方式：11 个子工作流 JSON（`wf_sub_00~wf_sub_10`）+ `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点（演示从智能体（助手）对话开始，智能体按提示词语义识别直调子工作流）
+> 实现方式：12 个子工作流 JSON（`wf_sub_00~wf_sub_11`）+ `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点（演示从智能体（助手）对话开始，智能体按提示词语义识别直调子工作流）
 > 版本：V2.2　日期：2026-09-19（单面板页面地址收敛版，承 V2.1 真实执行验证）
-> 依据：《产销品加载AI应用开发方案.md》、《产销品加载AI应用-细化设计方案.md》、《工作流JSON生成规范.md》、《智能体工作流集V1.6》
-> 用途：现场演示、验收评审、宣传展示（V2.0 重塑：从 Skills 技能包改为 11 个子工作流 JSON，各环节拆分独立子工作流；需审核 docs 与演示口径）
+> 依据：《产销品加载AI应用-统一方案.md》V3.8（权威，原「开发方案/细化设计方案」已整合删除）、《工作流JSON生成规范.md》、《智能体工作流集V1.6》
+> 用途：现场演示、验收评审、宣传展示（V2.0 重塑：从 Skills 技能包改为 12 个子工作流 JSON，各环节拆分独立子工作流；需审核 docs 与演示口径）
 
 ---
 
@@ -12,7 +12,7 @@
 
 | 版本 | 日期 | 重塑要点 |
 | --- | --- | --- |
-| V2.3 面板 req_id 透传 + 页面 stage 联动 | 2026-09-20 | **结束节点面板 url 透传 `req_id` + 配置工作台按 `stage` 动态联动**：`gen_panel_code` 生成的面板 url 追加 `&req_id=<实值>`（00~06 绑定起始节点入参、07~10 空串），url 目标形态 `config-workbench.html?offer_id=..&name=..&chatId=..&req_id=..&stage=<N>&view=stage`；`config-workbench.html` 解析 `req_id`，导航步进进度（已完成勾选 / 当前高亮）与默认 Tab 按 `stage` 动态加载（8 环节口径，08/09/10 辅助子流按就近展示）。生成器 + 13 个 JSON 同步（详见《工作流JSON开发规范.md》v1.6）。 |
+| V2.3 面板 req_id 透传 + 页面 stage 联动 | 2026-09-20 | **结束节点面板 url 透传 `req_id` + 配置工作台按 `stage` 动态联动**：`gen_panel_code` 生成的面板 url 追加 `&req_id=<实值>`（00~06 绑定起始节点入参、07~10 空串），url 目标形态 `config-workbench.html?offer_id=..&name=..&chatId=..&req_id=..&stage=<N>&view=stage`；`config-workbench.html` 解析 `req_id`，导航步进进度（已完成勾选 / 当前高亮）与默认 Tab 按 `stage` 动态加载（8 环节口径，08/09/10 辅助子流按就近展示）。生成器 + 12 个 JSON 同步（详见《工作流JSON开发规范.md》v1.6）。 |
 | V2.2 面板收敛 | 2026-09-19 | **结束节点页面地址收敛为单面板单 url（对齐参考示例）+ JSON 紧凑无空格**：各子工作流结束节点末尾输出 `{panel}` 片段由「配置工作台(view=workbench) + 环节业务页(view=stage)」双面板收敛为**单面板**——url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=<实值>&stage=<N>&view=stage`，`title` 用环节业务名，移除 `product-detail.html` 单品运营看板与 view=workbench 冗余面板；同时 panel 代码节点输出 **JSON 紧凑无空格**（冒号/逗号后无空格，逐字对齐 `{"version":"1.0","message_id":"...","panels":[{"panel":"right","mode":"external","url":"...","title":"..."}]}`）。下文各处"xsbot-panel 看板"默认即指该单面板外链。详见《工作流JSON开发规范.md》§十一。 |
 | V2.1 | 2026-09-19 | **真实执行验证**：使用 `wf_runner.py` 从「需求提报」起串行真跑一遍「5G-A 套餐 199 元」需求（真实 LLM qwen3-30b-a3b + 真实插件/网关端点，strict 模式零回退零错误），实测实体 ID、端点 live 状态、需求落地核对结论与本轮发现的差异点（渠道 APP 未显性落地、自动测试与资费校准顺序、受理场景未覆盖）已写入第 1.5 节及各幕「实测结果」标注。 |
 | V2.0 | 2026-09-18 | **实现载体重塑**：废弃 `skills/cpcp-product-worker` 技能包与 `scripts/cpcp_api.py` 子命令脚本，改为 **11 个子工作流 JSON**（`wf_sub_00~wf_sub_10`，位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`），演示从智能体（助手）对话开始，智能体按提示词【意图→工作流映射表】语义识别直调各子工作流；知识库由 `references/` 迁至 **`knowledge/`**（K1 规范/K2 资费/K3 测试/K4 存量/K5 存量报文/K5FAQ）。执行细节下沉为各子工作流的 **代码节点 / 后端端点**。`flow-A~D`、`SKILL.md`、`CPCP_BASE_URL` 表述废弃，统一为「工作流 JSON / 代码节点 / knowledge/ / 后端端点」，网关 `BASE_URL=http://10.86.13.201:31281`。 |
@@ -25,7 +25,7 @@
 
 | 项 | 内容 | 检查 |
 | --- | --- | --- |
-| 工作流集 | `工作流配置/智能体工作流集V1.6/` 11 个子工作流 JSON 已导入 Agent 运行时：`wf_sub_00~10`（各环节子工作流，无独立主调度，由智能体按提示词语义识别直调） | [ ] |
+| 工作流集 | `工作流配置/智能体工作流集V1.6/` 12 个子工作流 JSON 已导入 Agent 运行时：`wf_sub_00~11`（各环节子工作流，无独立主调度，由智能体按提示词语义识别直调） | [ ] |
 | 意图路由 | 智能体（助手）内置提示词【意图→工作流映射表】（3.2 节，封闭枚举 11 意图 + 确认语义 + 实体抽取 + KB 分流 + LLM 收口）；语义识别后按映射直调：REQ_REPORT→wf_sub_00 / APPROVAL→wf_sub_06 / QUERY_APPROVAL→wf_sub_08 / QUERY_MONITOR→wf_sub_07 / QUERY_OFFER→wf_sub_09 / 确认执行→执行主干；其余 ASK_INTENT/QNA/OUT_OF_SCOPE→LLM 收口 | [ ] |
 | 模板资产 | `knowledge/` 就绪：K1 规范（3 份）、K2 资费（2 份）、K3 测试（2 份：V2.0 九章节报告模板 + 31 条固定用例规范）、K4 存量（18 份销售品 md）、K5 存量报文（18 份 json+md + `_report.json`）、K5FAQ、`ontology-fields.json`、`seed_offer_groups.json`、`存量产品目录_清洗后.json`（18 条） | [ ] |
 | 后端服务 | 网关在线（`http://10.86.13.201:31281`），`/api/v1/appstore/*` 端点连通：`result/save`、`result/query`、`similar/offer/query`、`test/offer/*`、`approval/submit`、`approval/status`、`product/monitor`、`alert/send`、`ops/root-cause`、`ops/work-orders`、`shelf-compliance`、`validate-nested`、`report/download`、`script/download` 等 | [ ] |
@@ -100,7 +100,7 @@
 【子工作流 0 · 需求提报（wf_sub_00）】
 1. 智能体（助手）按提示词【意图→工作流映射表】语义识别 intent=REQ_REPORT → 直调 `wf_sub_00`；
 2. LLM 需求字段抽取（snake_case 平面 JSON，未提及项空串）→ 代码节点 `render_requirement_report` 确定性渲染《销售品需求提报单》；
-3. 生成需求单号 `req_id` + 待补充判定；无待补充 → 保存需求工单（node_name=requirement_report）+ 触发**需求工单审批**（approval-type=requirement，`submit_release_approval`）→ 进入需求分析。
+3. 生成需求单号 `req_id` + 待补充判定；无待补充 → 保存需求工单（node_name=requirement_report）→ **止于确认点**：输出《销售品需求提报单》+ 提示"是否发起【需求工单审批】？"；用户明确回复【发起需求审批】后由 `wf_sub_11` 发起**需求工单审批**（approval-type=requirement，`submit_release_approval`）→ 审批通过后进入需求分析。
 
 【子工作流 1 · 需求分析（wf_sub_01，模板轨六步：①识别→②相似→③模板→④提取→⑤合并→⑥渲染）】
 1. 需求理解（1~2 句话）；
@@ -126,7 +126,7 @@
 
 ## 幕1-2 需求提报审批（New，V2.0 需求轨）
 
-> 场景：需求提报后触发**需求工单审批**（approval-type=requirement），区别于上线审批（approval-type=launch），演示双轨闭环起点。
+> 场景：需求提报单就绪后**须用户明确回复【发起需求审批】**才触发**需求工单审批**（approval-type=requirement），区别于上线审批（approval-type=launch），演示双轨闭环起点与"确认后发起"确认门禁。
 
 **演示话术（输入）：**
 ```
@@ -141,7 +141,7 @@
 ```
 
 **要点强调：**
-- wf_sub_00 落库 node_name=requirement_report + 发起 requirement 轨审批；`wf_sub_08` 查询时按 approval_type 区分衔接（requirement→引导需求分析；launch→通过即自动上线衔接监控运维方案）；
+- wf_sub_00 落库 node_name=requirement_report 后**止于确认点**；用户回复【发起需求审批】后由 `wf_sub_11` 发起 requirement 轨审批；`wf_sub_08` 查询时按 approval_type 区分衔接（requirement→引导需求分析；launch→通过即自动上线衔接监控运维方案）；
 - 需求轨与上线轨**双轨并行**，审批类型由 approval_type 字段区分。
 
 **验收映射：** 需求提报-需求审批-需求分析链路贯通。

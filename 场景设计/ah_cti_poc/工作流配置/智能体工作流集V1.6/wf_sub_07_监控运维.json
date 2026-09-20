@@ -30,9 +30,9 @@
             "blockID": "",
             "relName": "",
             "name": "chat_id",
-            "description": "会话消息ID（用于 xsbot-panel 外链）",
+            "description": "{chatId}",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],

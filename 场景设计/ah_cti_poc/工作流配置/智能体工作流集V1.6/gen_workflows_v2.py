@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 # 产销品加载AI应用 工作流配置 V2.0（废弃 skill → 工作流配置重塑）
-# 本生成器扩充 gen_workflows.py（V1.7 基线），新增/重写两个前端子工作流：
+# 本生成器扩充 gen_workflows.py（V1.7 基线），新增/重写前端子工作流：
 #   - wf_sub_00 需求提报（环节1，新增）：需求文本 → LLM 抽取需求字段(snake_case)
 #     → render_requirement_report 代码节点（确定性渲染需求提报单）→ 待补充判定
-#     → 发起需求工单审批(approval-type=requirement) → 审批门禁衔接 wf_sub_01
+#     → 无待补充：保存需求工单(node_name=requirement_report) → 止于确认点
+#       （提示"是否发起【需求工单审批】"，不自动发起审批；用户回复【发起需求审批】
+#       后由 wf_sub_11 承接审批发起）→ 衔接 wf_sub_01
+#   - wf_sub_11 发起需求审批（环节1）：自查需求工单(requirement_report) → 提取原文
+#     → submit_release_approval(approval-type=requirement) → 回执渲染
+#     （V3.3 契约：wf_sub_00 止于确认点后，须用户明确回复【发起需求审批】才由本流发起）
 #   - wf_sub_01 需求分析（环节2，模板轨精简版）：读取需求工单 → 产品识别(LLM)
 #     → 相似产品检索(query_similar_offer) → 取模板 → 要素提取(LLM)
 #     → 要素校验与方案合并(CODE_EXTRACT_MERGE 合一) → render_table 渲染
@@ -482,17 +487,17 @@ CODE_RENDER_TABLE = (
 )
 
 # ============================================================
-# wf_sub_00 需求提报（环节1，新增）
+# wf_sub_00 需求提报（环节1，V3.3：无待补充分支止于确认点，不自动发起审批）
 #   流程：开始(需求文本/文档) → LLM 需求字段抽取(snake_case JSON)
 #     → 代码节点 render_requirement_report（需求提报单确定性渲染 + req_id 生成 + 待补充判定）
 #     → 待补充判定：有待补充 → 结束(待补充清单，请补充)；无待补充 → 保存 requirement 需求工单
-#       并 发需求工单审批(approval-type=requirement) → 结束(提报成功，衔接需求分析)
+#       后止于确认点（提示"是否发起【需求工单审批】"，回复【发起需求审批】后由 wf_sub_11 发起）
 # ============================================================
 s00 = []
 s00.append(start_node(1, [
     inp("requirement_text", "需求描述文本（用户原始需求，含产品名称/资费/资源/规则等）", required=True),
     inp("reporter", "提报人（会话用户，未提供可空）", required=False),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 # 需求字段抽取 LLM：snake_case 平面 JSON（render_requirement_report 输入契约）
 s00.append(llm_node(2, "需求字段抽取",
@@ -527,29 +532,18 @@ s00.append(plugin_node(5, "保存需求工单", "save_node_result",
      inp("result_json", "需求字段 JSON（=代码节点渲染后归一 elements）", ref_block=nid(3), ref_rel="elements"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")]))
-# 无待补充分支：发需求工单审批（approval-type=requirement，双轨之需求轨）
-s00.append(plugin_node(6, "需求工单审批", "submit_release_approval",
-    "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）；req_id=需求单号，report_url=需求提报单文本；插件层按 approval-type 路由双轨门禁",
-    BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("offer_id", "销售品ID（需求阶段未落地，传需求单号 req_id 占位）", ref_block=nid(3), ref_rel="req_id"),
-     inp("report_url", "需求提报单（代码节点渲染 report_text）", ref_block=nid(3), ref_rel="report_text"),
-     inp("req_id", "需求单号（=代码节点生成 req_id）", ref_block=nid(3), ref_rel="req_id"),
-     inp("approve_confirmed", "审批发起确认标志true", content="true"),
-     inp("approval_flow", "审批流默认standard", content="standard"),
-     inp("approval_type", "审批类型=requirement（需求工单审批，区别于 launch 上线审批）", content="requirement")],
-    [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
-# xsbot-panel 独立代码节点：无待补充分支（面板 offer_id 取需求单号 req_id）
+# 无待补充分支：止于确认点（V3.3：不自动发起需求工单审批，提示是否发起；审批由 wf_sub_11 承接）
+# xsbot-panel 独立代码节点：无待补充分支（智能配置落地前无 offer_id，传空，页面以 req_id 定位）
 s00.append(panel_code_node(9, "构建页面地址面板(提报成功)", "00",
-    panel_inputs(1, off_seq=3, off_rel="req_id", req_seq=3), biz_title="需求提报单"))
-s00.append(end_node(7, "结束(无待补充-提报成功)",
+    panel_inputs(1, req_seq=3), biz_title="需求提报单"))
+s00.append(end_node(7, "结束(无待补充-止于确认点)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
-     inp("approval_id", "审批单号", ref_block=nid(6), ref_rel="approval_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(9), ref_rel="panel")],
-    "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n{panel}"))
-# xsbot-panel 独立代码节点：有待补充分支（面板 offer_id 取需求单号 req_id）
+    "《销售品需求提报单》已生成（需求单号：{req_id}）。\n\n{report_text}\n\n**是否发起【需求工单审批】？**\n回复【发起需求审批】即发起需求工单审批（审批通过后衔接需求分析生成《加载方案》）；未回复确认前不会自动发起审批。\n\n{panel}"))
+# xsbot-panel 独立代码节点：有待补充分支（智能配置落地前无 offer_id，传空，页面以 req_id 定位）
 s00.append(panel_code_node(10, "构建页面地址面板(有待补充)", "00",
-    panel_inputs(1, off_seq=3, off_rel="req_id", req_seq=3), biz_title="需求提报单"))
+    panel_inputs(1, req_seq=3), biz_title="需求提报单"))
 s00.append(end_node(8, "结束(有待补充)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
@@ -557,10 +551,10 @@ s00.append(end_node(8, "结束(有待补充)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(10), ref_rel="panel")],
     "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n{panel}"))
 e00 = [edge(1, 2), edge(2, 3), edge(3, 4),
-       edge(4, 5, 0), edge(5, 6), edge(6, 9), edge(9, 7),
+       edge(4, 5, 0), edge(5, 9), edge(9, 7),
        edge(4, 10, -1), edge(10, 8)]
 files00 = workflow(
-    "产销品-需求提报", "子工作流0：需求提报（环节1，新增，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)并发需求工单审批(approval-type=requirement)→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
+    "产销品-需求提报", "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
     "wf_sub_00", s00, e00)
 
 # ============================================================
@@ -1114,7 +1108,7 @@ CODE_EXTRACT_MERGE = (
 s01 = []
 s01.append(start_node(101, [
     inp("req_id", "需求单号（环节1 wf_sub_00 生成，PLAN+yyyyMMddHHmmss+3位随机；严禁重新生成）", required=True),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 # 读取需求工单（延续环节1 的 req_id，而非自生成）
 s01.append(plugin_node(102, "读取需求工单", "query_node_result",
@@ -1204,9 +1198,9 @@ s01.append(plugin_node(110, "保存执行方案", "save_node_result",
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")],
     pos=(1080, 135)))
-# xsbot-panel 独立代码节点（面板 offer_id 取需求单号 req_id）
+# xsbot-panel 独立代码节点（智能配置落地前无 offer_id，传空，页面以 req_id 定位）
 s01.append(panel_code_node(112, "构建页面地址面板", "01",
-    panel_inputs(101, off_seq=101, off_rel="req_id", req_seq=101), biz_title="配置方案"))
+    panel_inputs(101, req_seq=101), biz_title="配置方案"))
 s01.append(end_node(111, "结束(方案已生成)",
     [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
      inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
@@ -1383,7 +1377,7 @@ CODE_CONFIG_SUMMARY = (
 s2f = []
 s2f.append(start_node(101, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False)]))
+    inp("chat_id", "{chatId}", required=True)]))
 s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组（list[0].result_json 为执行方案原文）",
     BASE_URL + "/api/v1/appstore/result/query",
@@ -1451,7 +1445,7 @@ files2f = workflow(
 s3f = []
 s3f.append(start_node(201, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s3f.append(plugin_node(206, "读取配置环节结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id 及可选 group）",
@@ -1539,7 +1533,7 @@ files3f = workflow(
 s5f = []
 s5f.append(start_node(401, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s5f.append(plugin_node(406, "读取配置环节结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文）",
@@ -1902,7 +1896,7 @@ CODE_DOWNLOAD_TEST_REPORT = CODE_DOWNLOAD_TEST_REPORT.replace("BASE_URL", BASE_U
 s4f = []
 s4f.append(start_node(301, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 # 读取 config 环节结果（自查上游，链路上游为 wf_sub_02 智能配置）
 s4f.append(plugin_node(309, "读取配置环节结果", "query_node_result",
@@ -2360,7 +2354,7 @@ CODE_DOWNLOAD_LAUNCH_SCRIPT = CODE_DOWNLOAD_LAUNCH_SCRIPT.replace("BASE_URL", BA
 s6f = []
 s6f.append(start_node(601, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "会话消息ID（用于 xsbot-panel 外链 message_id 与 url 中 chatId，由调度层传入；缺失时输出占位需在渲染前回填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s6f.append(plugin_node(602, "自查配置结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 offer_id）",
@@ -2549,7 +2543,7 @@ s7f = []
 s7f.append(start_node(701, [
     inp("offer_id", "销售品ID（9位存量编码或配置落地返回的新销售品ID；会话内可兜底）", required=True),
     inp("date_range", "统计周期（默认最近1天，可选）", required=False),
-    inp("chat_id", "会话消息ID（用于 xsbot-panel 外链）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定",
@@ -2669,7 +2663,7 @@ s8f = []
 s8f.append(start_node(801, [
     inp("approval_id", "审批单号（可选，与 offer_id 至少一个，approval_id 优先）", required=False),
     inp("offer_id", "销售品ID（可选，缺失 approval_id 时按此查最新审批单）", required=False),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s8f.append(plugin_node(802, "审批状态查询", "query_approval_status",
     "工具13：自研模拟审批进度查询（approval_id 优先，offer_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
@@ -2725,7 +2719,7 @@ s9f.append(start_node(901, [
     inp("offer_id", "产品ID（9位存量编码，可选）", required=False),
     inp("name", "产品名称（可选）", required=False),
     inp("keyword", "描述关键词（可选）", required=False),
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False),
+    inp("chat_id", "{chatId}", required=True),
 ]))
 s9f.append(code_node(902, "存量检索", CODE_OP_QUERY_OFFER,
     [inp("offer_id", "产品ID", ref_block=nid(901), ref_rel="offer_id"),
@@ -2771,7 +2765,7 @@ files9f = workflow(
 # ============================================================
 s10f = []
 s10f.append(start_node(1001, [
-    inp("chat_id", "会话消息ID（会话/消息标识，调度层透传，选填）", required=False)]))
+    inp("chat_id", "{chatId}", required=True)]))
 s10f.append(code_node(1002, "存量合规扫描", CODE_OP_SHELF_COMPLIANCE,
     [],
     [code_out("backend_pending", 1002), code_out("note", 1002)]))
@@ -2794,15 +2788,77 @@ files10f = workflow(
     [edge(1001,1002), edge(1002,1003), edge(1003,1005), edge(1005,1004)])
 
 # ============================================================
+# wf_sub_11 发起需求审批（环节1，V3.3 新增：需求工单审批拆分为独立子流）
+#   流程：开始(req_id) → 自查需求工单(query_node_result, node_name=requirement_report)
+#     → CODE_EXTRACT_RECORD 提取原文 → submit_release_approval(approval-type=requirement)
+#     → LLM 回执渲染 → 面板 → 结束
+#   前置契约：wf_sub_00 提报单就绪即止于确认点，须用户明确回复【发起需求审批】
+#     才由本子流发起（approve_confirmed 固定 true，确认门禁在调度层/提示词，未确认不得调入本流）
 # ============================================================
-# 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10；意图调度交由智能体层，无 wf_main_intent）
+s11f = []
+s11f.append(start_node(1101, [
+    inp("req_id", "需求单号（环节1 wf_sub_00 生成，PLAN+yyyyMMddHHmmss+3位随机；严禁重新生成）", required=True),
+    inp("chat_id", "{chatId}", required=True),
+]))
+# 自查需求工单：按 req_id+requirement_report 取回需求提报单记录（审批发起依据）
+s11f.append(plugin_node(1102, "自查需求工单", "query_node_result",
+    "节点结果存储查询（复用）：按 req_id+node_name=requirement_report 取回需求提报单记录，作为审批发起依据；total=0 → 提示先完成需求提报",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "需求单号", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=requirement_report", content="requirement_report"),
+     inp("latest_only", "仅取最新一条", content="1")],
+    [("total", "记录数", "string"), ("list", "记录列表（list[0].result_json 为原文）", "string")]))
+# 提取需求工单原文
+s11f.append(code_node(1103, "提取需求工单原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点1102查询出参 list（记录数组JSON）", ref_block=nid(1102), ref_rel="list")],
+    [code_out("record_json", 1103), code_out("offer_id", 1103)]))
+# 发起需求工单审批（approval-type=requirement，双轨之需求轨）
+s11f.append(plugin_node(1104, "发起需求工单审批", "submit_release_approval",
+    "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）。approve_confirmed 固定 true——以用户已明确回复【发起需求审批】为前提（确认门禁在调度层，未确认不得调入本流）",
+    BASE_URL + "/api/v1/appstore/approval/submit",
+    [inp("offer_id", "销售品ID（需求阶段未落地，传需求单号 req_id 占位）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("report_url", "需求提报单（节点1103 取回的需求工单原文）", ref_block=nid(1103), ref_rel="record_json"),
+     inp("req_id", "需求单号", ref_block=nid(1101), ref_rel="req_id"),
+     inp("approve_confirmed", "审批发起确认标志true（用户已明确回复【发起需求审批】）", content="true"),
+     inp("approval_flow", "审批流默认standard", content="standard"),
+     inp("approval_type", "审批类型=requirement（需求工单审批，区别于 launch 上线审批）", content="requirement")],
+    [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
+# LLM 回执渲染（逐字引用出参，禁止编造）
+s11f.append(llm_node(1105, "审批发起回执渲染",
+    "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），输出需求工单审批发起回执：\n"
+    "【环节1/8·需求提报】✅ 需求工单审批已发起\n"
+    "- 需求单号：{req_id}\n"
+    "- 需求工单审批单号：{approval_id}，状态：{status}\n"
+    "- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n"
+    "约束：逐字引用出参，禁止编造审批单号/状态；未取得 approval_id 时按失败口径输出并引导【重新执行】。\n"
+    "输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。",
+    [inp("req_id", "需求单号", ref_block=nid(1101), ref_rel="req_id"),
+     inp("approval_id", "审批单号", ref_block=nid(1104), ref_rel="approval_id"),
+     inp("status", "提交状态", ref_block=nid(1104), ref_rel="status")],
+    [out("approval_receipt", "审批发起回执正文")]))
+# xsbot-panel 独立代码节点（无 offer 场景，页面以 req_id 定位）
+s11f.append(panel_code_node(1109, "构建页面地址面板", "01",
+    panel_inputs(1101, req_seq=1101), biz_title="需求工单审批"))
+s11f.append(end_node(1106, "结束(需求审批已发起)",
+    [inp("approval_receipt", "审批发起回执正文", ref_block=nid(1105), ref_rel="approval_receipt"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(1109), ref_rel="panel")],
+    "{approval_receipt}\n\n{panel}"))
+files11f = workflow(
+    "产销品-发起需求审批", "子工作流11（环节1 需求工单审批发起，确认后触发）：用户明确回复【发起需求审批】→ 自查需求工单 query_node_result(req_id+requirement_report) → 提取原文 → submit_release_approval(approval-type=requirement) → 回执+引导【查询审批进度】。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）. 审批进度查询走 wf_sub_08（双轨支持 requirement）。",
+    "wf_sub_11", s11f,
+    [edge(1101,1102), edge(1102,1103), edge(1103,1104),
+     edge(1104,1105), edge(1105,1109), edge(1109,1106)])
+
+# ============================================================
+# 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10 + V3.3 新增 wf_sub_11，共 12 个 JSON；
+# 意图调度交由智能体层，无 wf_main_intent）
 # ============================================================
 for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分析.json", files01),
                  ("wf_sub_02_智能配置.json", files2f), ("wf_sub_03_规格稽核.json", files3f),
                  ("wf_sub_04_自动测试.json", files4f), ("wf_sub_05_资费校准.json", files5f),
                  ("wf_sub_06_上线审批.json", files6f), ("wf_sub_07_监控运维.json", files7f),
                  ("wf_sub_08_审批进度查询.json", files8f), ("wf_sub_09_存量产品查询.json", files9f),
-                 ("wf_sub_10_存量合规扫描.json", files10f)]:
+                 ("wf_sub_10_存量合规扫描.json", files10f), ("wf_sub_11_发起需求审批.json", files11f)]:
     data = apply_layout(data)
     with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

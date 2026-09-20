@@ -21,9 +21,9 @@
             "blockID": "",
             "relName": "",
             "name": "chat_id",
-            "description": "会话消息ID（用于 xsbot-panel 外链 message_id 与 url 中 chatId，由调度层传入；缺失时输出占位需在渲染前回填）",
+            "description": "{chatId}",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],

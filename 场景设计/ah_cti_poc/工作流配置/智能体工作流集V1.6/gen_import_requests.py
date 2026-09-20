@@ -29,9 +29,9 @@ DEFAULT_ORG_ID = "10000"
 DEFAULT_PROJECT_ID = "c436c568-c42c-497e-b55d-de21cd98fdd8"
 DEFAULT_ACTION = "A"
 
-# 本方案 12 个工作流：前缀 -> flowId（中文部分通过 glob 前缀解析，避免硬编码中文文件名）
+# 本方案 12 个子工作流：前缀 -> flowId（中文部分通过 glob 前缀解析，避免硬编码中文文件名；
+# 无 wf_main_intent 意图调度主流程，V3.3 起由智能体按意图映射表直调各子流）
 WORKFLOW_PREFIXES = [
-    ("wf_main_intent", "wf_main_intent_"),
     ("wf_sub_00", "wf_sub_00_"),
     ("wf_sub_01", "wf_sub_01_"),
     ("wf_sub_02", "wf_sub_02_"),
@@ -43,6 +43,7 @@ WORKFLOW_PREFIXES = [
     ("wf_sub_08", "wf_sub_08_"),
     ("wf_sub_09", "wf_sub_09_"),
     ("wf_sub_10", "wf_sub_10_"),
+    ("wf_sub_11", "wf_sub_11_"),
 ]
 
 

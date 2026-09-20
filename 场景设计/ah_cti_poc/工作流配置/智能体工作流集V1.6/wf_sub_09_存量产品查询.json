@@ -39,9 +39,9 @@
             "blockID": "",
             "relName": "",
             "name": "chat_id",
-            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "description": "{chatId}",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],
