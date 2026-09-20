@@ -95,5 +95,10 @@ docker/dist/*.jar
 
 frontend.zip
 
+# 打包产物（tar 包不纳入 git）
+*.tar
+*.tar.gz
+*.tgz
+
 # 工作流批量导入请求体运行产物（可随时由 gen_import_requests.py 重新生成）
 场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/import_requests_out/

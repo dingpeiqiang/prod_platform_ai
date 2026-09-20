@@ -25,7 +25,7 @@ New-Item -ItemType Directory -Force -Path "$BackendStage\bin","$BackendStage\con
 
 # 后端可执行 jar
 $Jar = Get-ChildItem -Path (Join-Path $ProjectRoot 'backend-app\target') -Filter 'prod-platform-ai-*.jar' |
-       Where-Object { -not $_.Name -match 'original|sources' } | Select-Object -First 1
+       Where-Object { $_.Name -notmatch 'original|sources' } | Select-Object -First 1
 if (-not $Jar) {
     Write-Warning '后端 jar 未找到，请先执行: mvn -s .mvn/local-settings.xml -DskipTests clean package（backend-app 目录）'
 }
