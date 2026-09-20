@@ -17,6 +17,8 @@
 
 > **V2.2 结束节点页面单面板收敛（2026-09-19）**：各子工作流结束节点末尾 `{panel}` 片段由「配置工作台(view=workbench) + 环节业务页(view=stage)」双面板收敛为**单面板、单 url**——url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=<实值>&stage=<N>&view=stage`（`title` 用环节业务名），移除 `product-detail.html` 单品运营看板与 view=workbench 冗余面板；panel 输出 **JSON 紧凑无空格**（冒号/逗号后无空格，逐字对齐 `{"version":"1.0","message_id":"...","panels":[{"panel":"right","mode":"external","url":"...","title":"..."}]}`）；00/01 阶段 `offer_id` 取 `req_id` 兜底。生成器 `gen_workflows_v2.py` + 11 个 JSON 同步，详见《工作流JSON开发规范.md》§十一。
 
+> **V2.3 面板 url 透传 `req_id` + 页面按 `stage` 动态联动（2026-09-20）**：在 V2.2 单面板基础上，面板 url 进一步追加 `&req_id=<实值>`（`gen_panel_code` 读取 `args.params.req_id`，有 req_id 的环节 00~06 绑定起始节点入参、07~10 空串），url 目标形态 `config-workbench.html?offer_id=..&name=..&chatId=..&req_id=..&stage=<N>&view=stage`；`config-workbench.html` 解析 `req_id`，并新增**导航步进进度（已完成步进勾选 ✓ / 当前步进高亮）与默认 Tab 按 `stage` 动态加载**（8 环节口径，08/09/10 辅助子流按就近展示）。生成器 + 13 个 JSON 同步，详见《工作流JSON开发规范.md》v1.6。
+
 ---
 
 # 第 1 章 融合商品（多成员）加载落地实现方案

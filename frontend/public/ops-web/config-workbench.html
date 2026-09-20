@@ -23,6 +23,8 @@
   .stepper-item:hover .stepper-circle { border-color: #93c5fd; color: #2563eb; }
   .stepper-item.active .stepper-circle { border-color: #2563eb; background: #2563eb; color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
   .stepper-item.active .stepper-label { color: #2563eb; font-weight: 600; }
+  .stepper-item.done .stepper-circle { border-color: #10b981; background: #10b981; color: #fff; font-size: 15px; }
+  .stepper-item.done .stepper-label { color: #10b981; font-weight: 600; }
   .page-body { flex: 1; min-height: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; overflow-y: auto; }
   .page-body > .config-panel { width: 1000px !important; max-width: none !important; height: auto !important; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); }
 
@@ -4313,7 +4315,9 @@ const baseTabs = [
   { key: 'monitor', label: '运营视图' },
 ]
 const tabs = computed(() => baseTabs)
-const activeTab = ref('config')
+// 默认页签依据外链 stage 动态加载（8 环节口径；08/09/10 辅助子流按就近展示，无 stage 时回落"配置信息"）
+const DEFAULT_TAB_BY_STAGE = { '00':'demand', '01':'scheme', '02':'config', '03':'audit', '05':'calibrate', '04':'testrep', '06':'approval', '07':'monitor', '08':'approval', '09':'monitor', '10':'monitor' }
+const activeTab = ref((window.__WB_QUERY && DEFAULT_TAB_BY_STAGE[window.__WB_QUERY.stage]) || 'config')
 
 // 切换到测试报告页签（供父组件�?查看测试报告"动作时调用）
 const showTestReport = () => {
@@ -5169,14 +5173,25 @@ return __returned__
       <nav class="biz-nav">
         <div class="stepper">
           <div class="stepper-track"></div>
-          <div v-for="(n,i) in navs" :key="n" class="stepper-item" :class="{ active: n==='销售品智能配置' }">
-            <span class="stepper-circle">{{ i+1 }}</span>
+          <div v-for="(n,i) in navs" :key="n" class="stepper-item"
+               :class="{ done: i < activeIndex, active: i === activeIndex }">
+            <span class="stepper-circle" v-if="i < activeIndex">✓</span>
+            <span class="stepper-circle" v-else>{{ i+1 }}</span>
             <div class="stepper-label">{{ n }}</div>
           </div>
         </div>
       </nav>
     `,
-    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'] } },
+    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'], stage: '' } },
+    created(){ this.stage = (window.__WB_QUERY && window.__WB_QUERY.stage) || ''; },
+    computed: {
+      // stage -> 导航步进（8 环节口径；08/09/10 辅助子流按就近展示）
+      activeIndex(){
+        var map = { '00':0, '01':1, '02':2, '03':3, '05':4, '04':5, '06':7, '07':8, '08':7, '09':8, '10':8 };
+        var st = this.stage || '';
+        return map[st] !== undefined ? map[st] : 2;
+      }
+    },
     methods: { goTop(){ window.scrollTo({ top:0, behavior:'smooth' }) } }
   };
 
@@ -5279,8 +5294,8 @@ return __returned__
 </script>
 <script>
 /* ===== 外链上下文解析（工作流结束节点 xsbot-panel 传入）=====
-   URL 形如：config-workbench.html?offer_id=xxx&name=xxx&chatId=xxx&stage=N
-   解析后暴露到 window.__WB_QUERY，供页面内配置对象/标题按需取用。 */
+   URL 形如：config-workbench.html?offer_id=xxx&name=xxx&chatId=xxx&req_id=xxx&stage=N&view=stage
+   解析后暴露到 window.__WB_QUERY，供页面内导航进度 / 默认 Tab / 配置对象 / 标题按需取用。 */
 (function(){
   var q = {};
   try {
@@ -5289,10 +5304,12 @@ return __returned__
   window.__WB_QUERY = q;
   var offerId = q.offer_id || q.offerId || '';
   var name = q.name || q.offer_name || '';
+  var reqId = q.req_id || q.reqId || '';
   var stage = q.stage || '';
   var view = q.view || 'workbench';
   document.documentElement.setAttribute('data-wb-offer-id', offerId);
   document.documentElement.setAttribute('data-wb-chat-id', q.chatId || q.chat_id || '');
+  document.documentElement.setAttribute('data-wb-req-id', reqId);
   document.documentElement.setAttribute('data-wb-stage', stage);
   document.documentElement.setAttribute('data-wb-view', view);
   if (name || offerId) {

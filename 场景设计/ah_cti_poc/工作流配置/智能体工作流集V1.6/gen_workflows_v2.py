@@ -29,8 +29,8 @@ from gen_workflows import (
 # 页面地址输出（每个工作流结束后输出环节业务页外链）
 #   约定：由独立代码节点（type=6，panel_code_node）专门构建 xsbot-panel 片段，
 #   结束节点模板仅引用 {panel}（不再内联 xsbot-panel 代码块）；
-#   每个结束节点固定单面板单 url：config-workbench.html?offer_id=..&name=..&chatId=..&stage=<N>&view=stage，
-#   title 用环节业务名（对齐参考示例形态），chatId 运行期以 chat_id 实值替换。
+#   每个结束节点固定单面板单 url：config-workbench.html?offer_id=..&name=..&chatId=..&req_id=..&stage=<N>&view=stage，
+#   title 用环节业务名（对齐参考示例形态），chatId 运行期以 chat_id 实值替换（req_id 有 req_id 的子流 00~06 透传，供页面按 req_id 定位）。
 # ============================================================
 OPS_WEB_BASE = "http://10.86.13.201:31280/ops-web"
 CONFIG_WB_PAGE = OPS_WEB_BASE + "/config-workbench.html"
@@ -39,9 +39,9 @@ CONFIG_WB_PAGE = OPS_WEB_BASE + "/config-workbench.html"
 def gen_panel_code(stage, biz_title=None):
     """构建 xsbot-panel 片段的代码节点源码（type=6 内联 Python，供 panel_code_node 使用）。
     对齐参考示例：**单面板**（一个 url + 一个 title），url 用环节业务页
-    config-workbench.html?stage=<N>&view=stage，chatId 运行期以 chat_id 实值填充；
+    config-workbench.html?stage=<N>&view=stage，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
     输出 panel 为 `\n\n```xsbot-panel {compact_json} ``` ` 片段（无文字前缀、JSON 紧凑无空格，逐字对齐参考示例），
-    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name，运行期完成实值替换。
+    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id，运行期完成实值替换。
     """
     page = CONFIG_WB_PAGE
     title = biz_title or "环节业务页"
@@ -53,7 +53,9 @@ def gen_panel_code(stage, biz_title=None):
         "    chat_id = str(p.get('chat_id') or '')",
         "    offer_id = str(p.get('offer_id') or '')",
         "    offer_name = str(p.get('offer_name') or '')",
-        "    biz_url = '%s?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&stage=%s&view=stage'" % (page, stage),
+        "    req_id = str(p.get('req_id') or '')",
+        "    biz_url = ('%s?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
+        "               + '&req_id=' + req_id + '&stage=%s&view=stage')" % (page, stage),
     ]
     # 紧凑 JSON（无空格，逐字对齐参考示例），title 在生成期烘焙为字面量
     body += [
@@ -69,12 +71,16 @@ def gen_panel_code(stage, biz_title=None):
     return "\n".join(body) + "\n"
 
 
-def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name_rel='offer_name'):
+def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name_rel='offer_name', req_seq=None):
     """构建 xsbot-panel 代码节点入参（name 即代码读取的 param key，ref_rel 绑定上游出参）。
-    供各工作流按其实有可用的 会话ID/销售品ID/产品名 绑定；offer/name 可选传入。
+    供各工作流按其实有可用的 会话ID/销售品ID/产品名/需求单号 绑定；offer/name/req 可选传入。
+    req_seq 指定提供 req_id 的节点（有 req_id 的工作流 00~06 传入；只读/监控等无 req_id 的留空）。
     """
     refs = [inp("chat_id", "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
                 ref_block=nid(chat_seq), ref_rel="chat_id")]
+    if req_seq is not None:
+        refs.append(inp("req_id", "需求单号/方案批次号（用于面板 url 的 req_id）",
+                        ref_block=nid(req_seq), ref_rel="req_id"))
     if off_seq is not None:
         refs.append(inp("offer_id", "销售品ID/需求单号（用于面板 url 的 offer_id）",
                         ref_block=nid(off_seq), ref_rel=off_rel))
@@ -534,7 +540,7 @@ s00.append(plugin_node(6, "需求工单审批", "submit_release_approval",
     [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
 # xsbot-panel 独立代码节点：无待补充分支（面板 offer_id 取需求单号 req_id）
 s00.append(panel_code_node(9, "构建页面地址面板(提报成功)", "00",
-    panel_inputs(1, off_seq=3, off_rel="req_id"), biz_title="需求提报单"))
+    panel_inputs(1, off_seq=3, off_rel="req_id", req_seq=3), biz_title="需求提报单"))
 s00.append(end_node(7, "结束(无待补充-提报成功)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
@@ -543,7 +549,7 @@ s00.append(end_node(7, "结束(无待补充-提报成功)",
     "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n{panel}"))
 # xsbot-panel 独立代码节点：有待补充分支（面板 offer_id 取需求单号 req_id）
 s00.append(panel_code_node(10, "构建页面地址面板(有待补充)", "00",
-    panel_inputs(1, off_seq=3, off_rel="req_id"), biz_title="需求提报单"))
+    panel_inputs(1, off_seq=3, off_rel="req_id", req_seq=3), biz_title="需求提报单"))
 s00.append(end_node(8, "结束(有待补充)",
     [inp("req_id", "需求单号", ref_block=nid(3), ref_rel="req_id"),
      inp("report_text", "需求提报单", ref_block=nid(3), ref_rel="report_text"),
@@ -1200,7 +1206,7 @@ s01.append(plugin_node(110, "保存执行方案", "save_node_result",
     pos=(1080, 135)))
 # xsbot-panel 独立代码节点（面板 offer_id 取需求单号 req_id）
 s01.append(panel_code_node(112, "构建页面地址面板", "01",
-    panel_inputs(101, off_seq=101, off_rel="req_id"), biz_title="配置方案"))
+    panel_inputs(101, off_seq=101, off_rel="req_id", req_seq=101), biz_title="配置方案"))
 s01.append(end_node(111, "结束(方案已生成)",
     [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
      inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
@@ -1421,7 +1427,7 @@ s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(1060, 135)))
 # xsbot-panel 独立代码节点
 s2f.append(panel_code_node(109, "构建页面地址面板", "02",
-    panel_inputs(101, off_seq=103, off_rel="offer_id"), biz_title="落地配置看板"))
+    panel_inputs(101, off_seq=103, off_rel="offer_id", req_seq=101), biz_title="落地配置看板"))
 s2f.append(end_node(104, "结束(配置落地完成)",
     [inp("offer_id", "销售品ID", ref_block=nid(103), ref_rel="offer_id"),
      inp("save_result", "四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
@@ -1514,7 +1520,7 @@ s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 # xsbot-panel 独立代码节点
 s3f.append(panel_code_node(209, "构建页面地址面板", "03",
-    panel_inputs(201, off_seq=207, off_rel="offer_id"), biz_title="规格稽核"))
+    panel_inputs(201, off_seq=207, off_rel="offer_id", req_seq=201), biz_title="规格稽核"))
 s3f.append(end_node(204, "结束(稽核完成)",
     [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
      inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
@@ -1584,7 +1590,7 @@ s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 # xsbot-panel 独立代码节点
 s5f.append(panel_code_node(409, "构建页面地址面板", "05",
-    panel_inputs(401, off_seq=407, off_rel="offer_id"), biz_title="资费校准"))
+    panel_inputs(401, off_seq=407, off_rel="offer_id", req_seq=401), biz_title="资费校准"))
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论", ref_block=nid(402), ref_rel="pass"),
      inp("risk_list", "风险清单", ref_block=nid(402), ref_rel="risk_list"),
@@ -2018,7 +2024,7 @@ s4f.append(code_node(316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
     pos=(1520, 300)))
 # xsbot-panel 独立代码节点
 s4f.append(panel_code_node(321, "构建页面地址面板", "04",
-    panel_inputs(301, off_seq=310, off_rel="offer_id"), biz_title="测试报告"))
+    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="测试报告"))
 s4f.append(end_node(307, "结束(测试完成)",
     [inp("offerId", "被测销售品ID（供面板）", ref_block=nid(310), ref_rel="offer_id"),
      inp("test_report", "正式版测试报告", ref_block=nid(306), ref_rel="test_report"),
@@ -2500,7 +2506,7 @@ s6f.append(code_node(621, "配置/上线脚本下载", CODE_DOWNLOAD_LAUNCH_SCRI
     pos=(1740, 385)))
 # xsbot-panel 独立代码节点（审批通过-自动上线分支；offer_name 沿用 offer_id）
 s6f.append(panel_code_node(622, "构建页面地址面板(自动上线)", "06",
-    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id"),
+    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id", req_seq=601),
     biz_title="单品运营看板"))
 s6f.append(end_node(619, "结束(审批通过-自动上线)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
@@ -2513,7 +2519,7 @@ s6f.append(end_node(619, "结束(审批通过-自动上线)",
     "【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）\n\n{panel}"))
 # xsbot-panel 独立代码节点（审批轮询中分支；offer_name 沿用 offer_id）
 s6f.append(panel_code_node(623, "构建页面地址面板(审批轮询中)", "06",
-    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id"),
+    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id", req_seq=601),
     biz_title="上线审批看板"))
 s6f.append(end_node(620, "结束(审批轮询中)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
