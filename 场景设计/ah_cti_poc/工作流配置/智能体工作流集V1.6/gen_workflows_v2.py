@@ -1369,6 +1369,40 @@ CODE_CONFIG_SUMMARY = (
     "    return ret"
 )
 
+# ---------------- CODE_GEN_OFFER_ID：生成商品编码（9位 900 编码） ----------------
+# 输入：existing_offer_id（节点106从执行方案原文提取的 offer_id，存量重配才有值）、
+#       plan_json（节点106提取的执行方案原文，作为读取溯源 offer_id 的兜底来源）
+# 输出：offer_id（存在合法 9 位编码时透传；否则生成 "900"+6位随机数字，如 900117022，
+#       与存量种子编码格式一致，供 save_product_config 新增产品落地使用）
+CODE_GEN_OFFER_ID = (
+    "import json, random\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    def _str(v):\n"
+    "        return str(v).strip() if v not in (None, '') else ''\n"
+    "    offer_id = _str(p.get('existing_offer_id') or '')\n"
+    "    if not offer_id:\n"
+    "        # 兜底：从执行方案原文解析内层 JSON 取 offer_id/similarOfferId\n"
+    "        raw = p.get('plan_json') or ''\n"
+    "        try:\n"
+    "            obj = json.loads(raw) if isinstance(raw, str) else raw\n"
+    "            if isinstance(obj, dict):\n"
+    "                offer_id = _str(obj.get('offer_id') or obj.get('offerId') or '')\n"
+    "                if not offer_id:\n"
+    "                    offer_id = _str(obj.get('similarOfferId') or '')\n"
+    "        except Exception:\n"
+    "            offer_id = ''\n"
+    "    # 校验：合法 9 位数字编码才透传（存量重配），否则生成全新 900 编码\n"
+    "    if offer_id.isdigit() and len(offer_id) == 9:\n"
+    "        pass\n"
+    "    else:\n"
+    "        offer_id = '900%06d' % random.randint(0, 999999)\n"
+    "    ret: Output = {'offer_id': offer_id}\n"
+    "    return ret"
+)
+
 # ============================================================
 # wf_sub_02 智能配置（融合组扩展）：在既有链路上新增融合成员回显代码节点，
 # 出参含 group 时结束节点追加融合成员行；单商品路径零变化。
@@ -1390,13 +1424,21 @@ s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
     [code_out("record_json", 106), code_out("offer_id", 106)],
     pos=(530, 300)))
+# 111 生成商品编码（V5.0 新增代码节点）：存量重配透传既有 9 位编码；新增产品生成
+# "900"+6位随机数字（如 900117022，与存量种子格式一致），注入 save_product_config
+s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
+    [inp("existing_offer_id", "执行方案中既有 offer_id（节点106提取，存量重配才有值）", ref_block=nid(106), ref_rel="offer_id"),
+     inp("plan_json", "执行方案原文（节点106提取的 result_json，兜底读取溯源 offer_id）", ref_block=nid(106), ref_rel="record_json")],
+    [code_out("offer_id", 111)],
+    pos=(530, 440)))
 s2f.append(plugin_node(103, "配置落地", "save_product_config",
-    "工具7：执行方案JSON原文透传落地（节点106已从查询记录中提取 result_json 原文）；req_id 与 plan_json 均引用自查链路结果，方案key由后端从 plan_json 的 req_id 键提取；融合组（plan_json.offer_type=融合）时出参含 group（main_offer_id+members[]{role,offer_id}）",
+    "工具7：执行方案JSON原文透传落地（节点106已从查询记录中提取 result_json 原文）；req_id 与 plan_json 均引用自查链路结果，方案key由后端从 plan_json 的 req_id 键提取；新增产品时商品编码由节点111代码节点生成（9位900编码如 900117022）经 offer_id 入参注入，存量重配透传既有编码；融合组（plan_json.offer_type=融合）时出参含 group（main_offer_id+members[]{role,offer_id}）",
     BASE_URL + "/api/v1/appstore/product/config/save",
     [inp("req_id", "执行批次号（=开始节点 req_id，与执行方案存储键同一）", ref_block=nid(101), ref_rel="req_id"),
      inp("plan_json", "执行方案JSON原文（节点106提取的 result_json）", ref_block=nid(106), ref_rel="record_json"),
      inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
-     inp("operator", "操作人（默认system）", content="system")],
+     inp("operator", "操作人（默认system）", content="system"),
+     inp("offer_id", "商品编码（节点111生成：新增品 900 编码 / 存量重配既有编码）", ref_block=nid(111), ref_rel="offer_id")],
     [("offer_id", "销售品ID", "string"),
      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
      ("product_config", "完整落地配置JSON（含offer_id/offer_name等与plan_json原文及可选group）", "string"),
@@ -1435,8 +1477,8 @@ s2f.append(end_node(104, "结束(配置落地完成)",
     "{config_summary}\n{fusion_note}\n"
     "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}"))
 files2f = workflow(
-    "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
-    [edge(101,102), edge(102,106), edge(106,103), edge(103,107), edge(107,108), edge(108,105), edge(105,109), edge(109,104)])
+    "产销品-智能配置", "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→生成商品编码代码节点（新增品生成9位900编码如900117022/存量重配透传既有编码，注入save落地）→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。", "wf_sub_02", s2f,
+    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,107), edge(107,108), edge(108,105), edge(105,109), edge(109,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（融合组扩展）：组维度稽核——LLM 提示词增加组维度回显与

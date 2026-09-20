@@ -1,0 +1,832 @@
+{
+  "flowName": "产销品-智能配置-自动化测试",
+  "flowRemark": "组合主流程（V2.4 优化：结构化汇总+审批指引）：智能配置→规格稽核→自动测试→资费校准四环节串行（单入参 req_id 贯穿，环节存储下沉子工作流）→执行结果汇总（代码节点解析各环节输出：offer_id/落地状态/稽核结论/测试结论/资费结论，结构化输出汇总表 summary_md+汇总JSON summary_json+整体结论 all_pass）→整体结论判断（存在异常走 port=-1 分支；port=0 兜底全部通过）→两分支各自 LLM 报告生成（按固定模板结构化展示每个环节执行结果）→结束输出报告：全部通过提示用户发起上线审批，存在异常逐条列出整改项并提示重新执行。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000901",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "content",
+            "type": "string",
+            "content": "",
+            "description": "子工作流结束节点输出"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（与执行方案存储同键）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "wf_sub_02",
+          "description": "智能配置（单入参 req_id 自查链路，环节存储下沉子工作流）",
+          "title": "智能配置",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000902",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "content",
+            "type": "string",
+            "content": "",
+            "description": "子工作流结束节点输出"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（与执行方案存储同键）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "wf_sub_03",
+          "description": "规格稽核（单入参 req_id 自查链路，环节存储下沉子工作流）",
+          "title": "规格稽核",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000903",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "content",
+            "type": "string",
+            "content": "",
+            "description": "子工作流结束节点输出"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（与执行方案存储同键）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "wf_sub_04",
+          "description": "自动测试（单入参 req_id 自查链路，环节存储下沉子工作流）",
+          "title": "自动测试",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000904",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "content",
+            "type": "string",
+            "content": "",
+            "description": "子工作流结束节点输出"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（与执行方案存储同键）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "wf_sub_05",
+          "description": "资费校准（单入参 req_id 自查链路，环节存储下沉子工作流）",
+          "title": "资费校准",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000905",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000906,summary_md",
+            "name": "summary_md",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000906,summary_json",
+            "name": "summary_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000906,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000906,all_pass",
+            "name": "all_pass",
+            "type": "string"
+          }
+        ],
+        "code": "import json, re\nfrom typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    config_text = str(p.get('config_content') or '')\n    spec_text = str(p.get('spec_content') or '')\n    test_text = str(p.get('test_content') or '')\n    fee_text = str(p.get('fee_content') or '')\n    # 环节1 智能配置：content 含 offer_id=、状态：SUCCESS/PARTIAL/FAIL\n    offer_id = ''\n    config_status = 'UNKNOWN'\n    m = re.search(r'offer_id[=：:]\\s*([A-Za-z0-9\\-]+)', config_text)\n    if m:\n        offer_id = m.group(1)\n    m = re.search(r'状态[=：:]\\s*(SUCCESS|PARTIAL|FAIL)', config_text)\n    if m:\n        config_status = m.group(1)\n    config_pass = '1' if config_status in ('SUCCESS', 'PARTIAL') and offer_id else '0'\n    # 环节2 规格稽核：content 含 pass=1/0\n    spec_pass = '0'\n    m = re.search(r'pass[=：:]\\s*([01])', spec_text)\n    if m:\n        spec_pass = m.group(1)\n    # 环节3 自动测试：content 为完整测试报告，取'总体结论'章节后的 通过/失败\n    test_pass = '0'\n    tail = test_text.split('总体结论')[-1] if '总体结论' in test_text else test_text\n    if '失败' not in tail and ('通过' in tail or test_text.strip()):\n        test_pass = '1'\n    # 环节4 资费校准：content 含 pass=1/0\n    fee_pass = '0'\n    m = re.search(r'pass[=：:]\\s*([01])', fee_text)\n    if m:\n        fee_pass = m.group(1)\n    all_pass = '1' if (config_pass == '1' and spec_pass == '1' and test_pass == '1' and fee_pass == '1') else '0'\n    # 各环节结论标记：✅通过 / ❌未通过 / ⚠️部分成功\n    def mark(v):\n        return '✅ 通过' if v == '1' else '❌ 未通过'\n    config_mark = ('⚠️ 部分成功' if config_status == 'PARTIAL' else mark(config_pass))\n    status_cn = {'SUCCESS': '成功', 'PARTIAL': '部分成功', 'FAIL': '失败'}.get(config_status, '未知')\n    summary_md = '\\n'.join([\n        '| 环节 | 结论 | 关键结果 |',\n        '| --- | --- | --- |',\n        '| 智能配置 | ' + config_mark + ' | offer_id=' + (offer_id or '-') + '，落地状态=' + status_cn + ' |',\n        '| 规格稽核 | ' + mark(spec_pass) + ' | ' + (spec_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n        '| 自动测试 | ' + mark(test_pass) + ' | ' + (test_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n        '| 资费校准 | ' + mark(fee_pass) + ' | ' + (fee_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n    ])\n    summary_json = json.dumps({\n        'offer_id': offer_id,\n        'config_status': config_status, 'config_pass': config_pass,\n        'spec_pass': spec_pass, 'test_pass': test_pass, 'fee_pass': fee_pass,\n        'all_pass': all_pass == '1',\n    }, ensure_ascii=False)\n    ret: Output = {\n        \"summary_md\": summary_md,\n        \"summary_json\": summary_json,\n        \"offer_id\": offer_id,\n        \"all_pass\": all_pass\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+            "relName": "content",
+            "name": "config_content",
+            "description": "智能配置环节输出",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000902",
+              "a1b2c3d4-0000-4000-8000-000000000902,content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000902,content"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000903",
+            "relName": "content",
+            "name": "spec_content",
+            "description": "规格稽核环节输出",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000903",
+              "a1b2c3d4-0000-4000-8000-000000000903,content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000903,content"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000904",
+            "relName": "content",
+            "name": "test_content",
+            "description": "自动测试环节输出",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000904",
+              "a1b2c3d4-0000-4000-8000-000000000904,content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000904,content"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000905",
+            "relName": "content",
+            "name": "fee_content",
+            "description": "资费校准环节输出",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000905",
+              "a1b2c3d4-0000-4000-8000-000000000905,content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000905,content"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "执行结果汇总"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000906",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000906",
+                    "relName": "all_pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000906",
+                      "a1b2c3d4-0000-4000-8000-000000000906,all_pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000906,all_pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 2
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "整体结论判断"
+        },
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000907",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000906",
+            "name": "执行结果汇总",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000906,all_pass",
+                "name": "all_pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "combo_report",
+            "description": "执行结果汇总报告",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "# 角色\n\n你是产销品加载执行结果汇总助手。智能配置、规格稽核、自动测试、资费校准四个环节已串行执行完毕，请基于系统提供的各环节执行结果，向用户输出结构化的执行结果汇总。\n\n# 各环节执行结果\n结构化汇总表（summary_md）：\n{summary_md}\n\n结构化汇总JSON（summary_json）：\n{summary_json}\n\n各环节执行结果原文：\n智能配置：{config_content}\n规格稽核：{spec_content}\n自动测试：{test_content}\n资费校准：{fee_content}\n\n# 处理要求\n1. 按环节逐一展示执行结果：每个环节给出结论（✅ 通过 / ⚠️ 部分成功 / ❌ 未通过）与关键结果说明，数据以系统提供的为准，不得凭空创造。\n2. 智能配置环节展示产品标识（offer_id，即销售品ID）与落地状态；规格稽核与资费校准环节展示问题明细或风险清单要点；自动测试环节展示受理验证结论（orderId/offerInstId）与场景通过情况。\n3. 输出末尾固定给出下一步指引：全部通过时提示用户可发起上线审批（说明将按产品发起审批推送）；存在异常时逐条列出需整改项，并提示用户整改后重新执行。\n\n# 固定输出格式\n# 【产销品加载执行结果汇总】\n\n**整体结论：全部通过（可发起上线审批）/ 存在异常（需整改）**\n\n## 各环节执行结果\n\n（按环节逐一列出：结论标记+关键结果，使用表格或分节呈现）\n\n## 下一步指引\n\n> （全部通过：提示用户发起上线审批；存在异常：逐条列出整改项并提示重新执行）\n\n补充说明：本批次四环节全部通过（all_pass=1），整体结论固定为\"全部通过（可发起上线审批）\"；下一步指引固定为提示用户发起上线审批，并说明发起审批时将引用 req_id 对应的执行方案与四环节结果。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000906",
+              "relName": "summary_md",
+              "name": "summary_md",
+              "description": "结构化汇总表",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000906",
+                "a1b2c3d4-0000-4000-8000-000000000906,summary_md"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000906,summary_md"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000906",
+              "relName": "summary_json",
+              "name": "summary_json",
+              "description": "结构化汇总JSON",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000906",
+                "a1b2c3d4-0000-4000-8000-000000000906,summary_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000906,summary_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "content",
+              "name": "config_content",
+              "description": "智能配置环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000903",
+              "relName": "content",
+              "name": "spec_content",
+              "description": "规格稽核环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000903",
+                "a1b2c3d4-0000-4000-8000-000000000903,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000903,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000904",
+              "relName": "content",
+              "name": "test_content",
+              "description": "自动测试环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000904",
+                "a1b2c3d4-0000-4000-8000-000000000904,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000904,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000905",
+              "relName": "content",
+              "name": "fee_content",
+              "description": "资费校准环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000905",
+                "a1b2c3d4-0000-4000-8000-000000000905,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000905,content"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "执行结果报告(全部通过)",
+          "title": "执行结果报告(全部通过)"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 2535,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000908",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "combo_report",
+            "description": "执行结果汇总报告",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "# 角色\n\n你是产销品加载执行结果汇总助手。智能配置、规格稽核、自动测试、资费校准四个环节已串行执行完毕，请基于系统提供的各环节执行结果，向用户输出结构化的执行结果汇总。\n\n# 各环节执行结果\n结构化汇总表（summary_md）：\n{summary_md}\n\n结构化汇总JSON（summary_json）：\n{summary_json}\n\n各环节执行结果原文：\n智能配置：{config_content}\n规格稽核：{spec_content}\n自动测试：{test_content}\n资费校准：{fee_content}\n\n# 处理要求\n1. 按环节逐一展示执行结果：每个环节给出结论（✅ 通过 / ⚠️ 部分成功 / ❌ 未通过）与关键结果说明，数据以系统提供的为准，不得凭空创造。\n2. 智能配置环节展示产品标识（offer_id，即销售品ID）与落地状态；规格稽核与资费校准环节展示问题明细或风险清单要点；自动测试环节展示受理验证结论（orderId/offerInstId）与场景通过情况。\n3. 输出末尾固定给出下一步指引：全部通过时提示用户可发起上线审批（说明将按产品发起审批推送）；存在异常时逐条列出需整改项，并提示用户整改后重新执行。\n\n# 固定输出格式\n# 【产销品加载执行结果汇总】\n\n**整体结论：全部通过（可发起上线审批）/ 存在异常（需整改）**\n\n## 各环节执行结果\n\n（按环节逐一列出：结论标记+关键结果，使用表格或分节呈现）\n\n## 下一步指引\n\n> （全部通过：提示用户发起上线审批；存在异常：逐条列出整改项并提示重新执行）\n\n补充说明：本批次存在未通过环节（all_pass=0），整体结论固定为\"存在异常（需整改）\"；逐条列出未通过环节的问题明细或风险要点，下一步指引固定为提示用户整改后重新执行对应环节。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000906",
+              "relName": "summary_md",
+              "name": "summary_md",
+              "description": "结构化汇总表",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000906",
+                "a1b2c3d4-0000-4000-8000-000000000906,summary_md"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000906,summary_md"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000906",
+              "relName": "summary_json",
+              "name": "summary_json",
+              "description": "结构化汇总JSON",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000906",
+                "a1b2c3d4-0000-4000-8000-000000000906,summary_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000906,summary_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "content",
+              "name": "config_content",
+              "description": "智能配置环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000903",
+              "relName": "content",
+              "name": "spec_content",
+              "description": "规格稽核环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000903",
+                "a1b2c3d4-0000-4000-8000-000000000903,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000903,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000904",
+              "relName": "content",
+              "name": "test_content",
+              "description": "自动测试环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000904",
+                "a1b2c3d4-0000-4000-8000-000000000904,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000904,content"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000905",
+              "relName": "content",
+              "name": "fee_content",
+              "description": "资费校准环节输出",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000905",
+                "a1b2c3d4-0000-4000-8000-000000000905,content"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000905,content"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "执行结果报告(存在异常)",
+          "title": "执行结果报告(存在异常)"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 2535,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000909",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，您可以直接发起上线审批。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000908",
+            "relName": "combo_report",
+            "name": "combo_report",
+            "description": "执行结果汇总报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000908",
+              "a1b2c3d4-0000-4000-8000-000000000908,combo_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000908,combo_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(全部通过-提示发起审批)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2895,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000910",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上述整改项完成处理后重新执行。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000909",
+            "relName": "combo_report",
+            "name": "combo_report",
+            "description": "执行结果汇总报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000909",
+              "a1b2c3d4-0000-4000-8000-000000000909,combo_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000909,combo_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,req_id"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(存在异常-提示整改)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2895,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000911",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000902",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000901"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000903",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000902"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000904",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000903"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000905",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000904"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000906",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000905"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000907",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000906"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000908",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000907"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000909",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000907"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000910",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000908"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000911",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000909"
+      }
+    ],
+    "flowId": "wf_combo_exec",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

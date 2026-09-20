@@ -69,6 +69,12 @@ public class OfferSimV16Service {
         {"运营审核", "运营专员"},
         {"上线审批", "IT支撑"}
     };
+    /** 预置模拟"已通过"审批（演示 wf_sub_08 审批通过场景，免等待）：{approval_id, offer_id, approval_type, status, current_node, approver, opinion}
+     *  需求轨（requirement）+ 上线轨（launch）各一条，启动即置为 status=通过，查询即可演示审批通过衔接。 */
+    private static final String[][] SEED_PASSED_APPROVALS = {
+        {"AP2026091900000001", "900117022", "requirement", "通过", "流程结束（需求已通过）", "需求审核", "需求审核通过，同意进入需求分析"},
+        {"AP2026091900000002", "900102308", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架"}
+    };
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
     /** 演示场景开关（默认全通过）：offer_id -> 注入类型集合 */
@@ -86,6 +92,38 @@ public class OfferSimV16Service {
         this.seed = seed;
         this.groupSeed = groupSeed;
         this.nodeResult = nodeResult;
+        seedApprovals();
+    }
+
+    /** 预置模拟"已通过"审批数据（需求轨 + 上线轨），使 wf_sub_08 查询即演示 status=通过，避免依赖提交后等待自动流转。 */
+    private void seedApprovals() {
+        String now = LocalDateTime.now().format(TS);
+        for (String[] row : SEED_PASSED_APPROVALS) {
+            Map<String, Object> approval = new LinkedHashMap<>();
+            approval.put("approval_id", row[0]);
+            approval.put("offer_id", row[1]);
+            approval.put("approval_type", row[2]);
+            approval.put("report_url", "");
+            approval.put("approval_flow", "standard");
+            approval.put("status", row[3]);
+            approval.put("current_node", row[4]);
+            approval.put("approver", row[5]);
+            approval.put("opinion", row[6]);
+            approval.put("submit_time", now);
+            approval.put("update_time", now);
+            // 已通过终态，created_at 置为远早于自动流转阈值，advanceApproval 不改变状态
+            approval.put("created_at", System.currentTimeMillis() - APPROVAL_AUTO_PASS_MS - 1000L);
+            List<Map<String, Object>> matrix = buildApprovalMatrix();
+            for (Map<String, Object> node : matrix) {
+                node.put("status", "已通过");
+                node.put("opinion", "审核通过");
+                node.put("update_time", now);
+            }
+            approval.put("approval_matrix", matrix);
+            approvals.put(row[0], approval);
+            approvalByOffer.put(row[1], row[0]);
+        }
+        log.info("[OfferSimV16] 预置模拟已通过审批 {} 条", approvals.size());
     }
 
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
@@ -296,7 +334,11 @@ public class OfferSimV16Service {
         boolean existingReconfigure = MapOps.str(plan.get("offer_id")).isBlank()
                 && MapOps.str(plan.get("similarOfferId")).isBlank();
         String planId = firstNonEmptyText(plan.get("req_id"), reqIdForGate);
+        // V2.9：优先采用 wf_sub_02 代码节点注入的 offer_id（9 位 900 编码，与存量种子格式一致如 900117022）；
+        // 仅新增产品（plan 无 offer_id/similarOfferId 溯源键）时生效，存量重配仍走原编码；未注入时后端自生成。
+        String injectedOfferId = existingReconfigure ? MapOps.str(req.get("offer_id")).trim() : "";
         String offerId = firstNonEmptyText(plan.get("offer_id"), plan.get("similarOfferId"),
+                injectedOfferId.isBlank() ? null : injectedOfferId,
                 generateNewOfferId(planId));
         // 新增产品：从 plan_json 构造独立档案入库存档（与种子同构，业务值全部来自需求，不从种子覆盖）
         if (existingReconfigure) {
@@ -1834,16 +1876,16 @@ public class OfferSimV16Service {
     }
 
     /**
-     * 新增销售品 offer_id 生成（不复用存量编码）：9 + req_id 末 8 位数字，
-     * 与存量 18 个 9 位 ID 冲突时追加校准位直至不重复；同 req_id 幂等（同 plan_json 幂等已保证）。
+     * 新增销售品 offer_id 生成（不复用存量编码）：900 + req_id 末 6 位数字，格式与存量种子一致（如 900117022）；
+     * 与存量 18 个 9 位 ID 冲突时校准直至不重复；同 req_id 幂等（同 plan_json 幂等已保证）。
      */
     private String generateNewOfferId(String planId) {
         String digits = planId.replaceAll("\\D", "");
-        String tail = digits.length() >= 8 ? digits.substring(digits.length() - 8)
-                : String.format("%08d", Math.abs(planId.hashCode()) % 100_000_000);
-        String candidate = "9" + tail;
+        String tail = digits.length() >= 6 ? digits.substring(digits.length() - 6)
+                : String.format("%06d", Math.abs(planId.hashCode()) % 1_000_000);
+        String candidate = "900" + tail;
         while (seed.exists(candidate)) {
-            candidate = "9" + String.format("%08d", (Integer.parseInt(tail) + 1) % 100_000_000);
+            candidate = "900" + String.format("%06d", (Integer.parseInt(tail) + 1) % 1_000_000);
         }
         return candidate;
     }
