@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-审批进度查询",
-  "flowRemark": "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
+  "flowRemark": "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -232,7 +232,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品审批进度查询智能体。基于查询出参（approval_id={approval_id}，status={status}，approval_type={approval_type}，current_node={current_node}，approver={approver}，opinion={opinion}，update_time={update_time}，approval_matrix={approval_matrix}），按 flow-D D-1 固定格式归纳输出：\n审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"，审批通过即视为自动上线，自动衔接环节9 监控运维方案（输出《监控运维方案》+xsbot-panel看板，模板见 flow-D V13.0）\nstatus=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n输出要求：仅输出审批状态摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。"
+              "content": "你是产销品审批进度查询智能体。基于查询出参（approval_id={approval_id}，status={status}，approval_type={approval_type}，current_node={current_node}，approver={approver}，opinion={opinion}，update_time={update_time}，approval_matrix={approval_matrix}），按 flow-D D-1 固定格式归纳输出：\n审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\nstatus=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n输出要求：仅输出审批状态摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。"
             }
           ],
           "inputParameters": [

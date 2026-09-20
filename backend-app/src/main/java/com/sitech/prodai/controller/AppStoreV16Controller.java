@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -226,12 +227,19 @@ public class AppStoreV16Controller {
 
     /* ================= 接口13：节点结果查询（query_node_result） ================= */
 
-    @Operation(summary = "节点结果查询", description = "后续环节按需求单号查询上游环节结果 JSON")
-    @GetMapping("/result/query")
-    public Map<String, Object> queryNodeResult(@RequestParam("req_id") String reqId,
+    @Operation(summary = "节点结果查询", description = "后续环节按需求单号查询上游环节结果 JSON（POST JSON 体，兼容 GET 查询参数）")
+    @RequestMapping(value = "/result/query", method = {RequestMethod.POST, RequestMethod.GET})
+    public Map<String, Object> queryNodeResult(@RequestBody(required = false) Map<String, Object> req,
+                                               @RequestParam(required = false) String req_id,
                                                @RequestParam(required = false) String node_name,
-                                               @RequestParam(required = false, defaultValue = "1") String latest_only) {
-        return nodeResultService.query(reqId, node_name, latest_only);
+                                               @RequestParam(required = false) String latest_only) {
+        String reqId = req != null ? MapOps.str(req.get("req_id")) : req_id;
+        String node = req != null ? MapOps.str(req.get("node_name")) : node_name;
+        String latest = req != null ? MapOps.str(req.get("latest_only")) : latest_only;
+        if (latest == null || latest.isEmpty()) {
+            latest = "1";
+        }
+        return nodeResultService.query(reqId, node, latest);
     }
 
     /* ================= 接口14：字段本体推理（field_ontology_reason） ================= */

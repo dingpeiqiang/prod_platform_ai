@@ -32,7 +32,7 @@
 | 4 | 规格稽核 | `wf_sub_03`（组维度） | 自查 config → realtime_spec_audit（error_list 含 group 类目） | pass==1 |
 | 5 | 资费校准 | `wf_sub_05`（成员分组） | 自查 config → check_billing_rule（check_scene=all，member_role 分组） | pass==1 |
 | 6 | 自动测试（含受理验证） | `wf_sub_04` | 自查 config → offer_test → get_test_scenes → CODE_POLL_PROGRESS 轮询 → get_test_result → CODE_MAP_FIXED_CASES（31 条固定用例）→ 九章节报告 → 报告下载；**受理验证为其子集**（orderId/offerInstId 结论随报告输出，不独立成节） | test_passed==通过 |
-| 7 | 上线审批 | `wf_sub_06`（双轨） | CODE_SUMMARY_APPROVAL 汇总 → submit_release_approval(approval-type=launch) → 审批通过**自动上线 + 生成监控运维方案** | approval_id / status |
+| 7 | 上线审批 | `wf_sub_06`（双轨） | CODE_SUMMARY_APPROVAL 汇总 → submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流）；审批状态由 wf_sub_08 查询 | approval_id / status |
 | 8 | 监控运维 | `wf_sub_07` | query_product_monitor → 异常分支 CODE_OP_ROOT_CAUSE 根因推理 + CODE_OP_CREATE_WO 建工单闭环 | 指标 / 工单号 |
 
 > 辅助子流（不占环节编号）：`wf_sub_08` 审批进度查询（双轨）、`wf_sub_09` 存量产品查询（只读）、`wf_sub_10` 存量合规扫描。
@@ -56,7 +56,7 @@
 | 智能体常驻提示词 | 智能体（LLM）按 3.2 提示词【意图→工作流映射表】做**语义识别并直调** 12 个子流；无独立意图调度主流程 |
 | 子工作流 `wf_sub_01~08` | 12 个工作流 JSON：`wf_sub_00`~`wf_sub_11`（`gen_workflows_v2.py` 确定性生成，位于 `工作流配置/智能体工作流集V1.6/`） |
 | 插件工具 1~14 契约 | 后端 AppStoreV16Controller `/api/v1/appstore/*` 适配端点（13 工具 + 7 个 V2.0 新增端点，网关 `BASE_URL=http://10.86.13.201:31281`） |
-| 代码节点 | 确定性逻辑内嵌为工作流 **type=6 代码节点**（CODE_RENDER_REQ / CODE_GET_TEMPLATE / CODE_VALIDATE_ELEMENTS / CODE_MERGE_NESTED / CODE_OP_VALIDATE_NESTED / CODE_RENDER_TABLE / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_MAP_FIXED_CASES / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_SUMMARY_APPROVAL / CODE_APPROVAL_POLL / CODE_DOWNLOAD_* 等） |
+| 代码节点 | 确定性逻辑内嵌为工作流 **type=6 代码节点**（CODE_RENDER_REQ / CODE_GET_TEMPLATE / CODE_VALIDATE_ELEMENTS / CODE_MERGE_NESTED / CODE_OP_VALIDATE_NESTED / CODE_RENDER_TABLE / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_MAP_FIXED_CASES / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_SUMMARY_APPROVAL / CODE_DOWNLOAD_* 等） |
 | 平台知识库 K1~K5 + 向量召回 | `knowledge/` 目录 + 确定性代码节点/后端服务按需读取（K4 按销售品 ID 单文件精确定位，禁止全量读取） |
 | 平台门禁 | 后端硬校验保留（req_id 格式 5002 / 四环节门禁 / 幂等）；**确认门禁已移除**——方案确认与审批确认由智能体语义识别保证（提示词【限制】） |
 
@@ -156,7 +156,7 @@
 | 规格稽核（环节4/8） | 配置落地后实时稽核 | `wf_sub_03`（组维度）：`realtime_spec_audit` |
 | 资费校准（环节5/8） | 校验计费逻辑、优惠叠加冲突 | `wf_sub_05`（成员分组）：`check_billing_rule`(check_scene=all) |
 | 自动测试（环节6/8，含受理验证） | 发起测试→轮询→取结果，报告含受理验证结论 | `wf_sub_04`：`offer_test`/`get_test_scenes`/CODE_POLL_PROGRESS/`get_test_result` + CODE_MAP_FIXED_CASES + 九章节报告 + 报告下载 |
-| 上线审批（环节7/8） | 汇总报告、推送审批；通过自动上线+监控运维方案 | `wf_sub_06`（双轨）：CODE_SUMMARY_APPROVAL → `submit_release_approval` → 审批通过自动上线 |
+| 上线审批（环节7/8） | 汇总报告、推送审批；**推送即结束（不轮询/不分流）**；审批状态由 `wf_sub_08` 事后查询 | `wf_sub_06`（双轨）：CODE_SUMMARY_APPROVAL → `submit_release_approval` → 推送后即结束，返回 approval_id/status |
 | 审批进度查询（辅助） | 查询审批单当前状态（双轨） | `wf_sub_08` + `query_approval_status` |
 | 存量产品查询（辅助） | 查询存量/在售销售品（只读） | `wf_sub_09` + CODE_OP_QUERY_OFFER |
 | 存量合规扫描（辅助） | 存量销售品上架合规扫描 | `wf_sub_10` + CODE_OP_SHELF_COMPLIANCE（/shelf-compliance） |
@@ -202,7 +202,7 @@
 | 17 | `/validate-nested` | 嵌套本体校验闸 | wf_sub_01（CODE_OP_VALIDATE_NESTED） |
 | 18 | `/explain` | 校验/合规结论可解释说明 | 各子流解释类输出 |
 | 19 | `/report/download` | 九章节正式版测试报告下载 | wf_sub_04（CODE_DOWNLOAD_TEST_REPORT） |
-| 20 | `/script/download` | CRM/billing 落库 SQL 上线脚本下载 | wf_sub_06（CODE_DOWNLOAD_LAUNCH_SCRIPT） |
+| 20 | `/script/download` | CRM/billing 落库 SQL 上线脚本下载 | wf_sub_06（V2.1 已随审批推送即结束移除 CODE_DOWNLOAD_LAUNCH_SCRIPT，端点保留但子流不再调用） |
 
 > **代码节点化**：原技能包脚本子命令（build_plan/extract_record/poll/dispatcher/map_fixed_cases 等）全部重构为工作流 type=6 代码节点，确定性逻辑内嵌于 12 个工作流 JSON。
 >
@@ -283,7 +283,7 @@ globalId 格式（50+19 位）；实时稽核 60s 内同步返回；工具6 orde
   ▼
 ⑦ 智能体汇总打印成功详情 + 提示"是否发起上线审批"
 用户回复"发起审批" → wf_sub_06（串行自查 5 类环节结果 → 报告 → submit_release_approval 推送
-  → 审批通过自动上线 + 生成监控运维方案（环节8/8 关联））
+  → 推送即结束，返回 approval_id/status；不轮询/不分流，审批状态由 wf_sub_08 事后查询）
 ```
 
 **调度要点（确定性契约权威描述）**：
@@ -327,7 +327,7 @@ globalId 格式（50+19 位）；实时稽核 60s 内同步返回；工具6 orde
 | 规格稽核（环节4/8，组维度） | `wf_sub_03` | req_id | 自查 config → CODE_EXTRACT_RECORD → realtime_spec_audit（error_list 含 group 类目）→ 整改建议 → save(node=spec) |
 | 资费校准（环节5/8，成员分组） | `wf_sub_05` | req_id | 自查 config → CODE_EXTRACT_RECORD → check_billing_rule(check_scene=all, member_role 分组) → 风险解读 → save(node=fee) |
 | 自动测试（环节6/8，含受理验证） | `wf_sub_04` | req_id | 自查 config → offer_test → get_test_scenes → CODE_POLL_PROGRESS 轮询 → get_test_result → CODE_MAP_FIXED_CASES(节点315：31 条固定用例/九章节报告，受理验证子集) → CODE_DOWNLOAD_TEST_REPORT → save(node=test) |
-| 上线审批（环节7/8，双轨+自动上线） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 7 章节报告（node=report）→ submit_release_approval(approval-type=launch) → CODE_APPROVAL_POLL 审批轮询 → 通过后自动上线+监控运维方案 → CODE_DOWNLOAD_LAUNCH_SCRIPT(/script/download) |
+| 上线审批（环节7/8，双轨+推送即结束） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 报告（node=report）→ submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流），返回 approval_id/status；审批状态由 wf_sub_08 查询 |
 | 监控运维（环节8/8，异常分支） | `wf_sub_07` | offer_id / date_range | query_product_monitor → 异常 → send_alert → CODE_OP_ROOT_CAUSE(/ops/root-cause) → CODE_OP_CREATE_WO(/ops/work-orders) |
 | 审批进度查询（辅助，双轨） | `wf_sub_08` | approval_id / offer_id | query_approval_status → LLM 状态摘要 |
 | 存量产品查询（辅助，只读） | `wf_sub_09` | 产品名称/ID | CODE_OP_QUERY_OFFER（内嵌 knowledge/存量产品目录_清洗后.json） |
@@ -547,7 +547,7 @@ globalId 格式（50+19 位）；实时稽核 60s 内同步返回；工具6 orde
 - [x] `gen_workflows_v2.py` 生成 12 个子工作流 JSON（`wf_sub_00`~`wf_sub_11`）并导入
 - [x] 确定性逻辑内嵌 type=6 代码节点（CODE_*）取代技能包脚本子命令
 - [x] 智能体按 3.2 提示词语义识别直调（职责分层：只做语义识别/业务理解/结果表达）
-- [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+自动上线）、监控运维（根因闭环）、审批进度/存量查询/存量合规辅助子流
+- [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+推送即结束，审批状态由 wf_sub_08 查询）、监控运维（根因闭环）、审批进度/存量查询/存量合规辅助子流
 - [x] 主链路端点实跑验证（2026-09-19）：result/save、result/query、audit/realtime、product/config/save、billing/rules/verify、test/offer/start、test/offer/result、approval/submit、product/monitor、similar/offer/query live 生效
 - [ ] 14 个既有契约端点 + 7 个适配端点逐一连通（含错误码验证）；仍占位：report/download、script/download（backend_pending=1 回退）、/ops/root-cause、/ops/work-orders、/shelf-compliance、/validate-nested、/explain 待逐项确认
 - [ ] 端到端联调：正向全流程 + 反向用例（未确认不配置、需求审批未确认不发起、跳步审批被拒、逐环节推进止于反馈点、稽核驳回中断引导、续跑不重复写）+ 18 销售品兼容回归

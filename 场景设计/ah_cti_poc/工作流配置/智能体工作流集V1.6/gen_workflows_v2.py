@@ -2123,74 +2123,6 @@ files4f = workflow(
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
 # ============================================================
 
-# ---------------- CODE_APPROVAL_POLL：审批状态轮询（V13.0 审批通过即自动上线） ----------------
-# 依据 flow-C 步骤7：轮询 approval_status（模拟服务审批提交 10s 后自动流转为"通过"），
-# 判定 status=通过 即自动衔接环节9 监控运维；否则待审/驳回 → 环节8 收尾块。
-CODE_APPROVAL_POLL = (
-    "import json, time, asyncio\n"
-    "import urllib.request, urllib.parse\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "STATUS_URL = 'BASE_URL/api/v1/appstore/approval/status'\n"
-    "MAX_RETRY = 12\n"
-    "INTERVAL = 2\n"
-    "\n"
-    "def _fetch(approval_id, offer_id):\n"
-    "    params = {}\n"
-    "    if approval_id:\n"
-    "        params['approval_id'] = approval_id\n"
-    "    if offer_id:\n"
-    "        params['offer_id'] = offer_id\n"
-    "    url = STATUS_URL + '?' + urllib.parse.urlencode(params)\n"
-    "    with urllib.request.urlopen(url, timeout=30) as resp:\n"
-    "        return json.loads(resp.read().decode('utf-8'))\n"
-    "\n"
-    "def _norm_status(info):\n"
-    "    # 对齐后端口径：终态 通过/驳回；处理中 审批中/待审/待审核/进行中/approved\n"
-    "    st = str(info.get('status') or '').strip()\n"
-    "    if st in ('通过', '已通过'):\n"
-    "        return '通过'\n"
-    "    if st in ('驳回', '已驳回', '拒绝'):\n"
-    "        return '驳回'\n"
-    "    if str(info.get('approved') or '').lower() in ('true', 'yes', '1'):\n"
-    "        return '通过'\n"
-    "    if str(info.get('rejected') or '').lower() in ('true', 'yes', '1'):\n"
-    "        return '驳回'\n"
-    "    if st == '' or st in ('审批中', '待审', '待审核', '进行中', 'approved', 'pending', 'auditing'):\n"
-    "        return '审批中'\n"
-    "    return st\n"
-    "\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    approval_id = str(p.get('approval_id') or '')\n"
-    "    offer_id = str(p.get('offer_id') or '')\n"
-    "    out_status = '审批中'\n"
-    "    info = {}\n"
-    "    for i in range(MAX_RETRY):\n"
-    "        try:\n"
-    "            info = _fetch(approval_id, offer_id)\n"
-    "        except Exception:\n"
-    "            await asyncio.sleep(INTERVAL)\n"
-    "            continue\n"
-    "        out_status = _norm_status(info)\n"
-    "        if out_status in ('通过', '驳回'):\n"
-    "            break\n"
-    "        time.sleep(INTERVAL)\n"
-    "    ret: Output = {\n"
-    "        'status': out_status,\n"
-    "        'approval_id': str(info.get('approval_id') or approval_id),\n"
-    "        'approval_type': str(info.get('approval_type') or 'launch'),\n"
-    "        'current_node': str(info.get('current_node') or ''),\n"
-    "        'approver': str(info.get('approver') or ''),\n"
-    "        'opinion': str(info.get('opinion') or ''),\n"
-    "        'update_time': str(info.get('update_time') or ''),\n"
-    "        'approval_matrix': json.dumps(info.get('approval_matrix') or [], ensure_ascii=False),\n"
-    "    }\n"
-    "    return ret"
-)
-CODE_APPROVAL_POLL = CODE_APPROVAL_POLL.replace("BASE_URL", BASE_URL)
-
 # ---------------- CODE_OP_QUERY_OFFER：存量产品查询（D-4，只读，确定性本地逻辑） ----------------
 # 数据源：knowledge/存量产品目录_清洗后.json（18 条）+ knowledge/K4存量/；本代码节点内嵌目录
 # （便于 Demo 离线可用），后端 query_offer 插件就绪后可切换为远端检索；只读、不生成 req_id。
@@ -2264,7 +2196,7 @@ CODE_OP_QUERY_OFFER = (
 
 # ---------------- CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE ----------------
 # 阶段1.1 能力已在后端 ProductOntologyController 就绪（/api/v1/product-ontology/{ops/root-cause,ops/work-orders,config/shelf-compliance}），
-# 经 appstore 网关以 BASE_URL/api/v1/appstore/* 暴露。此处代码节点改为 HTTP 调用对应端点（urllib，对齐 CODE_APPROVAL_POLL 模式），
+# 经 appstore 网关以 BASE_URL/api/v1/appstore/* 暴露。此处代码节点改为 HTTP 调用对应端点（urllib 直连模式），
 # 端点不可达/未暴露时优雅回退 backend_pending=1（离线 Demo 与 LLM 诚实占位口径不变）。后端就绪后无需改流程，真实数据直接流入。
 CODE_OP_ROOT_CAUSE = (
     "import json, urllib.request\n"
@@ -2384,53 +2316,13 @@ CODE_OP_ROOT_CAUSE = CODE_OP_ROOT_CAUSE.replace("BASE_URL", BASE_URL)
 CODE_OP_CREATE_WO = CODE_OP_CREATE_WO.replace("BASE_URL", BASE_URL)
 CODE_OP_SHELF_COMPLIANCE = CODE_OP_SHELF_COMPLIANCE.replace("BASE_URL", BASE_URL)
 
-# ---------------- CODE_DOWNLOAD_LAUNCH_SCRIPT：上线/配置脚本下载（阶段1.2） ----------------
-# 审批通过自动上线后提供配置/加载脚本下载；后端暴露下载端点后返回地址，不可达回退为引导文本。
-# 对齐 CODE_DOWNLOAD_TEST_REPORT 的 urllib POST + 优雅回退模式。
-CODE_DOWNLOAD_LAUNCH_SCRIPT = (
-    "import json, urllib.request\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "DL_URL = 'BASE_URL/api/v1/appstore/script/download'\n"
-    "\n"
-    "def _fetch(offer_id, approval_id):\n"
-    "    body = json.dumps({'offer_id': offer_id, 'approval_id': approval_id, 'kind': 'launch_script'}).encode('utf-8')\n"
-    "    req = urllib.request.Request(DL_URL, data=body, method='POST',\n"
-    "                                 headers={'Content-Type': 'application/json'})\n"
-    "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
-    "        return json.loads(resp.read().decode('utf-8'))\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    offer_id = str(p.get('offer_id') or '').strip()\n"
-    "    approval_id = str(p.get('approval_id') or '').strip()\n"
-    "    try:\n"
-    "        info = _fetch(offer_id, approval_id)\n"
-    "    except Exception:\n"
-    "        info = None\n"
-    "    if not info or not (info.get('download_url') or info.get('url')):\n"
-    "        ret: Output = {\n"
-    "            'backend_pending': '1',\n"
-    "            'download_url': '',\n"
-    "            'note': '配置/上线脚本下载端点暂不可达，可联系产商品中心获取加载脚本；后端就绪后可直接下载',\n"
-    "        }\n"
-    "    else:\n"
-    "        ret: Output = {\n"
-    "            'backend_pending': '0',\n"
-    "            'download_url': str(info.get('download_url') or info.get('url') or ''),\n"
-    "            'note': str(info.get('message') or '配置/上线脚本已生成，可点击链接下载'),\n"
-    "        }\n"
-    "    return ret"
-)
-CODE_DOWNLOAD_LAUNCH_SCRIPT = CODE_DOWNLOAD_LAUNCH_SCRIPT.replace("BASE_URL", BASE_URL)
-
 # ============================================================
-# wf_sub_06 上线审批（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）
+# wf_sub_06 上线审批（阶段5 重写：双轨 approval-type=launch；V6.0 起去除轮询/分流，推送即结束）
 #   开始(req_id) → 串行自查5类环节(config/spec/fee/test/requirement，各配提取)
 #   → CODE_SUMMARY_APPROVAL 合成结构化汇总 → LLM 生成《上线审批建议》(环节8标题头+看板+风险+整体结论)
-#   → 存储 report → submit_release_approval 推送(launch) → CODE_APPROVAL_POLL 轮询审批状态
-#   → selector 按 status=通过 分流：通过分支 → LLM 监控运维方案(环节9标题头+xsbot-panel看板) → 自动上线结束；
-#     待审/驳回分支 → 环节8 收尾块结束（引导【查询审批进度】核验，禁止再要求【确认上线】）
+#   → 存储 report → submit_release_approval 推送(launch) → 结束
+#   审批状态不在此轮询：由【查询审批进度】(wf_sub_08/query_approval_status) 事后查询
+#   （后端模拟：提交 10s 后自动流转为"通过"）
 # ============================================================
 s6f = []
 s6f.append(start_node(601, [
@@ -2548,70 +2440,20 @@ s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
      inp("approval_type", "审批类型=launch（上线审批）", content="launch")],
     [("approval_id", "审批单号", "string"), ("status", "提交状态", "string"),
      ("approval_type", "审批类型", "string")], pos=(990, 385)))
-# 616 轮询审批状态（V13.0 审批通过即自动上线，无需二次确认）
-s6f.append(code_node(616, "轮询审批状态", CODE_APPROVAL_POLL,
-    [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id"),
-     inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id")],
-    [code_out("status", 616), code_out("approval_id", 616), code_out("approval_type", 616), code_out("current_node", 616), code_out("approver", 616), code_out("opinion", 616), code_out("update_time", 616), code_out("approval_matrix", 616)],
-    pos=(1140, 385)))
-# 617 分流：status=通过 → 自动衔接环节9；否则 → 环节8 收尾块
-s6f.append(selector_node2(617, "审批状态分流",
-    [dep_node(616, "轮询审批状态", ["status"])],
-    [(-1, [cond_item(cond_ref(616, "status", "轮询审批状态"), 1, cond_str("通过"))])]))
-# 618 LLM 监控运维方案（环节9 标题头，V13.0 审批通过自动上线后输出；面板由代码节点 622 单独构建）
-s6f.append(llm_node(618, "监控运维方案生成",
-    "你是产销品监控运维智能体。上线审批（approval-type=launch，审批单号 {approval_id}）已通过，销售品已自动上线，请按 flow-D V13.0「审批通过自动上线·监控运维方案」固定模板输出（环节9 标题头为强制，监控阈值/推送时间为平台标准口径禁止改写）：\n"
-    "【环节9/9·监控运维】✅ 执行成功\n\n"
-    "**满足条件的套餐监控运维方案已生成**\n\n"
-    "**一、销售情况监控**\n- 订购量、新增量、退订量、订购成功率\n\n"
-    "**二、受理运行监控**\n- 受理成功率、订购失败率、变更失败率、退订失败率\n\n"
-    "**三、推送规则**\n- **定时推送：** 每日09:00推送前一日销售及受理情况；每周一09:00推送近7日趋势；每月1日09:00推送上月运营报告。\n- **异常推送：** 订购成功率低于95%、受理成功率低于95%、失败率超过5%、核心指标波动超过30%时立即推送。\n\n"
-     "**当前状态：** 监控指标已配置，定时推送已配置，异常推送已配置。\n\n"
-     "**产品已成功上线，运营视图已开启。**\n\n"
-     "> **建议处理：** 销售品已成功上线，建议查询运行监控确认上线后表现（可回复【查询监控】查看运行情况）\n"
-     "监控运维方案固定模板禁止改写阈值。\n"
-     "输出要求：仅输出监控运维方案正文（对应出参 monitor_plan），不输出其他多余文字。",
-    [inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id")],
-    [out("monitor_plan", "监控运维方案正文（环节9标题头）")], pos=(1590, 260)))
-# 下载配置/上线脚本（阶段1.2）：审批通过自动上线后提供，不可达回退为引导
-s6f.append(code_node(621, "配置/上线脚本下载", CODE_DOWNLOAD_LAUNCH_SCRIPT,
-    [inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
-     inp("approval_id", "审批单号（节点615）", ref_block=nid(615), ref_rel="approval_id")],
-    [code_out("backend_pending", 621), code_out("download_url", 621), code_out("note", 621)],
-    pos=(1740, 385)))
-# xsbot-panel 独立代码节点（审批通过-自动上线分支；offer_name 沿用 offer_id）
-s6f.append(panel_code_node(622, "构建页面地址面板(自动上线)", "06",
-    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id", req_seq=601),
-    biz_title="单品运营看板"))
-s6f.append(end_node(619, "结束(审批通过-自动上线)",
+# 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批状态由【查询审批进度】事后查询
+# （后端模拟自动流转：提交 10s 后"审批中"→"通过（上架完成）"，查询时惰性推进）
+s6f.append(end_node(616, "结束(审批已提交)",
     [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
-     inp("status", "审批状态", ref_block=nid(616), ref_rel="status"),
-     inp("monitor_plan", "监控运维方案", ref_block=nid(618), ref_rel="monitor_plan"),
-     inp("download_url", "脚本下载地址（节点621）", ref_block=nid(621), ref_rel="download_url"),
-     inp("dl_note", "下载说明（节点621）", ref_block=nid(621), ref_rel="note"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(622), ref_rel="panel")],
-    "审批已通过（approval_id={approval_id}，status={status}），销售品已自动上线；自动衔接环节9 监控运维：\n\n{monitor_plan}\n\n"
-    "【配置/上线脚本下载】地址 {download_url}（为空填写\"暂不可用（后端下载端点未就绪），见监控运维方案\"）（{dl_note}）\n\n{panel}"))
-# xsbot-panel 独立代码节点（审批轮询中分支；offer_name 沿用 offer_id）
-s6f.append(panel_code_node(623, "构建页面地址面板(审批轮询中)", "06",
-    panel_inputs(601, off_seq=612, off_rel="offer_id", name_seq=612, name_rel="offer_id", req_seq=601),
-    biz_title="上线审批看板"))
-s6f.append(end_node(620, "结束(审批轮询中)",
-    [inp("approval_id", "审批单号", ref_block=nid(615), ref_rel="approval_id"),
-     inp("status", "审批状态", ref_block=nid(616), ref_rel="status"),
-     inp("current_node", "当前审批环节", ref_block=nid(616), ref_rel="current_node"),
-     inp("approver", "当前审批人", ref_block=nid(616), ref_rel="approver"),
-     inp("opinion", "审批意见", ref_block=nid(616), ref_rel="opinion"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(623), ref_rel="panel")],
-    "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，当前状态：{status}（当前环节 {current_node}，审批人 {approver}，最近意见：{opinion}）\n"
-    "审批通过后将自动上线并衔接监控运维方案输出。\n\n"
-    "> **建议处理：** 上线审批已提交并轮询中，审批通过后将自动上线（可回复【查询审批进度】核验当前进度）\n\n{panel}"))
+     inp("status", "提交状态（审批中，模拟约10s后自动通过）", ref_block=nid(615), ref_rel="status"),
+     inp("approval_type", "审批类型（launch=上线审批）", ref_block=nid(615), ref_rel="approval_type")],
+    "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，提交状态：{status}，审批类型：{approval_type}\n"
+    "审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n"
+    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（阶段5 重写：双轨 approval-type=launch + V13.0 审批通过自动上线）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_APPROVAL_POLL 轮询审批状态(模拟10s后自动通过)→selector 按 status=通过 分流：通过→LLM 生成监控运维方案(环节9标题头+xsbot-panel看板)→CODE_DOWNLOAD_LAUNCH_SCRIPT 配置/上线脚本下载(阶段1.2,端点不可达回退引导)并自动上线结束(不需要用户回复【确认上线】)；待审/驳回→环节8收尾块结束(引导【查询审批进度】核验)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
-     edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,616),
-     edge(616,617), edge(617,623,0), edge(617,618,-1), edge(618,621), edge(621,622), edge(622,619), edge(623,620)])
+     edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,616)])
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
@@ -2766,7 +2608,7 @@ s8f.append(llm_node(803, "状态摘要归纳",
     "（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n"
     "审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n"
     "- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n"
-    "- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"，审批通过即视为自动上线，自动衔接环节9 监控运维方案（输出《监控运维方案》+xsbot-panel看板，模板见 flow-D V13.0）\n"
+    "- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\n"
     "status=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
     "输出要求：仅输出审批状态摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。",
     [inp("approval_id", "审批单号", ref_block=nid(802), ref_rel="approval_id"),
@@ -2787,7 +2629,7 @@ s8f.append(end_node(804, "结束(查询完成)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(805), ref_rel="panel")],
     "{approval_summary}\n\n{panel}"))
 files8f = workflow(
-    "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→通过即自动上线衔接监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
+    "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
     [edge(801,802), edge(802,803), edge(803,805), edge(805,804)])
 
 # ============================================================

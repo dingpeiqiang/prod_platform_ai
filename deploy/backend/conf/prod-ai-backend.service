@@ -1,0 +1,31 @@
+# ============================================================
+# Prod Platform AI - 后端 systemd 单元模板（tar 包内 conf/）
+# 安装目标: /etc/systemd/system/prod-ai-backend.service
+# 使用:  cp prod-ai-backend.service /etc/systemd/system/
+#        systemctl daemon-reload && systemctl enable --now prod-ai-backend
+# 也可改用 bin/start.sh（USE_SYSTEMD=1 时自动转调 systemctl）
+# ============================================================
+
+[Unit]
+Description=Prod Platform AI Backend (Spring Boot)
+After=network.target mysqld.service
+Requires=mysqld.service
+
+[Service]
+Type=simple
+# 运行账号：按需创建  useradd -r -s /sbin/nologin prod-ai
+User=prod-ai
+Group=prod-ai
+WorkingDirectory=/opt/prod-ai/backend
+# 敏感环境变量统一存放于 /etc/prod-ai/backend.env （权限 600，root 属主）
+EnvironmentFile=/etc/prod-ai/backend.env
+ExecStart=/usr/bin/java -Xms1g -Xmx3g -Dfile.encoding=UTF-8 \
+    -jar /opt/prod-ai/backend/app.jar \
+    --server.port=6174 \
+    --spring.config.additional-location=optional:file:/opt/prod-ai/backend/config/
+Restart=on-failure
+RestartSec=10
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
