@@ -518,8 +518,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000317",
         "position": {
-          "x": 375,
-          "y": 560
+          "x": 2175,
+          "y": 300
         },
         "dependencyData": [],
         "type": 3,
@@ -559,8 +559,8 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000318",
         "position": {
-          "x": 735,
-          "y": 560
+          "x": 2535,
+          "y": 300
         },
         "dependencyData": [],
         "type": 6
@@ -629,8 +629,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000319",
         "position": {
-          "x": 375,
-          "y": 40
+          "x": 2895,
+          "y": 300
         },
         "dependencyData": [],
         "type": 3,
@@ -670,8 +670,8 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000320",
         "position": {
-          "x": 735,
-          "y": 40
+          "x": 3255,
+          "y": 300
         },
         "dependencyData": [],
         "type": 6
@@ -843,7 +843,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000315",
         "position": {
-          "x": 2175,
+          "x": 3615,
           "y": 300
         },
         "dependencyData": [],
@@ -1077,7 +1077,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 2535,
+          "x": 3975,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000306",
@@ -1162,7 +1162,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000308",
         "position": {
-          "x": 2895,
+          "x": 4335,
           "y": 300
         },
         "dependencyData": [],
@@ -1208,7 +1208,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000316",
         "position": {
-          "x": 3255,
+          "x": 4695,
           "y": 300
         },
         "dependencyData": [],
@@ -1222,7 +1222,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id                + '&req_id=' + req_id + '&stage=04&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=04&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -1276,7 +1276,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000321",
         "position": {
-          "x": 3615,
+          "x": 5055,
           "y": 300
         },
         "dependencyData": [],
@@ -1405,7 +1405,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3975,
+          "x": 5415,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000307",
@@ -1440,13 +1440,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000315",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000305"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000317",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000301"
+        "startId": "a1b2c3d4-0000-4000-8000-000000000305"
       },
       {
         "sourcePort": null,
@@ -1455,13 +1450,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000315",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000318"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000319",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000301"
+        "startId": "a1b2c3d4-0000-4000-8000-000000000318"
       },
       {
         "sourcePort": null,

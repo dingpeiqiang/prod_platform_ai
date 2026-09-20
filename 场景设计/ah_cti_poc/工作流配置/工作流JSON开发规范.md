@@ -175,6 +175,21 @@ selector_node2(4, "待补充判定",
 
 > 每个分支 `conditions` 项结构：`{"sourcePort": port, "itemflag": true, "logic": 1, "conditions": [cond_item, ...]}`。
 
+### 6.4 节点出边单线约束（平台限制，历次踩坑点）
+
+平台**不允许一个节点连接两条及以上出边**（fan-out），否则导入/渲染异常。因此**除条件分支节点（type=2）外，其余所有类型节点（type=0/1/3/6/9/13）至多只能有一条出边**：
+
+- type=2 条件分支节点**是唯一允许 fan-out 的类型**，其多条出边按 `sourcePort`（0/-1）路由（见 6.2），属正常设计。
+- 其余节点若出现多条出边（如 202 同时连 203 与 208），平台判定违规，必须修正。
+
+**修正原则（源码驱动）**：
+
+1. **消除冗余边**：若两条出边指向同一竞态汇聚点（如插件节点同时连下游插件与其后的封包节点：`edge(202,203), edge(202,208)` 而 `208` 本就是 `203` 的后继），删除直达汇聚点的冗余边，改走 `202→203→…→208` 单链。数据流不变——执行器 `wf_runner.py` 用全局上下文 `ctx`（按 blockID）解析引用，**不要求有直接边**，只要上游节点先执行即可，下游引用上游出参照常有效。
+2. **串行化并行分支**：同一节点需分叉到多条互不依赖的并行分支时（如开始节点分叉主线/自检A/自检B），改为首尾相接的单链（`主线→自检A→自检B→汇聚`），仅保留一条出边。因参考解析看全局 ctx 而非直接边，串行化后各分支下游节点仍能引用任意上游出参，前提是拓扑顺序保证引用的上游已先执行。
+3. **真需要并行路由时用 type=2**：若分叉必须运行时按条件决定，用条件分支节点承载 fan-out，而非在普通节点上拉多条线。
+
+> 校验口径：对每个 `edges` 统计各 `startId` 出度，`出度>1 且该节点 type≠2` 即为 FAIL（见第十四节校验项）。
+
 ---
 
 ## 七、ID 规范（nid）
@@ -339,6 +354,7 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 3. 校验（重建后需 **12 个子工作流全量 ALL_OK**）：
    - 每个 `.json` 可被 `json.load`（`ensure_ascii=False, indent=2` 写出）。
    - 所有 `edges` 的 `startId/endId` 均存在于 `nodes` 的 `id`。
+   - **fan-out 校验（节点出边单线约束）**：统计各 `startId` 出度，任一节点出度>1 且其 `type≠2`（非条件分支）即 FAIL（对齐 6.4）。允许的 fan-out 仅限 type=2 分支节点。
    - 所有 `dependencyData`/`dep_node` 引用的节点与出参真实存在。
    - 所有 `inp(..., ref_block=nid(x))` 的 `x` 是有效上游节点。
    - 所有引用出参（`ref_rel`）在对应上游节点 `outputs` 中已声明。
@@ -361,9 +377,10 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 ---
 
 **最后更新**：2026-09-20
-**版本**：v1.8
+**版本**：v1.9
 
 ### 变更记录
+- v1.9（2026-09-20）：**补充节点出边单线约束（6.4）**：明确平台不允许一个节点连接两条及以上出边（fan-out），非条件分支（type≠2）节点至多一条出边，仅 type=2 分支节点允许 fan-out（按 sourcePort 路由）；给出修正原则（消除冗余边/串行化并行分支/必要时用 type=2 路由）并说明执行器用全局 ctx 解析引用、不依赖直接边故数据流不变；§十四校验流程同步新增 fan-out 校验项（任一节点出度>1 且 type≠2 即 FAIL）。依据本轮 wf_sub_03(节点202)/wf_sub_05(节点402)冗余边删除与 wf_sub_04 开始节点301三分支串行化修复沉淀。
 - v1.8（2026-09-20）：**wf_sub_11 纳入生成器 + 数量口径统一为 12 个子工作流 JSON**：① `gen_workflows_v2.py` 新增 `wf_sub_11_发起需求审批` 生成段（对齐 V3.3 契约手写版行为：自查 requirement_report → 提取原文 → submit_release_approval(approval-type=requirement) → 回执渲染），并修复手写版引用未定义常量 `PANEL_00_TPL` 的缺陷，生成并写出 **12 个子工作流 JSON（`wf_sub_00`~`wf_sub_11`）**；② `wf_sub_00` 移除审批节点、结束节点改为止于确认点（对齐 V3.3"未确认不发起审批"契约）；③ 适用范围/文件组织/总原则/七节 seq 分段/十四节校验条数由"11/12/13 个"历史口径统一为 **12 个子工作流 JSON（无 `wf_main_intent` 意图调度主流程，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调）**；④ 十二节子流程节点（type=13）标注 @deprecated（`wf_main_intent` 主调度已废弃）。12 个 JSON 已重生成并全量校验 OK。
 - v1.7（2026-09-20）：**offer_id 仅智能配置落地后传真实值**：00/01 落地前不再把 `req_id` 误绑到 `offer_id` 参数（`off_seq/off_rel="req_id"` 走法废弃），面板 offer_id 传空、页面以 `req_id` 定位；02~06 保持取自落地 config 结果（`save_product_config` 出参 / config 记录解析），07~09 保持会话开始节点传入。12 个 JSON（15 个 panel 代码节点，含 wf_sub_11）已重生成，panel 执行校验 15/15 OK。
 - v1.6（2026-09-20）：**面板 url 透传 `req_id` + 页面按 stage 动态联动**：`gen_panel_code` 生成的面板 url 追加 `&req_id=<实值>`（读取 `args.params.req_id`，有则实值、无则空串），`panel_inputs(...)` 新增 `req_seq` 参数，有 req_id 的环节（00~06）绑定起始节点 `req_id` 出参；`config-workbench.html` 解析 `req_id`，导航进度与默认 Tab 按 `stage` 动态加载（8 环节口径，08/09/10 辅助子流按就近展示）。12 个 JSON 已重生成并全量校验 OK。

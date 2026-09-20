@@ -205,7 +205,51 @@
           {
             "name": "compare_list",
             "cname": "资费比对明细（8项，融合组行含member_role）",
-            "sechema": [],
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "资费比对明细（8项，融合组行含member_role）",
+                "sechema": [
+                  {
+                    "name": "project_name",
+                    "cname": "比对项目名（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "requirement_desc",
+                    "cname": "套餐描述（需求侧，空串表示需求未提供该项）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "billing_desc",
+                    "cname": "计费配置描述（系统侧，空串表示未落配置）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "result",
+                    "cname": "比对结果：一致/不一致",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "member_role",
+                    "cname": "融合组成员角色（仅融合组行出现）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
             "type": "array",
             "required": false
           }
@@ -513,7 +557,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id                + '&req_id=' + req_id + '&stage=05&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"资费校准\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=05&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"资费校准\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -700,11 +744,6 @@
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000408",
         "startId": "a1b2c3d4-0000-4000-8000-000000000403"
-      },
-      {
-        "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
       },
       {
         "sourcePort": null,

@@ -92,6 +92,13 @@ ARRAY_ITEM_FIELDS = {
         ("risk_desc", "风险描述，含冲突/异常明细"),
         ("suggest", "处置建议"),
     ],
+    "check_billing_rule|compare_list": [
+        ("project_name", "比对项目名（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）"),
+        ("requirement_desc", "套餐描述（需求侧，空串表示需求未提供该项）"),
+        ("billing_desc", "计费配置描述（系统侧，空串表示未落配置）"),
+        ("result", "比对结果：一致/不一致"),
+        ("member_role", "融合组成员角色（仅融合组行出现）"),
+    ],
     "query_product_monitor|alarm_list": [
         ("alarm_id", "告警单号"),
         ("alarm_level", "告警级别：high/middle/low"),

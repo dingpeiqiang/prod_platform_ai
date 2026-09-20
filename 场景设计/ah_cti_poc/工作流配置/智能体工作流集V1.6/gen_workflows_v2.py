@@ -60,7 +60,7 @@ def gen_panel_code(stage, biz_title=None):
         "    offer_name = str(p.get('offer_name') or '')",
         "    req_id = str(p.get('req_id') or '')",
         "    biz_url = ('%s?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
-        "               + '&req_id=' + req_id + '&stage=%s&view=stage')" % (page, stage),
+        "+ '&req_id=' + req_id + '&stage=%s&view=stage')" % (page, stage),
     ]
     # 紧凑 JSON（无空格，逐字对齐参考示例），title 在生成期烘焙为字面量
     body += [
@@ -1525,7 +1525,7 @@ s3f.append(end_node(204, "结束(稽核完成)",
     "{panel}"))
 files3f = workflow(
     "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）→结构化封包（V2.5：error_list+audit_suggest 合成 envelope）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
-    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,208), edge(202,208), edge(208,205), edge(205,209), edge(209,204)])
+    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,208), edge(208,205), edge(205,209), edge(209,204)])
 
 # ============================================================
 # wf_sub_05 资费校准（融合组扩展）：比对表按 member_role 分组、E27 阈值逐成员内计算；单商品零变化。
@@ -1595,7 +1595,7 @@ s5f.append(end_node(404, "结束(资费校准完成)",
     "{panel}"))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
-    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,408), edge(402,408), edge(408,405), edge(405,409), edge(409,404)])
+    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,408), edge(408,405), edge(405,409), edge(409,404)])
 
 
 # ============================================================
@@ -2033,10 +2033,9 @@ s4f.append(end_node(307, "结束(测试完成)",
 files4f = workflow(
     "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(317~320 取 error_list/compare_list)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
     [edge(301,309), edge(309,310), edge(310,302), edge(302,304),
-     edge(304,305), edge(305,315), edge(301,317), edge(317,318), edge(318,315),
-     edge(301,319), edge(319,320), edge(320,315),
-     edge(315,306), edge(306,308),
-     edge(308,316), edge(316,321), edge(321,307)])
+     edge(304,305), edge(305,317), edge(317,318), edge(318,319), edge(319,320),
+     edge(320,315),
+     edge(315,306), edge(306,308), edge(308,316), edge(316,321), edge(321,307)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
