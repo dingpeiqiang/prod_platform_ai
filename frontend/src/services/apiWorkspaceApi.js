@@ -85,8 +85,8 @@ export async function exportHistoryDetail(id, fallbackName = 'api-call.txt') {
     showLoading: false,
     silentError: true,
   })
-  const blob = new Blob([res.data], { type: 'text/plain;charset=utf-8' })
-  const disposition = res.headers['content-disposition'] || ''
+  const blob = res instanceof Blob ? res : res.data
+  const disposition = (res && res.headers ? res.headers['content-disposition'] : '') || ''
   const fileMatch = /filename\*=UTF-8''([^;]+)/.exec(disposition)
   const filename = fileMatch ? decodeURIComponent(fileMatch[1]) : fallbackName
   const url = URL.createObjectURL(blob)
