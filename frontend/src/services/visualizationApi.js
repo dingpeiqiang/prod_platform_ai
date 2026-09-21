@@ -1,4 +1,5 @@
 import { request } from './httpClient.js';
+import { joinBasePath } from './basePath.js';
 
 const BASE = '/visualization';
 
@@ -26,6 +27,6 @@ export const visualizationApi = {
   createWebSocket(traceId) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return new WebSocket(`${protocol}//${host}/api/visualization/ws/${traceId}`);
+    return new WebSocket(`${protocol}//${host}${joinBasePath(`/api/visualization/ws/${traceId}`)}`);
   }
 };

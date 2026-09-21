@@ -2,10 +2,10 @@
 # ============================================================
 # Prod Platform AI - 前端 Nginx 启动脚本（tar 包内 prod-ai-frontend/bin/start.sh）
 # 用法:  bash start.sh
-# 部署布局（按 crm-pgcent-mng 约定）：
-#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端
-#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端（本包解压根，含 dist/bin/conf/html）
-#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 部署布局（本次部署实际路径）：
+#   APP_HOME     = /data/stq/crmpos/crm-pgcent-mng
+#   前端包根     = ${APP_HOME}/prod-ai-frontend（本脚本所在包，含 dist/bin/conf）
+#   NGINX_PREFIX = /data/stq/crmpos/nginx
 # 站点配置：默认加载本包 conf/prod-ai.conf（完整 Nginx 主配置），
 #   启动方式:  nginx -p <prefix> -c <PKG_DIR>/conf/prod-ai.conf
 #   启动前仅按其实际 HTTP_ROOT 修正配置中的 root 根目录，其余保持模板默认。
@@ -14,9 +14,9 @@
 set -euo pipefail
 
 # ---------- Nginx 配置（可配置） ----------
-# Nginx 安装前缀（到安装根目录，非 sbin），如 /usr/local/nginx 或 /opt/nginx。
-# 留空则使用系统默认 prefix = /etc/nginx。
-NGINX_HOME="${NGINX_HOME:-}"
+# Nginx 安装前缀（到安装根目录，非 sbin）。本次部署默认: /data/stq/crmpos/nginx
+# 如系统默认安装（/etc/nginx）可改为留空。
+NGINX_HOME="${NGINX_HOME:-/data/stq/crmpos/nginx}"
 
 # ---------- 部署根目录（可配置） ----------
 # APP_HOME = <根目录>/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend
@@ -26,29 +26,28 @@ APP_HOME="${APP_HOME:-}"
 
 # ---------- 路径常量 ----------
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PKG_DIR="$(cd "${SELF_DIR}/.." && pwd)"          # tar 解压根（prod-ai-frontend，含 dist/、conf/、html/）
+PKG_DIR="$(cd "${SELF_DIR}/.." && pwd)"          # tar 解压根（prod-ai-frontend，含 dist/、conf/、bin/）
 # 未显式指定 APP_HOME 时，推导为包目录(prod-ai-frontend)的父目录（即 crm-pgcent-mng）
 APP_HOME="${APP_HOME:-$(cd "${PKG_DIR}/.." && pwd)}"
 HTTP_ROOT="${APP_HOME}/prod-ai-frontend/dist"
 
 # 本包主配置（完整 nginx.conf），默认加载该文件
 SITE_CONF="${PKG_DIR}/conf/prod-ai.conf"
+# -p 前缀指向包 conf 目录：mime.types 随包放在此处，include mime.types 直接命中
+NGINX_CONF_DIR="${PKG_DIR}/conf"
 # 标注由本脚本自动修正，用于避免覆盖用户手工改动
 SITE_CONF_MARKER="# managed by prod-ai start.sh (auto-tuned)"
 
-# ---------- Nginx 可执行文件 / prefix / 启动参数 ----------
-# 指定 NGINX_HOME 时按其安装前缀推导；否则回退系统默认 prefix
+# ---------- Nginx 可执行文件（可配置 NGINX_HOME 指向安装前缀） ----------
 if [ -n "${NGINX_HOME}" ]; then
     NGINX_BIN="${NGINX_HOME}/sbin/nginx"
-    NGINX_PREFIX="${NGINX_HOME}"
 else
     NGINX_BIN="$(command -v nginx 2>/dev/null || true)"
-    NGINX_PREFIX="/etc/nginx"
 fi
 NGINX_BIN="${NGINX_BIN:-nginx}"
 
-# logger 帮助函数：统一带 prefix 参数执行 nginx
-nginx_log_dir() { echo "${NGINX_PREFIX}/logs"; }
+# 日志/pid 目录（prod-ai.conf 内为绝对路径，与此保持一致）
+NGINX_LOG_DIR="/data/stq/crmpos/nginx/logs"
 
 # 校验 PID 是否确为本实例 Nginx（cmdline 含本主配置路径 -c <SITE_CONF>）
 is_nginx_instance() {
@@ -62,11 +61,15 @@ is_nginx_instance() {
 
 # ---------- 站点配置加载（默认加载包内 conf / 仅修正根目录） ----------
 # 说明：直接修改并加载 conf/prod-ai.conf 本体，实现“加载 conf 下的文件”。
-# 启动前仅用 sed 修正其中的 root 根目录（按实际 HTTP_ROOT）；
+# 启动前仅用 sed 修正其中的 root 静态根目录（按实际 HTTP_ROOT）；
 # 其余（upstream、监听端口等）保持模板默认，无需手改。
 prepare_site_conf() {
     if ! [ -f "${SITE_CONF}" ]; then
         echo "[ERROR] 未找到主配置 ${SITE_CONF}" >&2
+        exit 1
+    fi
+    if ! [ -f "${NGINX_CONF_DIR}/mime.types" ]; then
+        echo "[ERROR] 未找到 ${NGINX_CONF_DIR}/mime.types，请确认部署包完整。" >&2
         exit 1
     fi
     # 首次：若非本脚本管理（无标注），默认接管并注入标注
@@ -89,7 +92,7 @@ PORT="${NGINX_PORT:-80}"
 
 # 权限自检：仅当确实需要 root 时才阻断（普通用户部署到自有写权限前缀、监听高端口时无需 root）
 check_permission() {
-    local _log_dir="$(nginx_log_dir)"
+    local _log_dir="${NGINX_LOG_DIR}"
     # 监听端口 <1024 需 root（Linux 特权端口）
     local _need_root=0
     if [ "${PORT}" -lt 1024 ] 2>/dev/null; then
@@ -113,8 +116,8 @@ if ! [ -x "${NGINX_BIN}" ] && ! command -v "${NGINX_BIN}" >/dev/null 2>&1; then
     exit 1
 fi
 
-# 确保日志目录存在（主配置 error_log/access_log/pid 相对 prefix 解析）
-mkdir -p "$(nginx_log_dir)"
+# 确保日志目录存在（prod-ai.conf 中 error_log/access_log/pid 均为绝对路径）
+mkdir -p "${NGINX_LOG_DIR}"
 
 check_permission
 
@@ -125,17 +128,13 @@ if [ ! -f "${HTTP_ROOT}/index.html" ]; then
 fi
 
 echo "[INFO] Nginx: ${NGINX_BIN}"
-echo "[INFO] prefix: ${NGINX_PREFIX}  加载主配置: ${SITE_CONF}"
+echo "[INFO] 加载主配置: ${SITE_CONF}（-p ${NGINX_CONF_DIR}）"
 echo "[INFO] 静态根: ${HTTP_ROOT}"
 
-# 已运行则视为已启动（依据 pid 文件）
+# 已运行则视为已启动（依据 pid 文件，prod-ai.conf 中为绝对路径）
 PID_FILE="$(sed -nE 's/^[[:space:]]*pid[[:space:]]+([^;]+);.*/\1/p' "${SITE_CONF}" 2>/dev/null | head -n1 || true)"
 if [ -n "${PID_FILE}" ]; then
     PID_PATH="${PID_FILE}"
-    case "${PID_PATH}" in
-        /*) : ;;                    # 绝对路径
-        *) PID_PATH="${NGINX_PREFIX}/${PID_PATH}" ;;
-    esac
     if [ -f "${PID_PATH}" ] && is_nginx_instance "$(cat "${PID_PATH}" 2>/dev/null)"; then
         echo "[WARN] Nginx 已在运行（pid $(cat "${PID_PATH}")），跳过启动"
         exit 0
@@ -143,11 +142,11 @@ if [ -n "${PID_FILE}" ]; then
 fi
 
 echo "[START] $(date '+%F %T') 启动 Nginx ..."
-if ! "${NGINX_BIN}" -t -p "${NGINX_PREFIX}" -c "${SITE_CONF}"; then
+if ! "${NGINX_BIN}" -t -p "${NGINX_CONF_DIR}" -c "${SITE_CONF}"; then
     echo "[ERROR] nginx -t 校验失败，请检查 ${SITE_CONF}" >&2
     exit 1
 fi
-"${NGINX_BIN}" -p "${NGINX_PREFIX}" -c "${SITE_CONF}"
+"${NGINX_BIN}" -p "${NGINX_CONF_DIR}" -c "${SITE_CONF}"
 sleep 1
 
 if [ -n "${PID_FILE}" ] && [ -f "${PID_PATH}" ] && is_nginx_instance "$(cat "${PID_PATH}" 2>/dev/null)"; then
@@ -155,6 +154,6 @@ if [ -n "${PID_FILE}" ] && [ -f "${PID_PATH}" ] && is_nginx_instance "$(cat "${P
 elif pgrep -f "${NGINX_BIN}.*${SITE_CONF}" >/dev/null 2>&1; then
     echo "[OK] Nginx 已启动，监听端口 ${PORT}，静态根 ${HTTP_ROOT}"
 else
-    echo "[ERROR] Nginx 启动失败，请查看 $(nginx_log_dir)/error.log" >&2
+    echo "[ERROR] Nginx 启动失败，请查看 ${NGINX_LOG_DIR}/error.log" >&2
     exit 1
 fi

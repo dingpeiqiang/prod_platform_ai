@@ -1,10 +1,10 @@
 # ============================================================
 # Prod Platform AI - 后端 systemd 单元模板（tar 包内 conf/）
 # 安装目标: /etc/systemd/system/prod-ai-backend.service
-# 部署布局（按 crm-pgcent-mng 约定）：
-#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端
-#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端
-#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 部署布局（本次部署实际路径）：
+#   APP_HOME     = /data/stq/crmpos/crm-pgcent-mng
+#   后端包根     = ${APP_HOME}/prod-ai-backend
+#   前端包根     = ${APP_HOME}/prod-ai-frontend
 # 使用:  cp prod-ai-backend.service /etc/systemd/system/
 #        systemctl daemon-reload && systemctl enable --now prod-ai-backend
 # 也可改用 bin/start.sh（USE_SYSTEMD=1 时自动转调 systemctl）
@@ -19,8 +19,9 @@ Requires=mysqld.service
 
 [Service]
 Type=simple
-# ---- 部署根目录（按实际修改，APP_HOME = <根目录>/crm-pgcent-mng）----
-Environment="APP_HOME=/opt/crm-pgcent-mng"
+# ---- 部署根目录 ----
+# 按实际修改，APP_HOME = /data/stq/crmpos/crm-pgcent-mng
+Environment="APP_HOME=/data/stq/crmpos/crm-pgcent-mng"
 # ---- JDK 17 安装路径（按实际修改；留空则用系统 PATH 中的 java）----
 Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
 # 运行账号：按需创建  useradd -r -s /sbin/nologin prod-ai

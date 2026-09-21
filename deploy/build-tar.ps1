@@ -53,33 +53,34 @@ if ($LASTEXITCODE -ne 0) {
 Pop-Location
 Write-Host "[OK] $BackendTar"
 
-# ---------- 2) 前端 tar ----------
+# ---------- 2) 前端 tar（包根为 dist/ + conf/ + bin/，解压即见 dist） ----------
 $FrontendStage = Join-Path $PSScriptRoot '_stage_frontend'
 if (Test-Path $FrontendStage) { Remove-Item -Recurse -Force $FrontendStage }
-New-Item -ItemType Directory -Force -Path "$FrontendStage\html","$FrontendStage\conf","$FrontendStage\bin" | Out-Null
+New-Item -ItemType Directory -Force -Path "$FrontendStage\dist","$FrontendStage\conf","$FrontendStage\bin" | Out-Null
 
 $Dist = Join-Path $ProjectRoot 'frontend\dist'
 if (-not (Test-Path (Join-Path $Dist 'index.html'))) {
     Write-Warning '前端 dist 未找到，请先执行: npm ci && npm run build（frontend 目录）'
 }
 if (Test-Path $Dist) {
-    Copy-Item -Recurse -Force (Join-Path $Dist '*') (Join-Path $FrontendStage 'html\')
+    Copy-Item -Recurse -Force (Join-Path $Dist '*') (Join-Path $FrontendStage 'dist\')
 }
 
 # 免登录静态页（IFRAME 直嵌）：必须随包，缺失会被 SPA 回退到 index.html 触发登录跳转
-$OpsWorkbench = Join-Path $FrontendStage 'html\ops-web\config-workbench.html'
+$OpsWorkbench = Join-Path $FrontendStage 'dist\ops-web\config-workbench.html'
 if (-not (Test-Path $OpsWorkbench)) {
     Write-Error '缺少 ops-web/config-workbench.html，请执行 npm run build 后重试（public/ops-web 会整体拷贝到 dist/）'
 }
 
 Copy-Item (Join-Path $PSScriptRoot 'frontend\conf\prod-ai.conf')            (Join-Path $FrontendStage 'conf\') -Force
+Copy-Item (Join-Path $PSScriptRoot 'frontend\conf\mime.types')              (Join-Path $FrontendStage 'conf\') -Force
 Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\start.sh')                 (Join-Path $FrontendStage 'bin\')  -Force
 Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\stop.sh')                  (Join-Path $FrontendStage 'bin\')  -Force
 Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\deployup.sh')              (Join-Path $FrontendStage 'bin\')  -Force
 
 $FrontendTar = Join-Path $OutDir 'prod-ai-frontend.tar.gz'
 Push-Location $PSScriptRoot
-& $TarCmd.Source -czf $FrontendTar -C '_stage_frontend' html conf bin
+& $TarCmd.Source -czf $FrontendTar -C '_stage_frontend' dist conf bin
 Pop-Location
 Write-Host "[OK] $FrontendTar"
 

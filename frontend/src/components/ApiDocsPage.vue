@@ -411,7 +411,7 @@ function buildBodyExample(schema, schemaMap, seen = {}, depth = 0) {
 
 onMounted(async () => {
   try {
-    const res = await fetch('/v3/api-docs')
+    const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/v3/api-docs`)
     specs.value = await res.json()
   } catch (e) {
     console.error('加载 OpenAPI 文档失败', e)

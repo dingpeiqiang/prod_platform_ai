@@ -2,13 +2,13 @@
 
 本文档描述基于 `deploy/` 目录产出 tar 包在**虚拟机（纯 MySQL 8.0）**环境的一键安装与部署流程。
 
-## 部署目录规划（按 crm-pgcent-mng 约定）
+## 部署目录规划
 
-部署根目录（根目录）**可配置**，约定在根目录下创建 `crm-pgcent-mng/`，其内前后端分别落位：
+部署根目录 **可配置**，本次部署根目录为 `/data/stq/crmpos`，其下 `crm-pgcent-mng/` 内前后端分别落位：
 
 ```
-<根目录>/                                  # 如 /opt（可配置）
-└── crm-pgcent-mng/                        # APP_HOME = <根目录>/crm-pgcent-mng
+/data/stq/crmpos/                          # 部署根目录（可配置）
+└── crm-pgcent-mng/                        # APP_HOME = /data/stq/crmpos/crm-pgcent-mng
     ├── installer/                         # 发布包存放目录（deployup.sh 从这里取 tar 包）
     │   ├── prod-ai-backend.tar.gz
     │   └── prod-ai-frontend.tar.gz
@@ -25,7 +25,7 @@
         └── bin/                           # deployup.sh 更新静态 / start.sh 启动 / stop.sh 停止
 ```
 
-> 默认部署路径为 `/opt/crm-pgcent-mng`；若根目录不同（如 `/home`、`/data`），
+> 默认部署路径为 `/data/stq/crmpos/crm-pgcent-mng`；若部署根不同（如 `/home`、`/opt`），
 > 全文相应路径前缀同步替换即可。脚本与单元均以 `APP_HOME` 变量标识该目录。
 
 部署架构（单机）:
@@ -106,8 +106,8 @@ powershell -ExecutionPolicy Bypass -File deploy\build-tar.ps1
 ```
 
 产物生成于 `deploy/out/`：
-- `prod-ai-backend.tar.gz`（jar + `bin/{start,deployup}.sh` + `conf/` + `config/`）→ 解压到 `<根目录>/crm-pgcent-mng/prod-ai-backend`
-- `prod-ai-frontend.tar.gz`（前端 `html/` + `conf/prod-ai.conf` + `bin/{start,stop,deployup}.sh`）→ 解压到 `<根目录>/crm-pgcent-mng/prod-ai-frontend`
+- `prod-ai-backend.tar.gz`（jar + `bin/{start,deployup}.sh` + `conf/` + `config/`）→ 解压到 `/data/stq/crmpos/crm-pgcent-mng/prod-ai-backend`
+- `prod-ai-frontend.tar.gz`（前端 `html/` + `conf/prod-ai.conf` + `bin/{start,stop,deployup}.sh`）→ 解压到 `/data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend`
 - `prod-ai-mysql.tar.gz`（MySQL DDL/初始化脚本）
 
 将三个 tar.gz 上传到目标虚拟机，建议目录 `/root/deploy-pack/`。
@@ -119,13 +119,13 @@ powershell -ExecutionPolicy Bypass -File deploy\build-tar.ps1
 
 ### 整体包快速部署（`crm-pgcent-mng.tar.gz`）
 
-拿到整体交付包后，上传到虚拟机**任意目录**（如下例 `/opt`），解压后只需改配置、建表、启动三步：
+拿到整体交付包后，上传到虚拟机部署根目录（本次为 `/data/stq/crmpos`），解压后只需改配置、建表、启动三步：
 
 ```bash
 # 1) 上传并解压（解压后自动得到 crm-pgcent-mng/ 目录）
-cd /opt
+cd /data/stq/crmpos
 tar -xzf /path/to/crm-pgcent-mng.tar.gz
-cd /opt/crm-pgcent-mng
+cd /data/stq/crmpos/crm-pgcent-mng
 ls    # installer/  prod-ai-backend/  prod-ai-frontend/  mysql/
 
 # 2) 调整后端配置（库地址/账号密码/JWT）
@@ -145,7 +145,7 @@ curl -s http://127.0.0.1:6174/health    # 后端
 curl -s http://127.0.0.1/health         # 经 Nginx
 ```
 
-> 解压目录即 `APP_HOME`（上例 `/opt/crm-pgcent-mng`），前后端脚本均按此自动推导，无需额外配置；
+> 解压目录即 `APP_HOME`（上例 `/data/stq/crmpos/crm-pgcent-mng`），前后端脚本均按此自动推导，无需额外配置；
 > `bin/start.sh` 以 `nginx -c <包内 conf/prod-ai.conf>` 加载完整 Nginx 主配置，并按实际 `APP_HOME`
 > 自动修正其中的 `root` 静态目录，其余（upstream 等）保持模板默认，无需手改 conf、无需拷贝到 `/etc/nginx/conf.d/`。
 > 后续升级把新 tar 包放进 `installer/`，执行前后端 `bin/deployup.sh` 即可，见「三、升级部署」。
@@ -189,7 +189,7 @@ nginx -v
 
 - **脚本方式（`bin/start.sh`）**：编辑脚本顶部的 `JAVA_HOME` 变量：
   ```bash
-  vi /opt/crm-pgcent-mng/prod-ai-backend/bin/start.sh
+  vi /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend/bin/start.sh
   # 找到: JAVA_HOME="${JAVA_HOME:-}"
   # 改为: JAVA_HOME=/usr/lib/jvm/java-17-openjdk
   ```
@@ -222,8 +222,8 @@ nginx -v
 解压脚本：
 ```bash
 cd /root/deploy-pack
-tar -xzf prod-ai-mysql.tar.gz -C /opt/crm-pgcent-mng/prod-ai-mysql
-cd /opt/crm-pgcent-mng/prod-ai-mysql
+tar -xzf prod-ai-mysql.tar.gz -C /data/stq/crmpos/crm-pgcent-mng/prod-ai-mysql
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-mysql
 ```
 
 按顺序手动执行建表与初始化数据：
@@ -253,13 +253,13 @@ mysql -h172.30.0.232 -P8866 -upoc-stq -p'Poc@StQ@2026' -e \
 
 #### 2.1 解压与放置
 
-解压到 `<根目录>/crm-pgcent-mng/prod-ai-backend`（示例根目录 `/opt`）：
+解压到 `/data/stq/crmpos/crm-pgcent-mng/prod-ai-backend`（部署根目录 `/data/stq/crmpos`）：
 
 ```bash
-mkdir -p /opt/crm-pgcent-mng/prod-ai-backend
+mkdir -p /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 cd /root/deploy-pack
-tar -xzf prod-ai-backend.tar.gz -C /opt/crm-pgcent-mng/prod-ai-backend
-ls /opt/crm-pgcent-mng/prod-ai-backend
+tar -xzf prod-ai-backend.tar.gz -C /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
+ls /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 # 期望包含: app.jar  bin/  conf/  config/  logs/  data/  uploads/
 ```
 
@@ -273,7 +273,7 @@ ls /opt/crm-pgcent-mng/prod-ai-backend
 `config/application.yml` 中填写：
 
 ```bash
-vi /opt/crm-pgcent-mng/prod-ai-backend/config/application.yml
+vi /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend/config/application.yml
 ```
 
 需修改项（生产务必填写真实值）：
@@ -293,15 +293,15 @@ vi /opt/crm-pgcent-mng/prod-ai-backend/config/application.yml
 
 ```bash
 useradd -r -s /sbin/nologin prod-ai
-chown -R prod-ai:prod-ai /opt/crm-pgcent-mng/prod-ai-backend
+chown -R prod-ai:prod-ai /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 ```
 
 #### 2.4 选择启动方式（二选一）
 
 **方式 A：systemd（推荐）**
 ```bash
-cp /opt/crm-pgcent-mng/prod-ai-backend/conf/prod-ai-backend.service /etc/systemd/system/
-# 按实际修改单元中的 APP_HOME（默认 /opt/crm-pgcent-mng）与 JAVA_HOME
+cp /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend/conf/prod-ai-backend.service /etc/systemd/system/
+# 按实际修改单元中的 APP_HOME（默认 /data/stq/crmpos/crm-pgcent-mng）与 JAVA_HOME
 vi /etc/systemd/system/prod-ai-backend.service
 systemctl daemon-reload
 systemctl enable --now prod-ai-backend
@@ -311,7 +311,7 @@ systemctl enable --now prod-ai-backend
 
 **方式 B：bash 脚本（免 systemd）**
 ```bash
-cd /opt/crm-pgcent-mng/prod-ai-backend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 bash bin/start.sh start
 ```
 
@@ -325,7 +325,7 @@ curl -s http://127.0.0.1:6174/health
 # 期望返回 JSON 健康状态
 
 # 日志
-tail -f /opt/crm-pgcent-mng/prod-ai-backend/logs/app.out
+tail -f /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend/logs/app.out
 ```
 
 其他命令：`bash bin/start.sh status|restart|stop`。
@@ -336,15 +336,15 @@ tail -f /opt/crm-pgcent-mng/prod-ai-backend/logs/app.out
 
 #### 3.1 首次解压与放置
 
-首次部署先手工解压到 `<根目录>/crm-pgcent-mng/prod-ai-frontend`，并把静态产物放到 `dist/`：
+首次部署先手工解压到 `/data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend`，并把静态产物放到 `dist/`：
 
 ```bash
-mkdir -p /opt/crm-pgcent-mng/prod-ai-frontend
+mkdir -p /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 cd /root/deploy-pack
-tar -xzf prod-ai-frontend.tar.gz -C /opt/crm-pgcent-mng/prod-ai-frontend
+tar -xzf prod-ai-frontend.tar.gz -C /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 
 # 首次把静态产物放到 Nginx 静态根
-cd /opt/crm-pgcent-mng/prod-ai-frontend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 mkdir -p dist && cp -r html/. dist/
 ```
 
@@ -353,7 +353,7 @@ mkdir -p dist && cp -r html/. dist/
 前端 `bin/start.sh` 默认加载包内 `conf/prod-ai.conf`（完整 Nginx 主配置）：
 
 ```bash
-cd /opt/crm-pgcent-mng/prod-ai-frontend && bash bin/start.sh
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend && bash bin/start.sh
 ```
 
 无需往 `/etc/nginx/conf.d/` 拷贝。`start.sh` 启动前会自动按实际 `APP_HOME` 修正配置中的 `root`（静态根），
@@ -369,7 +369,7 @@ cd /opt/crm-pgcent-mng/prod-ai-frontend && bash bin/start.sh
 顶部设置 `NGINX_HOME` 指向其安装前缀（到安装根目录，非 `sbin`）：
 
 ```bash
-vi /opt/crm-pgcent-mng/prod-ai-frontend/bin/start.sh
+vi /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend/bin/start.sh
 # 找到: NGINX_HOME="${NGINX_HOME:-}"
 # 改为: NGINX_HOME=/usr/local/nginx
 # （stop.sh 同样修改）
@@ -384,7 +384,7 @@ NGINX_HOME=/usr/local/nginx bash bin/start.sh
 #### 3.4 启动 / 停止 Nginx
 
 ```bash
-cd /opt/crm-pgcent-mng/prod-ai-frontend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 bash bin/start.sh     # 校验 nginx -t 后启动 Nginx
 bash bin/stop.sh      # 优雅停止（-s quit，最多等 30s 后强制终止）
 ```
@@ -408,20 +408,20 @@ curl -s http://127.0.0.1/health
 ### 4) 后续更新（`deployup.sh`）
 
 首次部署完成后，升级无需重新解压，只要把新的 tar 包放进 `${APP_HOME}/installer/`
-（默认 `/opt/crm-pgcent-mng/installer/`），再执行前后端各自的 `bin/deployup.sh`：
+（默认 `/data/stq/crmpos/crm-pgcent-mng/installer/`），再执行前后端各自的 `bin/deployup.sh`：
 
 ```bash
-mkdir -p /opt/crm-pgcent-mng/installer
-cp /root/deploy-pack/prod-ai-backend.tar.gz  /opt/crm-pgcent-mng/installer/
-cp /root/deploy-pack/prod-ai-frontend.tar.gz /opt/crm-pgcent-mng/installer/
+mkdir -p /data/stq/crmpos/crm-pgcent-mng/installer
+cp /root/deploy-pack/prod-ai-backend.tar.gz  /data/stq/crmpos/crm-pgcent-mng/installer/
+cp /root/deploy-pack/prod-ai-frontend.tar.gz /data/stq/crmpos/crm-pgcent-mng/installer/
 
 # 后端：只替换 app.jar（保留 config/application.yml、logs/、data/、uploads/）
-cd /opt/crm-pgcent-mng/prod-ai-backend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 bash bin/deployup.sh
 bash bin/start.sh restart          # 或 systemctl restart prod-ai-backend
 
 # 前端：只替换静态资源 dist/（不重装站点配置）
-cd /opt/crm-pgcent-mng/prod-ai-frontend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 bash bin/deployup.sh
 bash bin/stop.sh && bash bin/start.sh   # 或 <Nginx_BIN> -s reload
 ```
@@ -457,16 +457,16 @@ firewall-cmd --reload
 
 ## 三、升级部署（`deployup.sh` 覆盖更新）
 
-以下以部署根 `APP_HOME=/opt/crm-pgcent-mng` 为例。升级只需把新包放进 `installer/`，再执行各自 `deployup.sh`。
+以下以部署根 `APP_HOME=/data/stq/crmpos/crm-pgcent-mng` 为例。升级只需把新包放进 `installer/`，再执行各自 `deployup.sh`。
 
 ### 后端
 ```bash
 # 1) 放入新发布包
-mkdir -p /opt/crm-pgcent-mng/installer
-cp /root/deploy-pack/prod-ai-backend.tar.gz /opt/crm-pgcent-mng/installer/
+mkdir -p /data/stq/crmpos/crm-pgcent-mng/installer
+cp /root/deploy-pack/prod-ai-backend.tar.gz /data/stq/crmpos/crm-pgcent-mng/installer/
 
 # 2) 替换 app.jar（自动备份为 app.jar.bak.<时间戳>；保留 config/、logs/、data/、uploads/）
-cd /opt/crm-pgcent-mng/prod-ai-backend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-backend
 bash bin/deployup.sh
 
 # 3) 重启
@@ -479,10 +479,10 @@ systemctl restart prod-ai-backend   # 或 bash bin/start.sh restart
 ### 前端
 ```bash
 # 1) 放入新发布包
-cp /root/deploy-pack/prod-ai-frontend.tar.gz /opt/crm-pgcent-mng/installer/
+cp /root/deploy-pack/prod-ai-frontend.tar.gz /data/stq/crmpos/crm-pgcent-mng/installer/
 
 # 2) 替换静态资源（自动备份为 dist.bak.<时间戳>；不重装站点配置）
-cd /opt/crm-pgcent-mng/prod-ai-frontend
+cd /data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend
 bash bin/deployup.sh
 
 # 3) 重启/重载 Nginx
@@ -512,10 +512,10 @@ A: 安装 JDK17；若已安装但报错，说明默认 `java` 非 17。在 `bin/
 
 **Q: 后端启动但找不到 config / 连的还是 H2**
 A: `bin/start.sh` 默认按「包目录的父目录」推导 `APP_HOME`。确认部署结构为
-`<根目录>/crm-pgcent-mng/{prod-ai-backend,prod-ai-frontend}`；若结构不同，在脚本顶部显式填写 `APP_HOME`。
+`/data/stq/crmpos/crm-pgcent-mng/{prod-ai-backend,prod-ai-frontend}`；若结构不同，在脚本顶部显式填写 `APP_HOME`。
 
 **Q: 前端 403 / 页面报错**
-A: 检查 `nginx -t`（`start.sh` 启动前会校验）；确认 `/opt/crm-pgcent-mng/prod-ai-frontend/dist` 下存在 index.html（首次部署需 `cp -r html/. dist/`，
+A: 检查 `nginx -t`（`start.sh` 启动前会校验）；确认 `/data/stq/crmpos/crm-pgcent-mng/prod-ai-frontend/dist` 下存在 index.html（首次部署需 `cp -r html/. dist/`，
 或执行 `bin/deployup.sh`）；确认 `prod-ai.conf` 中 `root` 指向正确（`start.sh` 会自动按 `APP_HOME` 修正）。
 
 **Q: 前端启停报 `未找到 nginx 可执行文件`**
@@ -523,7 +523,7 @@ A: Nginx 非系统默认安装。在 `bin/start.sh` / `bin/stop.sh` 顶部将
 `NGINX_HOME` 设为 Nginx 安装前缀（如 `/usr/local/nginx`），或运行时 `NGINX_HOME=... bash bin/start.sh`。
 
 **Q: `deployup.sh` 报 `未找到发布包`**
-A: 需先把 tar 包放到 `${APP_HOME}/installer/`（默认 `/opt/crm-pgcent-mng/installer/`），
+A: 需先把 tar 包放到 `${APP_HOME}/installer/`（默认 `/data/stq/crmpos/crm-pgcent-mng/installer/`），
 且文件名与脚本内 `PKG_NAME` 一致（`prod-ai-backend.tar.gz` / `prod-ai-frontend.tar.gz`）。
 
 **Q: 登录/鉴权失败**

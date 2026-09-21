@@ -2,10 +2,10 @@
 # ============================================================
 # Prod Platform AI - 前端 Nginx 停止脚本（tar 包内 prod-ai-frontend/bin/stop.sh）
 # 用法:  bash stop.sh
-# 部署布局（按 crm-pgcent-mng 约定）：
-#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端
-#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端（本包解压根）
-#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 部署布局（本次部署实际路径）：
+#   APP_HOME     = /data/stq/crmpos/crm-pgcent-mng
+#   前端包根     = ${APP_HOME}/prod-ai-frontend（本脚本所在包）
+#   NGINX_PREFIX = /data/stq/crmpos/nginx
 # 与 start.sh 配套：加载包内 conf/prod-ai.conf（完整 Nginx 主配置），
 #   依据其 pid 指令路径停止进程。
 # Nginx：可在下方 NGINX_HOME 处指定 Nginx 安装前缀（留空则用系统默认）。
@@ -13,9 +13,9 @@
 set -euo pipefail
 
 # ---------- Nginx 配置（可配置） ----------
-# Nginx 安装前缀（到安装根目录，非 sbin），如 /usr/local/nginx 或 /opt/nginx。
-# 留空则使用系统默认 prefix = /etc/nginx。
-NGINX_HOME="${NGINX_HOME:-}"
+# Nginx 安装前缀（到安装根目录，非 sbin）。本次部署默认: /data/stq/crmpos/nginx
+# 如系统默认安装（/etc/nginx）可改为留空。
+NGINX_HOME="${NGINX_HOME:-/data/stq/crmpos/nginx}"
 
 # ---------- 路径常量 ----------
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,13 +24,11 @@ PKG_DIR="$(cd "${SELF_DIR}/.." && pwd)"          # 本包解压根（prod-ai-fro
 # 主配置（完整 nginx.conf）
 SITE_CONF="${PKG_DIR}/conf/prod-ai.conf"
 
-# ---------- Nginx 可执行文件 / prefix 解析 ----------
+# ---------- Nginx 可执行文件 ----------
 if [ -n "${NGINX_HOME}" ]; then
     NGINX_BIN="${NGINX_HOME}/sbin/nginx"
-    NGINX_PREFIX="${NGINX_HOME}"
 else
     NGINX_BIN="$(command -v nginx 2>/dev/null || true)"
-    NGINX_PREFIX="/etc/nginx"
 fi
 NGINX_BIN="${NGINX_BIN:-nginx}"
 
@@ -59,13 +57,13 @@ if ! [ -x "${NGINX_BIN}" ] && ! command -v "${NGINX_BIN}" >/dev/null 2>&1; then
     exit 1
 fi
 
-# 由主配置解析 pid 文件（相对路径基于 prefix，转换为绝对路径）
+# 由主配置解析 pid 文件（prod-ai.conf 中为绝对路径；兼容相对路径时基于包 conf 目录）
 PID_FILE="$(sed -nE 's/^[[:space:]]*pid[[:space:]]+([^;]+);.*/\1/p' "${SITE_CONF}" 2>/dev/null | head -n1 || true)"
 PID_PATH=""
 if [ -n "${PID_FILE}" ]; then
     case "${PID_FILE}" in
         /*) PID_PATH="${PID_FILE}" ;;
-        *) PID_PATH="${NGINX_PREFIX}/${PID_FILE}" ;;
+        *) PID_PATH="${PKG_DIR}/conf/${PID_FILE}" ;;
     esac
 fi
 

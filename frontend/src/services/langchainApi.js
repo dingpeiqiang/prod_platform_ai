@@ -1,4 +1,6 @@
-const BASE = '/api/v1/langchain'
+import { joinBasePath } from './basePath.js'
+
+const BASE = joinBasePath('/api/v1/langchain')
 
 export async function chat(message, options = {}) {
   try {

@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useLoadingStore } from '@/stores/loading.js'
+import { joinBasePath } from '@/services/basePath.js'
 
-const API_BASE = '/api/v1'
+const API_BASE = joinBasePath('/api/v1')
 
 let loadingCount = 0
 let loadingStore = null

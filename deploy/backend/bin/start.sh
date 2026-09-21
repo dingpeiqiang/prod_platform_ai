@@ -2,10 +2,10 @@
 # ============================================================
 # Prod Platform AI - 后端启动脚本（tar 包内 prod-ai-backend/bin/start.sh）
 # 用法:  bash start.sh [start|stop|restart|status]
-# 部署布局（按 crm-pgcent-mng 约定）：
-#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端（本包解压根，含 app.jar/config/logs/data）
-#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端
-#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 部署布局（本次部署实际路径）：
+#   APP_HOME = /data/stq/crmpos/crm-pgcent-mng
+#   后端包根 = ${APP_HOME}/prod-ai-backend（本脚本所在包，含 app.jar/config/logs/data）
+#   前端包根 = ${APP_HOME}/prod-ai-frontend
 # 业务配置见 config/application.yml（随包自带，部署前修改库地址/账号密码/JWT）
 # JDK：必须为 17。可在下方 JAVA_HOME 处指定 JDK 安装路径（留空则自动探测）
 # ============================================================
@@ -19,7 +19,7 @@ JAVA_HOME="${JAVA_HOME:-}"
 REQUIRED_JAVA_MAJOR=17
 
 # ---------- 部署根目录（可配置） ----------
-# APP_HOME = <根目录>/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend
+# APP_HOME = /data/stq/crmpos/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend
 # 默认推导：APP_HOME = 本包目录(prod-ai-backend) 的上一级
 # 如需自定义，可在此填写完整 APP_HOME，或导出环境变量 APP_HOME
 APP_HOME="${APP_HOME:-}"

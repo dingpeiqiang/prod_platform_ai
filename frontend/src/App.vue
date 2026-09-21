@@ -24,7 +24,7 @@ let timer = null
 
 const checkBackendOnline = async () => {
   try {
-    const response = await fetch('/api/v1/health', { method: 'HEAD' })
+    const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/api/v1/health`, { method: 'HEAD' })
     isBackendOnline.value = response.ok
   } catch {
     isBackendOnline.value = false

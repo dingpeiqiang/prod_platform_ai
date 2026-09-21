@@ -4,16 +4,16 @@
 # 用法:  bash deployup.sh
 # 职责：从 ${APP_HOME}/installer 取 prod-ai-backend.tar.gz，解压后替换本包 app.jar。
 #       保留现有 config/application.yml、logs/、data/、uploads/ 不动。
-# 部署布局（按 crm-pgcent-mng 约定）：
-#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端（本包解压根）
-#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端
-#   <根目录>/crm-pgcent-mng/installer         发布包存放目录
-#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 部署布局（本次部署实际路径）：
+#   APP_HOME = /data/stq/crmpos/crm-pgcent-mng
+#   后端包根 = ${APP_HOME}/prod-ai-backend（本脚本所在包）
+#   前端包根 = ${APP_HOME}/prod-ai-frontend
+#   发布包目录 = ${APP_HOME}/installer
 # ============================================================
 set -euo pipefail
 
 # ---------- 部署根目录（可配置） ----------
-# APP_HOME = <根目录>/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend / installer
+# APP_HOME = /data/stq/crmpos/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend / installer
 # 默认推导：APP_HOME = 本包目录(prod-ai-backend) 的上一级
 # 如需自定义，可在此填写完整 APP_HOME，或导出环境变量 APP_HOME
 APP_HOME="${APP_HOME:-}"

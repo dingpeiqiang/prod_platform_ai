@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
 
+    // 部署到子路径前缀下时通过 VITE_BASE_PATH 指定（如 /prod-ai/）；
+    // 默认根路径，不影响本地开发
+    base: process.env.VITE_BASE_PATH || '/',
+
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src')
