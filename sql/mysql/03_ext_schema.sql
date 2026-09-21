@@ -12,7 +12,7 @@
 -- ============================================================
 
 SET NAMES utf8mb4;
-USE `poc-stq`;
+USE `prodplatformai`;
 
 -- ------------------------------------------------------------
 -- 1. 运营指标宽表（指标域 P0）
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS `pd_ai_product_subscriptions` (
     `offering_id`   VARCHAR(64)   NOT NULL COMMENT '订阅商品编码',
     `offering_name` VARCHAR(255)           DEFAULT NULL COMMENT '订阅时商品名称快照',
     `status`        VARCHAR(16)   NOT NULL DEFAULT 'active' COMMENT '状态：active/cancelled',
-    `created_at`    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '订阅时间',
+    `created_at`    DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '订阅时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_psub` (`subscriber`, `offering_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='商品变更订阅登记（C3）';
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS `pd_ai_change_alerts` (
     `detected_version` VARCHAR(64)            DEFAULT NULL COMMENT '检测来源快照版本',
     `subscriber`       VARCHAR(64)            DEFAULT NULL COMMENT '提醒接收人（空=广播）',
     `read_flag`        TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '是否已读（0/1）',
-    `created_at`       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '产生时间',
+    `created_at`       DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '产生时间',
     PRIMARY KEY (`id`),
     KEY `idx_alert_sub` (`subscriber`, `read_flag`, `created_at`),
     KEY `idx_alert_offering` (`offering_id`, `created_at`)

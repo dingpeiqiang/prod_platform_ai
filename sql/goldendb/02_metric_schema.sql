@@ -7,7 +7,7 @@
 --   （本表列名与字典 source.column 严格对应，改口径先改字典）
 -- ============================================================
 
-USE prod_platform_ai;
+USE `prodplatformai`;
 
 CREATE TABLE `dwd_prod_metric_daily` (
                                          `id`               BIGINT        NOT NULL AUTO_INCREMENT,

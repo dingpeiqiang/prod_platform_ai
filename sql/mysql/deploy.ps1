@@ -1,9 +1,9 @@
-# Prod Platform AI - 数据库一键部署（Windows PowerShell）
+﻿# Prod Platform AI - 数据库一键部署（Windows PowerShell）
 # 用法（在项目根目录）：
-#   .\sql\deploy.ps1
-#   .\sql\deploy.ps1 -DbHost 127.0.0.1 -Port 3306 -RootUser root -RootPassword 'xxx'
+#   .\sql\mysql\deploy.ps1
+#   .\sql\mysql\deploy.ps1 -DbHost 127.0.0.1 -Port 3306 -RootUser root -RootPassword 'xxx'
 # 仅执行初始化数据：
-#   .\sql\deploy.ps1 -SkipSchema -SkipCreateDb
+#   .\sql\mysql\deploy.ps1 -SkipSchema -SkipCreateDb
 
 param(
     [string]$DbHost = "127.0.0.1",
@@ -54,6 +54,9 @@ try {
     }
     if (-not $SkipSchema) {
         Invoke-MysqlFile -User $AppUser -Password $AppPassword -File (Join-Path $SqlDir "01_full_schema_ddl.sql") -Db $Database
+    }
+    if (Test-Path (Join-Path $SqlDir "03_ext_schema.sql")) {
+        Invoke-MysqlFile -User $AppUser -Password $AppPassword -File (Join-Path $SqlDir "03_ext_schema.sql") -Db $Database
     }
     if (-not $SkipInit) {
         Invoke-MysqlFile -User $AppUser -Password $AppPassword -File (Join-Path $SqlDir "02_init_data.sql") -Db $Database

@@ -1,0 +1,707 @@
+{
+  "flowName": "产销品-需求提报",
+  "flowRemark": "子工作流0：需求提报（环节1，新增，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)并发需求工单审批(approval-type=requirement)→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "requirement_text",
+            "description": "需求描述文本（用户原始需求，含产品名称/资费/资源/规则等）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "reporter",
+            "description": "提报人（会话用户，未提供可空）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "会话消息ID（会话/消息标识，调度层透传，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000001",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "elements_json",
+            "description": "需求字段 snake_case 平面 JSON（未提及项为空字符串）",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品需求提报助手（环节1 需求提报），只做一件事：把用户需求原文翻译为结构化需求字段 JSON，不做补全、不做完整性判断、不渲染文档、不做任何业务决策。需求原文：{requirement_text}\n字段口径（snake_case 平面 JSON，逐字引用用户描述，未提及字段填空字符串）：\n- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费）；series：所属系列\n- members：融合成员（仅融合品如家庭基础套餐，逗号/顿号分隔；单商品不填）\n- price：套餐档位（月费，元/月）；resources：套内资源（流量/语音/短信/副卡等）；out_price：套外资费\n- billing_cycle：计费周期；effective_way：生效方式；validity：套餐有效期\n- change_rule：变更规则；cancel_rule：退订/拆机规则\n强制同义映射：月费/月租/套餐费+金额→price；每月XX G/含XX流量→resources；XX分钟语音/通话→resources；支持副卡→resources；按月付费→billing_cycle；X月X日生效→effective_way；退订/拆机→cancel_rule。\n禁止臆造字段值；原文未明确的字段一律空字符串。\n输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述需求字段 JSON 的字符串（即先按字段口径生成字段 JSON，再将该字段 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"name\\\":\\\"...\\\",...}\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+              "relName": "requirement_text",
+              "name": "requirement_text",
+              "description": "引用开始节点需求文本",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000001",
+                "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "需求字段抽取",
+          "title": "需求字段抽取"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000002",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,report_text",
+            "name": "report_text",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,pending_fields",
+            "name": "pending_fields",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,pending_count",
+            "name": "pending_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,elements",
+            "name": "elements",
+            "type": "string"
+          }
+        ],
+        "code": "import json, random, datetime\nfrom typing import Any, Dict\n\nEMPTY_MARKS = ('', '待补充', '系统待生成', '无', '暂无')\nFUSION_PRODUCT_TYPES = ('家庭基础套餐',)\nBASE_FIELDS = (\n    ('name', '销售品名称'), ('product_type', '产品类型'), ('series', '所属系列'),\n    ('price', '套餐档位（月费）'), ('resources', '套内资源'), ('out_price', '套外资费'),\n    ('billing_cycle', '计费周期'), ('effective_way', '生效方式'), ('validity', '套餐有效期'),\n    ('change_rule', '变更规则'), ('cancel_rule', '退订/拆机规则'),\n)\nFUSION_EXTRA_FIELDS = (('members', '融合成员'),)\nPRICE_FIELDS = ('price',)\nREQUIRED_FIELDS = ('price', 'resources')\n\ndef _norm(v):\n    if v is None:\n        return ''\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    return '' if s in EMPTY_MARKS else s\n\ndef _gen_req_id():\n    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')\n    return 'PLAN%s%03d' % (ts, random.randint(0, 999))\n\ndef fields_for(product_type):\n    if _norm(product_type) in FUSION_PRODUCT_TYPES:\n        return BASE_FIELDS + FUSION_EXTRA_FIELDS\n    return BASE_FIELDS\n\nasync def main(args):\n    p = args.params\n    raw = p.get('elements_json') or ''\n    elements = {}\n    if isinstance(raw, str) and raw.strip():\n        try:\n            elements = json.loads(raw)\n        except Exception:\n            try:\n                t = raw.strip()\n                if ':' in t and not t.startswith('{') and not t.startswith('['):\n                    t = t.split(':', 1)[1].strip()\n                elements = json.loads(t)\n            except Exception:\n                elements = {}\n    elif isinstance(raw, dict):\n        elements = raw\n    req_id = str(p.get('req_id') or _gen_req_id())\n    reporter = str(p.get('reporter') or '')\n    need_summary = str(p.get('need_summary') or '')\n    today = datetime.date.today().strftime('%Y-%m-%d')\n    fmt = lambda k: _norm(elements.get(k))\n    fields = fields_for(elements.get('product_type'))\n    values = {}\n    pending = []\n    for key, label in fields:\n        val = fmt(key)\n        values[key] = val\n        if key in REQUIRED_FIELDS and (val == '' or (key in PRICE_FIELDS and val in (0, '0', '0元'))):\n            pending.append(label)\n    def cell(v):\n        return '待补充' if v == '' else str(v)\n    lines = []\n    lines.append('## 销售品需求提报单')\n    base_rows = [('需求单号', req_id), ('提报日期', today)]\n    if reporter:\n        base_rows.append(('提报人', reporter))\n    if need_summary:\n        base_rows.append(('需求概述', need_summary))\n    prod_rows = [('销售品名称', cell(values['name'])), ('产品类型', cell(values['product_type']))]\n    if values['series']:\n        prod_rows.append(('所属系列', values['series']))\n    if values.get('members'):\n        prod_rows.append(('融合成员', values['members']))\n    fee_rows = [('套餐档位（月费）', (values['price'] + ' 元/月') if values['price'] != '' else '待补充')]\n    if values['resources']:\n        fee_rows.append(('套内资源', values['resources']))\n    if values['out_price']:\n        fee_rows.append(('套外资费', values['out_price']))\n    if values['billing_cycle']:\n        fee_rows.append(('计费周期', values['billing_cycle']))\n    order_rows = []\n    if values['effective_way']:\n        order_rows.append(('生效方式', values['effective_way']))\n    if values['validity']:\n        order_rows.append(('套餐有效期', values['validity']))\n    if values['change_rule']:\n        order_rows.append(('变更规则', values['change_rule']))\n    if values['cancel_rule']:\n        order_rows.append(('退订/拆机规则', values['cancel_rule']))\n    def table(rows):\n        if not rows:\n            return []\n        out = ['| 字段 | 内容 |', '| --- | --- |']\n        out += ['| %s | %s |' % (k, v) for k, v in rows]\n        return out\n    lines.append('### 1. 需求基本信息')\n    lines += table(base_rows)\n    lines.append('')\n    lines.append('### 2. 产品/销售品信息')\n    lines += table(prod_rows)\n    lines.append('')\n    lines.append('### 3. 资费方案要点')\n    lines += table(fee_rows)\n    lines.append('')\n    lines.append('### 4. 订购/变更/退订规则')\n    if order_rows:\n        lines += table(order_rows)\n    else:\n        lines.append('（未提及，从宽不催补）')\n    lines.append('')\n    lines.append('### 5. 待补充字段')\n    lines.append('、'.join(pending) if pending else '无')\n    while lines and lines[-1] == '':\n        lines.pop()\n    text = '\\n'.join(lines)\n    ret: Output = {\n        \"report_text\": text,\n        \"pending_fields\": ','.join(pending),\n        \"pending_count\": (str(len(pending)) if pending else ''),\n        \"req_id\": req_id,\n        \"elements\": json.dumps(values, ensure_ascii=False),\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000002",
+            "relName": "elements_json",
+            "name": "elements_json",
+            "description": "引用节点2需求字段 JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000002",
+              "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "reporter",
+            "name": "reporter",
+            "description": "提报人（开始节点）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,reporter"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,reporter"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "需求提报单渲染"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000003",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+                    "relName": "pending_count",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000003",
+                      "a1b2c3d4-0000-4000-8000-000000000003,pending_count"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000003,pending_count",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": ""
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 10
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "待补充判定"
+        },
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000004",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003",
+            "name": "需求提报单渲染",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000003,pending_count",
+                "name": "pending_count",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（=代码节点生成 req_id，PLAN+yyyyMMddHHmmss+3位随机）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement_report（需求提报单）",
+            "type": "string",
+            "required": true,
+            "content": "requirement_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "elements",
+            "name": "result_json",
+            "description": "需求字段 JSON（=代码节点渲染后归一 elements）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,elements"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,elements"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "保存需求工单",
+          "code": "save_node_result",
+          "description": "节点结果存储（复用）：req_id=代码节点生成的需求单号 req_id，node_name=requirement_report（需求提报单），result_json=归一后需求字段 JSON；同键覆盖；供 wf_sub_01 需求分析按 req_id+requirement_report 读取延续",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000005",
+        "position": {
+          "x": 1455,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "cname": "审批单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "提交状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "req_id",
+            "name": "offer_id",
+            "description": "销售品ID（需求阶段未落地，传需求单号 req_id 占位）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "report_text",
+            "name": "report_url",
+            "description": "需求提报单（代码节点渲染 report_text）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（=代码节点生成 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approve_confirmed",
+            "description": "审批发起确认标志true",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_flow",
+            "description": "审批流默认standard",
+            "type": "string",
+            "required": true,
+            "content": "standard"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_type",
+            "description": "审批类型=requirement（需求工单审批，区别于 launch 上线审批）",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "需求工单审批",
+          "code": "submit_release_approval",
+          "description": "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）；req_id=需求单号，report_url=需求提报单文本；插件层按 approval-type 路由双轨门禁",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000006",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/approval/submit"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "《销售品需求提报单》已生成并通过需求工单审批门禁（需求单号：{req_id}，需求审批单号：{approval_id}）\n\n{report_text}\n\n【下一步】需求已提报，审批通过后将衔接需求分析（模板轨）生成配置方案；可发送\"查询审批进度\"查看需求单审批状态。\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "report_text",
+            "name": "report_text",
+            "description": "需求提报单",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000006",
+            "relName": "approval_id",
+            "name": "approval_id",
+            "description": "审批单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000006",
+              "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000006,approval_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(无待补充-提报成功)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000007",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "《销售品需求提报单》已生成（需求单号：{req_id}），但存在待补充字段：{pending_fields}\n请补充以下必要信息后重新提报（价格与套内资源为必填）。\n\n{report_text}\n\n**页面地址：** 经 xsbot-panel 外链加载（配置工作台 / 环节业务页）：\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"{chat_id}\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=workbench\",\"title\":\"配置工作台\"},{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id={req_id}&name=&chatId={chat_id}&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "report_text",
+            "name": "report_text",
+            "description": "需求提报单",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,report_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "pending_fields",
+            "name": "pending_fields",
+            "description": "待补充字段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,chat_id"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(有待补充)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1455,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000008",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000002",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000001"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000002"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000004",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000003"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000006",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000007",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000006"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000008",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      }
+    ],
+    "flowId": "wf_sub_00",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

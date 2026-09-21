@@ -1,155 +1,87 @@
-# Prod Platform AI - 数据库上线部署说明
+# Prod Platform AI - 数据库脚本（按方言分目录）
 
-> 数据库：MySQL 8.0+ / InnoDB / utf8mb4_unicode_ci
-> 库名：`prodplatformai`
-> 表结构权威来源：`backend-app` MyBatis Plus 实体（`@TableName`），本目录 01 DDL 与其一一对应。
+> 表结构权威来源：`backend-app` MyBatis Plus 实体（`@TableName`）。
+> 两个目录内脚本均**自洽完整**（建库 → 全量 DDL → 扩展 schema → 种子数据），
+> 按目标数据库选择其中一个目录执行，**不要跨目录混用**。
 
----
+## 目录结构
 
-## 一、脚本清单与执行顺序
+| 目录 | 方言 | 说明 |
+|------|------|------|
+| `mysql/` | MySQL 8.0+ | InnoDB / utf8mb4_unicode_ci；支持 `ADD COLUMN IF NOT EXISTS`（8.0 有限支持处以存储过程判存代替） |
+| `goldendb/` | GoldenDB（5.7 基线） | 分布式表 `DISTRIBUTED BY DUPLICATE(g1,g2)`；禁用 `ON DUPLICATE KEY UPDATE`（ERR 12071）、`INSERT ... SELECT`（DBProxy 4000 UDAL）、`MODIFY COLUMN`（ORA-02441 规避）、`ADD COLUMN IF NOT EXISTS`（information_schema 判存） |
 
-| 顺序 | 脚本 | 作用 | 执行身份 | 幂等性 | 适用场景 |
-|------|------|------|----------|--------|----------|
-| 1 | `00_create_database.sql` | 建库 + 应用账号授权 | 管理员（root） | 是（IF NOT EXISTS） | 新环境部署 |
-| 2 | `01_full_schema_ddl.sql` | 全量 DDL（20 张 pd_ai_* 应用表） | 应用账号即可 | **否**（DROP+CREATE，会清数据） | 全新环境 |
-| 3 | `02_init_data.sql` | 种子数据（MCP 工具/DSL 规则/提示词模板/LLM 占位） | 应用账号 | 是（ON DUPLICATE KEY / NOT EXISTS） | 新环境 + 重复执行安全 |
-| 4 | `02_ontology_version_tables.sql` | 本体版本库表 A/B（存量库增量升级） | 应用账号 | 是（CREATE IF NOT EXISTS + ADD COLUMN IF NOT EXISTS） | **仅存量库升级**，新库跳过 |
-
-### 表覆盖清单（01 全量 DDL，共 20 张）
+## 执行顺序（两目录一致）
 
 ```
-聊天系统   pd_ai_chat_sessions / pd_ai_chat_messages / pd_ai_chat_message_metadata
-MCP 工具   pd_ai_mcp_tool_definitions / pd_ai_mcp_call_logs / pd_ai_mcp_tool_stats
-LLM 配置   pd_ai_llm_user_configs
-提示词     pd_ai_prompts / pd_ai_prompt_versions / pd_ai_prompt_templates
-工作流     pd_ai_workflows / pd_ai_workflow_history / pd_ai_workflow_executions
-链路追踪   pd_ai_traces / pd_ai_spans
-本体实例   pd_ai_ontology_instance（data_json 单列，原 instance_data 子表已并入）
-版本库     pd_ai_ontology_version / pd_ai_ontology_version_log
-规则/工单  pd_ai_swrl_rules / pd_ai_ops_work_orders
+00_create_database.sql            # 建库 + 账号（管理员执行；GoldenDB 常由 DBA 代建可跳过）
+01_full_schema_ddl.sql            # 全量 DDL（含扩展表；DROP+CREATE，仅全新环境）
+02_ontology_version_tables.sql    # （仅存量库升级）本体版本库增量
+03_ext_schema.sql                 # 扩展 schema（metric 宽表 / ABox / 订阅 / 流程引擎）——仅 mysql/ 有
+04_abox_shelf_view.sql            # ABox 在架商品同步源（幂等，可重复执行）
+02_init_data.sql                  # 种子数据（幂等：MCP / DSL 规则 / 提示词 / LLM / admin / 在架商品）
 ```
 
----
+## 目录内文件清单（mysql/）
 
-## 二、部署方式
+| 文件 | 幂等性 | 说明 |
+|------|--------|------|
+| `00_create_database.sql` | 是 | 建库 + 应用账号授权 |
+| `01_full_schema_ddl.sql` | **否**（DROP+CREATE 清数据） | 全量 24 表（含 pd_ai_users） |
+| `02_ontology_version_tables.sql` | 是 | 存量库升级增量 |
+| `03_ext_schema.sql` | 是 | 指标宽表 / ABox / 变更订阅 / 流程引擎扩展 |
+| `04_abox_shelf_view.sql` | 是 | ABox 同步源 |
+| `02_init_data.sql` | 是 | 种子数据（DELETE+INSERT 幂等，对齐 H2 data-h2.sql） |
+| `deploy.ps1` | - | 一键执行脚本（Windows） |
 
-### 方式 A：一键脚本（Windows PowerShell，推荐）
+> 幂等策略双方言统一：种子数据均为 **DELETE 种子键 + INSERT VALUES** 两步幂等
+> （不使用 ON DUPLICATE KEY UPDATE / INSERT IGNORE / INSERT...SELECT，
+> 便于两目录语义一致、交叉校验；重复执行结果与首次一致，种子行不承载运行时数据）；
+> ABox 商品种子属业务库数据，Goldendb 侧不落本库（见该文件头部说明）。
 
-```powershell
-# 全新环境（建库 + 全量 DDL + 种子数据）
-.\sql\deploy.ps1 -DbHost 127.0.0.1 -Port 3306 -RootUser root -RootPassword 'xxx'
-
-# 仅执行种子数据（表已存在）
-.\sql\deploy.ps1 -SkipCreateDb -SkipSchema
-
-# 仅执行全量 DDL（库与表已建，跳过建库）
-.\sql\deploy.ps1 -SkipCreateDb
-```
-
-依赖：`mysql` 客户端已加入 PATH。参数详见 `deploy.ps1` 头部注释。
-
-### 方式 B：手动 mysql 命令
+## 快速开始
 
 ```bash
-# 1. 建库与账号（管理员身份）
-mysql -h<host> -uroot -p < sql/00_create_database.sql
+# MySQL 8.0
+mysql -uroot -p < sql/mysql/00_create_database.sql
+mysql -uprodplatformai -p < sql/mysql/01_full_schema_ddl.sql
+mysql -uprodplatformai -p < sql/mysql/03_ext_schema.sql
+mysql -uprodplatformai -p < sql/mysql/02_init_data.sql
 
-# 2. 全量 DDL（应用账号）
-mysql -h<host> -uprodplatformai -p prodplatformai < sql/01_full_schema_ddl.sql
-
-# 3. 种子数据（应用账号）
-mysql -h<host> -uprodplatformai -p prodplatformai < sql/02_init_data.sql
-
-# 4.（仅存量库升级）本体版本库增量
-mysql -h<host> -uprodplatformai -p prodplatformai < sql/02_ontology_version_tables.sql
+# GoldenDB（库与账号通常已由 DBA 建好）
+mysql -uprodplatformai -p < sql/goldendb/01_full_schema_ddl.sql
+mysql -uprodplatformai -p < sql/goldendb/02_init_data.sql
 ```
 
----
+## 存量库升级（MySQL）
 
-## 三、新环境 vs 存量环境升级矩阵
-
-### 场景 1：全新上线（首次部署）
-
-```
-执行：00 → 01 → 02（跳过 02_ontology_version_tables，01 中已含全部表）
-```
-
-### 场景 2：存量库升级（表已存在，需保留数据）
-
-> ⚠️ `01_full_schema_ddl.sql` 会 DROP 重建全部表，**严禁**对存量库执行！
-
-存量库按以下增量路径执行：
+存量库**严禁执行 01**（DROP+CREATE）。增量路径：
 
 ```sql
--- a) 本体版本库表 A/B + P3-5 审计扩列（幂等）
-SOURCE sql/02_ontology_version_tables.sql;
-
--- b) 会话消息排序字段（若存量库无 sort_order）
-ALTER TABLE `pd_ai_chat_messages`
-    ADD COLUMN IF NOT EXISTS `sort_order` INT NOT NULL DEFAULT 0 COMMENT '同会话内排序' AFTER `parent_id`;
-
--- c) 工单来源会话字段（若存量库无 session_id）
-ALTER TABLE `pd_ai_ops_work_orders`
-    ADD COLUMN IF NOT EXISTS `session_id` VARCHAR(64) DEFAULT NULL COMMENT '来源会话 ID' AFTER `source`,
-    ADD KEY IF NOT EXISTS `idx_owo_session` (`session_id`);
-
--- d) 本体实例 KV→data_json 迁移（JPA→MyBatis Plus 后子表退役；01 脚本尾部含迁移参考 SQL）
-ALTER TABLE `pd_ai_ontology_instance` ADD COLUMN IF NOT EXISTS `data_json` TEXT NULL AFTER `submitted_at`;
-UPDATE `pd_ai_ontology_instance` i SET i.data_json = (
-    SELECT JSON_OBJECTAGG(d.data_key, d.data) FROM `pd_ai_ontology_instance_data` d
-    WHERE d.ontology_instance_id = i.id)
-WHERE EXISTS (SELECT 1 FROM `pd_ai_ontology_instance_data` d2 WHERE d2.ontology_instance_id = i.id);
-
--- e) 种子数据（幂等，可重复执行）
-SOURCE sql/02_init_data.sql;
+SOURCE sql/mysql/02_ontology_version_tables.sql;  -- 本体版本库 + 审计扩列（幂等）
+SOURCE sql/mysql/03_ext_schema.sql;               -- 扩展表（幂等）
+SOURCE sql/mysql/02_init_data.sql;                -- 种子数据（幂等）
 ```
 
-### 场景 3：验证存量库结构是否与最新 DDL 一致
+字段级补齐（若存量库缺列）见 03_ext_schema.sql 尾部验证段与 `02_ontology_version_tables.sql`。
 
-```sql
--- 核对表数量（应为 21 张，不含已退役的 instance_data / instance_history）
-SELECT COUNT(*) FROM information_schema.tables
-WHERE table_schema = 'prodplatformai';
+## 上线检查清单
 
--- 核对关键字段存在性
-SELECT table_name, column_name FROM information_schema.columns
-WHERE table_schema = 'prodplatformai'
-  AND ((table_name = 'pd_ai_ontology_instance' AND column_name = 'data_json')
-    OR (table_name = 'pd_ai_chat_messages' AND column_name = 'sort_order')
-    OR (table_name = 'pd_ai_ops_work_orders' AND column_name = 'session_id')
-    OR (table_name = 'pd_ai_ontology_version_log' AND column_name = 'domain'));
-```
-
----
-
-## 四、种子数据说明（02_init_data.sql）
-
-| 种子 | 对齐来源 | 生产注意 |
-|------|----------|----------|
-| MCP 工具 `external_health_ping` | `classpath:ontology/mcp_tools_seed.json` | 演示占位，可禁用 |
-| DSL 规则 COND_001/002 | `SwrlRuleEngine.builtinRules()` | 营销遗留路径 |
-| 提示词模板 ×3 | 平台内置样例 | 可按环境删改 |
-| LLM 配置 `default` | 占位（api_key/base_url 为 NULL） | **生产必须配置真实 LLM，或走 application.yml 环境变量** |
-
----
-
-## 五、上线检查清单
-
-- [ ] MySQL 8.0+（`ADD COLUMN IF NOT EXISTS` 语法依赖 8.0；02_ontology_version_tables.sql 必需）
-- [ ] 字符集 utf8mb4 / utf8mb4_unicode_ci
+- [ ] 方言目录选择正确（MySQL / GoldenDB 不混用）
+- [ ] 字符集 utf8mb4（MySQL: utf8mb4_unicode_ci；GoldenDB: utf8mb4_general_ci）
 - [ ] 应用账号密码已从默认 `prodplatformai@134` 修改（`00_create_database.sql` + `SPRING_DATASOURCE_PASSWORD`）
-- [ ] 生产 `spring.jpa.hibernate.ddl-auto` 已移除（JPA 已退役，表结构由 sql/ 管理）
-- [ ] LLM api_key 未落库明文（走环境变量 `LLM_API_KEY`）
+- [ ] 生产 `spring.sql.init.mode=never`（deploy 侧 application.yml 已默认）
+- [ ] LLM api_key 未落库明文
 - [ ] 存量库未误执行 01_full_schema_ddl.sql
-- [ ] 种子数据执行后验证 SELECT 计数正常（脚本尾部自带验证查询）
-- [ ] 已退役表确认清理：`pd_ai_ontology_instance_data`、`pd_ai_ontology_instance_history`
+- [ ] 种子数据执行后验证 SELECT 计数正常（02_init_data.sql 尾部自带）
+- [ ] 退役表确认清理：`pd_ai_ontology_instance_data`、`pd_ai_ontology_instance_history`
 
-## 六、回滚策略
+## 回滚策略
 
 - 结构回滚：以 `pd_ai_ontology_version`（payload 为版本唯一事实源）+ `pd_ai_ontology_version_log` 审计链为依据恢复资产
-- 数据回滚：上线前 `mysqldump --single-transaction --routines=false prodplatformai > backup_$(date +%F).sql`
+- 数据回滚：上线前 `mysqldump --single-transaction --routines=false <库名> > backup_$(date +%F).sql`
 - DDL 回滚：无原生事务保护，回滚需基于上线前备份恢复
 
 ---
 
-**最后更新**：2026-09-02（对齐 develop @ 3bdc503 JPA→MyBatis Plus 迁移）
+**最后更新**：2026-09-21（双方言目录重组；幂等策略统一为 DELETE+INSERT VALUES）

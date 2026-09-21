@@ -1,199 +1,60 @@
 -- ============================================================
--- Prod Platform AI - 初始化数据脚本（可重复执行）
--- 依赖：已执行 01_full_schema_ddl.sql
--- 用法：
---   mysql -uprodplatformai -p < 02_init_data.sql
--- 说明：
---   1) MCP 种子对齐 classpath:ontology/mcp_tools_seed.json
---   2) SWRL/条件 DSL 内置规则对齐 SwrlRuleEngine.builtinRules()
---   3) 提示词模板为平台内置样例（可按环境删改）
---   4) LLM 配置仅占位，生产请填真实 api_key / base_url
---   5) 本体图谱 / 知识库 / ops_rules 等为文件型种子，不落本库
---   6) 幂等策略：DELETE 种子键 + INSERT VALUES（与 goldendb/ 统一，
---      便于双方言脚本语义一致、交叉校验；重复执行结果与首次一致，
---      种子行不承载运行时数据——用户在页面保存的配置 config_name
---      不同，不会被误删）
+-- 04_abox_shelf_view.sql — ABox 生产同步源（在架商品只读视图）
+-- 目标库：业务侧库 / 本平台 MySQL（GoldenDB 兼容）
+-- 用途：JdbcOpsProductDataSource.DEFAULT_SQL 的数据契约源，
+--       abox-source=jdbc 时 ABoxSyncScheduler 每 30 分钟只读同步进事实图
+--       （LOAD→VALIDATE→SMOKE→COMMIT 守卫，失败回退 last-known-good）
+-- 列契约：与 JdbcOpsProductDataSource.DEFAULT_SQL 的 14 列严格对应，
+--         snake_case 列名由同步器自动转 lowerCamelCase 映射货架行字段；
+--         缺列由 OpsGraphSchemaValidator 软补齐（新增列向后兼容）
+-- 状态语义：state 取值对齐 ops_graph（on_shelf=在架 / on_sale=在售），
+--           DEFAULT_SQL 仅取这两种状态；mock_graph 中文"上架"在同步器侧不做翻译，
+--           业务侧 ETL 写入时须映射为英文枚举
+-- 演示种子：100 行对齐 classpath:ontology/mock_graph.json shelfOfferings
+--           （真实感=真实库结构 + 确定性数据；生产由业务系统 ETL 接管）
+-- H2 同构表：backend-app/src/main/resources/sql/h2/schema-h2.sql §24
 -- ============================================================
 
-SET NAMES utf8mb4;
 USE `prodplatformai`;
 
--- ------------------------------------------------------------
--- 1. MCP 外部工具种子
--- ------------------------------------------------------------
-
-DELETE FROM `pd_ai_mcp_tool_definitions` WHERE `tool_name` = 'external_health_ping';
-
-INSERT INTO `pd_ai_mcp_tool_definitions` (
-    `tool_name`, `tool_code`, `description`, `category`,
-    `is_enabled`, `is_public`,
-    `input_schema`, `output_schema`,
-    `tool_type`, `protocol`, `request_method`, `url`,
-    `auth_type`, `need_summary`, `total_calls`,
-    `created_by`, `created_at`, `updated_at`
-) VALUES (
-    'external_health_ping',
-    'EXT_HEALTH_PING',
-    '外部健康检查占位工具（演示种子）',
-    'external',
-    1, 1,
-    '{"type":"object","properties":{"ping":{"type":"string","description":"可选探测标记"}}}',
-    '{"type":"object","properties":{"ok":{"type":"boolean"}}}',
-    'url', 'http', 'GET', 'https://httpbin.org/get',
-    'none', 0, 0,
-    'system', NOW(6), NOW(6)
-);
-
--- ------------------------------------------------------------
--- 2. 条件 DSL 规则（营销遗留路径；库中有数据时引擎优先读库）
--- ------------------------------------------------------------
-
-DELETE FROM `pd_ai_swrl_rules` WHERE `rule_id` IN ('COND_001', 'COND_002');
-
-INSERT INTO `pd_ai_swrl_rules` (
-    `rule_id`, `rule_name`, `module`, `description`,
-    `condition_expr`, `action_expr`, `enabled`,
-    `created_at`, `updated_at`
-) VALUES
-(
-    'COND_001',
-    '高消费推导升级资格',
-    'marketing_rules',
-    '条件 DSL（非 OWL SWRL）：年消费 >= 50000 且会员等级为 Gold/Platinum',
-    'annualSpend >= 50000 AND vipLevel IN (Gold, Platinum)',
-    NULL,
-    1,
-    NOW(6), NOW(6)
-),
-(
-    'COND_002',
-    '信用分推导额度调整',
-    'marketing_rules',
-    '条件 DSL（非 OWL SWRL）：信用分 >= 700',
-    'creditScore >= 700',
-    NULL,
-    1,
-    NOW(6), NOW(6)
-);
-
--- ------------------------------------------------------------
--- 3. 内置提示词模板
--- ------------------------------------------------------------
-
-DELETE FROM `pd_ai_prompt_templates`
-WHERE `code` IN ('intent_recognition', 'offering_ops_risk_audit', 'offering_ops_root_cause');
-
-INSERT INTO `pd_ai_prompt_templates` (
-    `code`, `name`, `description`, `category`, `content`,
-    `variables`, `tools`, `tags`, `is_builtin`, `is_active`, `created_at`
-) VALUES
-(
-    'intent_recognition',
-    '意图识别',
-    '通用意图识别提示词模板',
-    'intent',
-    '你是产商品配置助手。根据用户输入识别意图，并输出结构化结果。\n用户输入：{{user_input}}',
-    '[{"name":"user_input","description":"用户原始输入","default":""}]',
-    '[]',
-    '["builtin","intent"]',
-    1, 1, NOW(6)
-),
-(
-    'offering_ops_risk_audit',
-    '产商品风险稽核',
-    '运营助手风险稽核场景提示词模板',
-    'ops',
-    '你是产商品运营稽核助手。基于图谱与规则，对指定商品进行风险稽核并给出处置建议。\n商品：{{offering_name}}\n上下文：{{context}}',
-    '[{"name":"offering_name","description":"商品名称","default":""},{"name":"context","description":"上下文","default":""}]',
-    '[]',
-    '["builtin","ops","audit"]',
-    1, 1, NOW(6)
-),
-(
-    'offering_ops_root_cause',
-    '产商品异动归因',
-    '运营助手根因分析场景提示词模板',
-    'ops',
-    '你是产商品运营归因助手。结合异动指标与规则链，输出 TopN 根因与证据。\n商品：{{offering_name}}\n异动描述：{{anomaly}}',
-    '[{"name":"anomaly","description":"异动描述","default":""}]',
-    '[]',
-    '["builtin","ops","root_cause"]',
-    1, 1, NOW(6)
-);
-
--- ------------------------------------------------------------
--- 4. LLM 默认配置占位（生产务必修改 api_key / base_url）
---    种子键：user_identifier='default' AND config_name='系统默认配置'
---    （用户在「模型配置」页保存的同名配置将被重置为占位值）
--- ------------------------------------------------------------
-
-DELETE FROM `pd_ai_llm_user_configs`
-WHERE `user_identifier` = 'default' AND `config_name` = '系统默认配置';
-
-INSERT INTO `pd_ai_llm_user_configs` (
-    `user_identifier`, `provider`, `model`, `api_key`, `base_url`,
-    `auth_type`, `api_format`, `is_full_url`,
-    `temperature`, `max_tokens`, `thinking`, `max_input_tokens`,
-    `is_active`, `config_name`, `created_at`, `updated_at`
+CREATE TABLE `pd_ops_shelf_offerings` (
+    `offering_id`      VARCHAR(64)   NOT NULL COMMENT '产商品编码（offeringId，硬校验非空）',
+    `offering_name`    VARCHAR(255)  NOT NULL COMMENT '产商品名称（offeringName）',
+    `category_code`    VARCHAR(64)            DEFAULT NULL COMMENT '品类编码（categoryCode，如 familyBasePrc）',
+    `category_name`    VARCHAR(128)           DEFAULT NULL COMMENT '品类名称（categoryName，如 家庭基础套餐）',
+    `product_line`     VARCHAR(64)            DEFAULT NULL COMMENT '产品线（productLine：家庭/宽带/个人）',
+    `offering_type`    VARCHAR(32)   NOT NULL DEFAULT 'addon' COMMENT '商品类型（offeringType：main_pkg/addon/fusion）',
+    `state`            VARCHAR(32)   NOT NULL COMMENT '状态（state：on_shelf/on_sale；DEFAULT_SQL 仅取这两种）',
+    `monthly_fee`      DECIMAL(18,2) NOT NULL DEFAULT 0 COMMENT '月费（monthlyFee，元）',
+    `fixed_fee_amount` DECIMAL(18,2)          DEFAULT NULL COMMENT '一次性/固定费（fixedFeeAmount，元）',
+    `sales_cnt_30d`    INT           NOT NULL DEFAULT 0 COMMENT '近30天订购量（salesCnt30d）',
+    `revenue_30d`      DECIMAL(18,2) NOT NULL DEFAULT 0 COMMENT '近30天收入（revenue30d，元）',
+    `shelf_days`       INT           NOT NULL DEFAULT 0 COMMENT '在架天数（shelfDays）',
+    `message_root_key` VARCHAR(64)            DEFAULT NULL COMMENT '报文根键（messageRootKey，模板品类码）',
+    `category`         VARCHAR(32)   NOT NULL DEFAULT 'normal' COMMENT '风险标记（category：normal/zero_fee/low_eff/whitelist/abnormal_discount/threshold_demo）',
+    PRIMARY KEY (`offering_id`),
+    KEY `idx_osf_state` (`state`),
+    KEY `idx_osf_category_code` (`category_code`),
+    KEY `idx_osf_category` (`category`)
 )
-VALUES (
-    'default',
-    'custom',
-    'gpt-4o-mini',
-    NULL,
-    NULL,
-    'bearer',
-    'openai',
-    0,
-    0.3,
-    2048,
-    0,
-    180000,
-    1,
-    '系统默认配置',
-    NOW(6),
-    NOW(6)
-);
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='ABox 在架商品事实表（业务系统只读视图同构，abox-source=jdbc 数据源）';
 
+-- ============================================================
+-- ETL 约定（业务系统 → 本表）：
+--   1. 幂等写入：按主键 offering_id 先 DELETE 旧键再 INSERT
+--      （与 goldendb/ 统一，不用 ON DUPLICATE KEY UPDATE）
+--   2. 状态映射：业务侧"在架/在售"→ on_shelf/on_sale（英文枚举）；
+--      退市/下架行不写入（或写入后由 DEFAULT_SQL 的 WHERE 自然过滤）
+--   3. 风险标记：category 由业务侧离线计算写入（0元/零销/折损等标记驱动 ops 风险稽核演示面）
+--   4. 数据守卫：写入行数核对（offering_id 非空唯一）；中文品类名必填建议
+--   5. 平台侧读取：ABOX_SOURCE=jdbc + ABOX_JDBC_URL 指向本表所在库（只读账号），
+--      刷新周期 ABOX_SYNC_INTERVAL_MINUTES（默认 30 分钟），行数护栏 ABOX_MAX_ROWS（默认 10000）
+-- ============================================================
 
 -- ------------------------------------------------------------
--- 6. 用户认证种子（pd_ai_users）
---     初始账号：admin / admin123（首次登录后务必修改密码）
---     password_hash = salt:sha256(salt+password)
---     表结构对齐 classpath:sql/h2/schema-h2.sql（H2 与 MySQL 双侧同构）
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS `pd_ai_users` (
-    `id`             INT           NOT NULL AUTO_INCREMENT,
-    `username`       VARCHAR(64)   NOT NULL,
-    `password_hash`  VARCHAR(128)  NOT NULL,
-    `display_name`   VARCHAR(100)           DEFAULT NULL,
-    `role`           VARCHAR(32)   NOT NULL DEFAULT 'user',
-    `is_enabled`     TINYINT       NOT NULL DEFAULT 1,
-    `created_at`     DATETIME(6)            DEFAULT NULL,
-    `updated_at`     DATETIME(6)            DEFAULT NULL,
-    `last_login_at`  DATETIME(6)            DEFAULT NULL,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_users_username` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='用户认证表';
-
-DELETE FROM `pd_ai_users` WHERE `username` = 'admin';
-
-INSERT INTO `pd_ai_users` (
-    `username`, `password_hash`, `display_name`, `role`, `is_enabled`, `created_at`, `updated_at`
-)
-VALUES ('admin',
-        'a1b2c3d4e5f60718293a4b5c6d7e8f90:0212b518b03b50cc62a0dadc9e897f48190e21e0af3ba93665b4b0085885e265',
-        '管理员',
-        'admin',
-        1, NOW(6), NOW(6));
-
--- ------------------------------------------------------------
--- 7. ABox 在架商品种子（pd_ops_shelf_offerings）
---     100 行对齐 classpath:ontology/mock_graph.json shelfOfferings；
---     abox-source=jdbc 时 ABoxSyncScheduler 从本表同步进事实图。
---     幂等：先 DELETE 演示键再 INSERT VALUES（与 goldendb/ 统一）
---     表结构见 03_ext_schema.sql
+-- 演示种子：100 行，对齐 mock_graph.json shelfOfferings（可重复执行：
+-- 先 DELETE 演示键再 INSERT VALUES）
+-- 生产环境可不执行本段（由业务 ETL 灌入真实数据）
 -- ------------------------------------------------------------
 
 DELETE FROM `pd_ops_shelf_offerings`
@@ -204,7 +65,7 @@ INSERT INTO `pd_ops_shelf_offerings` (
     `offering_id`, `offering_name`, `category_code`, `category_name`, `product_line`,
     `offering_type`, `state`, `monthly_fee`, `fixed_fee_amount`,
     `sales_cnt_30d`, `revenue_30d`, `shelf_days`, `message_root_key`, `category`
-) VALUES
+) VALUES (
     ('SCHEME_FAP_001', '家庭增值权益20', 'familyAddPrc', '家庭附加业务', '家庭', 'addon', 'on_shelf', 20, 20, 90, 1800, 40, 'familyAddPrc', 'normal'),
     ('SCHEME_FBP_001', '家庭亲情网基础套餐', 'familyBasePrc', '家庭基础套餐', '家庭', 'fusion', 'on_shelf', 99, 99, 150, 14850, 120, 'familyBasePrc', 'normal'),
     ('SCHEME_BOS_001', '宽带提速包30', 'broadBandOptSpeedPrc', '宽带加速包', '宽带', 'addon', 'on_shelf', 30, 30, 80, 2400, 50, 'broadBandOptSpeedPrc', 'normal'),
@@ -298,7 +159,7 @@ INSERT INTO `pd_ops_shelf_offerings` (
     ('OF-CAMPUS-STU-19', '大学生流量加餐包19', 'personAddPrc', '个人附加资费', '个人', 'addon', 'on_shelf', 19, 19, 640, 12160, 18, 'personAddPrc', 'normal'),
     ('OF-CAMPUS-STU-OLD-49', '大学生经典套餐49', 'personMainPrc', '个人主资费', '个人', 'main_pkg', 'on_shelf', 49, 49, 300, 14700, 95, 'personMainPrc', 'normal'),
     ('OF-DEVICE-PHONE-01', '智能手机终端A1', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 1999, 260, 519740, 120, 'deviceMainPrc', 'normal'),
-    ('OF-DEVICE-IPTV-02', '宽带电视IPTV机顶盒', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 10, 0, 260, 54000, 210, 'deviceMainPrc', 'normal'),
+    ('OF-DEVICE-IPTV-02', '宽带电视IPTV机顶盒', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 10, 0, 210, 54000, 210, 'deviceMainPrc', 'normal'),
     ('OF-DEVICE-BOX-03', '智能硬件机顶盒 Pro', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 399, 90, 35910, 60, 'deviceMainPrc', 'normal'),
     ('OF-DEVICE-PHONE-04', '智能手机终端B2合约机', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 2999, 40, 119960, 45, 'deviceMainPrc', 'normal'),
     ('OF-SIM-MAIN-01', '号卡主卡申办', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 29, 29, 420, 12180, 180, 'simCardMainPrc', 'normal'),
@@ -306,45 +167,5 @@ INSERT INTO `pd_ops_shelf_offerings` (
     ('OF-SIM-IOT-03', '物联卡流量卡', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 19, 19, 500, 9500, 150, 'simCardMainPrc', 'normal'),
     ('OF-SIM-FLOW-04', '大流量卡月享包', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 39, 39, 310, 12090, 90, 'simCardMainPrc', 'normal');
 
--- ------------------------------------------------------------
--- 8. LLM 备用配置（deepseek-chat，未激活；同 V1 种子语义）
--- ------------------------------------------------------------
-
-DELETE FROM `pd_ai_llm_user_configs`
-WHERE `user_identifier` = 'default' AND `config_name` = 'deepseek-chat';
-
-INSERT INTO `pd_ai_llm_user_configs` (
-    `user_identifier`, `provider`, `model`, `api_key`, `base_url`,
-    `auth_type`, `api_format`, `is_full_url`,
-    `temperature`, `max_tokens`, `thinking`, `stream_enabled`, `max_input_tokens`,
-    `is_active`, `config_name`, `created_at`, `updated_at`
-)
-VALUES ('default',
-        'custom',
-        'deepseek-ai/DeepSeek-V4-Flash',
-        NULL,
-        'https://api.siliconflow.cn/v1',
-        'bearer',
-        'openai',
-        0,
-        0.3,
-        4096,
-        0,
-        1,
-        180000,
-        0,
-        'deepseek-chat',
-        NOW(6),
-        NOW(6));
-
-SELECT 'pd_ai_mcp_tool_definitions' AS tbl, COUNT(*) AS cnt FROM `pd_ai_mcp_tool_definitions`
-UNION ALL
-SELECT 'pd_ai_swrl_rules', COUNT(*) FROM `pd_ai_swrl_rules`
-UNION ALL
-SELECT 'pd_ai_prompt_templates', COUNT(*) FROM `pd_ai_prompt_templates`
-UNION ALL
-SELECT 'pd_ai_llm_user_configs', COUNT(*) FROM `pd_ai_llm_user_configs`
-UNION ALL
-SELECT 'pd_ai_users', COUNT(*) FROM `pd_ai_users`
-UNION ALL
-SELECT 'pd_ops_shelf_offerings', COUNT(*) FROM `pd_ops_shelf_offerings`;
+-- 验证
+SELECT 'pd_ops_shelf_offerings' AS tbl, COUNT(*) AS cnt FROM `pd_ops_shelf_offerings`;

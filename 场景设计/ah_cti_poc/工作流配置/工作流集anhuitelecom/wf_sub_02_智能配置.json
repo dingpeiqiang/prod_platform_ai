@@ -1,0 +1,793 @@
+{
+  "flowName": "产销品-智能配置",
+  "flowRemark": "子工作流2（融合组扩展）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取 result_json 原文→生成商品编码代码节点（新增品生成9位900编码如900117022/存量重配透传既有编码，注入save落地）→save_product_config 透传落地→新增融合成员回显代码节点（出参含 group 时生成融合成员行，逐字引用 role/offer_id）；结束前存储 node_name=config（result_json 含 offer_id 及可选 group）。单商品路径零变化。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000101",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "记录数组JSON（取[0].result_json为执行方案原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取执行方案",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组（list[0].result_json 为执行方案原文）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000102",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000106,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000102",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点102查询出参 list（记录数组JSON）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000102",
+              "a1b2c3d4-0000-4000-8000-000000000102,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000102,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取执行方案原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000106",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000111,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
+        ],
+        "code": "import json, random\nfrom typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    def _str(v):\n        return str(v).strip() if v not in (None, '') else ''\n    offer_id = _str(p.get('existing_offer_id') or '')\n    if not offer_id:\n        # 兜底：从执行方案原文解析内层 JSON 取 offer_id/similarOfferId\n        raw = p.get('plan_json') or ''\n        try:\n            obj = json.loads(raw) if isinstance(raw, str) else raw\n            if isinstance(obj, dict):\n                offer_id = _str(obj.get('offer_id') or obj.get('offerId') or '')\n                if not offer_id:\n                    offer_id = _str(obj.get('similarOfferId') or '')\n        except Exception:\n            offer_id = ''\n    # 校验：合法 9 位数字编码才透传（存量重配），否则生成全新 900 编码\n    if offer_id.isdigit() and len(offer_id) == 9:\n        pass\n    else:\n        offer_id = '900%06d' % random.randint(0, 999999)\n    ret: Output = {'offer_id': offer_id}\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+            "relName": "offer_id",
+            "name": "existing_offer_id",
+            "description": "执行方案中既有 offer_id（节点106提取，存量重配才有值）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000106",
+              "a1b2c3d4-0000-4000-8000-000000000106,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000106,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+            "relName": "record_json",
+            "name": "plan_json",
+            "description": "执行方案原文（节点106提取的 result_json，兜底读取溯源 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000106",
+              "a1b2c3d4-0000-4000-8000-000000000106,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000106,record_json"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "生成商品编码"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000111",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "offer_id",
+            "cname": "销售品ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "save_result",
+            "cname": "四类字段写入结果",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "SUCCESS/PARTIAL/FAIL",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "product_config",
+            "cname": "完整落地配置JSON（含offer_id/offer_name等与plan_json原文及可选group）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "script_url",
+            "cname": "配置脚本下载地址（后端生成，GET即返回可执行脚本）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id，与执行方案存储键同一）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+            "relName": "record_json",
+            "name": "plan_json",
+            "description": "执行方案JSON原文（节点106提取的 result_json）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000106",
+              "a1b2c3d4-0000-4000-8000-000000000106,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000106,record_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "confirmed",
+            "description": "用户确认标志true（V2.2起后端不校验，仅记录）",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "operator",
+            "description": "操作人（默认system）",
+            "type": "string",
+            "required": true,
+            "content": "system"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000111",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "商品编码（节点111生成：新增品 900 编码 / 存量重配既有编码）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000111",
+              "a1b2c3d4-0000-4000-8000-000000000111,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000111,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "配置落地",
+          "code": "save_product_config",
+          "description": "工具7：执行方案JSON原文透传落地（节点106已从查询记录中提取 result_json 原文）；req_id 与 plan_json 均引用自查链路结果，方案key由后端从 plan_json 的 req_id 键提取；新增产品时商品编码由节点111代码节点生成（9位900编码如 900117022）经 offer_id 入参注入，存量重配透传既有编码；融合组（plan_json.offer_type=融合）时出参含 group（main_offer_id+members[]{role,offer_id}）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000103",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/product/config/save"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo",
+            "name": "fusion_echo",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_status",
+            "name": "fusion_status",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note",
+            "name": "fusion_note",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    raw_status = str(p.get('status') or '')\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    failed = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n        m_status = str(m.get('status') or '').upper()\n        if m_status in ('PARTIAL', 'FAIL'):\n            failed.append('%s=%s' % (role or oid, m_status))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    fusion_status = raw_status.upper()\n    if failed and fusion_status == 'SUCCESS':\n        fusion_status = 'PARTIAL'\n    note = ''\n    if fusion_status == 'PARTIAL':\n        detail = '、'.join(failed) if failed else '详见失败明细'\n        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n    elif fusion_status == 'FAIL':\n        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": fusion_status,\n        \"fusion_note\": note,\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "product_config",
+            "name": "group_json",
+            "description": "落地配置JSON（节点103出参 product_config，含可选 group）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "status",
+            "name": "status",
+            "description": "落地总状态（节点103出参 status）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,status"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,status"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "融合成员回显"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000107",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,config_summary",
+            "name": "config_summary",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\ndef _cell(v):\n    return str(v) if v not in (None, '') else '—'\n\nasync def main(args):\n    cfg = _load(args.params.get('product_config') or '')\n    if not cfg:\n        ret: Output = {'config_summary': ''}\n        return ret\n    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n    print_c = info.get('printContent') if isinstance(info.get('printContent'), dict) else {}\n    gprs = info.get('billGprsCfg') if isinstance(info.get('billGprsCfg'), dict) else {}\n    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n    out_fee = cfg.get('out_fee') if isinstance(cfg.get('out_fee'), dict) else {}\n    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n    gift = str(print_c.get('containResource') or '').strip()\n    if not gift:\n        parts = []\n        if str(gprs.get('theshold') or '').strip():\n            parts.append('国内通用流量 %s%s' % (gprs.get('theshold'), gprs.get('unit') or ''))\n        if str(voice.get('theshold') or '').strip():\n            parts.append('国内通话 %s分钟' % voice.get('theshold'))\n        gift = '、'.join(parts)\n    out_price = str(print_c.get('chargeStandard') or '').strip()\n    if not out_price:\n        parts = []\n        if str(gprs.get('outChargeMode') or '').strip():\n            parts.append('套外流量 %s' % gprs.get('outChargeMode'))\n        if str(voice.get('outCharge') or '').strip():\n            parts.append('套外语音 %s元/分钟' % voice.get('outCharge'))\n        out_price = '、'.join(parts)\n    cycle = str(in_fee.get('计费周期') or '').strip()\n    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n    lines = ['【配置销售品要点简介】']\n    lines.append('- 销售品名称：%s' % _cell(offer_name))\n    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n    lines.append('- 套内资源：%s' % _cell(gift))\n    lines.append('- 套外资费：%s' % _cell(out_price))\n    if cycle:\n        lines.append('- 计费周期：%s' % cycle)\n    if carry:\n        lines.append('- 流量结转：可结转至次月')\n    lines.append('- 订购规则：%s' % _cell(cfg.get('order_rule')))\n    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n    ret: Output = {'config_summary': '\\n'.join(lines)}\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "product_config",
+            "name": "product_config",
+            "description": "落地配置JSON（节点103出参 product_config）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "配置要点简介"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000108",
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次标识（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config（智能配置）",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "product_config",
+            "name": "result_json",
+            "description": "环节结果JSON=完整落地配置JSON（含offer_id及可选group）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含 offer_id 及可选 group）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000105",
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000109,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=02&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"落地配置看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000109",
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n{config_summary}\n{fusion_note}\n【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "save_result",
+            "name": "save_result",
+            "description": "四类字段写入结果",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "status",
+            "name": "status",
+            "description": "落地状态",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,status"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,status"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000107",
+            "relName": "fusion_echo",
+            "name": "fusion_echo",
+            "description": "融合成员回显（V4.0，无 group 时为空）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000107",
+              "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_echo"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000107",
+            "relName": "fusion_note",
+            "name": "fusion_note",
+            "description": "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000107",
+              "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000107,fusion_note"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "config_summary",
+            "name": "config_summary",
+            "description": "配置销售品要点简介（节点108渲染）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,config_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,config_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "script_url",
+            "name": "script_url",
+            "description": "配置脚本下载地址（节点103出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,script_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,script_url"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000109",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000109",
+              "a1b2c3d4-0000-4000-8000-000000000109,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000109,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(配置落地完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 3255,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000104",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000102",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000101"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000106",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000102"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000111",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000106"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000103",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000111"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000107",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000103"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000108",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000107"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000105",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000108"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000109",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000105"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000109"
+      }
+    ],
+    "flowId": "wf_sub_02",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

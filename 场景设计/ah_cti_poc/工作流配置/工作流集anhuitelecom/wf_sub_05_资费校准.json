@@ -1,0 +1,769 @@
+{
+  "flowName": "产销品-资费校准",
+  "flowRemark": "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000401",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "记录数组JSON（取[0].result_json为环节结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取配置环节结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000406",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000407,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000407,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000406",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点406查询出参 list（记录数组JSON）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000406",
+              "a1b2c3d4-0000-4000-8000-000000000406,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000406,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取配置结果原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000407",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "pass",
+            "cname": "1通过/0不通过",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "risk_list",
+            "cname": "风险清单",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "风险清单",
+                "sechema": [
+                  {
+                    "name": "risk_type",
+                    "cname": "风险类型：overlap_conflict/negative_fee/boundary_price_gap/overlay_limit_exceeded/custom_rule",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "risk_desc",
+                    "cname": "风险描述，含冲突/异常明细",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "suggest",
+                    "cname": "处置建议",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
+            "required": false
+          },
+          {
+            "name": "compare_list",
+            "cname": "资费比对明细（8项，融合组行含member_role）",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "资费比对明细（8项，融合组行含member_role）",
+                "sechema": [
+                  {
+                    "name": "project_name",
+                    "cname": "比对项目名（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "requirement_desc",
+                    "cname": "套餐描述（需求侧，空串表示需求未提供该项）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "billing_desc",
+                    "cname": "计费配置描述（系统侧，空串表示未落配置）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "result",
+                    "cname": "比对结果：一致/不一致",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "member_role",
+                    "cname": "融合组成员角色（仅融合组行出现）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
+            "relName": "record_json",
+            "name": "config_json",
+            "description": "落地配置JSON（节点407提取的环节结果原文）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000407",
+              "a1b2c3d4-0000-4000-8000-000000000407,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,record_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "check_scene",
+            "description": "校验场景默认all",
+            "type": "string",
+            "required": true,
+            "content": "all"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "计费校验",
+          "code": "check_billing_rule",
+          "description": "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则）；config_json 取自 config 环节结果；融合组 compare_list 行可含 member_role 键",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000402",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/billing/rules/verify"
+      },
+      {
+        "outputs": [
+          {
+            "name": "risk_summary",
+            "description": "风险解读（融合组按 member_role 分组）",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读：\n1）比对信息（compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言，说明每条风险的影响与处置建议；risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，直接输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，融合组时按成员分组），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+              "relName": "risk_list",
+              "name": "risk_list",
+              "description": "引用节点402风险清单",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000402",
+                "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+              "relName": "compare_list",
+              "name": "compare_list",
+              "description": "引用节点402资费比对明细（8项，融合组行含member_role）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000402",
+                "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "风险解读",
+          "title": "风险解读"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000403",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000408,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "pass",
+            "name": "pass",
+            "description": "校验结论（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "risk_list",
+            "name": "risk_list",
+            "description": "风险清单（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "compare_list",
+            "name": "compare_list",
+            "description": "资费比对明细（节点402）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
+            "relName": "risk_summary",
+            "name": "md",
+            "description": "风险解读 markdown（节点403）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000403",
+              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "md_key",
+            "description": "md 落库字段名",
+            "type": "string",
+            "required": true,
+            "content": "risk_summary"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "资费结果结构化封包"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000408",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次标识（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=fee（资费校准）",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000408",
+            "relName": "record_json",
+            "name": "result_json",
+            "description": "环节结果JSON=结构化封包（compare_list+risk_summary）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000408",
+              "a1b2c3d4-0000-4000-8000-000000000408,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000408,record_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000405",
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000409,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=05&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"资费校准\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000407",
+              "a1b2c3d4-0000-4000-8000-000000000407,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000409",
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "资费校准完成：pass={pass}\n{risk_summary}\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "pass",
+            "name": "pass",
+            "description": "校验结论",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "risk_list",
+            "name": "risk_list",
+            "description": "风险清单",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
+            "relName": "risk_summary",
+            "name": "risk_summary",
+            "description": "风险解读（融合组按成员分组）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000403",
+              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（节点407提取，供查看面板）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000407",
+              "a1b2c3d4-0000-4000-8000-000000000407,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000409",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000409",
+              "a1b2c3d4-0000-4000-8000-000000000409,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000409,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(资费校准完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000404",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000406",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000401"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000407",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000406"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000402",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000407"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000403",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000403"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000405",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000408"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000409",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000405"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000404",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000409"
+      }
+    ],
+    "flowId": "wf_sub_05",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

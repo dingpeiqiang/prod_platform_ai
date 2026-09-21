@@ -1,0 +1,513 @@
+{
+  "flowName": "产销品-发起需求审批",
+  "flowRemark": "子工作流11（环节1 需求工单审批发起，确认后触发）：用户明确回复【发起需求审批】→ 自查需求工单 query_node_result(req_id+requirement_report) → 提取原文 → submit_release_approval(approval-type=requirement) → 回执+引导【查询审批进度】。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）. 审批进度查询走 wf_sub_08（双轨支持 requirement）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "需求单号（环节1 wf_sub_00 生成，PLAN+yyyyMMddHHmmss+3位随机；严禁重新生成）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001101",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "total",
+            "cname": "记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录列表（list[0].result_json 为原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement_report",
+            "type": "string",
+            "required": true,
+            "content": "requirement_report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "仅取最新一条",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "自查需求工单",
+          "code": "query_node_result",
+          "description": "节点结果存储查询（复用）：按 req_id+node_name=requirement_report 取回需求提报单记录，作为审批发起依据；total=0 → 提示先完成需求提报",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001102",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001103,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001103,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001102",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点1102查询出参 list（记录数组JSON）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001102",
+              "a1b2c3d4-0000-4000-8000-000000001102,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001102,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取需求工单原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000001103",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "cname": "审批单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "提交状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "req_id",
+            "name": "offer_id",
+            "description": "销售品ID（需求阶段未落地，传需求单号 req_id 占位）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001103",
+            "relName": "record_json",
+            "name": "report_url",
+            "description": "需求提报单（节点1103 取回的需求工单原文）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001103",
+              "a1b2c3d4-0000-4000-8000-000000001103,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001103,record_json"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approve_confirmed",
+            "description": "审批发起确认标志true（用户已明确回复【发起需求审批】）",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_flow",
+            "description": "审批流默认standard",
+            "type": "string",
+            "required": true,
+            "content": "standard"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_type",
+            "description": "审批类型=requirement（需求工单审批，区别于 launch 上线审批）",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "发起需求工单审批",
+          "code": "submit_release_approval",
+          "description": "工具9（复用，需求轨双轨）：提交需求工单审批；approval-type=requirement 区分需求单审批（区别于上线审批 launch 轨）。approve_confirmed 固定 true——以用户已明确回复【发起需求审批】为前提（确认门禁在调度层，未确认不得调入本流）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001104",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/approval/submit"
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_receipt",
+            "description": "审批发起回执正文",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），输出需求工单审批发起回执：\n【环节1/8·需求提报】✅ 需求工单审批已发起\n- 需求单号：{req_id}\n- 需求工单审批单号：{approval_id}，状态：{status}\n- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n约束：逐字引用出参，禁止编造审批单号/状态；未取得 approval_id 时按失败口径输出并引导【重新执行】。\n输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000001101",
+                "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000001104",
+              "relName": "approval_id",
+              "name": "approval_id",
+              "description": "审批单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000001104",
+                "a1b2c3d4-0000-4000-8000-000000001104,approval_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000001104,approval_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000001104",
+              "relName": "status",
+              "name": "status",
+              "description": "提交状态",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000001104",
+                "a1b2c3d4-0000-4000-8000-000000001104,status"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000001104,status"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "审批发起回执渲染",
+          "title": "审批发起回执渲染"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001105",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001109,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求工单审批\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001101",
+              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000001109",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{approval_receipt}\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001105",
+            "relName": "approval_receipt",
+            "name": "approval_receipt",
+            "description": "审批发起回执正文",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001105",
+              "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001105,approval_receipt"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000001109",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000001109",
+              "a1b2c3d4-0000-4000-8000-000000001109,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000001109,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(需求审批已发起)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000001106",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001102",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001101"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001103",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001102"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001104",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001103"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001105",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001104"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001109",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001105"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000001106",
+        "startId": "a1b2c3d4-0000-4000-8000-000000001109"
+      }
+    ],
+    "flowId": "wf_sub_11",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

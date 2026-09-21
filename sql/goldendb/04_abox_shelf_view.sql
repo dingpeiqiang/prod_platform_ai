@@ -15,9 +15,9 @@
 -- H2 同构表：backend-app/src/main/resources/sql/h2/schema-h2.sql §24
 -- ============================================================
 
-USE prod_platform_ai;
+USE `prodplatformai`;
 
-CREATE TABLE `pd_ops_shelf_offerings` (
+CREATE TABLE IF NOT EXISTS `pd_ops_shelf_offerings` (
     `offering_id`      VARCHAR(64)   NOT NULL COMMENT '产商品编码（offeringId，硬校验非空）',
     `offering_name`    VARCHAR(255)  NOT NULL COMMENT '产商品名称（offeringName）',
     `category_code`    VARCHAR(64)            DEFAULT NULL COMMENT '品类编码（categoryCode，如 familyBasePrc）',
@@ -41,7 +41,9 @@ CREATE TABLE `pd_ops_shelf_offerings` (
 
 -- ============================================================
 -- ETL 约定（业务系统 → 本表）：
---   1. 幂等写入：按主键 offering_id ON DUPLICATE KEY UPDATE
+--   1. 幂等写入：按主键 offering_id 去重写入；GoldenDB 禁用
+--      ON DUPLICATE KEY UPDATE（ERR 12071），业务侧 ETL 请先
+--      DELETE 旧键再 INSERT（或用 REPLACE 语义的 ETL 工具实现）
 --   2. 状态映射：业务侧"在架/在售"→ on_shelf/on_sale（英文枚举）；
 --      退市/下架行不写入（或写入后由 DEFAULT_SQL 的 WHERE 自然过滤）
 --   3. 风险标记：category 由业务侧离线计算写入（0元/零销/折损等标记驱动 ops 风险稽核演示面）
@@ -51,9 +53,14 @@ CREATE TABLE `pd_ops_shelf_offerings` (
 -- ============================================================
 
 -- ------------------------------------------------------------
--- 演示种子：100 行，对齐 mock_graph.json shelfOfferings（可重复执行）
+-- 演示种子：100 行，对齐 mock_graph.json shelfOfferings（可重复执行：
+-- 先 DELETE 演示键再 INSERT VALUES，GoldenDB 不支持 ON DUPLICATE KEY UPDATE）
 -- 生产环境可不执行本段（由业务 ETL 灌入真实数据）
 -- ------------------------------------------------------------
+
+DELETE FROM `pd_ops_shelf_offerings`
+WHERE `offering_id` LIKE 'SCHEME\_%' ESCAPE '\'
+   OR `offering_id` LIKE 'OF-%';
 
 INSERT INTO `pd_ops_shelf_offerings` (
     `offering_id`, `offering_name`, `category_code`, `category_name`, `product_line`,
@@ -159,18 +166,7 @@ INSERT INTO `pd_ops_shelf_offerings` (
     ('OF-SIM-MAIN-01', '号卡主卡申办', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 29, 29, 420, 12180, 180, 'simCardMainPrc', 'normal'),
     ('OF-SIM-CHILD-02', '副卡办理', 'simCardMainPrc', '号卡资费', '号卡', 'sub_pkg', 'on_shelf', 10, 10, 350, 3500, 240, 'simCardMainPrc', 'normal'),
     ('OF-SIM-IOT-03', '物联卡流量卡', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 19, 19, 500, 9500, 150, 'simCardMainPrc', 'normal'),
-    ('OF-SIM-FLOW-04', '大流量卡月享包', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 39, 39, 310, 12090, 90, 'simCardMainPrc', 'normal')
-) ON DUPLICATE KEY UPDATE
-    `offering_name` = VALUES(`offering_name`),
-    `category_code` = VALUES(`category_code`),
-    `category_name` = VALUES(`category_name`),
-    `product_line` = VALUES(`product_line`),
-    `offering_type` = VALUES(`offering_type`),
-    `state` = VALUES(`state`),
-    `monthly_fee` = VALUES(`monthly_fee`),
-    `fixed_fee_amount` = VALUES(`fixed_fee_amount`),
-    `sales_cnt_30d` = VALUES(`sales_cnt_30d`),
-    `revenue_30d` = VALUES(`revenue_30d`),
-    `shelf_days` = VALUES(`shelf_days`),
-    `message_root_key` = VALUES(`message_root_key`),
-    `category` = VALUES(`category`);
+    ('OF-SIM-FLOW-04', '大流量卡月享包', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 39, 39, 310, 12090, 90, 'simCardMainPrc', 'normal');
+
+-- 验证
+SELECT 'pd_ops_shelf_offerings' AS tbl, COUNT(*) AS cnt FROM `pd_ops_shelf_offerings`;

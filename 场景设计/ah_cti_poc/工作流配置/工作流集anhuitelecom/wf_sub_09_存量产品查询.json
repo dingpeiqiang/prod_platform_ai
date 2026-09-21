@@ -1,0 +1,394 @@
+{
+  "flowName": "产销品-存量产品查询",
+  "flowRemark": "子工作流9（阶段5 新增：D-4 只读存量查询）。CODE_OP_QUERY_OFFER 内嵌确定性检索（数据源 knowledge/存量产品目录_清洗后.json 18 条，内嵌目录便于 Demo；后端 query_offer 插件就绪后切换远端检索；K4 档案待后端回显）→LLM 按 flow-D D-4 渲染查询回显（unique 结构化回显+收尾块 / multi 匹配清单收敛 / none 追问引导）。只读、不生成 req_id、不进入配置流水线。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "offer_id",
+            "description": "产品ID（9位存量编码，可选）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "name",
+            "description": "产品名称（可选）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "keyword",
+            "description": "描述关键词（可选）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000901",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000902,matched",
+            "name": "matched",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000902,matched_count",
+            "name": "matched_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000902,outcome",
+            "name": "outcome",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000902,k4_note",
+            "name": "k4_note",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\nCATALOG = [\n    ('900102306', '5G-A融合套餐199元', '融合套餐', '5G-A主套餐', '199元', 'familyBasePrc', '宽带,天翼高清,副卡功能费', 'dup', '900113046'),\n    ('900102307', '5G-A融合套餐299元', '融合套餐', '5G-A主套餐', '299元', 'familyBasePrc', '宽带,天翼高清,副卡功能费', 'active', ''),\n    ('900102308', '5G-A套餐199元', '单品套餐', '5G-A主套餐', '199元', 'personMainPrc', '', 'active', ''),\n    ('900102310', '5G-A套餐单品299元', '单品套餐', '5G-A主套餐', '299元', 'personMainPrc', '', 'active', ''),\n    ('900102312', '5G-A套餐单品399元', '单品套餐', '5G-A主套餐', '399元', 'personMainPrc', '', 'active', ''),\n    ('900102313', '5G-A融合套餐399元', '融合套餐', '5G-A主套餐', '399元', 'familyBasePrc', '宽带,天翼高清,副卡功能费', 'active', ''),\n    ('900113043', '5G-A套餐单品239元', '单品套餐', '5G-A主套餐', '239元', 'personMainPrc', '', 'active', ''),\n    ('900113044', '5G-A融合套餐239元', '融合套餐', '5G-A主套餐', '239元', 'familyBasePrc', '宽带,天翼高清,副卡功能费', 'active', ''),\n    ('900113045', '5G-A套餐单品199元', '单品套餐', '5G-A主套餐', '199元', 'personMainPrc', '', 'active', ''),\n    ('900113046', '5G-A融合套餐199元', '融合套餐', '5G-A主套餐', '199元', 'familyBasePrc', '宽带,天翼高清,副卡功能费', 'active', ''),\n    ('900117020', '19.9元权益随心选生活版', '权益包', '权益随心选', '19.9元', 'personAddPrc', '', 'active', ''),\n    ('900117021', '19.9元权益随心选出行版', '权益包', '权益随心选', '19.9元', 'personAddPrc', '', 'active', ''),\n    ('900117022', '19.9元权益随心选娱乐版', '权益包', '权益随心选', '19.9元', 'personAddPrc', '', 'active', ''),\n    ('900117023', '29.9元权益随心选生活版', '权益包', '权益随心选', '29.9元', 'personAddPrc', '', 'active', ''),\n    ('900117024', '19.9元权益随心选商超版', '权益包', '权益随心选', '19.9元', 'personAddPrc', '', 'active', ''),\n    ('900117025', '29.9元权益随心选商超版', '权益包', '权益随心选', '29.9元', 'personAddPrc', '', 'active', ''),\n    ('900117026', '29.9元权益随心选出行版', '权益包', '权益随心选', '29.9元', 'personAddPrc', '', 'active', ''),\n    ('900117027', '29.9元权益随心选娱乐版', '权益包', '权益随心选', '29.9元', 'personAddPrc', '', 'active', ''),\n]\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '').strip()\n    name = str(p.get('name') or '').strip()\n    keyword = str(p.get('keyword') or '').strip()\n    matched = []\n    for rec in CATALOG:\n        oid, nm, ptype, series, tier, tmpl, members, status, dup = rec\n        target = dup if (status == 'dup' and dup) else oid\n        if offer_id and offer_id == target:\n            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n                            'biz_series': series, 'tier': tier, 'template': tmpl,\n                            'members': members, 'status': status})\n            continue\n        if name and (name in nm or nm in name):\n            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n                            'biz_series': series, 'tier': tier, 'template': tmpl,\n                            'members': members, 'status': status})\n            continue\n        if keyword and keyword in nm:\n            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n                            'biz_series': series, 'tier': tier, 'template': tmpl,\n                            'members': members, 'status': status})\n    # 去重（同名 dup→active 透传后合并为一条）\n    seen = {}\n    for m in matched:\n        seen.setdefault(m['offer_id'], m)\n    uniq = list(seen.values())\n    if len(uniq) == 1:\n        outcome = 'unique'\n    elif len(uniq) > 1:\n        outcome = 'multi'\n    else:\n        outcome = 'none'\n    ret: Output = {\n        'matched': json.dumps(uniq, ensure_ascii=False),\n        'matched_count': str(len(uniq)),\n        'outcome': outcome,\n        'k4_note': 'K4存量档案（knowledge/K4存量/{offer_id}.json）待后端 query_offer 插件就绪后回显',\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "name",
+            "name": "name",
+            "description": "产品名称",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "keyword",
+            "name": "keyword",
+            "description": "关键词",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,keyword"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,keyword"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "存量检索"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000902",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "query_reply",
+            "description": "查询回显正文",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品存量产品查询智能体（只读，不触发任何配置/审批/上线动作）。基于存量检索结果（matched={matched}，matched_count={matched_count}，outcome={outcome}，k4_note={k4_note}），按 flow-D D-4 输出查询回显：\n- outcome=unique（命中唯一）→ 结构化回显（逐字引用，禁止编造）：\n  **存量产品信息（{name}）**\n  - 产品ID：{offer_id}｜类型：{product_type}｜产品线：{biz_series}｜档位：{tier}｜模板：{template}\n  - 成员：{members，逗号分隔；无则省略}\n  - 档案说明：{k4_text}/K4档案说明占位（{k4_note}）\n  提示下一步：\"如需了解该产品的监控情况，可回复【查询监控】。\"\n  收尾固定块：> **建议处理：** 存量产品信息为只读查询；如需了解该产品上线后表现可回复【查询监控】\n- outcome=multi（命中多条）→ 先列匹配清单请用户收敛，禁止并成一团/臆选一款：\n  **存量产品信息查询，匹配到 {matched_count} 款，请选择或提供产品ID：**\n  | 产品ID | 名称 | 类型 | 档位 |\n  （逐行列出全部 matched）\n  收尾固定块：> **建议处理：** 命中多款产品，请收敛到具体产品后精确查询（请直接回复产品ID或完整产品名称，我可据此重新查询）\n- outcome=none（未命中）→ 输出\"未在存量目录中找到该产品，请核对名称/ID后重新提供关键词（我会按名称/ID重新查询）\"\n约束：逐字引用出参，禁止编造产品字段；status=dup 的条目按 duplicate_of 透传到 active 品；只读查询不生成 req_id。\n输出要求：仅输出查询回显正文（对应出参 query_reply），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "matched",
+              "name": "matched",
+              "description": "命中列表（节点902）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,matched"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,matched"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "matched_count",
+              "name": "matched_count",
+              "description": "命中数量（节点902）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,matched_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,matched_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "outcome",
+              "name": "outcome",
+              "description": "查询结果（节点902）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,outcome"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,outcome"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000902",
+              "relName": "k4_note",
+              "name": "k4_note",
+              "description": "K4档案说明（节点902）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000902",
+                "a1b2c3d4-0000-4000-8000-000000000902,k4_note"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000902,k4_note"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "查询回显渲染",
+          "title": "查询回显渲染"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000903",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000905,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=09&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"存量产品详情\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000901",
+            "relName": "name",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000901",
+              "a1b2c3d4-0000-4000-8000-000000000901,name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000901,name"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000905",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{query_reply}\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000903",
+            "relName": "query_reply",
+            "name": "query_reply",
+            "description": "查询回显正文",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000903",
+              "a1b2c3d4-0000-4000-8000-000000000903,query_reply"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000903,query_reply"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000905",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000905",
+              "a1b2c3d4-0000-4000-8000-000000000905,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000905,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(查询完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000904",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000902",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000901"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000903",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000902"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000905",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000903"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000904",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000905"
+      }
+    ],
+    "flowId": "wf_sub_09",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

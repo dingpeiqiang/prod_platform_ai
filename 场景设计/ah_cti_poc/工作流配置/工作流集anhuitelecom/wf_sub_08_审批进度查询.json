@@ -1,0 +1,525 @@
+{
+  "flowName": "产销品-审批进度查询",
+  "flowRemark": "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_id",
+            "description": "审批单号（可选，与 offer_id 至少一个，approval_id 优先）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "offer_id",
+            "description": "销售品ID（可选，缺失 approval_id 时按此查最新审批单）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000801",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "cname": "审批单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "审批中/通过/驳回",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "approval_type",
+            "cname": "审批类型(requirement/launch)",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "current_node",
+            "cname": "当前审批环节",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "approver",
+            "cname": "当前审批人",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "opinion",
+            "cname": "审批意见",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "update_time",
+            "cname": "更新时间",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "approval_matrix",
+            "cname": "审批矩阵 JSON",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "审批矩阵 JSON",
+                "sechema": [
+                  {
+                    "name": "node_seq",
+                    "cname": "审批节点序号",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "node_name",
+                    "cname": "审批节点",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "approver",
+                    "cname": "审批角色",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "status",
+                    "cname": "状态",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "opinion",
+                    "cname": "审批意见（无则空）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "update_time",
+                    "cname": "更新时间（无则空）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "approval_id",
+            "name": "approval_id",
+            "description": "审批单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,approval_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,approval_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "审批状态查询",
+          "code": "query_approval_status",
+          "description": "工具13：自研模拟审批进度查询（approval_id 优先，offer_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000802",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/approval/status"
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_summary",
+            "description": "审批状态摘要",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品审批进度查询智能体。基于查询出参（approval_id={approval_id}，status={status}，approval_type={approval_type}，current_node={current_node}，approver={approver}，opinion={opinion}，update_time={update_time}，approval_matrix={approval_matrix}），按 flow-D D-1 固定格式归纳输出：\n审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\nstatus=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n输出要求：仅输出审批状态摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "approval_id",
+              "name": "approval_id",
+              "description": "审批单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,approval_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,approval_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "status",
+              "name": "status",
+              "description": "审批状态",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,status"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,status"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "approval_type",
+              "name": "approval_type",
+              "description": "审批类型",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,approval_type"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,approval_type"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "current_node",
+              "name": "current_node",
+              "description": "当前环节",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,current_node"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,current_node"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "approver",
+              "name": "approver",
+              "description": "审批人",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,approver"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,approver"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "opinion",
+              "name": "opinion",
+              "description": "审批意见",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,opinion"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,opinion"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "update_time",
+              "name": "update_time",
+              "description": "更新时间",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,update_time"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,update_time"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "approval_matrix",
+              "name": "approval_matrix",
+              "description": "审批矩阵",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,approval_matrix"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,approval_matrix"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "状态摘要归纳",
+          "title": "状态摘要归纳"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000803",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000805,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=08&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"上线审批看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "offer_id",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000805",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{approval_summary}\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000803",
+            "relName": "approval_summary",
+            "name": "approval_summary",
+            "description": "审批状态摘要",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000803",
+              "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000805",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000805",
+              "a1b2c3d4-0000-4000-8000-000000000805,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000805,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(查询完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000804",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000802",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000801"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000803",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000802"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000805",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000803"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000804",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000805"
+      }
+    ],
+    "flowId": "wf_sub_08",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}
