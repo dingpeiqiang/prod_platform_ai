@@ -5,6 +5,9 @@ import com.sitech.prodai.service.ApiWorkspaceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -92,6 +95,20 @@ public class ApiWorkspaceController {
     @DeleteMapping("/history/{id}")
     public Map<String, Object> deleteHistory(HttpServletRequest request, @PathVariable Long id) {
         return apiWorkspaceService.deleteHistory(currentOwner(request), id);
+    }
+
+    @Operation(summary = "导出历史调用详情", description = "将某条请求历史导出为 TXT 文本下载")
+    @GetMapping("/history/{id}/export")
+    public ResponseEntity<byte[]> exportHistory(HttpServletRequest request, @PathVariable Long id) {
+        byte[] content = apiWorkspaceService.exportHistoryDetail(currentOwner(request), id);
+        if (content == null) {
+            return ResponseEntity.notFound().build();
+        }
+        String filename = "api-call-" + id + ".txt";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(content);
     }
 
     /** 读取当前登录用户名（未开启鉴权时可能为空）。 */

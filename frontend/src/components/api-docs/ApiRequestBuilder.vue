@@ -202,23 +202,33 @@
         <!-- 历史 -->
         <template v-else>
           <div class="side-toolbar">
-            <span class="side-toolbar-text">{{ history.length }} 条记录</span>
+            <span class="side-toolbar-text">{{ history.length }} 条记录 · {{ historyGroups.length }} 个接口</span>
             <button type="button" class="mini-btn" :disabled="!history.length" @click="clearAllHistory">清空</button>
           </div>
           <div v-if="!history.length" class="side-empty">暂无请求历史</div>
-          <div
-            v-for="item in history"
-            :key="item.id"
-            class="saved-item"
-            @click="loadHistory(item)"
-          >
-            <span class="method-badge mini" :class="(item.method || 'get').toLowerCase()">
-              {{ item.method }}
-            </span>
-            <span class="saved-item-name" :title="item.url">{{ item.url }}</span>
-            <span class="hist-status" :class="item.success ? 'ok' : 'bad'">
-              {{ item.status || 'ERR' }}
-            </span>
+          <div v-for="group in historyGroups" :key="group.endpoint" class="saved-group">
+            <div class="saved-group-head hist-group-head" @click="toggleHistoryGroup(group.endpoint)">
+              <span class="hist-caret" :class="{ open: isHistoryGroupOpen(group.endpoint) }">▸</span>
+              <span class="hist-endpoint" :title="group.endpoint">{{ group.endpoint }}</span>
+              <span class="hist-group-meta">{{ group.methods }} · {{ group.items.length }}</span>
+            </div>
+            <template v-if="isHistoryGroupOpen(group.endpoint)">
+              <div
+                v-for="item in group.items"
+                :key="item.id"
+                class="saved-item"
+                @click="loadHistory(item)"
+              >
+                <span class="method-badge mini" :class="(item.method || 'get').toLowerCase()">
+                  {{ item.method }}
+                </span>
+                <span class="saved-item-name" :title="item.url">{{ item.timeLabel }}</span>
+                <span class="hist-status" :class="item.success ? 'ok' : 'bad'">
+                  {{ item.status || 'ERR' }}
+                </span>
+                <button type="button" class="mini-btn" title="导出详情" @click.stop="exportItem(item)">导出</button>
+              </div>
+            </template>
           </div>
         </template>
       </div>
@@ -275,6 +285,7 @@ import {
   createHistory,
   clearHistory,
   deleteHistory,
+  exportHistoryDetail,
 } from '../../services/apiWorkspaceApi.js'
 import { toCurl, fromCurl, buildUrlWithParams, detectBodyType } from './curlUtils.js'
 
@@ -356,6 +367,50 @@ const savedGroups = computed(() => {
   }
   return Array.from(map, ([name, items]) => ({ name, items }))
 })
+
+/** 提取请求 URL 的接口路径（去掉查询串）作为分组键。 */
+function normalizeEndpoint(url = '') {
+  const raw = String(url || '').trim()
+  const qIdx = raw.indexOf('?')
+  return qIdx >= 0 ? raw.slice(0, qIdx) : raw
+}
+
+/** 由 createdAt 渲染为时长友好的时间标签。 */
+function historyTimeLabel(createdAt) {
+  if (!createdAt) return ''
+  const date = new Date(createdAt)
+  if (Number.isNaN(date.getTime())) return String(createdAt)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/** 请求历史按接口路径分组（倒序加载，组内保持原顺序）。 */
+const historyGroups = computed(() => {
+  const map = new Map()
+  for (const raw of history.value) {
+    const item = { ...raw, timeLabel: historyTimeLabel(raw.created_at) }
+    const endpoint = normalizeEndpoint(item.url) || '(未知地址)'
+    if (!map.has(endpoint)) map.set(endpoint, [])
+    map.get(endpoint).push(item)
+  }
+  return Array.from(map, ([endpoint, items]) => {
+    const methods = Array.from(new Set(items.map((i) => i.method || 'GET'))).join('/')
+    return { endpoint, methods, items }
+  }).sort((a, b) => (a.endpoint < b.endpoint ? -1 : 1))
+})
+
+const openHistoryGroups = ref(new Set())
+
+function isHistoryGroupOpen(endpoint) {
+  return openHistoryGroups.value.has(endpoint)
+}
+
+function toggleHistoryGroup(endpoint) {
+  const next = new Set(openHistoryGroups.value)
+  if (next.has(endpoint)) next.delete(endpoint)
+  else next.add(endpoint)
+  openHistoryGroups.value = next
+}
 
 function showToast(message) {
   toast.value = message
@@ -541,6 +596,15 @@ function loadSaved(item) {
 function loadHistory(item) {
   applyRequest(item)
   showToast('已回填历史请求')
+}
+
+async function exportItem(item) {
+  try {
+    await exportHistoryDetail(item.id, `api-call-${item.id}.txt`)
+    showToast('已导出调用详情')
+  } catch (e) {
+    showToast(`导出失败：${e.message}`)
+  }
 }
 
 function openSaveDialog() {
@@ -1071,6 +1135,41 @@ defineExpose({ applyRequest })
   flex-shrink: 0;
 }
 .saved-item-del:hover { background: #fef2f2; color: #b91c1c; }
+.hist-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+}
+.hist-group-head:hover { background: #f1f5f9; }
+.hist-caret {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #94a3b8;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.hist-caret.open { transform: rotate(90deg); }
+.hist-endpoint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-weight: 600;
+  font-size: 11px;
+  color: #334155;
+}
+.hist-group-meta {
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+}
 .hist-status {
   font-size: 10.5px;
   font-family: 'JetBrains Mono', Consolas, monospace;

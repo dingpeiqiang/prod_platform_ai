@@ -1,4 +1,4 @@
-import { request } from './httpClient.js'
+import { request, default as httpClient } from './httpClient.js'
 
 const BASE = '/api-workspace'
 
@@ -72,4 +72,30 @@ export async function clearHistory() {
  */
 export async function deleteHistory(id) {
   return request(`${BASE}/history/${id}`, { method: 'DELETE', silentError: true })
+}
+
+/**
+ * 导出单条请求历史的调用详情（TXT），触发浏览器下载
+ * @param {number} id
+ * @param {string} fallbackName - 备用下载文件名
+ */
+export async function exportHistoryDetail(id, fallbackName = 'api-call.txt') {
+  const res = await httpClient.axios.get(`${BASE}/history/${id}/export`, {
+    responseType: 'blob',
+    showLoading: false,
+    silentError: true,
+  })
+  const blob = new Blob([res.data], { type: 'text/plain;charset=utf-8' })
+  const disposition = res.headers['content-disposition'] || ''
+  const fileMatch = /filename\*=UTF-8''([^;]+)/.exec(disposition)
+  const filename = fileMatch ? decodeURIComponent(fileMatch[1]) : fallbackName
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return true
 }

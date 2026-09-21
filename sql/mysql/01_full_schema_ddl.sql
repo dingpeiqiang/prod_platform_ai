@@ -1,25 +1,19 @@
 -- ============================================================
--- Prod Platform AI - 全量模型 DDL（GoldenDB 兼容版，MySQL 5.7 语法基线）
--- 来源：sql/01_full_schema_ddl.sql（MySQL 8.0 基线）的 GoldenDB 适配
+-- Prod Platform AI - 全量模型 DDL（纯 MySQL 8.0 / InnoDB / utf8mb4）
+-- 目标环境：单机 MySQL 8.0（虚拟机私有化部署）
+-- 相对 sql/01_full_schema_ddl.sql 的处理：
+--   1) 移除 GoldenDB 专属表尾 DISTRIBUTED BY DUPLICATE(g1,g2)（纯 MySQL 无此语法）
+--   2) 修正 KV 表保留字列名 "value" -> value
+--   3) 保留 MySQL 8.0 外键约束（配合 SET FOREIGN_KEY_CHECKS 乱序删除）
 -- 用法：
---   mysql -uprodplatformai -p prodplatformai < sql/goldendb/01_full_schema_ddl.sql
--- 兼容性改造说明：
---   1) 移除 SET FOREIGN_KEY_CHECKS（GoldenDB 分布式代理下跨 DN 跳过外键检查
---      会抛 ORA-02441: foreign key operation is not supported!）
---   2) 移除所有表级 FOREIGN KEY 约束（GoldenDB 分布式表间 FK 支持受限，
---      引用完整性由应用层 JPA 实体维护，与 baseline 保持一致语义）
---   3) 按依赖顺序显式 DROP（替代 FOREIGN_KEY_CHECKS=0 的乱序删除）
---   4) 移除 COLLATE=utf8mb4_bin（部分 GoldenDB 版本校验字符集组合受限，
---      统一使用库默认 utf8mb4_general_ci， uniqueness 语义不变）
---   5) 对齐 backend-app H2 schema（schema-h2.sql）与 JPA 实体最新形态：
---      补齐 workflow 引擎扩展列 / node_logs / users / node_results /
---      product_subscriptions / change_alerts 共 5 张表与 5 个扩展列
---   6) message_metadata 的 `value` 列沿用反引号转义（保留字，实体侧映射 "value"）
+--   mysql -h172.30.0.232 -P8866 -upoc-stq -p poc-stq < 01_full_schema_ddl.sql
+-- 表清单：23 张（见文末）
 -- ============================================================
 
 SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
 
-USE `prodplatformai`;
+USE `poc-stq`;
 
 -- ------------------------------------------------------------
 -- 1. 聊天系统
@@ -43,8 +37,7 @@ CREATE TABLE `pd_ai_chat_sessions` (
     UNIQUE KEY `idx_cs_session_id` (`session_id`),
     KEY `idx_cs_user_id` (`user_id`),
     KEY `idx_cs_updated_at` (`updated_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='聊天会话表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='聊天会话表';
 
 CREATE TABLE `pd_ai_chat_messages` (
     `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
@@ -59,22 +52,24 @@ CREATE TABLE `pd_ai_chat_messages` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_cm_message_id` (`message_id`),
     KEY `idx_cm_session_id` (`session_id`),
-    KEY `idx_cm_created_at` (`created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='聊天消息表' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_cm_created_at` (`created_at`),
+    CONSTRAINT `fk_cm_session`
+        FOREIGN KEY (`session_id`) REFERENCES `pd_ai_chat_sessions` (`session_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='聊天消息表';
 
 CREATE TABLE `pd_ai_chat_message_metadata` (
     `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
     `message_id`         VARCHAR(64)  NOT NULL COMMENT '所属消息ID',
     `meta_key`           VARCHAR(100) NOT NULL COMMENT '扩展字段名',
-    `value`              TEXT                  DEFAULT NULL COMMENT '扩展字段值（VALUE为保留字，反引号转义）',
+    `value`              TEXT                  DEFAULT NULL COMMENT '扩展字段值',
     `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_message_key` (`message_id`, `meta_key`),
     KEY `idx_cmm_message_id` (`message_id`),
-    KEY `idx_cmm_meta_key` (`meta_key`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息 KV 扩展表' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_cmm_meta_key` (`meta_key`),
+    CONSTRAINT `fk_cmm_message`
+        FOREIGN KEY (`message_id`) REFERENCES `pd_ai_chat_messages` (`message_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='消息 KV 扩展表';
 
 -- ------------------------------------------------------------
 -- 2. MCP 工具管理
@@ -116,8 +111,7 @@ CREATE TABLE `pd_ai_mcp_tool_definitions` (
     KEY `idx_tool_code` (`tool_code`),
     KEY `idx_tool_category` (`category`),
     KEY `idx_tool_enabled` (`is_enabled`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP工具定义表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='MCP工具定义表';
 
 CREATE TABLE `pd_ai_mcp_call_logs` (
     `id`                 INT          NOT NULL AUTO_INCREMENT,
@@ -134,8 +128,7 @@ CREATE TABLE `pd_ai_mcp_call_logs` (
     KEY `idx_cl_tool_category` (`tool_category`),
     KEY `idx_tool_timestamp` (`tool_name`, `timestamp`),
     KEY `idx_timestamp_desc` (`timestamp`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP工具调用日志表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='MCP工具调用日志表';
 
 CREATE TABLE `pd_ai_mcp_tool_stats` (
     `id`                      INT          NOT NULL AUTO_INCREMENT,
@@ -153,8 +146,7 @@ CREATE TABLE `pd_ai_mcp_tool_stats` (
     UNIQUE KEY `idx_tool_date_hour` (`tool_name`, `stat_date`, `stat_hour`),
     KEY `idx_ts_tool_name` (`tool_name`),
     KEY `idx_ts_stat_date` (`stat_date`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP工具聚合统计表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='MCP工具聚合统计表';
 
 -- ------------------------------------------------------------
 -- 3. LLM 用户配置
@@ -185,8 +177,7 @@ CREATE TABLE `pd_ai_llm_user_configs` (
     `last_used_at`       DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `idx_llm_user_identifier` (`user_identifier`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户LLM配置表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='用户LLM配置表';
 
 -- ------------------------------------------------------------
 -- 4. 提示词管理
@@ -214,8 +205,7 @@ CREATE TABLE `pd_ai_prompts` (
     `updated_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_prompt_code` (`code`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示词主表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='提示词主表';
 
 CREATE TABLE `pd_ai_prompt_versions` (
     `id`                 INT          NOT NULL AUTO_INCREMENT,
@@ -228,9 +218,10 @@ CREATE TABLE `pd_ai_prompt_versions` (
     `created_by`         VARCHAR(100)          DEFAULT NULL,
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
-    KEY `idx_pv_prompt_id` (`prompt_id`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示词版本历史' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_pv_prompt_id` (`prompt_id`),
+    CONSTRAINT `fk_pv_prompt`
+        FOREIGN KEY (`prompt_id`) REFERENCES `pd_ai_prompts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='提示词版本历史';
 
 CREATE TABLE `pd_ai_prompt_templates` (
     `id`                 INT          NOT NULL AUTO_INCREMENT,
@@ -247,14 +238,12 @@ CREATE TABLE `pd_ai_prompt_templates` (
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_pt_code` (`code`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示词预设模板库' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='提示词预设模板库';
 
 -- ------------------------------------------------------------
 -- 5. 工作流
 -- ------------------------------------------------------------
 
-DROP TABLE IF EXISTS `pd_ai_workflow_node_logs`;
 DROP TABLE IF EXISTS `pd_ai_workflow_executions`;
 DROP TABLE IF EXISTS `pd_ai_workflow_history`;
 DROP TABLE IF EXISTS `pd_ai_workflows`;
@@ -280,8 +269,7 @@ CREATE TABLE `pd_ai_workflows` (
     `updated_at`             DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_wf_code` (`workflow_code`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流主表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='工作流主表';
 
 CREATE TABLE `pd_ai_workflow_history` (
     `id`                 INT          NOT NULL AUTO_INCREMENT,
@@ -300,9 +288,10 @@ CREATE TABLE `pd_ai_workflow_history` (
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `idx_wh_workflow_id` (`workflow_id`),
-    KEY `idx_wh_workflow_code` (`workflow_code`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流版本历史' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_wh_workflow_code` (`workflow_code`),
+    CONSTRAINT `fk_wh_workflow`
+        FOREIGN KEY (`workflow_id`) REFERENCES `pd_ai_workflows` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='工作流版本历史';
 
 CREATE TABLE `pd_ai_workflow_executions` (
     `id`                 INT          NOT NULL AUTO_INCREMENT,
@@ -320,42 +309,15 @@ CREATE TABLE `pd_ai_workflow_executions` (
     `triggered_by`       VARCHAR(100)          DEFAULT NULL,
     `trigger_type`       VARCHAR(20)           DEFAULT 'manual',
     `notes`              TEXT                  DEFAULT NULL,
-    `context_data`       TEXT                  DEFAULT NULL COMMENT '运行上下文（各节点输出合并，恢复执行的数据源）',
-    `current_node_id`    VARCHAR(64)           DEFAULT NULL COMMENT '当前推进到的节点',
-    `resume_token`       VARCHAR(64)           DEFAULT NULL COMMENT '人工节点恢复令牌（一次有效）',
-    `status_version`     INT          NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
-    `workflow_version`   INT                   DEFAULT NULL COMMENT '执行时锁定的流程定义版本（回滚安全）',
     `created_at`         DATETIME(6)           DEFAULT NULL,
     `updated_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_we_execution_id` (`execution_id`),
     KEY `idx_we_workflow_id` (`workflow_id`),
-    KEY `idx_we_workflow_code` (`workflow_code`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流执行记录' DISTRIBUTED BY DUPLICATE(g1,g2);
-
-CREATE TABLE `pd_ai_workflow_node_logs` (
-    `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `execution_id`       VARCHAR(100) NOT NULL COMMENT '执行实例 ID',
-    `node_id`            VARCHAR(64)  NOT NULL COMMENT '节点 ID',
-    `node_name`          VARCHAR(128)          DEFAULT NULL COMMENT '节点业务名（定义期 name 标签）',
-    `node_type`          VARCHAR(32)  NOT NULL COMMENT '节点类型',
-    `status`             VARCHAR(16)  NOT NULL COMMENT 'running/completed/skipped/failed',
-    `attempt`            INT          NOT NULL DEFAULT 1 COMMENT '第几次重试',
-    `input_data`         TEXT                  DEFAULT NULL COMMENT '节点实际入参（变量解析后）',
-    `output_data`        TEXT                  DEFAULT NULL COMMENT '节点输出',
-    `error_message`      TEXT                  DEFAULT NULL,
-    `branch_taken`       VARCHAR(128)          DEFAULT NULL COMMENT 'condition 命中的分支 id 及表达式原文',
-    `started_at`         DATETIME(6)  NOT NULL,
-    `ended_at`           DATETIME(6)           DEFAULT NULL,
-    `duration_ms`        BIGINT                DEFAULT NULL,
-    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间（实体 FieldFill.INSERT）',
-    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '更新时间（实体 FieldFill.INSERT_UPDATE）',
-    PRIMARY KEY (`id`),
-    KEY `idx_fnl_exec` (`execution_id`),
-    KEY `idx_fnl_exec_node` (`execution_id`, `node_id`, `attempt`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点级执行记录（审计与断点恢复依据）' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_we_workflow_code` (`workflow_code`),
+    CONSTRAINT `fk_we_workflow`
+        FOREIGN KEY (`workflow_id`) REFERENCES `pd_ai_workflows` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='工作流执行记录';
 
 -- ------------------------------------------------------------
 -- 6. 链路追踪
@@ -375,8 +337,7 @@ CREATE TABLE `pd_ai_traces` (
     PRIMARY KEY (`id`),
     KEY `idx_trace_service_name` (`service_name`),
     KEY `idx_trace_created_at` (`created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='追踪记录' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='追踪记录';
 
 CREATE TABLE `pd_ai_spans` (
     `id`                 VARCHAR(36)  NOT NULL,
@@ -395,9 +356,10 @@ CREATE TABLE `pd_ai_spans` (
     KEY `idx_span_trace_id` (`trace_id`),
     KEY `idx_span_parent_id` (`parent_span_id`),
     KEY `idx_span_component` (`component`),
-    KEY `idx_span_status` (`status`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='追踪 Span' DISTRIBUTED BY DUPLICATE(g1,g2);
+    KEY `idx_span_status` (`status`),
+    CONSTRAINT `fk_span_trace`
+        FOREIGN KEY (`trace_id`) REFERENCES `pd_ai_traces` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='追踪 Span';
 
 -- ------------------------------------------------------------
 -- 7. 本体实例（配置填报）
@@ -408,7 +370,6 @@ DROP TABLE IF EXISTS `pd_ai_ontology_version_log`;
 DROP TABLE IF EXISTS `pd_ai_ontology_version`;
 DROP TABLE IF EXISTS `pd_ai_ontology_instance`;
 
--- data_json：KV 数据单 JSON TEXT 列存储（对齐 OntologyInstance 实体）
 CREATE TABLE `pd_ai_ontology_instance` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
     `ontology_code`      VARCHAR(255)          DEFAULT NULL,
@@ -419,10 +380,11 @@ CREATE TABLE `pd_ai_ontology_instance` (
     `data_json`          TEXT                  DEFAULT NULL COMMENT 'KV 数据 JSON 序列化（原 instance_data 子表）',
     PRIMARY KEY (`id`),
     KEY `idx_oi_session_id` (`session_id`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='本体实例主表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='本体实例主表';
 
--- P1-5 版本库表 A：本体资产版本主表（payload 为回滚唯一事实源）
+-- 说明：非全新环境（存量库已有数据）请勿直接执行本脚本，详见 sql/README.md 升级路径。
+
+-- 版本库表 A：本体资产版本主表（payload 为回滚唯一事实源）
 CREATE TABLE `pd_ai_ontology_version` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
     `asset_type`         VARCHAR(32)  NOT NULL COMMENT 'template / message_projection / ops_rules / ttl / abox_snapshot',
@@ -439,13 +401,12 @@ CREATE TABLE `pd_ai_ontology_version` (
     UNIQUE KEY `uk_oav_type_code_version` (`asset_type`, `asset_code`, `version`),
     KEY `idx_oav_asset` (`asset_type`, `asset_code`),
     KEY `idx_oav_status` (`status`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='本体资产版本主表' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='本体资产版本主表';
 
--- P1-5 版本库表 B：动作日志（P3-5 ① 泛化审计一张表）
+-- 版本库表 B：动作日志（审计一张表）
 CREATE TABLE `pd_ai_ontology_version_log` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `version_id`         BIGINT                DEFAULT NULL COMMENT '逻辑外键 pd_ai_ontology_version.id（应用层维护）',
+    `version_id`         BIGINT                DEFAULT NULL COMMENT '外键 pd_ai_ontology_version.id（非版本键控审计可空）',
     `domain`             VARCHAR(32)  NOT NULL DEFAULT 'version' COMMENT '审计域：version / risk / config / batch',
     `trace_id`           VARCHAR(128)          DEFAULT NULL COMMENT 'config 链路 trace_id',
     `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override / config_step / batch_audit',
@@ -458,8 +419,7 @@ CREATE TABLE `pd_ai_ontology_version_log` (
     KEY `idx_ovl_trace_id` (`trace_id`),
     KEY `idx_ovl_action` (`action`),
     KEY `idx_ovl_created` (`created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='本体资产版本动作日志（审计一张表）' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='本体资产版本动作日志（审计一张表）';
 
 -- ------------------------------------------------------------
 -- 8. SWRL / 条件 DSL 规则（遗留营销路径）
@@ -481,8 +441,7 @@ CREATE TABLE `pd_ai_swrl_rules` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `idx_sr_rule_id` (`rule_id`),
     KEY `idx_sr_module` (`module`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='条件DSL规则表（非OWL SWRL）' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='条件DSL规则表（非OWL SWRL）';
 
 -- ------------------------------------------------------------
 -- 9. 产商品运营工单
@@ -511,157 +470,90 @@ CREATE TABLE `pd_ai_ops_work_orders` (
     KEY `idx_owo_status` (`status`),
     KEY `idx_owo_session` (`session_id`),
     KEY `idx_owo_created` (`created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产商品运营处置工单' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='产商品运营处置工单';
 
 -- ------------------------------------------------------------
--- 10. 用户认证
+-- 10. 节点结果存储（产销品加载 V1.6）
 -- ------------------------------------------------------------
-
-DROP TABLE IF EXISTS `pd_ai_users`;
-
-CREATE TABLE `pd_ai_users` (
-    `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
-    `username`           VARCHAR(64)  NOT NULL COMMENT '登录用户名（唯一）',
-    `password_hash`      VARCHAR(128) NOT NULL COMMENT '口令哈希：salt hex + ":" + SHA-256(salt + password) hex',
-    `display_name`       VARCHAR(100)          DEFAULT NULL COMMENT '展示名（界面显示）',
-    `role`               VARCHAR(32)  NOT NULL DEFAULT 'user' COMMENT '角色：user / admin',
-    `is_enabled`         TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '是否启用（0/1）',
-    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
-    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '最后更新时间',
-    `last_login_at`      DATETIME(6)           DEFAULT NULL COMMENT '最近登录时间',
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_users_username` (`username`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表（认证与用户信息存储）' DISTRIBUTED BY DUPLICATE(g1,g2);
-
--- ------------------------------------------------------------
--- 11. 节点结果存储（产销品加载 V1.6 · save_node_result / query_node_result）
---     双键形态：legacy(req_id+node_name) / V1.6(result_key=plan_id 或 EXEC{execution_id}_STAGE{n})
---     同键覆盖：重跑环节仅保留最新一条；result_json 透传存储（≤64KB）
--- ------------------------------------------------------------
-
-DROP TABLE IF EXISTS `pd_ai_node_results`;
 
 CREATE TABLE `pd_ai_node_results` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `record_id`          VARCHAR(64)  NOT NULL COMMENT '记录唯一标识（同键覆盖业务键，唯一）',
-    `req_id`             VARCHAR(128)          DEFAULT NULL COMMENT '遗留键：请求 ID',
-    `node_name`          VARCHAR(64)           DEFAULT NULL COMMENT '遗留键：环节名称（requirement/config/spec/fee/test）',
-    `result_key`         VARCHAR(191)          DEFAULT NULL COMMENT 'V1.6 键：plan_id 或 EXEC{execution_id}_STAGE{n}',
-    `result_json`        TEXT                  DEFAULT NULL COMMENT '结果 JSON 透传存储（≤64KB）',
-    `status`             VARCHAR(32)  NOT NULL DEFAULT 'ok' COMMENT '结果状态：ok 等',
-    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
-    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '最后更新时间',
+    `record_id`          VARCHAR(64)  NOT NULL,
+    `req_id`             VARCHAR(128)          DEFAULT NULL,
+    `node_name`          VARCHAR(64)           DEFAULT NULL,
+    `result_key`         VARCHAR(191)          DEFAULT NULL,
+    `result_json`        TEXT                  DEFAULT NULL,
+    `status`             VARCHAR(32)  NOT NULL DEFAULT 'ok',
+    `created_at`         DATETIME(6)          DEFAULT NULL,
+    `updated_at`         DATETIME(6)          DEFAULT NULL,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_nr_record_id` (`record_id`),
-    KEY `idx_nr_req_node` (`req_id`, `node_name`, `updated_at`),
-    KEY `idx_nr_key` (`result_key`, `updated_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='节点结果存储（V1.6 子工作流环节结果）' DISTRIBUTED BY DUPLICATE(g1,g2);
+    CONSTRAINT `uk_nr_record_id` UNIQUE (`record_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='节点结果存储（V1.6 子工作流环节结果）';
+
+CREATE INDEX `idx_nr_req_node` ON `pd_ai_node_results` (`req_id`, `node_name`, `updated_at`);
+CREATE INDEX `idx_nr_key` ON `pd_ai_node_results` (`result_key`, `updated_at`);
 
 -- ------------------------------------------------------------
--- 12. 商品变更订阅与提醒（方案 §6-C3，对应缺口 C5）
--- ------------------------------------------------------------
-
-DROP TABLE IF EXISTS `pd_ai_change_alerts`;
-DROP TABLE IF EXISTS `pd_ai_product_subscriptions`;
-
-CREATE TABLE `pd_ai_product_subscriptions` (
-    `id`                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
-    `subscriber`         VARCHAR(64)  NOT NULL COMMENT '订阅人登录名（服务端登录态）',
-    `offering_id`        VARCHAR(64)  NOT NULL COMMENT '订阅商品编码',
-    `offering_name`      VARCHAR(255)          DEFAULT NULL COMMENT '订阅时商品名称快照',
-    `status`             VARCHAR(16)  NOT NULL DEFAULT 'active' COMMENT '状态：active/cancelled',
-    `created_at`         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '订阅时间',
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_psub` (`subscriber`, `offering_id`),
-    KEY `idx_psub_offering` (`offering_id`, `status`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品变更订阅登记（C3）' DISTRIBUTED BY DUPLICATE(g1,g2);
-
-CREATE TABLE `pd_ai_change_alerts` (
-    `id`                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
-    `offering_id`        VARCHAR(64)  NOT NULL COMMENT '商品编码',
-    `offering_name`      VARCHAR(255)          DEFAULT NULL COMMENT '商品名称',
-    `change_type`        VARCHAR(32)  NOT NULL COMMENT '变更类型：fee_change/state_change',
-    `old_value`          VARCHAR(255)          DEFAULT NULL COMMENT '变更前值',
-    `new_value`          VARCHAR(255)          DEFAULT NULL COMMENT '变更后值',
-    `detected_version`   VARCHAR(64)           DEFAULT NULL COMMENT '检测来源快照版本',
-    `subscriber`         VARCHAR(64)           DEFAULT NULL COMMENT '提醒接收人（空=广播）',
-    `read_flag`          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否已读（0/1）',
-    `created_at`         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '产生时间',
-    PRIMARY KEY (`id`),
-    KEY `idx_alert_sub` (`subscriber`, `read_flag`, `created_at`),
-    KEY `idx_alert_offering` (`offering_id`, `created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品变更提醒记录（C3）' DISTRIBUTED BY DUPLICATE(g1,g2);
-
--- ------------------------------------------------------------
--- 13. 接口管理（Postman 式请求集合与历史）
+-- 11. 接口管理（Postman 式请求集合与历史）
 -- ------------------------------------------------------------
 
 DROP TABLE IF EXISTS `pd_ai_api_saved_request`;
 
 CREATE TABLE `pd_ai_api_saved_request` (
-    `id`               BIGINT       NOT NULL AUTO_INCREMENT,
-    `owner`            VARCHAR(64)           DEFAULT NULL COMMENT '归属用户登录名（空=共享）',
-    `collection_name`  VARCHAR(100) NOT NULL DEFAULT 'default' COMMENT '集合/分组名称',
-    `name`             VARCHAR(200) NOT NULL COMMENT '请求名称',
-    `method`           VARCHAR(16)  NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
-    `url`              VARCHAR(2000)         DEFAULT NULL COMMENT '请求地址',
-    `headers_json`     TEXT                  DEFAULT NULL COMMENT 'Header 列表 JSON',
-    `params_json`      TEXT                  DEFAULT NULL COMMENT '查询参数列表 JSON',
-    `body`             TEXT                  DEFAULT NULL COMMENT '请求体文本',
-    `body_type`        VARCHAR(16)  NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
-    `description`      VARCHAR(500)          DEFAULT NULL COMMENT '备注说明',
-    `created_at`       DATETIME(6)           DEFAULT NULL,
-    `updated_at`       DATETIME(6)           DEFAULT NULL,
+    `id`               BIGINT        NOT NULL AUTO_INCREMENT,
+    `owner`            VARCHAR(64)            DEFAULT NULL COMMENT '归属用户登录名（空=共享）',
+    `collection_name`  VARCHAR(100)  NOT NULL DEFAULT 'default' COMMENT '集合/分组名称',
+    `name`             VARCHAR(200)  NOT NULL COMMENT '请求名称',
+    `method`           VARCHAR(16)   NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
+    `url`              VARCHAR(2000)          DEFAULT NULL COMMENT '请求地址',
+    `headers_json`     TEXT                   DEFAULT NULL COMMENT 'Header 列表 JSON',
+    `params_json`      TEXT                   DEFAULT NULL COMMENT '查询参数列表 JSON',
+    `body`             TEXT                   DEFAULT NULL COMMENT '请求体文本',
+    `body_type`        VARCHAR(16)   NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
+    `description`      VARCHAR(500)           DEFAULT NULL COMMENT '备注说明',
+    `created_at`       DATETIME(6)            DEFAULT NULL,
+    `updated_at`       DATETIME(6)            DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `idx_asr_owner` (`owner`),
     KEY `idx_asr_collection` (`collection_name`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='接口管理·已保存请求（请求集合条目）' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='接口管理·已保存请求（请求集合条目）';
 
 DROP TABLE IF EXISTS `pd_ai_api_request_history`;
 
 CREATE TABLE `pd_ai_api_request_history` (
-    `id`              BIGINT       NOT NULL AUTO_INCREMENT,
-    `owner`           VARCHAR(64)           DEFAULT NULL COMMENT '发起用户登录名',
-    `method`          VARCHAR(16)  NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
-    `url`             VARCHAR(2000)         DEFAULT NULL COMMENT '请求地址',
-    `headers_json`    TEXT                  DEFAULT NULL COMMENT 'Header 列表 JSON',
-    `params_json`     TEXT                  DEFAULT NULL COMMENT '查询参数列表 JSON',
-    `body`            TEXT                  DEFAULT NULL COMMENT '请求体文本',
-    `body_type`       VARCHAR(16)  NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
-    `status`          INT                   DEFAULT NULL COMMENT 'HTTP 状态码',
-    `success`         TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否成功（2xx）',
-    `duration_ms`     BIGINT                DEFAULT NULL COMMENT '耗时（毫秒）',
-    `response_body`   TEXT                  DEFAULT NULL COMMENT '响应体快照',
-    `error_message`   TEXT                  DEFAULT NULL COMMENT '错误信息',
-    `created_at`      DATETIME(6)           DEFAULT NULL COMMENT '发起时间',
+    `id`              BIGINT        NOT NULL AUTO_INCREMENT,
+    `owner`           VARCHAR(64)            DEFAULT NULL COMMENT '发起用户登录名',
+    `method`          VARCHAR(16)   NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
+    `url`             VARCHAR(2000)          DEFAULT NULL COMMENT '请求地址',
+    `headers_json`    TEXT                   DEFAULT NULL COMMENT 'Header 列表 JSON',
+    `params_json`     TEXT                   DEFAULT NULL COMMENT '查询参数列表 JSON',
+    `body`            TEXT                   DEFAULT NULL COMMENT '请求体文本',
+    `body_type`       VARCHAR(16)   NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
+    `status`          INT                    DEFAULT NULL COMMENT 'HTTP 状态码',
+    `success`         TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '是否成功（2xx）',
+    `duration_ms`     BIGINT                 DEFAULT NULL COMMENT '耗时（毫秒）',
+    `response_body`   TEXT                   DEFAULT NULL COMMENT '响应体快照',
+    `error_message`   TEXT                   DEFAULT NULL COMMENT '错误信息',
+    `created_at`      DATETIME(6)            DEFAULT NULL COMMENT '发起时间',
     PRIMARY KEY (`id`),
     KEY `idx_arh_owner` (`owner`, `created_at`),
     KEY `idx_arh_created` (`created_at`)
-)
-    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='接口管理·请求历史' DISTRIBUTED BY DUPLICATE(g1,g2);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='接口管理·请求历史';
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
--- 表清单（共 27 张）
--- 与 baseline 差异：无外键约束（应用层维护），无 utf8mb4_bin 排序规则
+-- 表清单（共 23 张）
 -- pd_ai_chat_sessions, pd_ai_chat_messages, pd_ai_chat_message_metadata
 -- pd_ai_mcp_tool_definitions, pd_ai_mcp_call_logs, pd_ai_mcp_tool_stats
 -- pd_ai_llm_user_configs
 -- pd_ai_prompts, pd_ai_prompt_versions, pd_ai_prompt_templates
--- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions,
--- pd_ai_workflow_node_logs
+-- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions
 -- pd_ai_traces, pd_ai_spans
 -- pd_ai_ontology_instance
 -- pd_ai_ontology_version, pd_ai_ontology_version_log
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders
--- pd_ai_users
 -- pd_ai_node_results
--- pd_ai_product_subscriptions, pd_ai_change_alerts
 -- pd_ai_api_saved_request, pd_ai_api_request_history（接口管理）
 -- ============================================================

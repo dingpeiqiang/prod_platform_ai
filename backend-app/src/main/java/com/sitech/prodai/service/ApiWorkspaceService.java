@@ -11,7 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -212,9 +214,59 @@ public class ApiWorkspaceService {
         return Map.of("success", true);
     }
 
+    /** 生成某条请求历史的调用详情报文（TXT），供导出下载。 */
+    public byte[] exportHistoryDetail(String owner, Long id) {
+        ApiRequestHistory entity = historyMapper.selectById(id);
+        if (entity == null) {
+            return null;
+        }
+        if (!canAccess(entity.getOwner(), owner)) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(1024);
+        sb.append("========== 接口调用详情 ==========\n");
+        sb.append("记录ID:   ").append(entity.getId()).append('\n');
+        sb.append("时间:     ").append(formatTime(entity.getCreatedAt())).append('\n');
+        sb.append("归属用户: ").append(nullToDash(entity.getOwner())).append('\n');
+        sb.append('\n');
+        sb.append("---- 请求 ----\n");
+        sb.append("方法:     ").append(nullToDash(entity.getMethod())).append('\n');
+        sb.append("URL:      ").append(nullToDash(entity.getUrl())).append('\n');
+        sb.append("请求体类型: ").append(nullToDash(entity.getBodyType())).append('\n');
+        sb.append("Header:   ").append(formatJsonOrDefault(entity.getHeadersJson())).append('\n');
+        sb.append("参数:     ").append(formatJsonOrDefault(entity.getParamsJson())).append('\n');
+        sb.append("请求体:   \n").append(nullToDash(entity.getBody())).append('\n');
+        sb.append('\n');
+        sb.append("---- 响应 ----\n");
+        sb.append("状态码:   ").append(entity.getStatus() == null ? "-" : String.valueOf(entity.getStatus())).append('\n');
+        sb.append("是否成功: ").append(Boolean.TRUE.equals(entity.getSuccess()) ? "成功" : "失败").append('\n');
+        sb.append("耗时:     ").append(entity.getDurationMs() == null ? "-" : entity.getDurationMs() + " ms").append('\n');
+        sb.append("响应体:   \n").append(nullToDash(entity.getResponseBody())).append('\n');
+        if (entity.getErrorMessage() != null && !entity.getErrorMessage().isBlank()) {
+            sb.append("错误信息: \n").append(entity.getErrorMessage()).append('\n');
+        }
+        sb.append("\n================================\n");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
     // ------------------------------------------------------------------
     // 内部方法
     // ------------------------------------------------------------------
+
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private static String formatTime(LocalDateTime time) {
+        return time == null ? "-" : time.format(TIME_FORMAT);
+    }
+
+    private static String nullToDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private static String formatJsonOrDefault(String json) {
+        return json == null || json.isBlank() ? "-" : json;
+    }
+
 
     private void applySavedFields(ApiSavedRequest entity, Map<String, Object> payload) {
         if (payload.containsKey("name")) {
