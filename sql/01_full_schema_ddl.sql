@@ -509,8 +509,8 @@ CREATE TABLE `pd_ai_node_results` (
                                          `result_key`         VARCHAR(191)          DEFAULT NULL,
                                          `result_json`        TEXT                  DEFAULT NULL,
                                          `status`             VARCHAR(32)  NOT NULL DEFAULT 'ok',
-                                         `created_at`         TIMESTAMP(6)          DEFAULT NULL,
-                                         `updated_at`         TIMESTAMP(6)          DEFAULT NULL,
+                                         `created_at`         DATETIME(6)          DEFAULT NULL,
+                                         `updated_at`         DATETIME(6)          DEFAULT NULL,
                                          PRIMARY KEY (`id`),
                                          CONSTRAINT `uk_nr_record_id` UNIQUE (`record_id`)
 )
