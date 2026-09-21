@@ -49,9 +49,7 @@ CREATE TABLE `pd_ai_chat_messages` (
                                        PRIMARY KEY (`id`),
                                        UNIQUE KEY `idx_cm_message_id` (`message_id`),
                                        KEY `idx_cm_session_id` (`session_id`),
-                                       KEY `idx_cm_created_at` (`created_at`),
-                                       CONSTRAINT `fk_cm_session`
-                                           FOREIGN KEY (`session_id`) REFERENCES `pd_ai_chat_sessions` (`session_id`) ON DELETE CASCADE
+                                       KEY `idx_cm_created_at` (`created_at`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='聊天消息表' DISTRIBUTED BY DUPLICATE(g1,g2);
 
@@ -64,9 +62,7 @@ CREATE TABLE `pd_ai_chat_message_metadata` (
                                                PRIMARY KEY (`id`),
                                                UNIQUE KEY `uq_message_key` (`message_id`, `meta_key`),
                                                KEY `idx_cmm_message_id` (`message_id`),
-                                               KEY `idx_cmm_meta_key` (`meta_key`),
-                                               CONSTRAINT `fk_cmm_message`
-                                                   FOREIGN KEY (`message_id`) REFERENCES `pd_ai_chat_messages` (`message_id`) ON DELETE CASCADE
+                                               KEY `idx_cmm_meta_key` (`meta_key`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='消息 KV 扩展表' DISTRIBUTED BY DUPLICATE(g1,g2);
 
@@ -222,9 +218,7 @@ CREATE TABLE `pd_ai_prompt_versions` (
                                          `created_by`         VARCHAR(100)          DEFAULT NULL,
                                          `created_at`         DATETIME(6)           DEFAULT NULL,
                                          PRIMARY KEY (`id`),
-                                         KEY `idx_pv_prompt_id` (`prompt_id`),
-                                         CONSTRAINT `fk_pv_prompt`
-                                             FOREIGN KEY (`prompt_id`) REFERENCES `pd_ai_prompts` (`id`) ON DELETE CASCADE
+                                         KEY `idx_pv_prompt_id` (`prompt_id`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='提示词版本历史' DISTRIBUTED BY DUPLICATE(g1,g2);
 
@@ -295,9 +289,7 @@ CREATE TABLE `pd_ai_workflow_history` (
                                           `created_at`         DATETIME(6)           DEFAULT NULL,
                                           PRIMARY KEY (`id`),
                                           KEY `idx_wh_workflow_id` (`workflow_id`),
-                                          KEY `idx_wh_workflow_code` (`workflow_code`),
-                                          CONSTRAINT `fk_wh_workflow`
-                                              FOREIGN KEY (`workflow_id`) REFERENCES `pd_ai_workflows` (`id`) ON DELETE CASCADE
+                                          KEY `idx_wh_workflow_code` (`workflow_code`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='工作流版本历史' DISTRIBUTED BY DUPLICATE(g1,g2);
 
@@ -322,9 +314,7 @@ CREATE TABLE `pd_ai_workflow_executions` (
                                              PRIMARY KEY (`id`),
                                              UNIQUE KEY `idx_we_execution_id` (`execution_id`),
                                              KEY `idx_we_workflow_id` (`workflow_id`),
-                                             KEY `idx_we_workflow_code` (`workflow_code`),
-                                             CONSTRAINT `fk_we_workflow`
-                                                 FOREIGN KEY (`workflow_id`) REFERENCES `pd_ai_workflows` (`id`) ON DELETE CASCADE
+                                             KEY `idx_we_workflow_code` (`workflow_code`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='工作流执行记录' DISTRIBUTED BY DUPLICATE(g1,g2);
 
@@ -366,9 +356,7 @@ CREATE TABLE `pd_ai_spans` (
                                KEY `idx_span_trace_id` (`trace_id`),
                                KEY `idx_span_parent_id` (`parent_span_id`),
                                KEY `idx_span_component` (`component`),
-                               KEY `idx_span_status` (`status`),
-                               CONSTRAINT `fk_span_trace`
-                                   FOREIGN KEY (`trace_id`) REFERENCES `pd_ai_traces` (`id`) ON DELETE CASCADE
+                               KEY `idx_span_status` (`status`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='追踪 Span' DISTRIBUTED BY DUPLICATE(g1,g2);
 
