@@ -493,6 +493,53 @@ CREATE TABLE `pd_ai_node_results` (
 CREATE INDEX `idx_nr_req_node` ON `pd_ai_node_results` (`req_id`, `node_name`, `updated_at`);
 CREATE INDEX `idx_nr_key` ON `pd_ai_node_results` (`result_key`, `updated_at`);
 
+-- ------------------------------------------------------------
+-- 11. 接口管理（Postman 式请求集合与历史）
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `pd_ai_api_saved_request`;
+
+CREATE TABLE `pd_ai_api_saved_request` (
+    `id`               BIGINT        NOT NULL AUTO_INCREMENT,
+    `owner`            VARCHAR(64)            DEFAULT NULL COMMENT '归属用户登录名（空=共享）',
+    `collection_name`  VARCHAR(100)  NOT NULL DEFAULT 'default' COMMENT '集合/分组名称',
+    `name`             VARCHAR(200)  NOT NULL COMMENT '请求名称',
+    `method`           VARCHAR(16)   NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
+    `url`              VARCHAR(2000)          DEFAULT NULL COMMENT '请求地址',
+    `headers_json`     TEXT                   DEFAULT NULL COMMENT 'Header 列表 JSON',
+    `params_json`      TEXT                   DEFAULT NULL COMMENT '查询参数列表 JSON',
+    `body`             TEXT                   DEFAULT NULL COMMENT '请求体文本',
+    `body_type`        VARCHAR(16)   NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
+    `description`      VARCHAR(500)           DEFAULT NULL COMMENT '备注说明',
+    `created_at`       DATETIME(6)            DEFAULT NULL,
+    `updated_at`       DATETIME(6)            DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_asr_owner` (`owner`),
+    KEY `idx_asr_collection` (`collection_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='接口管理·已保存请求（请求集合条目）';
+
+DROP TABLE IF EXISTS `pd_ai_api_request_history`;
+
+CREATE TABLE `pd_ai_api_request_history` (
+    `id`              BIGINT        NOT NULL AUTO_INCREMENT,
+    `owner`           VARCHAR(64)            DEFAULT NULL COMMENT '发起用户登录名',
+    `method`          VARCHAR(16)   NOT NULL DEFAULT 'GET' COMMENT 'HTTP 方法',
+    `url`             VARCHAR(2000)          DEFAULT NULL COMMENT '请求地址',
+    `headers_json`    TEXT                   DEFAULT NULL COMMENT 'Header 列表 JSON',
+    `params_json`     TEXT                   DEFAULT NULL COMMENT '查询参数列表 JSON',
+    `body`            TEXT                   DEFAULT NULL COMMENT '请求体文本',
+    `body_type`       VARCHAR(16)   NOT NULL DEFAULT 'none' COMMENT '请求体类型：none/json/text/form',
+    `status`          INT                    DEFAULT NULL COMMENT 'HTTP 状态码',
+    `success`         TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '是否成功（2xx）',
+    `duration_ms`     BIGINT                 DEFAULT NULL COMMENT '耗时（毫秒）',
+    `response_body`   TEXT                   DEFAULT NULL COMMENT '响应体快照',
+    `error_message`   TEXT                   DEFAULT NULL COMMENT '错误信息',
+    `created_at`      DATETIME(6)            DEFAULT NULL COMMENT '发起时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_arh_owner` (`owner`, `created_at`),
+    KEY `idx_arh_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='接口管理·请求历史';
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
@@ -508,4 +555,5 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders
 -- pd_ai_node_results
+-- pd_ai_api_saved_request, pd_ai_api_request_history（接口管理）
 -- ============================================================

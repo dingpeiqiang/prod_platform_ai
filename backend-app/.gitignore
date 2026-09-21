@@ -6,4 +6,6 @@ target/
 .settings/
 .vscode/
 *.log
+*.err
+*.pid
 .DS_Store

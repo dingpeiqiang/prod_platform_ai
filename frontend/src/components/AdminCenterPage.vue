@@ -59,7 +59,7 @@ const entries = [
   {
     key: 'api-docs',
     title: '接口管理',
-    desc: '项目 API 接口文档：自动扫描生成 OpenAPI 文档，在线查看与调试。',
+    desc: '项目 API 接口文档：自动生成 OpenAPI 文档，在线查看、调试，支持请求集合与历史。',
     color: '#7c3aed',
     bg: '#f5f3ff',
     route: '/api-docs',

@@ -11,6 +11,10 @@
 --   3) 按依赖顺序显式 DROP（替代 FOREIGN_KEY_CHECKS=0 的乱序删除）
 --   4) 移除 COLLATE=utf8mb4_bin（部分 GoldenDB 版本校验字符集组合受限，
 --      统一使用库默认 utf8mb4_general_ci， uniqueness 语义不变）
+--   5) 对齐 backend-app H2 schema（schema-h2.sql）与 JPA 实体最新形态：
+--      补齐 workflow 引擎扩展列 / node_logs / users / node_results /
+--      product_subscriptions / change_alerts 共 5 张表与 5 个扩展列
+--   6) message_metadata 的 `value` 列沿用反引号转义（保留字，实体侧映射 "value"）
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -63,7 +67,7 @@ CREATE TABLE `pd_ai_chat_message_metadata` (
     `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
     `message_id`         VARCHAR(64)  NOT NULL COMMENT '所属消息ID',
     `meta_key`           VARCHAR(100) NOT NULL COMMENT '扩展字段名',
-    `value`              TEXT                  DEFAULT NULL COMMENT '扩展字段值',
+    `value`              TEXT                  DEFAULT NULL COMMENT '扩展字段值（VALUE为保留字，反引号转义）',
     `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_message_key` (`message_id`, `meta_key`),
@@ -250,6 +254,7 @@ CREATE TABLE `pd_ai_prompt_templates` (
 -- 5. 工作流
 -- ------------------------------------------------------------
 
+DROP TABLE IF EXISTS `pd_ai_workflow_node_logs`;
 DROP TABLE IF EXISTS `pd_ai_workflow_executions`;
 DROP TABLE IF EXISTS `pd_ai_workflow_history`;
 DROP TABLE IF EXISTS `pd_ai_workflows`;
@@ -315,6 +320,11 @@ CREATE TABLE `pd_ai_workflow_executions` (
     `triggered_by`       VARCHAR(100)          DEFAULT NULL,
     `trigger_type`       VARCHAR(20)           DEFAULT 'manual',
     `notes`              TEXT                  DEFAULT NULL,
+    `context_data`       TEXT                  DEFAULT NULL COMMENT '运行上下文（各节点输出合并，恢复执行的数据源）',
+    `current_node_id`    VARCHAR(64)           DEFAULT NULL COMMENT '当前推进到的节点',
+    `resume_token`       VARCHAR(64)           DEFAULT NULL COMMENT '人工节点恢复令牌（一次有效）',
+    `status_version`     INT          NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+    `workflow_version`   INT                   DEFAULT NULL COMMENT '执行时锁定的流程定义版本（回滚安全）',
     `created_at`         DATETIME(6)           DEFAULT NULL,
     `updated_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
@@ -323,6 +333,29 @@ CREATE TABLE `pd_ai_workflow_executions` (
     KEY `idx_we_workflow_code` (`workflow_code`)
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工作流执行记录' DISTRIBUTED BY DUPLICATE(g1,g2);
+
+CREATE TABLE `pd_ai_workflow_node_logs` (
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
+    `execution_id`       VARCHAR(100) NOT NULL COMMENT '执行实例 ID',
+    `node_id`            VARCHAR(64)  NOT NULL COMMENT '节点 ID',
+    `node_name`          VARCHAR(128)          DEFAULT NULL COMMENT '节点业务名（定义期 name 标签）',
+    `node_type`          VARCHAR(32)  NOT NULL COMMENT '节点类型',
+    `status`             VARCHAR(16)  NOT NULL COMMENT 'running/completed/skipped/failed',
+    `attempt`            INT          NOT NULL DEFAULT 1 COMMENT '第几次重试',
+    `input_data`         TEXT                  DEFAULT NULL COMMENT '节点实际入参（变量解析后）',
+    `output_data`        TEXT                  DEFAULT NULL COMMENT '节点输出',
+    `error_message`      TEXT                  DEFAULT NULL,
+    `branch_taken`       VARCHAR(128)          DEFAULT NULL COMMENT 'condition 命中的分支 id 及表达式原文',
+    `started_at`         DATETIME(6)  NOT NULL,
+    `ended_at`           DATETIME(6)           DEFAULT NULL,
+    `duration_ms`        BIGINT                DEFAULT NULL,
+    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间（实体 FieldFill.INSERT）',
+    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '更新时间（实体 FieldFill.INSERT_UPDATE）',
+    PRIMARY KEY (`id`),
+    KEY `idx_fnl_exec` (`execution_id`),
+    KEY `idx_fnl_exec_node` (`execution_id`, `node_id`, `attempt`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流程节点级执行记录（审计与断点恢复依据）' DISTRIBUTED BY DUPLICATE(g1,g2);
 
 -- ------------------------------------------------------------
 -- 6. 链路追踪
@@ -481,17 +514,104 @@ CREATE TABLE `pd_ai_ops_work_orders` (
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='产商品运营处置工单' DISTRIBUTED BY DUPLICATE(g1,g2);
 
+-- ------------------------------------------------------------
+-- 10. 用户认证
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `pd_ai_users`;
+
+CREATE TABLE `pd_ai_users` (
+    `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `username`           VARCHAR(64)  NOT NULL COMMENT '登录用户名（唯一）',
+    `password_hash`      VARCHAR(128) NOT NULL COMMENT '口令哈希：salt hex + ":" + SHA-256(salt + password) hex',
+    `display_name`       VARCHAR(100)          DEFAULT NULL COMMENT '展示名（界面显示）',
+    `role`               VARCHAR(32)  NOT NULL DEFAULT 'user' COMMENT '角色：user / admin',
+    `is_enabled`         TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '是否启用（0/1）',
+    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
+    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '最后更新时间',
+    `last_login_at`      DATETIME(6)           DEFAULT NULL COMMENT '最近登录时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_users_username` (`username`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表（认证与用户信息存储）' DISTRIBUTED BY DUPLICATE(g1,g2);
+
+-- ------------------------------------------------------------
+-- 11. 节点结果存储（产销品加载 V1.6 · save_node_result / query_node_result）
+--     双键形态：legacy(req_id+node_name) / V1.6(result_key=plan_id 或 EXEC{execution_id}_STAGE{n})
+--     同键覆盖：重跑环节仅保留最新一条；result_json 透传存储（≤64KB）
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `pd_ai_node_results`;
+
+CREATE TABLE `pd_ai_node_results` (
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
+    `record_id`          VARCHAR(64)  NOT NULL COMMENT '记录唯一标识（同键覆盖业务键，唯一）',
+    `req_id`             VARCHAR(128)          DEFAULT NULL COMMENT '遗留键：请求 ID',
+    `node_name`          VARCHAR(64)           DEFAULT NULL COMMENT '遗留键：环节名称（requirement/config/spec/fee/test）',
+    `result_key`         VARCHAR(191)          DEFAULT NULL COMMENT 'V1.6 键：plan_id 或 EXEC{execution_id}_STAGE{n}',
+    `result_json`        TEXT                  DEFAULT NULL COMMENT '结果 JSON 透传存储（≤64KB）',
+    `status`             VARCHAR(32)  NOT NULL DEFAULT 'ok' COMMENT '结果状态：ok 等',
+    `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
+    `updated_at`         DATETIME(6)           DEFAULT NULL COMMENT '最后更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_nr_record_id` (`record_id`),
+    KEY `idx_nr_req_node` (`req_id`, `node_name`, `updated_at`),
+    KEY `idx_nr_key` (`result_key`, `updated_at`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='节点结果存储（V1.6 子工作流环节结果）' DISTRIBUTED BY DUPLICATE(g1,g2);
+
+-- ------------------------------------------------------------
+-- 12. 商品变更订阅与提醒（方案 §6-C3，对应缺口 C5）
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `pd_ai_change_alerts`;
+DROP TABLE IF EXISTS `pd_ai_product_subscriptions`;
+
+CREATE TABLE `pd_ai_product_subscriptions` (
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `subscriber`         VARCHAR(64)  NOT NULL COMMENT '订阅人登录名（服务端登录态）',
+    `offering_id`        VARCHAR(64)  NOT NULL COMMENT '订阅商品编码',
+    `offering_name`      VARCHAR(255)          DEFAULT NULL COMMENT '订阅时商品名称快照',
+    `status`             VARCHAR(16)  NOT NULL DEFAULT 'active' COMMENT '状态：active/cancelled',
+    `created_at`         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '订阅时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_psub` (`subscriber`, `offering_id`),
+    KEY `idx_psub_offering` (`offering_id`, `status`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品变更订阅登记（C3）' DISTRIBUTED BY DUPLICATE(g1,g2);
+
+CREATE TABLE `pd_ai_change_alerts` (
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    `offering_id`        VARCHAR(64)  NOT NULL COMMENT '商品编码',
+    `offering_name`      VARCHAR(255)          DEFAULT NULL COMMENT '商品名称',
+    `change_type`        VARCHAR(32)  NOT NULL COMMENT '变更类型：fee_change/state_change',
+    `old_value`          VARCHAR(255)          DEFAULT NULL COMMENT '变更前值',
+    `new_value`          VARCHAR(255)          DEFAULT NULL COMMENT '变更后值',
+    `detected_version`   VARCHAR(64)           DEFAULT NULL COMMENT '检测来源快照版本',
+    `subscriber`         VARCHAR(64)           DEFAULT NULL COMMENT '提醒接收人（空=广播）',
+    `read_flag`          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否已读（0/1）',
+    `created_at`         DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '产生时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_alert_sub` (`subscriber`, `read_flag`, `created_at`),
+    KEY `idx_alert_offering` (`offering_id`, `created_at`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品变更提醒记录（C3）' DISTRIBUTED BY DUPLICATE(g1,g2);
+
 -- ============================================================
--- 表清单（共 21 张）
+-- 表清单（共 25 张）
 -- 与 baseline 差异：无外键约束（应用层维护），无 utf8mb4_bin 排序规则
 -- pd_ai_chat_sessions, pd_ai_chat_messages, pd_ai_chat_message_metadata
 -- pd_ai_mcp_tool_definitions, pd_ai_mcp_call_logs, pd_ai_mcp_tool_stats
 -- pd_ai_llm_user_configs
 -- pd_ai_prompts, pd_ai_prompt_versions, pd_ai_prompt_templates
--- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions
+-- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions,
+-- pd_ai_workflow_node_logs
 -- pd_ai_traces, pd_ai_spans
 -- pd_ai_ontology_instance
 -- pd_ai_ontology_version, pd_ai_ontology_version_log
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders
+-- pd_ai_users
+-- pd_ai_node_results
+-- pd_ai_product_subscriptions, pd_ai_change_alerts
 -- ============================================================

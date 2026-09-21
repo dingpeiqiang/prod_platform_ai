@@ -588,6 +588,46 @@ CREATE TABLE IF NOT EXISTS pd_ai_change_alerts (
 CREATE INDEX IF NOT EXISTS idx_alert_sub ON pd_ai_change_alerts (subscriber, read_flag, created_at);
 CREATE INDEX IF NOT EXISTS idx_alert_offering ON pd_ai_change_alerts (offering_id, created_at);
 
+-- ------------------------------------------------------------
+-- 26. 接口管理（Postman 式请求集合与历史）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pd_ai_api_saved_request (
+    id               BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    owner            VARCHAR(64)   DEFAULT NULL,
+    collection_name  VARCHAR(100)  NOT NULL DEFAULT 'default',
+    name             VARCHAR(200)  NOT NULL,
+    method           VARCHAR(16)   NOT NULL DEFAULT 'GET',
+    url              VARCHAR(2000) DEFAULT NULL,
+    headers_json     TEXT          DEFAULT NULL,
+    params_json      TEXT          DEFAULT NULL,
+    body             TEXT          DEFAULT NULL,
+    body_type        VARCHAR(16)   NOT NULL DEFAULT 'none',
+    description      VARCHAR(500)  DEFAULT NULL,
+    created_at       TIMESTAMP(6)  DEFAULT NULL,
+    updated_at       TIMESTAMP(6)  DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_asr_owner ON pd_ai_api_saved_request (owner);
+CREATE INDEX IF NOT EXISTS idx_asr_collection ON pd_ai_api_saved_request (collection_name);
+
+CREATE TABLE IF NOT EXISTS pd_ai_api_request_history (
+    id              BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    owner           VARCHAR(64)   DEFAULT NULL,
+    method          VARCHAR(16)   NOT NULL DEFAULT 'GET',
+    url             VARCHAR(2000) DEFAULT NULL,
+    headers_json    TEXT          DEFAULT NULL,
+    params_json     TEXT          DEFAULT NULL,
+    body            TEXT          DEFAULT NULL,
+    body_type       VARCHAR(16)   NOT NULL DEFAULT 'none',
+    status          INT           DEFAULT NULL,
+    success         BOOLEAN       NOT NULL DEFAULT FALSE,
+    duration_ms     BIGINT        DEFAULT NULL,
+    response_body   TEXT          DEFAULT NULL,
+    error_message   TEXT          DEFAULT NULL,
+    created_at      TIMESTAMP(6)  DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_arh_owner ON pd_ai_api_request_history (owner, created_at);
+CREATE INDEX IF NOT EXISTS idx_arh_created ON pd_ai_api_request_history (created_at);
+
 -- ============================================================
 -- 26. 表与字段描述（COMMENT ON）
 --     MySQL 行内 COMMENT 子句在 H2 MODE=MySQL 下不支持，统一改用
@@ -1014,5 +1054,40 @@ COMMENT ON COLUMN pd_ai_change_alerts.detected_version IS '检测来源快照版
 COMMENT ON COLUMN pd_ai_change_alerts.subscriber IS '提醒接收人（空=广播）';
 COMMENT ON COLUMN pd_ai_change_alerts.read_flag IS '是否已读（0/1）';
 COMMENT ON COLUMN pd_ai_change_alerts.created_at IS '产生时间';
+
+-- ------------------------------------------------------------
+-- 26. 接口管理（Postman 式请求集合与历史）
+-- ------------------------------------------------------------
+COMMENT ON TABLE pd_ai_api_saved_request IS '接口管理·已保存请求（请求集合条目）';
+COMMENT ON COLUMN pd_ai_api_saved_request.id IS '自增主键';
+COMMENT ON COLUMN pd_ai_api_saved_request.owner IS '归属用户登录名（空=共享）';
+COMMENT ON COLUMN pd_ai_api_saved_request.collection_name IS '集合/分组名称';
+COMMENT ON COLUMN pd_ai_api_saved_request.name IS '请求名称';
+COMMENT ON COLUMN pd_ai_api_saved_request.method IS 'HTTP 方法';
+COMMENT ON COLUMN pd_ai_api_saved_request.url IS '请求地址';
+COMMENT ON COLUMN pd_ai_api_saved_request.headers_json IS 'Header 列表 JSON';
+COMMENT ON COLUMN pd_ai_api_saved_request.params_json IS '查询参数列表 JSON';
+COMMENT ON COLUMN pd_ai_api_saved_request.body IS '请求体文本';
+COMMENT ON COLUMN pd_ai_api_saved_request.body_type IS '请求体类型：none/json/text/form';
+COMMENT ON COLUMN pd_ai_api_saved_request.description IS '备注说明';
+COMMENT ON COLUMN pd_ai_api_saved_request.created_at IS '创建时间';
+COMMENT ON COLUMN pd_ai_api_saved_request.updated_at IS '最后更新时间';
+
+COMMENT ON TABLE pd_ai_api_request_history IS '接口管理·请求历史';
+COMMENT ON COLUMN pd_ai_api_request_history.id IS '自增主键';
+COMMENT ON COLUMN pd_ai_api_request_history.owner IS '发起用户登录名';
+COMMENT ON COLUMN pd_ai_api_request_history.method IS 'HTTP 方法';
+COMMENT ON COLUMN pd_ai_api_request_history.url IS '请求地址';
+COMMENT ON COLUMN pd_ai_api_request_history.headers_json IS 'Header 列表 JSON';
+COMMENT ON COLUMN pd_ai_api_request_history.params_json IS '查询参数列表 JSON';
+COMMENT ON COLUMN pd_ai_api_request_history.body IS '请求体文本';
+COMMENT ON COLUMN pd_ai_api_request_history.body_type IS '请求体类型：none/json/text/form';
+COMMENT ON COLUMN pd_ai_api_request_history.status IS 'HTTP 状态码';
+COMMENT ON COLUMN pd_ai_api_request_history.success IS '是否成功（2xx，0/1）';
+COMMENT ON COLUMN pd_ai_api_request_history.duration_ms IS '耗时（毫秒）';
+COMMENT ON COLUMN pd_ai_api_request_history.response_body IS '响应体快照';
+COMMENT ON COLUMN pd_ai_api_request_history.error_message IS '错误信息';
+COMMENT ON COLUMN pd_ai_api_request_history.created_at IS '发起时间';
+
 
 

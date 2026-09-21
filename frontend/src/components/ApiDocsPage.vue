@@ -16,6 +16,22 @@
         <div class="side-stats">
           <span>{{ groups.length }}</span> 个模块 · <span>{{ totalApis }}</span> 个接口
         </div>
+        <button
+          type="button"
+          class="builder-entry"
+          :class="{ active: showBuilder }"
+          @click="openBuilder"
+        >
+          <span class="builder-entry-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </span>
+          <span class="builder-entry-text">
+            <span class="builder-entry-title">接口调试器</span>
+            <span class="builder-entry-desc">自由构造请求 · 类似 Postman</span>
+          </span>
+        </button>
         <nav class="side-tree">
           <div v-for="group in groups" :key="group.tag" class="tree-group">
             <button type="button" class="group-header" @click="toggleGroup(group.tag)">
@@ -52,7 +68,27 @@
 
       <!-- 右侧：接口详情 -->
       <main class="detail-panel">
-        <template v-if="selected">
+        <!-- 独立调试器 -->
+        <template v-if="showBuilder">
+          <div class="builder-panel-head">
+            <div class="builder-panel-title">
+              <span class="builder-panel-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+              </span>
+              <div>
+                <h2 class="builder-panel-name">接口调试器</h2>
+                <p class="builder-panel-desc">自由构造并发送 HTTP 请求，支持集合保存、历史记录与 cURL 导入导出</p>
+              </div>
+            </div>
+          </div>
+          <div class="builder-panel-body">
+            <ApiRequestBuilder ref="builderRef" />
+          </div>
+        </template>
+
+        <template v-else-if="selected">
           <header class="detail-header">
             <div class="detail-title-row">
               <span class="method-badge large" :class="selected.method.toLowerCase()">{{ selected.method }}</span>
@@ -70,6 +106,12 @@
                   <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>
                 在线测试
+              </button>
+              <button type="button" class="action-btn" @click="importToBuilder">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                导入调试器
               </button>
               <div class="tab-switch">
                 <button
@@ -144,6 +186,9 @@
           </div>
           <p class="placeholder-title">{{ loading ? '正在加载接口文档…' : '从左侧选择一个接口' }}</p>
           <p class="placeholder-desc">支持查看参数文档、Schema 结构与在线调试</p>
+          <button type="button" class="placeholder-builder-btn" @click="openBuilder">
+            打开接口调试器
+          </button>
         </div>
       </main>
     </div>
@@ -155,6 +200,7 @@ import { ref, computed, reactive, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
 import AdminNavBar from './AdminNavBar.vue'
 import ApiTester from './api-docs/ApiTester.vue'
+import ApiRequestBuilder from './api-docs/ApiRequestBuilder.vue'
 
 const router = useRouter()
 
@@ -224,6 +270,8 @@ const keyword = ref('')
 const specs = ref(null)
 const activeTab = ref('doc')
 const selected = ref(null)
+const showBuilder = ref(false)
+const builderRef = ref(null)
 const collapsedGroups = reactive(new Set())
 
 const schemas = computed(() => specs.value?.components?.schemas || {})
@@ -296,7 +344,69 @@ function toggleGroup(tag) {
 
 function selectApi(api) {
   selected.value = api
+  showBuilder.value = false
   activeTab.value = 'doc'
+}
+
+function openBuilder() {
+  showBuilder.value = true
+  selected.value = null
+}
+
+/** 把当前选中的 OpenAPI 接口导入调试器。 */
+function importToBuilder() {
+  if (!selected.value) return
+  const api = selected.value
+  const url = `${window.location.origin}${api.path}`
+  const headers = []
+  const params = []
+  for (const p of api.parameters || []) {
+    if (p.in === 'header') headers.push({ name: p.name, value: '', enabled: !!p.required })
+    else if (p.in === 'query') params.push({ name: p.name, value: '', enabled: !!p.required })
+  }
+  let body = ''
+  let bodyType = 'none'
+  if (api.requestBody) {
+    bodyType = 'json'
+    body = JSON.stringify(buildBodyExample(api.requestBody, schemas.value), null, 2)
+  }
+  showBuilder.value = true
+  selected.value = null
+  requestAnimationFrame(() => {
+    builderRef.value?.applyRequest({
+      method: api.method,
+      url,
+      headers,
+      params,
+      body,
+      body_type: bodyType,
+    })
+  })
+}
+
+/** 依据 OpenAPI schema 生成请求体示例。 */
+function buildBodyExample(schema, schemaMap, seen = {}, depth = 0) {
+  if (!schema || depth > 6) return null
+  if (schema.example !== undefined) return schema.example
+  if (schema.default !== undefined) return schema.default
+  if (schema.$ref) {
+    const name = schema.$ref.split('/').pop()
+    if (seen[name]) return null
+    const def = schemaMap[name]
+    return def ? buildBodyExample(def, schemaMap, { ...seen, [name]: true }, depth) : null
+  }
+  if (schema.type === 'object' || schema.properties) {
+    const obj = {}
+    for (const [k, v] of Object.entries(schema.properties || {})) {
+      obj[k] = buildBodyExample(v, schemaMap, seen, depth + 1)
+    }
+    return obj
+  }
+  if (schema.type === 'array') return [buildBodyExample(schema.items, schemaMap, seen, depth + 1)]
+  if (schema.type === 'integer' || schema.type === 'number') return 0
+  if (schema.type === 'boolean') return false
+  if (schema.type === 'string') return schema.enum?.[0] ?? ''
+  return null
 }
 
 onMounted(async () => {
@@ -360,6 +470,40 @@ onMounted(async () => {
   color: #94a3b8;
 }
 .side-stats span { color: #6d28d9; font-weight: 700; }
+
+/* ---------- 调试器入口 ---------- */
+.builder-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px 8px;
+  padding: 10px 12px;
+  border: 1px solid #ddd6fe;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.builder-entry:hover { border-color: #a78bfa; box-shadow: 0 3px 10px rgba(124, 46, 217, 0.12); }
+.builder-entry.active { border-color: #7c3aed; background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+.builder-entry-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #fff;
+  color: #7c3aed;
+}
+.builder-entry.active .builder-entry-icon { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.builder-entry-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.builder-entry-title { font-size: 13px; font-weight: 700; color: #5b21b6; }
+.builder-entry.active .builder-entry-title { color: #fff; }
+.builder-entry-desc { font-size: 11px; color: #7c3aed; opacity: 0.75; }
+.builder-entry.active .builder-entry-desc { color: #ede9fe; opacity: 0.9; }
 .side-tree {
   flex: 1;
   min-height: 0;
@@ -450,6 +594,28 @@ onMounted(async () => {
   min-width: 0;
   overflow-y: auto;
 }
+
+/* ---------- 独立调试器面板 ---------- */
+.builder-panel-head {
+  padding: 22px 32px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+.builder-panel-title { display: flex; align-items: center; gap: 12px; }
+.builder-panel-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+}
+.builder-panel-name { margin: 0; font-size: 17px; font-weight: 700; color: #0f172a; }
+.builder-panel-desc { margin: 3px 0 0; font-size: 12.5px; color: #64748b; }
+.builder-panel-body { padding: 22px 32px 40px; }
 .detail-header {
   padding: 24px 32px 0;
 }
@@ -628,6 +794,19 @@ onMounted(async () => {
 .placeholder-icon { color: #cbd5e1; }
 .placeholder-title { margin: 8px 0 0; font-size: 15px; font-weight: 600; color: #64748b; }
 .placeholder-desc { margin: 0; font-size: 12.5px; }
+.placeholder-builder-btn {
+  margin-top: 16px;
+  padding: 9px 22px;
+  border: 0;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.placeholder-builder-btn:hover { box-shadow: 0 4px 14px rgba(124, 46, 217, 0.35); transform: translateY(-1px); }
 
 /* 覆盖 scoped 限制，让递归子组件样式生效 */
 :deep(.param-table.nested) { margin-top: 6px; }
