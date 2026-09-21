@@ -201,11 +201,15 @@
 
         <!-- 历史 -->
         <template v-else>
+          <div class="side-search">
+            <input v-model="historyKeyword" type="text" class="search-input" placeholder="搜索历史（URL/方法）" />
+          </div>
           <div class="side-toolbar">
             <span class="side-toolbar-text">{{ history.length }} 条记录 · {{ historyGroups.length }} 个接口</span>
             <button type="button" class="mini-btn" :disabled="!history.length" @click="clearAllHistory">清空</button>
           </div>
           <div v-if="!history.length" class="side-empty">暂无请求历史</div>
+          <div v-else-if="!historyGroups.length" class="side-empty">未找到匹配的历史记录</div>
           <div v-for="group in historyGroups" :key="group.endpoint" class="saved-group">
             <div class="saved-group-head hist-group-head" @click="toggleHistoryGroup(group.endpoint)">
               <span class="hist-caret" :class="{ open: isHistoryGroupOpen(group.endpoint) }">▸</span>
@@ -331,6 +335,7 @@ const savedList = ref([])
 const history = ref([])
 const collections = ref([])
 const savedKeyword = ref('')
+const historyKeyword = ref('')
 
 const saveDialog = reactive({
   visible: false,
@@ -384,10 +389,17 @@ function historyTimeLabel(createdAt) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/** 请求历史按接口路径分组（倒序加载，组内保持原顺序）。 */
+/** 请求历史按接口路径分组（支持按 url/方法模糊过滤，倒序加载，组内保持原顺序）。 */
 const historyGroups = computed(() => {
+  const kw = historyKeyword.value.trim().toLowerCase()
+  const matches = (item) => {
+    if (!kw) return true
+    if ((item.method || '').toLowerCase().includes(kw)) return true
+    return (item.url || '').toLowerCase().includes(kw)
+  }
   const map = new Map()
   for (const raw of history.value) {
+    if (!matches(raw)) continue
     const item = { ...raw, timeLabel: historyTimeLabel(raw.created_at) }
     const endpoint = normalizeEndpoint(item.url) || '(未知地址)'
     if (!map.has(endpoint)) map.set(endpoint, [])
