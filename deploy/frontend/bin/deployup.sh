@@ -92,5 +92,6 @@ echo "[DEPLOY] 原子切换到 → ${FINAL_DIR}"
 mv "${NEW_DIR}" "${FINAL_DIR}"
 
 echo "[OK] 前端静态资源更新完成。"
-echo "     站点配置未改动（prod-ai.conf 保持现状）"
-echo "     重载 Nginx 生效: <Nginx_BIN> -s reload（或 bash bin/stop.sh && bash bin/start.sh）"
+echo "     Nginx 站点配置由 bin/start.sh 自动加载包内 conf/prod-ai.conf 并修正 root 路径，"
+echo "     无需再手动拷贝到 /etc/nginx/conf.d。"
+echo "     如需生效: bash bin/stop.sh && bash bin/start.sh"

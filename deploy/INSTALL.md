@@ -137,9 +137,7 @@ cd mysql && bash install_mysql.sh && cd ..
 # 4) 启动后端
 cd prod-ai-backend && bash bin/start.sh start && cd ..
 
-# 5) 安装站点配置并启动 Nginx
-cp prod-ai-frontend/conf/prod-ai.conf /etc/nginx/conf.d/prod-ai.conf
-nginx -t
+# 5) 启动 Nginx（bin/start.sh 自动加载包内 conf/prod-ai.conf 并修正 root/后端地址）
 cd prod-ai-frontend && bash bin/start.sh && cd ..
 
 # 6) 验证
@@ -147,8 +145,9 @@ curl -s http://127.0.0.1:6174/health    # 后端
 curl -s http://127.0.0.1/health         # 经 Nginx
 ```
 
-> 解压目录即 `APP_HOME`（上例 `/opt/crm-pgcent-mng`），前后端脚本均按此自动推导，无需额外配置。
-> 若部署到 `/opt` 以外目录，需同步修改 `prod-ai-frontend/conf/prod-ai.conf` 中的 `root` 指令。
+> 解压目录即 `APP_HOME`（上例 `/opt/crm-pgcent-mng`），前后端脚本均按此自动推导，无需额外配置；
+> `bin/start.sh` 以 `nginx -c <包内 conf/prod-ai.conf>` 加载完整 Nginx 主配置，并按实际 `APP_HOME`
+> 自动修正其中的 `root` 静态目录，其余（upstream 等）保持模板默认，无需手改 conf、无需拷贝到 `/etc/nginx/conf.d/`。
 > 后续升级把新 tar 包放进 `installer/`，执行前后端 `bin/deployup.sh` 即可，见「三、升级部署」。
 
 以下 0)~5) 为分步详解，整体包与分体包部署均适用。
@@ -349,17 +348,20 @@ cd /opt/crm-pgcent-mng/prod-ai-frontend
 mkdir -p dist && cp -r html/. dist/
 ```
 
-#### 3.2 安装 Nginx 站点配置
+#### 3.2 Nginx 站点配置加载
 
-把包内 `conf/prod-ai.conf` 拷贝到 Nginx 配置目录并校验：
+前端 `bin/start.sh` 默认加载包内 `conf/prod-ai.conf`（完整 Nginx 主配置）：
 
 ```bash
-cp /opt/crm-pgcent-mng/prod-ai-frontend/conf/prod-ai.conf /etc/nginx/conf.d/prod-ai.conf
-nginx -t
+cd /opt/crm-pgcent-mng/prod-ai-frontend && bash bin/start.sh
 ```
 
-> 站点配置内已包含 `/api`、`/ws`、`/health` 到 `127.0.0.1:6174` 的反向代理，
-> 后端不直接对外暴露。若部署根不是 `/opt/crm-pgcent-mng`，需同步修改其中的 `root` 指令。
+无需往 `/etc/nginx/conf.d/` 拷贝。`start.sh` 启动前会自动按实际 `APP_HOME` 修正配置中的 `root`（静态根），
+其余（upstream、监听端口等）保持模板默认，并以 `nginx -p "${NGINX_PREFIX}" -c "${SITE_CONF}"` 加载并校验（`nginx -t`）。
+
+> 站点配置内已包含 `/api`、`/ws`、`/health` 到 `127.0.0.1:6174` 的反向代理，后端不直接对外暴露。
+> `conf/prod-ai.conf` 为完整主配置（含 `events`/`http`），若被本脚本接管会自动同步 `root`；
+> 若需手工维护，移除其中的 `# managed by prod-ai start.sh (auto-tuned)` 标注行即可停止自动覆盖。
 
 #### 3.3 配置 Nginx 安装路径（可选）
 
@@ -513,8 +515,8 @@ A: `bin/start.sh` 默认按「包目录的父目录」推导 `APP_HOME`。确认
 `<根目录>/crm-pgcent-mng/{prod-ai-backend,prod-ai-frontend}`；若结构不同，在脚本顶部显式填写 `APP_HOME`。
 
 **Q: 前端 403 / 页面报错**
-A: 检查 `nginx -t`；确认 `/opt/crm-pgcent-mng/prod-ai-frontend/dist` 下存在 index.html（首次部署需 `cp -r html/. dist/`，
-或执行 `bin/deployup.sh`）；确认 `prod-ai.conf` 中 `root` 指向正确。
+A: 检查 `nginx -t`（`start.sh` 启动前会校验）；确认 `/opt/crm-pgcent-mng/prod-ai-frontend/dist` 下存在 index.html（首次部署需 `cp -r html/. dist/`，
+或执行 `bin/deployup.sh`）；确认 `prod-ai.conf` 中 `root` 指向正确（`start.sh` 会自动按 `APP_HOME` 修正）。
 
 **Q: 前端启停报 `未找到 nginx 可执行文件`**
 A: Nginx 非系统默认安装。在 `bin/start.sh` / `bin/stop.sh` 顶部将

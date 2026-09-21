@@ -115,19 +115,27 @@ stop() {
         return 0
     fi
     PID="$(cat "${PID_FILE}")"
-    if kill -0 "${PID}" 2>/dev/null; then
-        echo "[STOP] 停止 PID ${PID} ..."
-        kill "${PID}" || true
-        for _ in $(seq 1 30); do
-            kill -0 "${PID}" 2>/dev/null || break
-            sleep 1
-        done
-        if kill -0 "${PID}" 2>/dev/null; then
-            echo "[WARN] 强制终止 PID ${PID}"
-            kill -9 "${PID}" || true
-        fi
+    # 校验该 PID 确为本应用进程（防止 pid 残留且 PID 被系统复用导致误杀其它进程）
+    if ! kill -0 "${PID}" 2>/dev/null; then
+        echo "[INFO] PID ${PID} 已不存在，清理 pid 文件"
+        rm -f "${PID_FILE}"
+        return 0
+    fi
+    if [ -r "/proc/${PID}/cmdline" ] && grep -aq "${JAR}" "/proc/${PID}/cmdline" 2>/dev/null; then
+        echo "[STOP] 停止本应用 PID ${PID} ..."
     else
-        echo "[INFO] PID ${PID} 已不存在"
+        echo "[WARN] PID ${PID} 不属于本应用（cmdline 不含 ${JAR}），拒绝停止并清理 pid 文件" >&2
+        rm -f "${PID_FILE}"
+        return 0
+    fi
+    kill "${PID}" || true
+    for _ in $(seq 1 30); do
+        kill -0 "${PID}" 2>/dev/null || break
+        sleep 1
+    done
+    if kill -0 "${PID}" 2>/dev/null; then
+        echo "[WARN] 强制终止 PID ${PID}"
+        kill -9 "${PID}" || true
     fi
     rm -f "${PID_FILE}"
 }

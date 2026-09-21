@@ -6,14 +6,16 @@
 #   <根目录>/crm-pgcent-mng/prod-ai-backend   后端
 #   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端（本包解压根，含 dist/bin/conf/html）
 #   其中 APP_HOME = <根目录>/crm-pgcent-mng
-# 站点配置见 conf/prod-ai.conf（静态文件，部署时拷贝到 Nginx 配置目录）
-# Nginx：可在下方 NGINX_HOME 处指定 Nginx 安装前缀（留空则用系统默认）
+# 站点配置：默认加载本包 conf/prod-ai.conf（完整 Nginx 主配置），
+#   启动方式:  nginx -p <prefix> -c <PKG_DIR>/conf/prod-ai.conf
+#   启动前仅按其实际 HTTP_ROOT 修正配置中的 root 根目录，其余保持模板默认。
+# Nginx：可在下方 NGINX_HOME 处指定 Nginx 安装前缀（留空则用系统默认）。
 # ============================================================
 set -euo pipefail
 
 # ---------- Nginx 配置（可配置） ----------
 # Nginx 安装前缀（到安装根目录，非 sbin），如 /usr/local/nginx 或 /opt/nginx。
-# 留空则使用系统默认：从 PATH 查找 nginx 可执行文件，配置目录取 /etc/nginx。
+# 留空则使用系统默认 prefix = /etc/nginx。
 NGINX_HOME="${NGINX_HOME:-}"
 
 # ---------- 部署根目录（可配置） ----------
@@ -29,28 +31,78 @@ PKG_DIR="$(cd "${SELF_DIR}/.." && pwd)"          # tar 解压根（prod-ai-front
 APP_HOME="${APP_HOME:-$(cd "${PKG_DIR}/.." && pwd)}"
 HTTP_ROOT="${APP_HOME}/prod-ai-frontend/dist"
 
-# ---------- Nginx 可执行文件 / 配置目录 / PID 解析 ----------
-# 指定 NGINX_HOME 时按其安装前缀推导；否则回退系统默认
+# 本包主配置（完整 nginx.conf），默认加载该文件
+SITE_CONF="${PKG_DIR}/conf/prod-ai.conf"
+# 标注由本脚本自动修正，用于避免覆盖用户手工改动
+SITE_CONF_MARKER="# managed by prod-ai start.sh (auto-tuned)"
+
+# ---------- Nginx 可执行文件 / prefix / 启动参数 ----------
+# 指定 NGINX_HOME 时按其安装前缀推导；否则回退系统默认 prefix
 if [ -n "${NGINX_HOME}" ]; then
     NGINX_BIN="${NGINX_HOME}/sbin/nginx"
-    NGINX_CONF_DIR="${NGINX_HOME}/conf"
+    NGINX_PREFIX="${NGINX_HOME}"
 else
     NGINX_BIN="$(command -v nginx 2>/dev/null || true)"
-    NGINX_CONF_DIR="/etc/nginx"
+    NGINX_PREFIX="/etc/nginx"
 fi
 NGINX_BIN="${NGINX_BIN:-nginx}"
-NGINX_SITE_CONF="${NGINX_CONF_DIR}/conf.d/prod-ai.conf"
+
+# logger 帮助函数：统一带 prefix 参数执行 nginx
+nginx_log_dir() { echo "${NGINX_PREFIX}/logs"; }
+
+# 校验 PID 是否确为本实例 Nginx（cmdline 含本主配置路径 -c <SITE_CONF>）
+is_nginx_instance() {
+    local _pid="$1"
+    if ! kill -0 "${_pid}" 2>/dev/null; then
+        return 1
+    fi
+    [ -r "/proc/${_pid}/cmdline" ] || return 1
+    grep -aq "${SITE_CONF}" "/proc/${_pid}/cmdline" 2>/dev/null
+}
+
+# ---------- 站点配置加载（默认加载包内 conf / 仅修正根目录） ----------
+# 说明：直接修改并加载 conf/prod-ai.conf 本体，实现“加载 conf 下的文件”。
+# 启动前仅用 sed 修正其中的 root 根目录（按实际 HTTP_ROOT）；
+# 其余（upstream、监听端口等）保持模板默认，无需手改。
+prepare_site_conf() {
+    if ! [ -f "${SITE_CONF}" ]; then
+        echo "[ERROR] 未找到主配置 ${SITE_CONF}" >&2
+        exit 1
+    fi
+    # 首次：若非本脚本管理（无标注），默认接管并注入标注
+    if ! grep -qF "${SITE_CONF_MARKER}" "${SITE_CONF}" 2>/dev/null; then
+        printf '%s\n' "${SITE_CONF_MARKER}" | cat - "${SITE_CONF}" > "${SITE_CONF}.tmp"
+        mv -f "${SITE_CONF}.tmp" "${SITE_CONF}"
+    fi
+    # 修正 root 静态目录（其余配置保持模板默认）
+    sed -i -E "s|(^[[:space:]]*root[[:space:]]+)[^;]+;|\\1${HTTP_ROOT};|" "${SITE_CONF}"
+    chmod 644 "${SITE_CONF}"
+}
+
+# ---------- 端口解析（用于展示） ----------
+# 从主配置读取实际监听端口（未显式指定 NGINX_PORT 时）
+NGINX_PORT="${NGINX_PORT:-}"
+if [ -z "${NGINX_PORT}" ]; then
+    NGINX_PORT="$(sed -nE 's/^[[:space:]]*listen[[:space:]]+([0-9]+).*/\1/p' "${SITE_CONF}" 2>/dev/null | head -n1 || true)"
+fi
 PORT="${NGINX_PORT:-80}"
 
-# 解析站点实际监听端口（未显式指定 NGINX_PORT 时，从已安装的站点配置中读取）
-if [ -z "${NGINX_PORT:-}" ] && [ -f "${NGINX_SITE_CONF}" ]; then
-    CONF_PORT="$(sed -nE 's/^[[:space:]]*listen[[:space:]]+([0-9]+).*/\1/p' "${NGINX_SITE_CONF}" 2>/dev/null | head -n1 || true)"
-    PORT="${CONF_PORT:-${PORT}}"
-fi
-
-require_root() {
-    if [ "$(id -u)" -ne 0 ]; then
-        echo "[ERROR] 该操作需要 root 权限（启动 Nginx 并读取 ${HTTP_ROOT}）" >&2
+# 权限自检：仅当确实需要 root 时才阻断（普通用户部署到自有写权限前缀、监听高端口时无需 root）
+check_permission() {
+    local _log_dir="$(nginx_log_dir)"
+    # 监听端口 <1024 需 root（Linux 特权端口）
+    local _need_root=0
+    if [ "${PORT}" -lt 1024 ] 2>/dev/null; then
+        _need_root=1
+    fi
+    # 日志目录不可写也需更高权限
+    if ! [ -w "${_log_dir}" ]; then
+        _need_root=1
+    fi
+    # 已具备写权限且端口可绑定则无需 root（只要不是 root 且确有需要才报错）
+    if [ "${_need_root}" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+        echo "[ERROR] 当前非 root，但需要写日志目录 ${_log_dir} 或监听端口 ${PORT}（<1024）。" >&2
+        echo "        处理办法：以 root 运行；或将 Nginx prefix 设为当前用户可写目录，并让监听端口 ≥1024。" >&2
         exit 1
     fi
 }
@@ -61,34 +113,48 @@ if ! [ -x "${NGINX_BIN}" ] && ! command -v "${NGINX_BIN}" >/dev/null 2>&1; then
     exit 1
 fi
 
-require_root
+# 确保日志目录存在（主配置 error_log/access_log/pid 相对 prefix 解析）
+mkdir -p "$(nginx_log_dir)"
 
-if [ ! -f "${NGINX_SITE_CONF}" ]; then
-    echo "[WARN] 未找到站点配置 ${NGINX_SITE_CONF}，请先拷贝 conf/prod-ai.conf 到该路径" >&2
-fi
+check_permission
+
+prepare_site_conf
+
 if [ ! -f "${HTTP_ROOT}/index.html" ]; then
     echo "[WARN] 未找到前端静态产物 ${HTTP_ROOT}/index.html，请先执行 bin/deployup.sh 或放置 dist/" >&2
 fi
 
 echo "[INFO] Nginx: ${NGINX_BIN}"
-echo "[INFO] 配置目录: ${NGINX_CONF_DIR}  站点: ${NGINX_SITE_CONF}"
+echo "[INFO] prefix: ${NGINX_PREFIX}  加载主配置: ${SITE_CONF}"
+echo "[INFO] 静态根: ${HTTP_ROOT}"
 
-# 已有进程则视为已启动
-if pgrep -f "${NGINX_BIN}" >/dev/null 2>&1; then
-    echo "[WARN] Nginx 已在运行，跳过启动"
-    exit 0
+# 已运行则视为已启动（依据 pid 文件）
+PID_FILE="$(sed -nE 's/^[[:space:]]*pid[[:space:]]+([^;]+);.*/\1/p' "${SITE_CONF}" 2>/dev/null | head -n1 || true)"
+if [ -n "${PID_FILE}" ]; then
+    PID_PATH="${PID_FILE}"
+    case "${PID_PATH}" in
+        /*) : ;;                    # 绝对路径
+        *) PID_PATH="${NGINX_PREFIX}/${PID_PATH}" ;;
+    esac
+    if [ -f "${PID_PATH}" ] && is_nginx_instance "$(cat "${PID_PATH}" 2>/dev/null)"; then
+        echo "[WARN] Nginx 已在运行（pid $(cat "${PID_PATH}")），跳过启动"
+        exit 0
+    fi
 fi
 
 echo "[START] $(date '+%F %T') 启动 Nginx ..."
-if ! "${NGINX_BIN}" -t; then
-    echo "[ERROR] nginx -t 校验失败，请检查 ${NGINX_SITE_CONF}" >&2
+if ! "${NGINX_BIN}" -t -p "${NGINX_PREFIX}" -c "${SITE_CONF}"; then
+    echo "[ERROR] nginx -t 校验失败，请检查 ${SITE_CONF}" >&2
     exit 1
 fi
-"${NGINX_BIN}"
+"${NGINX_BIN}" -p "${NGINX_PREFIX}" -c "${SITE_CONF}"
 sleep 1
-if pgrep -f "${NGINX_BIN}" >/dev/null 2>&1; then
+
+if [ -n "${PID_FILE}" ] && [ -f "${PID_PATH}" ] && is_nginx_instance "$(cat "${PID_PATH}" 2>/dev/null)"; then
+    echo "[OK] Nginx 已启动（pid $(cat "${PID_PATH}")），监听端口 ${PORT}，静态根 ${HTTP_ROOT}"
+elif pgrep -f "${NGINX_BIN}.*${SITE_CONF}" >/dev/null 2>&1; then
     echo "[OK] Nginx 已启动，监听端口 ${PORT}，静态根 ${HTTP_ROOT}"
 else
-    echo "[ERROR] Nginx 启动失败，请查看 error.log" >&2
+    echo "[ERROR] Nginx 启动失败，请查看 $(nginx_log_dir)/error.log" >&2
     exit 1
 fi
