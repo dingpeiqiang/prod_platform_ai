@@ -1,14 +1,34 @@
 #!/usr/bin/env bash
 # ============================================================
-# Prod Platform AI - 后端启动脚本（tar 包内 bin/start.sh）
+# Prod Platform AI - 后端启动脚本（tar 包内 prod-ai-backend/bin/start.sh）
 # 用法:  bash start.sh [start|stop|restart|status]
-# 运行前请确保 /etc/prod-ai/backend.env 已配置（见 docs/虚拟机部署方案.md §6.1）
+# 部署布局（按 crm-pgcent-mng 约定）：
+#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端（本包解压根，含 app.jar/config/logs/data）
+#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端
+#   其中 APP_HOME = <根目录>/crm-pgcent-mng
+# 业务配置见 config/application.yml（随包自带，部署前修改库地址/账号密码/JWT）
+# JDK：必须为 17。可在下方 JAVA_HOME 处指定 JDK 安装路径（留空则自动探测）
 # ============================================================
 set -euo pipefail
 
+# ---------- JDK 配置 ----------
+# 需 JDK 17。若系统自带 java 不是 17 或存在多版本，
+# 在此填写 JDK17 安装路径（到 JDK 根目录，非 bin），如 /usr/lib/jvm/java-17-openjdk
+JAVA_HOME="${JAVA_HOME:-}"
+# 强制要求的 JDK 主版本
+REQUIRED_JAVA_MAJOR=17
+
+# ---------- 部署根目录（可配置） ----------
+# APP_HOME = <根目录>/crm-pgcent-mng，其下含 prod-ai-backend / prod-ai-frontend
+# 默认推导：APP_HOME = 本包目录(prod-ai-backend) 的上一级
+# 如需自定义，可在此填写完整 APP_HOME，或导出环境变量 APP_HOME
+APP_HOME="${APP_HOME:-}"
+
 # ---------- 路径与常量 ----------
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-JAR="$(ls -1 "${APP_DIR}"/app.jar 2>/dev/null || ls -1 "${APP_DIR}"/prod-platform-ai-*.jar 2>/dev/null | head -n1)"
+# 未显式指定 APP_HOME 时，推导为包目录(prod-ai-backend)的父目录（即 crm-pgcent-mng）
+APP_HOME="${APP_HOME:-$(cd "${APP_DIR}/.." && pwd)}"
+JAR="$(ls -1 "${APP_DIR}"/app.jar 2>/dev/null || ls -1 "${APP_DIR}"/prod-platform-ai-*.jar 2>/dev/null | head -n1 || true)"
 CONFIG_DIR="${APP_DIR}/config"
 LOG_DIR="${APP_DIR}/logs"
 DATA_DIR="${APP_DIR}/data"
@@ -28,26 +48,40 @@ if [ "${USE_SYSTEMD:-0}" = "1" ] && [ -f "/etc/systemd/system/${SYSTEMD_UNIT}" ]
     esac
 fi
 
-# ---------- 环境变量（优先读配置文件） ----------
-ENV_FILE="/etc/prod-ai/backend.env"
-if [ -f "${ENV_FILE}" ]; then
-    # shellcheck disable=SC1090
-    set -a; . "${ENV_FILE}"; set +a
-fi
-# 默认值兜底
-export SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-}"
-export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-}"
-export LLM_ENABLED="${LLM_ENABLED:-true}"
+# ---------- JDK 解析与版本校验（必须为 JDK17） ----------
+resolve_java() {
+    # 1) 优先使用显式配置的 JAVA_HOME
+    if [ -n "${JAVA_HOME}" ]; then
+        if [ ! -x "${JAVA_HOME}/bin/java" ]; then
+            echo "[ERROR] JAVA_HOME 无效: ${JAVA_HOME}（未找到 bin/java）" >&2
+            exit 1
+        fi
+        echo "${JAVA_HOME}/bin/java"
+        return 0
+    fi
+    # 2) 回退 PATH 中的 java
+    command -v java 2>/dev/null || true
+}
 
-# ---------- JDK 探测 ----------
-JAVA_BIN="$(command -v java 2>/dev/null || true)"
-if [ -z "${JAVA_BIN}" ] && [ -n "${JAVA_HOME:-}" ]; then
-    JAVA_BIN="${JAVA_HOME}/bin/java"
-fi
+JAVA_BIN="$(resolve_java)"
 if [ -z "${JAVA_BIN}" ] || [ ! -x "${JAVA_BIN}" ]; then
-    echo "[ERROR] 未找到 java。请安装 JDK17 或设置 JAVA_HOME。" >&2
+    echo "[ERROR] 未找到 java。请安装 JDK17，或在 start.sh 中配置 JAVA_HOME。" >&2
     exit 1
 fi
+
+# 解析主版本号（兼容 java 8 的 "1.8.0_x" 与 9+ 的 "17.x"）
+JAVA_VER_RAW="$("${JAVA_BIN}" -version 2>&1 | head -n1)"
+JAVA_MAJOR="$(printf '%s' "${JAVA_VER_RAW}" | sed -E 's/.*version "([0-9]+)(\.([0-9]+))?.*/\1/')"
+if [ "${JAVA_MAJOR}" = "1" ]; then
+    # 1.8.0 -> 8
+    JAVA_MAJOR="$(printf '%s' "${JAVA_VER_RAW}" | sed -E 's/.*version "1\.([0-9]+).*/\1/')"
+fi
+if [ "${JAVA_MAJOR}" != "${REQUIRED_JAVA_MAJOR}" ]; then
+    echo "[ERROR] 需要 JDK ${REQUIRED_JAVA_MAJOR}，当前为: ${JAVA_VER_RAW}" >&2
+    echo "        请在 start.sh 中配置 JAVA_HOME 指向 JDK${REQUIRED_JAVA_MAJOR} 安装路径。" >&2
+    exit 1
+fi
+echo "[INFO] 使用 JDK${JAVA_MAJOR}: ${JAVA_BIN}"
 
 # ---------- 目录准备 ----------
 mkdir -p "${LOG_DIR}" "${DATA_DIR}" "${UPLOAD_DIR}"

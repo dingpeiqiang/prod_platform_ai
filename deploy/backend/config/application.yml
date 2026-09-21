@@ -1,0 +1,90 @@
+# ============================================================
+# Prod Platform AI - 后端外部配置（VM tar 包内 config/application.yml）
+# 启动时由 bin/start.sh 与 systemd 单元通过
+#   --spring.config.additional-location=optional:file:config/
+# 自动读取，覆盖 jar 内同名配置。
+# 部署前按环境修改本文件（库地址/账号密码/JWT 密钥）即可，无需环境变量。
+# ============================================================
+
+spring:
+  profiles:
+    active: prod
+  # LLM 调用统一走手动构建（见 LlmService），禁用 OpenAI 自动配置，避免未使用 Bean
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  datasource:
+    # ---- 生产数据库（MySQL 8.0）----
+    url: jdbc:mysql://172.30.0.232:8866/poc-stq?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: poc-stq
+    password: Poc@StQ@2026
+  sql:
+    init:
+      # 表结构与初始数据由 deploy/mysql 脚本维护，禁用 jar 内 H2 初始化
+      mode: never
+  h2:
+    console:
+      enabled: false
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+# Swagger UI: /swagger-ui.html ；OpenAPI JSON: /v3/api-docs
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  show-actuator: false
+
+prodai:
+  ontology:
+    demo-enabled: false
+    data-source: classpath
+    graph-path: classpath:ontology/ops_graph_export.json
+    ops-graph-path: classpath:ontology/ops_graph_export.json
+    # 接外部产商品中心时改为 http 并配置 base-url
+    product-center-base-url:
+    product-center-timeout-ms: 5000
+    llm-extract-enabled: true
+    base-iri: http://example.org/
+    rdf-seed-path:
+    ttl-path:
+  kb:
+    seed-path:
+  mcp:
+    seed-path:
+  auth:
+    enabled: true
+    # JWT 签名密钥：生产必须改为 32 字节随机字符串（多实例需一致）
+    jwt-secret: CHANGE_ME_32_BYTES_RANDOM
+  llm:
+    enabled: true
+    function-calling-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,loggers
+
+logging:
+  level:
+    root: INFO
+    com.sitech.prodai: INFO

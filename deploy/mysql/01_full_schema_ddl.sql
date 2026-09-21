@@ -6,14 +6,14 @@
 --   2) 修正 KV 表保留字列名 "value" -> value
 --   3) 保留 MySQL 8.0 外键约束（配合 SET FOREIGN_KEY_CHECKS 乱序删除）
 -- 用法：
---   mysql -uprodplatformai -p prodplatformai < 01_full_schema_ddl.sql
+--   mysql -h172.30.0.232 -P8866 -upoc-stq -p poc-stq < 01_full_schema_ddl.sql
 -- 表清单：23 张（见文末）
 -- ============================================================
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
-USE `prodplatformai`;
+USE `poc-stq`;
 
 -- ------------------------------------------------------------
 -- 1. 聊天系统

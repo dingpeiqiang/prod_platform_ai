@@ -8,11 +8,11 @@
 -- 执行顺序：先 01_full_schema_ddl.sql，再本脚本
 -- 幂等性：表均用 CREATE TABLE IF NOT EXISTS；流程引擎列添加用 information_schema 判存
 -- 用法：
---   mysql -uprodplatformai -p prodplatformai < 03_ext_schema.sql
+--   mysql -h172.30.0.232 -P8866 -upoc-stq -p poc-stq < 03_ext_schema.sql
 -- ============================================================
 
 SET NAMES utf8mb4;
-USE `prodplatformai`;
+USE `poc-stq`;
 
 -- ------------------------------------------------------------
 -- 1. 运营指标宽表（指标域 P0）

@@ -2,7 +2,7 @@
 -- Prod Platform AI - 初始化数据脚本（可重复执行）
 -- 依赖：已执行 01_full_schema_ddl.sql
 -- 用法：
---   mysql -uprodplatformai -p prodplatformai < sql/02_init_data.sql
+--   mysql -h172.30.0.232 -P8866 -upoc-stq -p poc-stq < 02_init_data.sql
 -- 说明：
 --   1) MCP 种子对齐 classpath:ontology/mcp_tools_seed.json
 --   2) SWRL/条件 DSL 内置规则对齐 SwrlRuleEngine.builtinRules()
@@ -12,7 +12,7 @@
 -- ============================================================
 
 SET NAMES utf8mb4;
-USE `prodplatformai`;
+USE `poc-stq`;
 
 -- ------------------------------------------------------------
 -- 1. MCP 外部工具种子

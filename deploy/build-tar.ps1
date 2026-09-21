@@ -33,10 +33,10 @@ if ($Jar) {
     Copy-Item $Jar.FullName (Join-Path $BackendStage 'app.jar')
 }
 
-# tar 包内启停脚本 + systemd/env 模板
-Copy-Item (Join-Path $PSScriptRoot 'backend\bin\start.sh')           (Join-Path $BackendStage 'bin\start.sh')     -Force
+# tar 包内启停/更新脚本 + systemd 模板
+Copy-Item (Join-Path $PSScriptRoot 'backend\bin\start.sh')                (Join-Path $BackendStage 'bin\start.sh')    -Force
+Copy-Item (Join-Path $PSScriptRoot 'backend\bin\deployup.sh')             (Join-Path $BackendStage 'bin\deployup.sh') -Force
 Copy-Item (Join-Path $PSScriptRoot 'backend\conf\prod-ai-backend.service') (Join-Path $BackendStage 'conf\') -Force
-Copy-Item (Join-Path $PSScriptRoot 'backend\conf\backend.env.example')     (Join-Path $BackendStage 'conf\') -Force
 
 # 默认外部配置（可选随包，供启动脚本 --spring.config.additional-location 使用）
 if (Test-Path (Join-Path $ProjectRoot 'docker\config\application.yml')) {
@@ -66,8 +66,16 @@ if (Test-Path $Dist) {
     Copy-Item -Recurse -Force (Join-Path $Dist '*') (Join-Path $FrontendStage 'html\')
 }
 
-Copy-Item (Join-Path $PSScriptRoot 'frontend\conf\prod-ai.conf')           (Join-Path $FrontendStage 'conf\') -Force
-Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\install.sh')              (Join-Path $FrontendStage 'bin\')   -Force
+# 免登录静态页（IFRAME 直嵌）：必须随包，缺失会被 SPA 回退到 index.html 触发登录跳转
+$OpsWorkbench = Join-Path $FrontendStage 'html\ops-web\config-workbench.html'
+if (-not (Test-Path $OpsWorkbench)) {
+    Write-Error '缺少 ops-web/config-workbench.html，请执行 npm run build 后重试（public/ops-web 会整体拷贝到 dist/）'
+}
+
+Copy-Item (Join-Path $PSScriptRoot 'frontend\conf\prod-ai.conf')            (Join-Path $FrontendStage 'conf\') -Force
+Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\start.sh')                 (Join-Path $FrontendStage 'bin\')  -Force
+Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\stop.sh')                  (Join-Path $FrontendStage 'bin\')  -Force
+Copy-Item (Join-Path $PSScriptRoot 'frontend\bin\deployup.sh')              (Join-Path $FrontendStage 'bin\')  -Force
 
 $FrontendTar = Join-Path $OutDir 'prod-ai-frontend.tar.gz'
 Push-Location $PSScriptRoot

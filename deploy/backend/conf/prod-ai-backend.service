@@ -1,9 +1,15 @@
 # ============================================================
 # Prod Platform AI - 后端 systemd 单元模板（tar 包内 conf/）
 # 安装目标: /etc/systemd/system/prod-ai-backend.service
+# 部署布局（按 crm-pgcent-mng 约定）：
+#   <根目录>/crm-pgcent-mng/prod-ai-backend   后端
+#   <根目录>/crm-pgcent-mng/prod-ai-frontend  前端
+#   其中 APP_HOME = <根目录>/crm-pgcent-mng
 # 使用:  cp prod-ai-backend.service /etc/systemd/system/
 #        systemctl daemon-reload && systemctl enable --now prod-ai-backend
 # 也可改用 bin/start.sh（USE_SYSTEMD=1 时自动转调 systemctl）
+# 业务配置见 ${APP_HOME}/prod-ai-backend/config/application.yml（随包自带）
+# JDK：必须为 17。若系统多版本，修改下方 JAVA_HOME 指向 JDK17 安装路径
 # ============================================================
 
 [Unit]
@@ -13,16 +19,21 @@ Requires=mysqld.service
 
 [Service]
 Type=simple
+# ---- 部署根目录（按实际修改，APP_HOME = <根目录>/crm-pgcent-mng）----
+Environment="APP_HOME=/opt/crm-pgcent-mng"
+# ---- JDK 17 安装路径（按实际修改；留空则用系统 PATH 中的 java）----
+Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk"
 # 运行账号：按需创建  useradd -r -s /sbin/nologin prod-ai
 User=prod-ai
 Group=prod-ai
-WorkingDirectory=/opt/prod-ai/backend
-# 敏感环境变量统一存放于 /etc/prod-ai/backend.env （权限 600，root 属主）
-EnvironmentFile=/etc/prod-ai/backend.env
-ExecStart=/usr/bin/java -Xms1g -Xmx3g -Dfile.encoding=UTF-8 \
-    -jar /opt/prod-ai/backend/app.jar \
-    --server.port=6174 \
-    --spring.config.additional-location=optional:file:/opt/prod-ai/backend/config/
+WorkingDirectory=${APP_HOME}/prod-ai-backend
+# 数据源/JWT 等业务配置统一在 ${APP_HOME}/prod-ai-backend/config/application.yml（随包自带，部署前修改）
+ExecStart=/usr/bin/env bash -c 'B="${APP_HOME}/prod-ai-backend"; JAVA_BIN="${JAVA_HOME:+${JAVA_HOME}/bin/java}"; JAVA_BIN="${JAVA_BIN:-java}"; \
+    MAJOR="$("${JAVA_BIN}" -version 2>&1 | head -n1 | sed -E "s/.*version \"([0-9]+)(\\.([0-9]+))?.*/\\1/")"; \
+    [ "${MAJOR}" = "1" ] && MAJOR="$("${JAVA_BIN}" -version 2>&1 | head -n1 | sed -E "s/.*version \"1\\.([0-9]+).*/\\1/")"; \
+    [ "${MAJOR}" = "17" ] || { echo "需要 JDK 17，当前: $("${JAVA_BIN}" -version 2>&1 | head -n1)"; exit 1; }; \
+    exec "${JAVA_BIN}" -Xms1g -Xmx3g -Dfile.encoding=UTF-8 -jar "${B}/app.jar" \
+    --server.port=6174 --spring.config.additional-location=optional:file:"${B}/config/"'
 Restart=on-failure
 RestartSec=10
 SuccessExitStatus=143

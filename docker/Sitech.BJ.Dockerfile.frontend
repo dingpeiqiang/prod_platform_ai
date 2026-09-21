@@ -32,6 +32,10 @@ COPY frontend/ ./
 
 RUN npm run build
 
+# 免登录静态页（IFRAME 直嵌）：必须随包，缺失会被 SPA 回退到 index.html 触发登录跳转
+RUN test -f dist/ops-web/config-workbench.html \
+    || (echo "[ERROR] 缺少 dist/ops-web/config-workbench.html，请确认 frontend/public/ops-web/config-workbench.html 存在" && exit 1)
+
 # ============================================================
 # 发布阶段：仅保留静态产物 + 配置，清除构建痕迹
 # ============================================================
