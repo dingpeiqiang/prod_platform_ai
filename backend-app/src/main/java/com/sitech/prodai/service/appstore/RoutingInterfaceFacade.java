@@ -1,6 +1,8 @@
 package com.sitech.prodai.service.appstore;
 
 import com.sitech.prodai.config.AppStoreInterfaceProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
@@ -15,6 +17,8 @@ import java.util.Map;
  * testProgress(C3)/testResult(C4)。
  */
 public class RoutingInterfaceFacade implements InterfaceFacade {
+
+    private static final Logger log = LoggerFactory.getLogger(RoutingInterfaceFacade.class);
 
     private final AppStoreInterfaceProperties props;
     private final MockInterfaceAdapter mock;
@@ -38,10 +42,14 @@ public class RoutingInterfaceFacade implements InterfaceFacade {
         return "mock";
     }
 
-    /** 按接口键 + 请求体顶层 mode 覆盖值选路。 */
+    /** 按接口键 + 请求体顶层 mode 覆盖值选路，并输出入口路由日志（模拟/真实）。 */
     private InterfaceFacade pick(String key, Map<String, Object> req) {
         String override = modeOverride(req);
-        return props.resolveReal(key, override) ? real : mock;
+        boolean isReal = props.resolveReal(key, override);
+        log.info("[产销品接口][入口] key={} 生效模式={} 将调用={} yml-mode={} real-list={} override={}",
+                key, isReal ? "真实(real)" : "模拟(mock)", isReal ? "EOP真实接口" : "内置模拟报文",
+                props.getMode(), props.getRealList(), override.isBlank() ? "auto" : override);
+        return isReal ? real : mock;
     }
 
     /** 读取请求体顶层 mode 覆盖值（real/mock/auto/空）。 */

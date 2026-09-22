@@ -121,7 +121,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -136,7 +136,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -272,7 +272,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/product/config/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/product/config/save"
       },
       {
         "outputs": [
@@ -371,7 +371,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -505,7 +505,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/audit/realtime"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/audit/realtime"
       },
       {
         "outputs": [
@@ -671,7 +671,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -738,7 +738,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/start"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/test/offer/start"
       },
       {
         "outputs": [
@@ -842,7 +842,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/scenes"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/test/offer/scenes"
       },
       {
         "outputs": [
@@ -867,7 +867,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 360\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n    return ret",
+        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://172.30.8.52:6174/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 60\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试处理中，请稍后回复【查询测试结果】续查（globalId=' + global_id + '）'}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -1108,7 +1108,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/result"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/test/offer/result"
       },
       {
         "outputs": [
@@ -1294,7 +1294,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -1393,7 +1393,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/billing/rules/verify"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/billing/rules/verify"
       },
       {
         "outputs": [
@@ -1545,7 +1545,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": {

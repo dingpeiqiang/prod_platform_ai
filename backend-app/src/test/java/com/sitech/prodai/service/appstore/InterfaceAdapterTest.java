@@ -128,15 +128,16 @@ class InterfaceAdapterTest {
     }
 
     @Test
-    @DisplayName("传参覆盖 mode=real：传参最优先；EOP 不可达自动回退 mock 并附 note 标注")
-    void overrideRealFallsBackWithNote() {
+    @DisplayName("传参覆盖 mode=real：经 EOP 网关调用；网关不可达/鉴权失败严格报错（REAL_CALL_FAILED，不回退 mock）")
+    void overrideRealFailsWithoutFallback() {
         Map<String, Object> body = interfaceFacade.auditSqlQuery(Map.of(
                 "sql_id", "20260626001",
                 "params", "requestIds:r1",
                 "mode", "real"));
-        Assertions.assertNotNull(body.get("note"), "real 不可达应附回落标注：" + body);
-        Assertions.assertEquals("real-fallback-mock", body.get("mode"));
-        Assertions.assertEquals("0", body.get("resultCode"));
+        Assertions.assertEquals("REAL_CALL_FAILED", body.get("resultCode"), "real 失败应返回错误码：" + body);
+        Assertions.assertNull(body.get("note"), "不得回退 mock 附标注");
+        Assertions.assertNull(body.get("execute_sql_resp"), "不得返回模拟报文");
+        Assertions.assertNotNull(body.get("resultMsg"), "应带失败原因（含 EOP 原始错误或网关地址）");
     }
 
     @Test

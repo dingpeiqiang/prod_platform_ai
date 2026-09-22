@@ -22,30 +22,40 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 适配层 real 实现（现场环境，统一方案 §4.5.4/§4.5.5）：RestClient 直连 EOP，组装/解包信封。
+ * 适配层 real 实现（现场环境，统一方案 §4.5.4/§4.5.5）：RestClient 直连 EOP 业务地址，
+ * 每个请求头带 {@code X-APP-ID} / {@code X-APP-KEY} 鉴权（值由配置注入），并组装/解包业务信封。
+ * <p>
+ * 业务地址 = {@code base-url} + {@code paths.<接口键>}；请求头鉴权参见
+ * {@link AppStoreInterfaceProperties.Eop#getAppId()} / {@link AppStoreInterfaceProperties.Eop#getAppKey()}。
  * <p>
  * 信封差异按接口区分：A1/B4 为 {@code contractRoot.tcpCont + svcCont.requestObject}；
- * B1 multipart；B2 GET query；B3 {@code {records[]}} 裸体；C1~C4 {@code {offerId}}/{@code {globalId}} 裸体。
+ * B1 multipart；B2 GET query；B3 {@code {records[]}} 裸体；C1~C4 {@code {offerId}}/{@code globalId} 裸体。
  * 出参解包：A1/B4 解 {@code contractRoot.svcCont.resultObject}；C1~C4 解 {@code resultObject}（裸）；
  * B3 解 {@code resultCode/resultMsg}。统一归一为既有内部出参名（§4.5.5 第 3 点）。
  * <p>
- * <b>现场不可达回退</b>：任一 real 调用失败（连接/超时/解析异常）时自动回退 {@link MockInterfaceAdapter}，
- * 并在出参附 {@code note} 标注"已回退模拟"，保证演示不中断（统一方案 §4.5.4 落地口径）。
+ * <b>严格 real（不回退）</b>：real 模式下必须调用真实 EOP 接口；任一调用失败（连接/超时/解析异常/出参缺字段）
+ * 均不降级到 {@link MockInterfaceAdapter}，直接返回错误出参（{@code resultCode=REAL_CALL_FAILED} +
+ * {@code resultMsg} 含失败原因）。EOP 业务错误（响应含 {@code errcode/errmsg}，如鉴权失败）亦按此严格报错，
+ * 并把 EOP 原始 {@code errcode/errmsg} 带入 {@code resultMsg}，绝不静默降级为"未命中"。
  */
 public class EopInterfaceAdapter implements InterfaceFacade {
 
     private static final Logger log = LoggerFactory.getLogger(EopInterfaceAdapter.class);
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
+    /** real 调用失败统一错误码（不回退 mock）。 */
+    private static final String ERR_REAL_CALL_FAILED = "REAL_CALL_FAILED";
+
+    /** EOP 鉴权请求头名。 */
+    private static final String HEADER_APP_ID = "X-APP-ID";
+    private static final String HEADER_APP_KEY = "X-APP-KEY";
+
     private final AppStoreInterfaceProperties props;
-    private final MockInterfaceAdapter fallback;
     private final ObjectMapper objectMapper;
     private final RestClient client;
 
-    public EopInterfaceAdapter(AppStoreInterfaceProperties props, MockInterfaceAdapter fallback,
-                               ObjectMapper objectMapper) {
+    public EopInterfaceAdapter(AppStoreInterfaceProperties props, ObjectMapper objectMapper) {
         this.props = props;
-        this.fallback = fallback;
         this.objectMapper = objectMapper;
         int timeout = Math.max(1000, props.getEop().getTimeoutMs());
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -67,21 +77,24 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (desc.isBlank()) {
             return fail("PARAM_MISSING", "businessDesc 必填");
         }
-        String url = base() + "/api/ah/cpcp/similar";
+        String url = businessUrl("similar");
+        long begin = System.currentTimeMillis();
+        logRealBegin("similar", "POST", url);
         try {
             Map<String, Object> requestObject = new LinkedHashMap<>();
             requestObject.put("businessDesc", desc);
-            Map<String, Object> body = postEnvelope(url, requestObject);
-            Map<String, Object> resultObject = envelopeResultObject(body);
+            Map<String, Object> body = postJson("similar", url, envelopeRequest(requestObject));
+            Map<String, Object> resultObject = envelopeResultObject("similar", body);
             List<Map<String, Object>> list = normalizeSimilarList(resultObject);
             Map<String, Object> out = ok();
             out.put("resultMsg", list.isEmpty() ? "未命中相似销售品"
                     : "命中相似销售品 " + list.size() + " 个，主推荐：" + MapOps.str(list.get(0).get("similarOfferName")));
             out.put("similarOffer", list.isEmpty() ? Map.of() : list.get(0));
             out.put("similarOfferList", list);
+            logRealDone("similar", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return fallbackSimilar(desc, e);
+            return realFail("similar", url, e);
         }
     }
 
@@ -99,13 +112,6 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         return out;
     }
 
-    private Map<String, Object> fallbackSimilar(String desc, Exception e) {
-        log.warn("[EopInterfaceAdapter] A1 real 调用失败，回退 mock: {}", e.getMessage());
-        Map<String, Object> call = new LinkedHashMap<>();
-        call.put("businessDesc", desc);
-        return withFallbackNote(fallback.similarOfferQuery(call), e);
-    }
-
     /* ================= B1 稽核文件上传（multipart） ================= */
 
     @Override
@@ -116,9 +122,11 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         byte[] bytes = bytesObj instanceof byte[] b ? b : null;
         String fileName = MapOps.str(nameObj);
         if (bytes == null || fileName.isBlank()) {
-            return fallback.auditFileUpload(req);
+            return fail(ERR_REAL_CALL_FAILED, "上传文件缺失：real 模式必须提供 fileName 与字节流");
         }
-        String url = base() + "/api/ah/cpcp/upload";
+        String url = businessUrl("upload");
+        long begin = System.currentTimeMillis();
+        logRealBegin("upload", "POST(multipart)", url);
         try {
             String field = props.getEop().getUploadFileField();
             ByteArrayResource resource = new ByteArrayResource(bytes) {
@@ -129,19 +137,25 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             };
             MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
             form.add(field, resource);
+            logRealRequest("upload", "POST(multipart)", url,
+                    Map.of("field", field, "fileName", fileName, "size", bytes.length));
+            long start = System.currentTimeMillis();
             String resp = client.post().uri(url)
+                    .headers(this::applyAuth)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(form)
                     .retrieve()
                     .body(String.class);
+            logRealResponse("upload", url, System.currentTimeMillis() - start, resp);
             Map<String, Object> body = parse(resp);
+            assertNoEopError("upload", body);
             if (body.get("file_id") == null && body.get("sales_id") == null) {
                 throw new IllegalStateException("B1 real 出参缺少 file_id/sales_id");
             }
+            logRealDone("upload", System.currentTimeMillis() - begin, body);
             return body;
         } catch (Exception e) {
-            Map<String, Object> out = fallback.auditFileUpload(req);
-            return withFallbackNote(out, e);
+            return realFail("upload", url, e);
         }
     }
 
@@ -156,22 +170,32 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         String location = firstNonBlank(MapOps.str(req.get("location")), "0");
         String sheetName = firstNonBlank(MapOps.str(req.get("sheet_name")), MapOps.str(req.get("sheetName")), "套餐");
         String fileId = firstNonBlank(MapOps.str(req.get("file_id")), MapOps.str(req.get("fileId")));
-        StringBuilder url = new StringBuilder(base()).append("/api/ah/cpcp/async_report_notify_direct")
+        StringBuilder url = new StringBuilder(businessUrl("notify"))
                 .append("?sales_id=").append(salesId)
                 .append("&location=").append(location)
                 .append("&sheet_name=").append(sheetName);
         if (!fileId.isBlank()) {
             url.append("&file_id=").append(fileId);
         }
+        long begin = System.currentTimeMillis();
+        logRealBegin("notify", "GET", url.toString());
         try {
-            String resp = client.get().uri(url.toString()).retrieve().body(String.class);
+            logRealRequest("notify", "GET", url.toString(), null);
+            long start = System.currentTimeMillis();
+            String resp = client.get().uri(url.toString())
+                    .headers(this::applyAuth)
+                    .retrieve()
+                    .body(String.class);
+            logRealResponse("notify", url.toString(), System.currentTimeMillis() - start, resp);
             Map<String, Object> body = parse(resp);
+            assertNoEopError("notify", body);
             if (body.get("request_id") == null) {
                 throw new IllegalStateException("B2 real 出参缺少 request_id");
             }
+            logRealDone("notify", System.currentTimeMillis() - begin, body);
             return body;
         } catch (Exception e) {
-            return withFallbackNote(fallback.auditAsyncNotify(req), e);
+            return realFail("notify", url.toString(), e);
         }
     }
 
@@ -179,22 +203,20 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditResultInsert(Map<String, Object> req) {
-        String url = base() + "/api/ahhui/cpcp/insertAiAuditResult";
+        String url = businessUrl("insert");
+        long begin = System.currentTimeMillis();
+        logRealBegin("insert", "POST", url);
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("records", req.get("records") == null ? List.of() : req.get("records"));
-            String resp = client.post().uri(url)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .body(String.class);
-            Map<String, Object> body = parse(resp);
+            Map<String, Object> body = postJson("insert", url, payload);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
+            logRealDone("insert", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return withFallbackNote(fallback.auditResultInsert(req), e);
+            return realFail("insert", url, e);
         }
     }
 
@@ -207,21 +229,24 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (sqlId.isBlank()) {
             return fail("1", "sql_id 必填");
         }
-        String url = base() + "/api/ah/slzx/invokeInfo/executeSqlService";
+        String url = businessUrl("sql");
+        long begin = System.currentTimeMillis();
+        logRealBegin("sql", "POST", url);
         try {
             Map<String, Object> requestObject = new LinkedHashMap<>();
             requestObject.put("sqlId", sqlId);
             requestObject.put("params", params);
-            Map<String, Object> body = postEnvelope(url, requestObject);
-            Map<String, Object> resultObject = envelopeResultObject(body);
+            Map<String, Object> body = postJson("sql", url, envelopeRequest(requestObject));
+            Map<String, Object> resultObject = envelopeResultObject("sql", body);
             List<Map<String, Object>> rows = MapOps.castListOfMaps(resultObject.get("executeSqlResp"));
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", envelopeResultCode(body));
             out.put("resultMsg", envelopeResultMsg(body));
             out.put("execute_sql_resp", rows);
+            logRealDone("sql", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return withFallbackNote(fallback.auditSqlQuery(req), e);
+            return realFail("sql", url, e);
         }
     }
 
@@ -233,29 +258,22 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (offerId.isBlank()) {
             return fail("1", "offerId 必填");
         }
-        String url = base() + "/api/anhui/cpcp/offerTest";
+        String url = businessUrl("testStart");
+        long begin = System.currentTimeMillis();
+        logRealBegin("testStart", "POST", url);
         try {
-            String resp = client.post().uri(url)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("offerId", offerId))
-                    .retrieve()
-                    .body(String.class);
-            Map<String, Object> body = parse(resp);
-            Map<String, Object> resultObject = bareResultObject(body);
+            Map<String, Object> payload = Map.of("offerId", offerId);
+            Map<String, Object> body = postJson("testStart", url, payload);
+            Map<String, Object> resultObject = bareResultObject("testStart", body);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
             out.put("globalId", MapOps.str(resultObject.get("globalId")));
+            logRealDone("testStart", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return withFallbackNote(fallbackTestStart(offerId), e);
+            return realFail("testStart", url, e);
         }
-    }
-
-    private Map<String, Object> fallbackTestStart(String offerId) {
-        Map<String, Object> call = new LinkedHashMap<>();
-        call.put("offerId", offerId);
-        return fallback.testOfferStart(call);
     }
 
     /* ================= C2 查询测试场景（{globalId} 裸体） ================= */
@@ -266,17 +284,20 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (globalId.isBlank()) {
             return fail("1", "globalId 必填");
         }
-        String url = base() + "/api/anhui/cpcp/getTestScenes";
+        String url = businessUrl("testScenes");
+        long begin = System.currentTimeMillis();
+        logRealBegin("testScenes", "POST", url);
         try {
-            Map<String, Object> body = postBare(url, globalId, req);
-            Map<String, Object> resultObject = bareResultObject(body);
+            Map<String, Object> body = postBare("testScenes", url, globalId);
+            Map<String, Object> resultObject = bareResultObject("testScenes", body);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
             out.put("testScenes", MapOps.castListOfMaps(resultObject.get("testScenes")));
+            logRealDone("testScenes", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return withFallbackNote(fallbackBare(globalId, "scenes"), e);
+            return realFail("testScenes", url, e);
         }
     }
 
@@ -288,18 +309,21 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (globalId.isBlank()) {
             return fail("1", "globalId 必填");
         }
-        String url = base() + "/api/anhui/cpcp/getTestProgress";
+        String url = businessUrl("testProgress");
+        long begin = System.currentTimeMillis();
+        logRealBegin("testProgress", "POST", url);
         try {
-            Map<String, Object> body = postBare(url, globalId, req);
-            Map<String, Object> resultObject = bareResultObject(body);
+            Map<String, Object> body = postBare("testProgress", url, globalId);
+            Map<String, Object> resultObject = bareResultObject("testProgress", body);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
             copyIfPresent(resultObject, out, "globalId", "totalSteps", "activeIndex", "done", "failed",
                     "failIndex", "totalSceneCount", "finishedSceneCount", "failedSceneCount");
+            logRealDone("testProgress", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            return withFallbackNote(fallbackBare(globalId, "progress"), e);
+            return realFail("testProgress", url, e);
         }
     }
 
@@ -311,53 +335,67 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (globalId.isBlank()) {
             return fail("1", "globalId 必填");
         }
-        String url = base() + "/api/anhui/cpcp/getTestResult";
+        String url = businessUrl("testResult");
+        long begin = System.currentTimeMillis();
+        logRealBegin("testResult", "POST", url);
         try {
-            Map<String, Object> body = postBare(url, globalId, req);
-            Map<String, Object> resultObject = bareResultObject(body);
+            Map<String, Object> body = postBare("testResult", url, globalId);
+            Map<String, Object> resultObject = bareResultObject("testResult", body);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
             copyIfPresent(resultObject, out, "testRequestId", "testRequestName", "offerId", "offerName", "globalId");
             out.put("testScenes", MapOps.castListOfMaps(resultObject.get("testScenes")));
+            logRealDone("testResult", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
-            Map<String, Object> call = new LinkedHashMap<>();
-            call.put("globalId", globalId);
-            call.put("external_base_url", MapOps.str(req.get("external_base_url")));
-            return withFallbackNote(fallback.testResult(call), e);
+            return realFail("testResult", url, e);
         }
     }
 
-    private Map<String, Object> fallbackBare(String globalId, String kind) {
-        Map<String, Object> call = new LinkedHashMap<>();
-        call.put("globalId", globalId);
-        return switch (kind) {
-            case "scenes" -> fallback.testScenes(call);
-            case "progress" -> fallback.testProgress(call);
-            default -> fallback.testResult(call);
-        };
-    }
-
-    private Map<String, Object> postBare(String url, String globalId, Map<String, Object> req) {
+    private Map<String, Object> postBare(String key, String url, String globalId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("globalId", globalId);
-        String resp = client.post().uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .body(String.class);
-        return parse(resp);
+        return postJson(key, url, payload);
     }
 
     private String globalId(Map<String, Object> req) {
         return firstNonBlank(MapOps.str(req.get("globalId")), MapOps.str(req.get("global_id")));
     }
 
-    /* ---------------- 信封组装/解包 ---------------- */
+    /* ---------------- EOP 直连（信封组装 / 调用 / 严格解析） ---------------- */
+
+    /** POST JSON：请求头带 X-APP-ID/X-APP-KEY 鉴权，解析响应并严格校验 EOP 业务错误。 */
+    private Map<String, Object> postJson(String key, String url, Map<String, Object> payload) {
+        logRealRequest(key, "POST", url, payload);
+        long start = System.currentTimeMillis();
+        String resp;
+        try {
+            resp = client.post().uri(url)
+                    .headers(this::applyAuth)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RuntimeException e) {
+            logRealFailure(key, url, System.currentTimeMillis() - start, e);
+            throw e;
+        }
+        logRealResponse(key, url, System.currentTimeMillis() - start, resp);
+        Map<String, Object> body = parse(resp);
+        assertNoEopError(key, body);
+        return body;
+    }
+
+    /** 为直连请求附加 EOP 鉴权请求头（值空时也照传，由现场注入真实值）。 */
+    private void applyAuth(org.springframework.http.HttpHeaders headers) {
+        AppStoreInterfaceProperties.Eop eop = props.getEop();
+        headers.set(HEADER_APP_ID, eop.getAppId() == null ? "" : eop.getAppId());
+        headers.set(HEADER_APP_KEY, eop.getAppKey() == null ? "" : eop.getAppKey());
+    }
 
     /** A1/B4：{contractRoot{tcpCont 固定头 + svcCont.requestObject}}，POST JSON。 */
-    private Map<String, Object> postEnvelope(String url, Map<String, Object> requestObject) {
+    private Map<String, Object> envelopeRequest(Map<String, Object> requestObject) {
         String stamp = LocalDateTime.now().format(STAMP);
         String transactionId = stamp + String.format("%06d", ThreadLocalRandom.current().nextInt(0, 1000000));
         AppStoreInterfaceProperties.Eop eop = props.getEop();
@@ -369,7 +407,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         tcpCont.put("reqTime", stamp);
         tcpCont.put("globalId", transactionId);
         tcpCont.put("version", "V1.0");
-        tcpCont.put("appKey", eop.getAppKey());
+        tcpCont.put("appKey", eop.getHeaderAppKey());
         tcpCont.put("dstSysId", eop.getDstSysId());
         tcpCont.put("sign", eop.getSign());
 
@@ -382,17 +420,38 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("contractRoot", contractRoot);
+        return payload;
+    }
 
-        String resp = client.post().uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .body(String.class);
-        return parse(resp);
+    /**
+     * 严格校验 EOP 业务错误：响应含 {@code errcode}/{@code errmsg}（如鉴权失败 errcode=242）
+     * 时抛出携带原始错误码/信息的异常，由 {@link #realFail} 归一为 {@code REAL_CALL_FAILED}，
+     * 避免把业务错误静默降级为"未命中"。
+     */
+    private void assertNoEopError(String key, Map<String, Object> body) {
+        String errcode = firstNonBlank(MapOps.str(body.get("errcode")), MapOps.str(body.get("errorCode")));
+        String errmsg = firstNonBlank(MapOps.str(body.get("errmsg")), MapOps.str(body.get("errorMsg")));
+        if (!errcode.isBlank() || !errmsg.isBlank()) {
+            throw new IllegalStateException("EOP 业务错误 [" + key + "] errcode=" + errcode + " errmsg=" + errmsg);
+        }
+    }
+
+    /** 业务地址 = base-url + paths.<接口键>；未配置则明确报错（严格 real，不静默）。 */
+    private String businessUrl(String key) {
+        String base = props.getEop().getBaseUrl();
+        if (base == null || base.isBlank()) {
+            throw new IllegalStateException("prodai.appstore.interface.eop.base-url 未配置");
+        }
+        String b = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        String path = props.getEop().path(key);
+        if (path == null || path.isBlank()) {
+            throw new IllegalStateException("prodai.appstore.interface.eop.paths." + key + " 未配置");
+        }
+        return path.startsWith("/") ? b + path : b + "/" + path;
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> envelopeResultObject(Map<String, Object> body) {
+    private Map<String, Object> envelopeResultObject(String key, Map<String, Object> body) {
         Object cr = body.get("contractRoot");
         if (cr instanceof Map<?, ?> root) {
             Object svc = root.get("svcCont");
@@ -400,7 +459,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
                 return (Map<String, Object>) ro;
             }
         }
-        return new LinkedHashMap<>();
+        throw new IllegalStateException("EOP 响应缺少 contractRoot.svcCont.resultObject [" + key + "]：" + toJson(body));
     }
 
     private String envelopeResultCode(Map<String, Object> body) {
@@ -424,11 +483,11 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     /** C1~C4：{resultObject} 裸结构。 */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> bareResultObject(Map<String, Object> body) {
+    private Map<String, Object> bareResultObject(String key, Map<String, Object> body) {
         if (body.get("resultObject") instanceof Map<?, ?> ro) {
             return (Map<String, Object>) ro;
         }
-        return new LinkedHashMap<>();
+        throw new IllegalStateException("EOP 响应缺少 resultObject [" + key + "]：" + toJson(body));
     }
 
     /* ---------------- 通用 ---------------- */
@@ -444,11 +503,69 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
     }
 
-    private Map<String, Object> withFallbackNote(Map<String, Object> out, Exception e) {
-        Map<String, Object> safe = out == null ? new LinkedHashMap<>() : out;
-        safe.put("note", "已回退模拟（real 接口不可达：" + e.getMessage() + "）");
-        safe.put("mode", "real-fallback-mock");
-        return safe;
+    /* ---------------- real 调用日志（mode=real 时输出完整过程与出入参，统一标注"[真实]"） ---------------- */
+
+    /** 调用开始：接口键 + 方法 + 完整地址 + 生效配置（base-url/超时/鉴权头是否已注入）。*/
+    private void logRealBegin(String key, String method, String url) {
+        AppStoreInterfaceProperties.Eop eop = props.getEop();
+        log.info("[EopInterfaceAdapter][真实·BEGIN] key={} {} url={} base-url={} timeout={}ms app-id={} app-key={}",
+                key, method, url, eop.getBaseUrl(), eop.getTimeoutMs(),
+                mask(eop.getAppId()), mask(eop.getAppKey()));
+    }
+
+    /** 请求体/关键业务参数：接口键 + 待发送报文（raw 出参，非密钥）。files 形态只打印字段名/文件名/字节数。*/
+    private void logRealRequest(String key, String method, String url, Object body) {
+        log.info("[EopInterfaceAdapter][真实→EOP] key={} {} {}", key, method, url);
+        log.info("[EopInterfaceAdapter][真实→EOP] key={} request={}", key, toJson(body));
+    }
+
+    /** 响应到达：接口键 + 耗时 + 原始响应体（解包前留痕）。*/
+    private void logRealResponse(String key, String url, long costMs, String resp) {
+        log.info("[EopInterfaceAdapter][真实←EOP] key={} cost={}ms response={}", key, costMs, resp);
+    }
+
+    /** 出参解包完成：接口键 + 归一后出参（供调用方直接对照工作流取值）。*/
+    private void logRealDone(String key, long costMs, Map<String, Object> out) {
+        log.info("[EopInterfaceAdapter][真实·DONE] key={} cost={}ms result={}", key, costMs, toJson(out));
+    }
+
+    /** 调用异常：接口键 + 地址 + 耗时 + 异常类型/信息（严格模式，不回退）。*/
+    private void logRealFailure(String key, String url, long costMs, Exception e) {
+        log.warn("[EopInterfaceAdapter][真实✗EOP] key={} cost={}ms url={} error={}: {}",
+                key, costMs, url, e.getClass().getSimpleName(), e.getMessage());
+    }
+
+    /** 密钥脱敏：仅保留末 4 位，空值显示 <empty>。 */
+    private String mask(String secret) {
+        if (secret == null || secret.isBlank()) {
+            return "<empty>";
+        }
+        return "****" + secret.substring(Math.max(0, secret.length() - 4));
+    }
+
+    private String toJson(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
+    }
+
+    /**
+     * real 调用失败统一出参（严格模式，不回退 mock）：仅记录责任接口与失败原因，便于调用方感知并处理。
+     * 结果形如 {@code {resultCode:"REAL_CALL_FAILED", resultMsg:"...", key:"..."}}。
+     */
+    private Map<String, Object> realFail(String key, String url, Exception e) {
+        log.error("[EopInterfaceAdapter][真实✗调用失败] key={} url={} error={}: {}",
+                key, url, e.getClass().getSimpleName(), e.getMessage());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("resultCode", ERR_REAL_CALL_FAILED);
+        out.put("resultMsg", "真实接口调用失败：" + e.getMessage());
+        out.put("key", key);
+        return out;
     }
 
     private void copyIfPresent(Map<String, Object> src, Map<String, Object> dst, String... keys) {
@@ -471,14 +588,6 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         body.put("resultCode", code);
         body.put("resultMsg", msg);
         return body;
-    }
-
-    private String base() {
-        String b = props.getEop().getBaseUrl();
-        if (b == null || b.isBlank()) {
-            throw new IllegalStateException("prodai.appstore.interface.eop.base-url 未配置");
-        }
-        return b.endsWith("/") ? b.substring(0, b.length() - 1) : b;
     }
 
     private static String firstNonBlank(String... values) {

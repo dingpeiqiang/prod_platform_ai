@@ -1800,12 +1800,12 @@ DEMO_TURNS = [
      ["gate_refuse_direct_config"]),
     ("幕2", "发起需求审批。",
      ["call_wf_sub_11"]),
-    ("幕2", "确认执行，开始配置。",
-     ["gate_confirm_exec", "carry_req_id"]),
-    ("幕3", "确认配置。",
-     ["call_wf_sub_02", "stage_3", "point_feedback"]),
+    ("幕2", "生成加载方案。",
+     ["call_wf_sub_01", "point_confirm"]),
+    ("幕3", "确认配置，开始执行。",
+     ["gate_confirm_exec", "call_wf_sub_02", "stage_3", "carry_req_id"]),
     ("幕3", "下一步。",
-     ["call_wf_sub_03", "stage_4a"]),
+     ["call_wf_sub_03", "stage_4a", "point_feedback"]),
     ("幕3", "查询稽核结果。",
      ["call_wf_sub_12", "stage_4b", "poll_repeatable"]),
     ("幕3", "下一步。",
@@ -1842,6 +1842,22 @@ class DemoAssertion:
     @property
     def ok(self) -> bool:
         return all(c[1] for c in self.checks) if self.checks else True
+
+
+def _wf_code(name: str) -> str:
+    """把 LLM 返回的工作流标识（可能是文件名 stem ``wf_sub_01_需求分析`` 或裸码
+    ``wf_sub_01``）归一化为裸码 ``wf_sub_01``，供断言与执行使用。"""
+    s = (name or "").strip()
+    m = re.match(r"^(wf_(?:sub|main)_\d+)", s)
+    return m.group(1) if m else s
+
+
+def _reply_text(text: str) -> str:
+    """若 LLM 回复意外为 JSON 协议体，取出其 reply 字段作为用户可见正文。"""
+    obj = _extract_json_object(text)
+    if isinstance(obj, dict) and isinstance(obj.get("reply"), str) and obj["reply"].strip():
+        return obj["reply"].strip()
+    return (text or "").strip()
 
 
 def _extract_json_object(text: str) -> dict | None:
@@ -1919,17 +1935,27 @@ JSON 字段：
 }}
 规则：需要执行动作时用 call_workflow；仅需回复/拒绝/引导时用 reply_only（此时 workflow 留空）。
 确认门禁未命中（如用户要求跳过确认直接落地）必须 reply_only 并拒绝推进，不得直调执行主干子流。
+
+【执行主干固定顺序（用户每回复一次推进一个环节，严禁跳步/并行）】
+确认配置 → wf_sub_02（智能配置）→ wf_sub_03（稽核发起）→ wf_sub_05（资费校准）→ wf_sub_04（自动测试）。
+用户回复「下一步/继续」时，必须严格按此顺序推进「尚未执行」的下一个环节：
+- 已执行 02 后 → 下一步应直调 wf_sub_03；
+- 已执行 03 后 → 下一步应直调 wf_sub_05（查询稽核结果 wf_sub_12 仅在用户明确说「查询稽核结果」时调用）；
+- 已执行 05 后 → 下一步应直调 wf_sub_04；
+- 已执行 04 后 → 下一步应提示可查询测试结果或发起上线审批。
+「查询稽核结果/查询测试结果」等显式查询指令才直调 wf_sub_12/wf_sub_13；「下一步/继续」只按上表推进主干环节。
 """
     return base + proto
 
 
 def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
-                                last_result: dict) -> str:
-    """把对话历史 + 当前上下文 + 上一轮执行结果拼成给 LLM 的 user prompt。"""
+                                last_result: dict, done: list) -> str:
+    """把对话历史 + 当前上下文 + 已完成环节 + 上一轮执行结果拼成给 LLM 的 user prompt。"""
     lines = ["【会话上下文（由子工作流产出，仅供你判断，不得改写）】",
              f"req_id={carried.get('req_id', '')}",
              f"offer_id={carried.get('offer_id', '')}",
              f"approval_id={carried.get('approval_id', '')}",
+             f"已成功执行环节={('、'.join(done) if done else '（无）')}",
              "", "【近期对话】"]
     for role, text in history[-8:]:
         who = "用户" if role == "user" else "数字员工"
@@ -1953,6 +1979,35 @@ def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
     return "\n".join(lines)
 
 
+def _build_demo_reply_prompt(user_msg: str, wf: str, result: dict,
+                             carried: dict, stage_hint: str = ""):
+    """执行完成后，让 LLM 按「结果表达铁律」据实渲染面向用户的回复。"""
+    outs = result.get("outputs") or {}
+    lines = [
+        "【事实依据（子工作流真实返回，你必须严格据此表达，禁止虚构/凑数）】",
+        f"环节工作流={wf}",
+        f"执行结论={'成功' if result.get('passed') else '失败'}",
+        f"总节点={result.get('total', 0)} OK={result.get('ok', 0)} "
+        f"回退={result.get('fallback', 0)} 错误={result.get('error', 0)}",
+    ]
+    if outs:
+        lines.append(f"关键出参={json.dumps(outs, ensure_ascii=False)[:600]}")
+    if result.get("error_msg"):
+        lines.append(f"失败明细={result['error_msg']}")
+    lines += [
+        "",
+        f"【本轮用户消息】{user_msg}",
+        f"【本环节定位】{stage_hint or wf}",
+        "",
+        "请按主智能体提示词的「结果表达」要求，输出面向用户的自然语言回复：",
+        "1) 如实汇报本环节结果（与上述事实一一对应）；2) 给出下一步建议；",
+        "3) 若后续需用户确认/决策（如是否发起审批、是否继续下一环节），必须明确提示并止于确认点；",
+        "4) 若失败，按异常模板给环节/原因/明细/建议，引导【重新执行】或【修改执行方案】。",
+        "仅输出回复正文（不要 JSON、不要代码块）。",
+    ]
+    return "\n".join(lines)
+
+
 def _run_demo_workflow(name: str, runner_kwargs: dict, log_dir: str,
                        carried: dict) -> ChainResult:
     """对话编排中的一次子工作流直调：复用链式执行逻辑（复用上下文注入与回收）。"""
@@ -1972,11 +2027,11 @@ def _demo_check(labels: list, decision: dict, executed: list, carried: dict,
     - carry_req_id：上下文 req_id 须为 PLAN\\d{{17}} 且被下游携带
     - summary_block / stage_N：执行结果须无 error/回退（严格口径）
     """
-    wf = (decision.get("workflow") or "").strip()
+    wf = _wf_code(decision.get("workflow") or "")
     action = (decision.get("action") or "").strip()
     reply = (decision.get("reply") or "")
     checks = []
-    exec_by_name = {e["name"]: e for e in executed}
+    exec_by_name = {_wf_code(e["name"]): e for e in executed}
 
     def exec_ok(sub: str) -> tuple[bool, str]:
         e = exec_by_name.get(sub)
@@ -2095,17 +2150,19 @@ def _run_demo(args) -> int:
 
     history = []
     last_result = {}
+    done = []
     assertions = []
     for idx, (stage, user_msg, labels) in enumerate(DEMO_TURNS, 1):
         print(f"\n{C.BOLD}[{idx}/{len(DEMO_TURNS)}]{C.RESET} {C.MAGENTA}{stage}{C.RESET} "
               f"{C.BOLD}用户：{C.RESET}{user_msg}", flush=True)
-        prompt = _build_demo_decision_prompt(history, user_msg, carried, last_result)
+        prompt = _build_demo_decision_prompt(history, user_msg, carried, last_result, done)
         text, is_fb, note = (llm.chat(prompt, system=system_prompt)
                              if llm else (LlmClient._mock(prompt), True, "offline/mock"))
         decision = _extract_json_object(text) or {}
         action = (decision.get("action") or "").strip()
-        wf = (decision.get("workflow") or "").strip()
-        reply = decision.get("reply") or text
+        wf_raw = (decision.get("workflow") or "").strip()
+        wf = _wf_code(wf_raw)
+        reply = _reply_text(decision.get("reply") or text)
         if is_fb:
             print(f"    {C.YELLOW}⚠ LLM 回退（{note}）{C.RESET}")
         print(f"    {C.GREY}决策：action={action or '-'} workflow={wf or '-'} "
@@ -2128,6 +2185,17 @@ def _run_demo(args) -> int:
                 print(f"    {C.GREY}出参: {cr.outputs}{C.RESET}")
             if not cr.passed and cr.error_msg:
                 print(f"    {C.RED}✗ {cr.error_msg}{C.RESET}")
+            if cr.passed and wf not in done:
+                done.append(wf)
+            # 结果表达二次生成：据真实执行结果渲染面向用户的回复（结果表达铁律）
+            stage_hint = labels[0] if labels else ""
+            if llm and not is_fb:
+                rp = _build_demo_reply_prompt(user_msg, wf, last_result, carried, stage_hint)
+                rtext, r_fb, r_note = llm.chat(rp, system=system_prompt)
+                if not r_fb and rtext.strip():
+                    reply = _reply_text(rtext)
+                    decision["reply"] = reply
+                    print(f"    {C.CYAN}数字员工（据实）：{C.RESET}{C.GREY}{reply[:320]}{C.RESET}")
         elif action == "call_workflow" and wf:
             print(f"    {C.YELLOW}⚠ 指定工作流不存在：{wf}（跳过执行）{C.RESET}")
             last_result = {"name": wf, "passed": False, "error": 1,

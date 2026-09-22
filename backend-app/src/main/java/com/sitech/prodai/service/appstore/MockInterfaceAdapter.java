@@ -51,10 +51,16 @@ public class MockInterfaceAdapter implements InterfaceFacade {
         return "mock";
     }
 
+    /** 入口日志：显式标注本次走模拟报文。 */
+    private void logMock(String key, Map<String, Object> req) {
+        log.info("[MockInterfaceAdapter][模拟] key={} 返回内置模拟报文 request={}", key, req);
+    }
+
     /* ================= A1 相似度分析 ================= */
 
     @Override
     public Map<String, Object> similarOfferQuery(Map<String, Object> req) {
+        logMock("similar", req);
         // 兼容 camelCase（businessDesc，工作流裸传）与 snake_case（business_desc）
         String desc = firstNonBlank(MapOps.str(req.get("businessDesc")), MapOps.str(req.get("business_desc")));
         String templateId = firstNonBlank(MapOps.str(req.get("templateId")), MapOps.str(req.get("template_id")));
@@ -70,6 +76,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditFileUpload(Map<String, Object> req) {
+        logMock("upload", req);
         String fileName = MapOps.str(req.get("fileName"));
         if (fileName.isBlank()) {
             fileName = MapOps.str(req.get("file_name"));
@@ -97,6 +104,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditAsyncNotify(Map<String, Object> req) {
+        logMock("notify", req);
         String salesId = firstNonBlank(MapOps.str(req.get("sales_id")), MapOps.str(req.get("salesId")));
         if (salesId.isBlank()) {
             return fail("sales_id 必填");
@@ -120,6 +128,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditResultInsert(Map<String, Object> req) {
+        logMock("insert", req);
         Object records = req.get("records");
         int count = records instanceof List<?> list ? list.size() : 0;
         Map<String, Object> body = new LinkedHashMap<>();
@@ -132,6 +141,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditSqlQuery(Map<String, Object> req) {
+        logMock("sql", req);
         String sqlId = firstNonBlank(MapOps.str(req.get("sql_id")), MapOps.str(req.get("sqlId")));
         String params = MapOps.str(req.get("params"));
         int total = countRequestIds(params);
@@ -178,6 +188,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> testOfferStart(Map<String, Object> req) {
+        logMock("testStart", req);
         return sim.testOfferStart(withOfferId(req));
     }
 
@@ -185,6 +196,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> testScenes(Map<String, Object> req) {
+        logMock("testScenes", req);
         return sim.testScenes(withGlobalId(req));
     }
 
@@ -192,6 +204,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> testProgress(Map<String, Object> req) {
+        logMock("testProgress", req);
         return sim.testProgress(withGlobalId(req));
     }
 
@@ -199,6 +212,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> testResult(Map<String, Object> req) {
+        logMock("testResult", req);
         String baseUrl = MapOps.str(req.get("external_base_url"));
         return sim.testResult(withGlobalId(req), baseUrl);
     }

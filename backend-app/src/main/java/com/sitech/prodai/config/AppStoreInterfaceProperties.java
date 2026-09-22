@@ -4,14 +4,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 产销品场景接口适配层配置（统一方案 §4.5.4）：开发 mock ↔ 现场 real 配置化切换。
  * <p>
  * mode=mock（默认）走 {@code MockInterfaceAdapter}（包装 OfferSimV16Service 与内置确定性 mock），
- * mode=real 走 {@code EopInterfaceAdapter}（RestClient 直连 EOP，组装/解包信封）。
- * real 不可达时自动回退 mock 并在出参附 note 标注，保证演示不中断。
+ * mode=real 走 {@code EopInterfaceAdapter}（RestClient 直连 EOP 业务地址，请求头带 X-APP-ID/X-APP-KEY 鉴权）。
+ * real 调用失败严格报错（{@code resultCode=REAL_CALL_FAILED}，带 EOP 原始 errcode/errmsg），不回退 mock。
  * <p>
  * 混合模式：real-list 白名单命中接口走 real、其余走 mock，便于现场按接口逐个联调。
  */
@@ -94,10 +96,14 @@ public class AppStoreInterfaceProperties {
 
     /** EOP 接入参数（前缀 eop）。 */
     public static class Eop {
-        /** real 模式 EOP 基础地址。 */
+        /** real 模式 EOP 基础地址（直连业务地址前缀）。 */
         private String baseUrl = "https://eop-ops.cloud.anhuitelecom.com:10008";
+        /** 鉴权请求头 X-APP-ID（空值，由 yml/环境变量注入，勿硬编码）。 */
+        private String appId = "";
+        /** 鉴权请求头 X-APP-KEY（空值，由 yml/环境变量注入，勿硬编码）。 */
+        private String appKey = "";
         /** tcpCont 固定头：应用标识。 */
-        private String appKey = "eOrder1";
+        private String headerAppKey = "eOrder1";
         /** tcpCont 固定头：目标系统标识。 */
         private String dstSysId = "OrderCenter";
         /** SQL 查询服务编码（tcpCont.svcCode）。 */
@@ -108,6 +114,17 @@ public class AppStoreInterfaceProperties {
         private String uploadFileField = "file";
         /** real 接口调用超时（毫秒）。 */
         private int timeoutMs = 60000;
+        /**
+         * 接口键 → 业务路径映射。键为接口键：
+         * similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult；
+         * 值拼到 {@code base-url} 之后调用（如 /api/ah/cpcp/similar）。
+         */
+        private Map<String, String> paths = new LinkedHashMap<>();
+
+        /** 按接口键取业务路径（未配置返回 null）。 */
+        public String path(String key) {
+            return paths == null ? null : paths.get(key);
+        }
 
         public String getBaseUrl() {
             return baseUrl;
@@ -117,12 +134,36 @@ public class AppStoreInterfaceProperties {
             this.baseUrl = baseUrl;
         }
 
+        public String getAppId() {
+            return appId;
+        }
+
+        public void setAppId(String appId) {
+            this.appId = appId;
+        }
+
         public String getAppKey() {
             return appKey;
         }
 
         public void setAppKey(String appKey) {
             this.appKey = appKey;
+        }
+
+        public String getHeaderAppKey() {
+            return headerAppKey;
+        }
+
+        public void setHeaderAppKey(String headerAppKey) {
+            this.headerAppKey = headerAppKey;
+        }
+
+        public Map<String, String> getPaths() {
+            return paths;
+        }
+
+        public void setPaths(Map<String, String> paths) {
+            this.paths = paths == null ? new LinkedHashMap<>() : paths;
         }
 
         public String getDstSysId() {

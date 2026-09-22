@@ -117,19 +117,34 @@ prodai:
     # 单次检测最大提醒产出数护栏（防大面积资费调整刷屏）
     max-alerts-per-detect: ${CHANGE_SUB_MAX_ALERTS:200}
   # 产销品场景接口适配层（统一方案 §4.5.4）：mode=mock 走模拟报文（开发默认），
-  # mode=real 直连现场 EOP；real 不可达自动回退 mock 并标注。real-list 为混合模式白名单
-  # （similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult），命中走 real、其余 mock。
+  # mode=real 直连 EOP 业务地址（请求头 X-APP-ID/X-APP-KEY 鉴权，值由配置/环境变量注入）；
+  # real 调用失败严格报错（REAL_CALL_FAILED，带 EOP 原始 errcode/errmsg），不回退 mock。
+  # real-list 为混合模式白名单（similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult），
+  # 命中走 real、其余 mock。
   appstore:
     interface:
       mode: ${APPSTORE_INTERFACE_MODE:mock}
       eop:
         base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
-        app-key: ${EOP_APP_KEY:eOrder1}
+        # 鉴权请求头 X-APP-ID / X-APP-KEY（空值，现场经环境变量/配置注入，勿硬编码进代码）
+        app-id: ${EOP_APP_ID:}
+        app-key: ${EOP_APP_KEY:}
         dst-sys-id: ${EOP_DST_SYS_ID:OrderCenter}
         svc-code: ${EOP_SVC_CODE:5012010056}
         sign: ${EOP_SIGN:123}
         upload-file-field: ${EOP_UPLOAD_FILE_FIELD:file}
         timeout-ms: ${EOP_TIMEOUT_MS:60000}
+        # 接口键 → 业务路径（拼到 base-url 之后）
+        paths:
+          similar: ${EOP_PATH_SIMILAR:/api/ah/cpcp/similar}
+          upload: ${EOP_PATH_UPLOAD:/api/ah/cpcp/upload}
+          notify: ${EOP_PATH_NOTIFY:/api/ah/cpcp/async_report_notify_direct}
+          insert: ${EOP_PATH_INSERT:/api/ahhui/cpcp/insertAiAuditResult}
+          sql: ${EOP_PATH_SQL:/api/ah/slzx/invokeInfo/executeSqlService}
+          testStart: ${EOP_PATH_TEST_START:/api/anhui/cpcp/offerTest}
+          testScenes: ${EOP_PATH_TEST_SCENES:/api/anhui/cpcp/getTestScenes}
+          testProgress: ${EOP_PATH_TEST_PROGRESS:/api/anhui/cpcp/getTestProgress}
+          testResult: ${EOP_PATH_TEST_RESULT:/api/anhui/cpcp/getTestResult}
       poll:
         audit:
           interval-ms: 5000
