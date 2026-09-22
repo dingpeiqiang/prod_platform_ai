@@ -279,6 +279,7 @@
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useUserStore } from '../../stores/user.js'
+import { request as httpRequest } from '../../services/httpClient.js'
 import {
   listSavedRequests,
   listCollections,
@@ -502,22 +503,15 @@ async function send() {
   const start = performance.now()
   sending.value = true
   try {
-    const res = await fetch(targetUrl, {
-      method: method.value,
-      headers: requestHeaders,
-      body: ['GET', 'HEAD'].includes(method.value) ? undefined : finalBody,
-    })
-    const text = await res.text()
+    // 跨域地址经后端 /api/v1/http-proxy 同源转发，规避浏览器 CORS 拦截
+    const res = await sendRequest({ targetUrl, requestHeaders, finalBody })
+    const text = res.text
     let pretty = text
     try {
       pretty = JSON.stringify(JSON.parse(text), null, 2)
     } catch {
       /* 非 JSON 保持原文 */
     }
-    const respHeaders = {}
-    res.headers.forEach((v, k) => {
-      respHeaders[k] = v
-    })
     response.value = {
       status: res.status,
       statusText: res.statusText,
@@ -526,7 +520,7 @@ async function send() {
       sizeText: formatSize(new Blob([text]).size),
       pretty,
       raw: text,
-      headers: respHeaders,
+      headers: res.headers,
     }
     activeRespTab.value = 'body'
     recordHistory({ status: res.status, success: res.ok, duration: response.value.timeMs, respBody: text })
@@ -535,6 +529,72 @@ async function send() {
     recordHistory({ status: null, success: false, duration: Math.round(performance.now() - start), error: e.message })
   } finally {
     sending.value = false
+  }
+}
+
+/** 判断目标地址是否与前端不同源（跨域）。 */
+function isCrossOrigin(targetUrl) {
+  try {
+    const target = new URL(targetUrl, window.location.origin)
+    return target.origin !== window.location.origin
+  } catch {
+    // 非标准/相对地址视为同源，走浏览器 fetch
+    return false
+  }
+}
+
+/** 代理支持的方法（与后端 HttpProxyController 一致）。 */
+const PROXY_METHODS = ['GET', 'POST', 'PUT', 'DELETE']
+
+/**
+ * 发送请求：跨域且方法受后端代理支持时走后端 /api/v1/http-proxy 转发，
+ * 否则直接用浏览器 fetch（同源，或 HEAD/OPTIONS 等代理不支持的方法）。
+ */
+async function sendRequest({ targetUrl, requestHeaders, finalBody }) {
+  const useProxy = isCrossOrigin(targetUrl) && PROXY_METHODS.includes(method.value)
+
+  if (useProxy) {
+    const bodyForProxy = bodyType.value === 'form' ? body.value : finalBody
+    const res = await httpRequest('/http-proxy', {
+      method: 'POST',
+      data: {
+        url: targetUrl,
+        method: method.value,
+        headers: requestHeaders,
+        body: method.value === 'GET' ? null : (bodyForProxy ?? null),
+      },
+      silentError: true,
+      showLoading: false,
+    })
+    if (!res || res.success === false) {
+      throw new Error(res?.message || `HTTP ${method.value} ${targetUrl} 请求失败`)
+    }
+    const text = res.data == null ? '' : String(res.data)
+    return {
+      status: res.status ?? 200,
+      statusText: res.status >= 400 ? 'Error' : 'OK',
+      ok: (res.status ?? 200) < 400,
+      text,
+      headers: {},
+    }
+  }
+
+  const res = await fetch(targetUrl, {
+    method: method.value,
+    headers: requestHeaders,
+    body: ['GET', 'HEAD'].includes(method.value) ? undefined : finalBody,
+  })
+  const text = await res.text()
+  const respHeaders = {}
+  res.headers.forEach((v, k) => {
+    respHeaders[k] = v
+  })
+  return {
+    status: res.status,
+    statusText: res.statusText,
+    ok: res.ok,
+    text,
+    headers: respHeaders,
   }
 }
 
