@@ -14,12 +14,15 @@ BASE_URL = "http://10.86.13.201:31281"
 def nid(seq, ns="a1b2c3d4"):
     return "%s-0000-4000-8000-%012d" % (ns, seq)
 
-def inp(name, desc, ptype="string", required=True, content="", ref_block="", ref_rel=""):
+def inp(name, desc, ptype="string", required=True, content="", ref_block="", ref_rel="",
+        part_name=""):
     d = {
         "blockID": ref_block, "relName": ref_rel, "name": name,
         "description": desc, "type": "ref" if ref_block else ptype,
         "required": required, "content": content
     }
+    if part_name:
+        d["part_name"] = part_name
     if ref_block:
         d["nameValue"] = [ref_block, ref_block + "," + ref_rel]
         d["currValue"] = ref_block + "," + ref_rel
@@ -540,6 +543,105 @@ CODE_POLL_AUDIT = (
     "    return ret"
 )
 CODE_POLL_AUDIT = CODE_POLL_AUDIT.replace("BASE_URL", BASE_URL)
+
+# CODE_AUDIT_LAUNCH：wf_sub_03 节点203「异步报告生成并通知」逐品循环（接口B2，GET query）。
+#   入参 sales_id = 节点202（B1 文件上传）返回的清单 JSON（销售品名→{offerId,location,sheet_name}），
+#   file_id = 节点202；对每个销售品以 flat 参数 GET /audit/async/notify 取 request_id，
+#   聚合为逗号拼接的 requestIds（供 4b 轮询 B4 与临时态落库）。
+CODE_AUDIT_LAUNCH = (
+    "import json\n"
+    "import urllib.request\n"
+    "import urllib.parse\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "NOTIFY_URL = 'BASE_URL/api/v1/appstore/audit/async/notify'\n"
+    "\n"
+    "def _parse_sales(raw: Any) -> Dict[str, Any]:\n"
+    "    if isinstance(raw, dict):\n"
+    "        return raw\n"
+    "    s = str(raw or '').strip()\n"
+    "    if not s:\n"
+    "        return {}\n"
+    "    try:\n"
+    "        obj = json.loads(s)\n"
+    "        return obj if isinstance(obj, dict) else {}\n"
+    "    except Exception:\n"
+    "        return {}\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    sales = _parse_sales(p.get('sales_id'))\n"
+    "    file_id = str(p.get('file_id') or '')\n"
+    "    request_ids = []\n"
+    "    first_request_id = ''\n"
+    "    for name, item in sales.items():\n"
+    "        info = item if isinstance(item, dict) else {}\n"
+    "        params = {'sales_id': str(info.get('offerId') or name),\n"
+    "                  'location': str(info.get('location', 0)),\n"
+    "                  'sheet_name': str(info.get('sheet_name') or '套餐')}\n"
+    "        if file_id:\n"
+    "            params['file_id'] = file_id\n"
+    "        url = NOTIFY_URL + '?' + urllib.parse.urlencode(params)\n"
+    "        req = urllib.request.Request(url, method='GET',\n"
+    "                                     headers={'Accept': 'application/json'})\n"
+    "        with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
+    "            resp = json.loads(http_resp.read().decode('utf-8'))\n"
+    "        rid = str(resp.get('request_id') or resp.get('requestId') or '')\n"
+    "        if rid:\n"
+    "            request_ids.append(rid)\n"
+    "            if not first_request_id:\n"
+    "                first_request_id = rid\n"
+    "    ret: Output = {'request_id': first_request_id,\n"
+    "                   'requestIds': ','.join(request_ids)}\n"
+    "    return ret"
+)
+CODE_AUDIT_LAUNCH = CODE_AUDIT_LAUNCH.replace("BASE_URL", BASE_URL)
+
+# CODE_AUDIT_INSERT：wf_sub_03 节点204「插入AI稽核结果」逐品循环（接口B3，POST records[]）。
+#   与 B2 成对调用，保证 AI 回调时 DB 已有记录；逐品插入并聚合 resultCode。
+CODE_AUDIT_INSERT = (
+    "import json\n"
+    "import urllib.request\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "INSERT_URL = 'BASE_URL/api/v1/appstore/audit/result/insert'\n"
+    "\n"
+    "def _parse_sales(raw: Any) -> Dict[str, Any]:\n"
+    "    if isinstance(raw, dict):\n"
+    "        return raw\n"
+    "    s = str(raw or '').strip()\n"
+    "    if not s:\n"
+    "        return {}\n"
+    "    try:\n"
+    "        obj = json.loads(s)\n"
+    "        return obj if isinstance(obj, dict) else {}\n"
+    "    except Exception:\n"
+    "        return {}\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    sales = _parse_sales(p.get('sales_id'))\n"
+    "    file_id = str(p.get('file_id') or '')\n"
+    "    request_ids = [x for x in str(p.get('requestIds') or '').split(',') if x]\n"
+    "    result_code = '0'\n"
+    "    for idx, (name, item) in enumerate(sales.items()):\n"
+    "        info = item if isinstance(item, dict) else {}\n"
+    "        record = {'sales_id': str(info.get('offerId') or name),\n"
+    "                  'file_id': file_id,\n"
+    "                  'request_id': request_ids[idx] if idx < len(request_ids) else '',\n"
+    "                  'status': '1000'}\n"
+    "        body = json.dumps({'records': [record]}).encode('utf-8')\n"
+    "        req = urllib.request.Request(INSERT_URL, data=body, method='POST',\n"
+    "                                     headers={'Content-Type': 'application/json'})\n"
+    "        with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
+    "            resp = json.loads(http_resp.read().decode('utf-8'))\n"
+    "        code = str(resp.get('resultCode', '0'))\n"
+    "        if code not in ('', '0'):\n"
+    "            result_code = code\n"
+    "    ret: Output = {'resultCode': result_code}\n"
+    "    return ret"
+)
+CODE_AUDIT_INSERT = CODE_AUDIT_INSERT.replace("BASE_URL", BASE_URL)
 
 # CODE_SUMMARY_APPROVAL：wf_sub_06 节点501s 合成结构化汇总（V2.4 新增，设计方案3.2.6 节点7）。
 # 输入=5类自查节点提取的环节结果原文（config/spec/fee/test + requirement），

@@ -110,9 +110,35 @@ public class AppStoreV16Controller {
     }
 
     @Operation(summary = "异步报告生成并通知", description = "按销售品通知 AI 能力中心启动稽核报告生成，返回 request_id 供轮询（B2，GET query）")
-    @PostMapping("/audit/async/notify")
-    public Map<String, Object> auditAsyncNotify(@RequestBody Map<String, Object> req) {
+    @RequestMapping(value = "/audit/async/notify", method = {RequestMethod.GET, RequestMethod.POST})
+    public Map<String, Object> auditAsyncNotify(@RequestBody(required = false) Map<String, Object> body,
+                                                @RequestParam(required = false) String sales_id,
+                                                @RequestParam(required = false) String salesId,
+                                                @RequestParam(required = false) String location,
+                                                @RequestParam(required = false) String sheet_name,
+                                                @RequestParam(required = false) String sheetName,
+                                                @RequestParam(required = false) String file_id,
+                                                @RequestParam(required = false) String fileId,
+                                                @RequestParam(required = false) String mode) {
+        Map<String, Object> req = new java.util.LinkedHashMap<>();
+        if (body != null) {
+            req.putAll(body);
+        }
+        putIfPresent(req, "sales_id", sales_id);
+        putIfPresent(req, "sales_id", salesId);
+        putIfPresent(req, "location", location);
+        putIfPresent(req, "sheet_name", sheet_name);
+        putIfPresent(req, "sheet_name", sheetName);
+        putIfPresent(req, "file_id", file_id);
+        putIfPresent(req, "file_id", fileId);
+        putIfPresent(req, "mode", mode);
         return interfaceFacade.auditAsyncNotify(req);
+    }
+
+    private static void putIfPresent(Map<String, Object> target, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            target.putIfAbsent(key, value);
+        }
     }
 
     @Operation(summary = "插入AI稽核结果", description = "按 records[] 插入 AI 稽核结果（状态 1000 处理中），保证回调时 DB 已有记录（B3）")

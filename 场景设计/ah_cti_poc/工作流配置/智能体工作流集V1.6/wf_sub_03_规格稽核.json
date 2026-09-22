@@ -184,7 +184,8 @@
             "description": "稽核需求Excel（会话文件引用，multipart）",
             "type": "string",
             "required": true,
-            "content": ""
+            "content": "",
+            "part_name": "file"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
@@ -228,23 +229,18 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000203,request_id",
             "name": "request_id",
-            "cname": "异步报告请求ID",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000203,requestIds",
             "name": "requestIds",
-            "cname": "全部销售品 requestId 集合（逗号拼接）",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           }
         ],
-        "submit_way": "get",
+        "code": "import json\nimport urllib.request\nimport urllib.parse\nfrom typing import Any, Dict\n\nNOTIFY_URL = 'http://10.86.13.201:31281/api/v1/appstore/audit/async/notify'\n\ndef _parse_sales(raw: Any) -> Dict[str, Any]:\n    if isinstance(raw, dict):\n        return raw\n    s = str(raw or '').strip()\n    if not s:\n        return {}\n    try:\n        obj = json.loads(s)\n        return obj if isinstance(obj, dict) else {}\n    except Exception:\n        return {}\n\nasync def main(args):\n    p = args.params\n    sales = _parse_sales(p.get('sales_id'))\n    file_id = str(p.get('file_id') or '')\n    request_ids = []\n    first_request_id = ''\n    for name, item in sales.items():\n        info = item if isinstance(item, dict) else {}\n        params = {'sales_id': str(info.get('offerId') or name),\n                  'location': str(info.get('location', 0)),\n                  'sheet_name': str(info.get('sheet_name') or '套餐')}\n        if file_id:\n            params['file_id'] = file_id\n        url = NOTIFY_URL + '?' + urllib.parse.urlencode(params)\n        req = urllib.request.Request(url, method='GET',\n                                     headers={'Accept': 'application/json'})\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n        rid = str(resp.get('request_id') or resp.get('requestId') or '')\n        if rid:\n            request_ids.append(rid)\n            if not first_request_id:\n                first_request_id = rid\n    ret: Output = {'request_id': first_request_id,\n                   'requestIds': ','.join(request_ids)}\n    return ret",
         "flowJson": null,
-        "authentic_info": "",
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
@@ -277,41 +273,28 @@
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "异步报告生成并通知",
-          "code": "audit_async_notify",
-          "description": "接口B2：异步报告生成并通知（GET），传 sales_id/location/sheet_name/file_id → request_id；须紧跟 B3 成对调用（AI 回调前置落库）",
-          "version": "1"
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "异步报告生成并通知"
         },
-        "authentic_info_new": {
-          "auth_type": "1",
-          "auth_info": {
-            "inparams": [],
-            "params": [],
-            "outparams": []
-          }
-        },
+        "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000203",
         "position": {
           "x": 1455,
           "y": 300
         },
         "dependencyData": [],
-        "type": 3,
-        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/async/notify"
+        "type": 6
       },
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000204,resultCode",
             "name": "resultCode",
-            "cname": "0成功/非0失败",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           }
         ],
-        "submit_way": "post",
+        "code": "import json\nimport urllib.request\nfrom typing import Any, Dict\n\nINSERT_URL = 'http://10.86.13.201:31281/api/v1/appstore/audit/result/insert'\n\ndef _parse_sales(raw: Any) -> Dict[str, Any]:\n    if isinstance(raw, dict):\n        return raw\n    s = str(raw or '').strip()\n    if not s:\n        return {}\n    try:\n        obj = json.loads(s)\n        return obj if isinstance(obj, dict) else {}\n    except Exception:\n        return {}\n\nasync def main(args):\n    p = args.params\n    sales = _parse_sales(p.get('sales_id'))\n    file_id = str(p.get('file_id') or '')\n    request_ids = [x for x in str(p.get('requestIds') or '').split(',') if x]\n    result_code = '0'\n    for idx, (name, item) in enumerate(sales.items()):\n        info = item if isinstance(item, dict) else {}\n        record = {'sales_id': str(info.get('offerId') or name),\n                  'file_id': file_id,\n                  'request_id': request_ids[idx] if idx < len(request_ids) else '',\n                  'status': '1000'}\n        body = json.dumps({'records': [record]}).encode('utf-8')\n        req = urllib.request.Request(INSERT_URL, data=body, method='POST',\n                                     headers={'Content-Type': 'application/json'})\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n        code = str(resp.get('resultCode', '0'))\n        if code not in ('', '0'):\n            result_code = code\n    ret: Output = {'resultCode': result_code}\n    return ret",
         "flowJson": null,
-        "authentic_info": "",
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
@@ -343,42 +326,32 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
-            "relName": "request_id",
-            "name": "request_id",
-            "description": "异步报告请求ID（节点203）",
+            "relName": "requestIds",
+            "name": "requestIds",
+            "description": "全部 requestId 集合（节点203）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000203",
-              "a1b2c3d4-0000-4000-8000-000000000203,request_id"
+              "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,request_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "插入AI稽核结果",
-          "code": "audit_insert_result",
-          "description": "接口B3：插入AI稽核结果（records[]→resultCode），紧跟 B2 调用，保证 AI 回调时 DB 已有记录",
-          "version": "1"
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "插入AI稽核结果"
         },
-        "authentic_info_new": {
-          "auth_type": "1",
-          "auth_info": {
-            "inparams": [],
-            "params": [],
-            "outparams": []
-          }
-        },
+        "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000204",
         "position": {
           "x": 1815,
           "y": 300
         },
         "dependencyData": [],
-        "type": 3,
-        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/result/insert"
+        "type": 6
       },
       {
         "outputs": [

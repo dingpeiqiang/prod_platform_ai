@@ -28,6 +28,7 @@ from gen_workflows import (
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_POLL_AUDIT, CODE_EXTRACT_GLOBAL_ID,
+    CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT,
 )
 
 # ============================================================
@@ -1504,23 +1505,18 @@ s3f.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
 s3f.append(plugin_node(202, "智能稽核文件上传", "audit_file_upload",
     "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
     BASE_URL + "/api/v1/appstore/audit/file/upload",
-    [inp("audit_file", "稽核需求Excel（会话文件引用，multipart）", required=True),
+    [inp("audit_file", "稽核需求Excel（会话文件引用，multipart）", required=True, part_name="file"),
      inp("offer_id", "销售品ID（节点207解析，供 mock 清单定位）", ref_block=nid(207), ref_rel="offer_id")],
     [("file_id", "上传文件ID", "string"), ("sales_id", "销售品清单（销售品名→offerId/location/sheet_name）", "string")]))
-s3f.append(plugin_node(203, "异步报告生成并通知", "audit_async_notify",
-    "接口B2：异步报告生成并通知（GET），传 sales_id/location/sheet_name/file_id → request_id；须紧跟 B3 成对调用（AI 回调前置落库）",
-    BASE_URL + "/api/v1/appstore/audit/async/notify",
+s3f.append(code_node(203, "异步报告生成并通知", CODE_AUDIT_LAUNCH,
     [inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
      inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id")],
-    [("request_id", "异步报告请求ID", "string"), ("requestIds", "全部销售品 requestId 集合（逗号拼接）", "string")],
-    method="get"))
-s3f.append(plugin_node(204, "插入AI稽核结果", "audit_insert_result",
-    "接口B3：插入AI稽核结果（records[]→resultCode），紧跟 B2 调用，保证 AI 回调时 DB 已有记录",
-    BASE_URL + "/api/v1/appstore/audit/result/insert",
+    [code_out("request_id", 203), code_out("requestIds", 203)]))
+s3f.append(code_node(204, "插入AI稽核结果", CODE_AUDIT_INSERT,
     [inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
      inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id"),
-     inp("request_id", "异步报告请求ID（节点203）", ref_block=nid(203), ref_rel="request_id")],
-    [("resultCode", "0成功/非0失败", "string")]))
+     inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds")],
+    [code_out("resultCode", 204)]))
 # 汇总 requestIds → 结构化封包（供 4b 轮询自查 audit_pending 读取）
 s3f.append(code_node(208, "稽核发起结果封包", CODE_PACK_RECORD,
     [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),

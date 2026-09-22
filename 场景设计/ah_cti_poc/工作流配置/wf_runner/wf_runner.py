@@ -60,6 +60,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 # Windows 控制台启用 ANSI 颜色 + UTF-8
 os.system("")
@@ -510,12 +511,15 @@ class PluginCaller:
 
         if not self.offline and url:
             try:
-                outs = self._http(url, method, inputs)
+                outs = self._http(url, method, inputs, node)
                 if outs is not None:
                     return self._align(outs, declared), False, f"live:{method} {url}"
                 note = "HTTP 返回无法解析"
             except urllib.error.HTTPError as e:
                 note = f"HTTP {e.code}"
+                if os.environ.get("WF_DEBUG_HTTP"):
+                    sys.stderr.write("[DEBUG http-%s] %s\n%s\n" % (
+                        e.code, url, e.read().decode("utf-8", "replace")))
             except Exception as e:
                 note = repr(e)
         else:
@@ -523,13 +527,15 @@ class PluginCaller:
         outs = self._mock(code, title, declared)
         return outs, True, f"回退mock({note})"
 
-    def _http(self, url, method, inputs):
+    def _http(self, url, method, inputs, node=None):
         if method == "get":
             qs = urllib.parse.urlencode({k: _to_str(v) for k, v in inputs.items()})
             sep = "&" if "?" in url else "?"
             full = url + (sep + qs if qs else "")
             req = urllib.request.Request(full, method="GET",
                                          headers={"Accept": "application/json"})
+        elif node is not None and _is_multipart_node(node):
+            req = self._build_multipart_request(url, inputs, node)
         else:
             data = json.dumps(inputs, ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(
@@ -551,6 +557,38 @@ class PluginCaller:
             return None
         return body
 
+    def _build_multipart_request(self, url, inputs, node):
+        """按节点声明的 multipart 入参组装表单：文件项挂占位文件，其余为普通字段。"""
+        file_params = _multipart_file_params(node)
+        boundary = "----wfrunner" + uuid.uuid4().hex
+        buf = io.BytesIO()
+        for name, value in inputs.items():
+            if name in file_params:
+                part = file_params[name]
+                filename, content, ctype = _placeholder_upload(name, value)
+                buf.write(f"--{boundary}\r\n".encode("utf-8"))
+                buf.write(
+                    f'Content-Disposition: form-data; name="{part}"; '
+                    f'filename="{filename}"\r\n'.encode("utf-8"))
+                buf.write(f"Content-Type: {ctype}\r\n\r\n".encode("utf-8"))
+                buf.write(content)
+                buf.write(b"\r\n")
+            else:
+                buf.write(f"--{boundary}\r\n".encode("utf-8"))
+                buf.write(
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                    .encode("utf-8"))
+                buf.write(_to_str(value).encode("utf-8"))
+                buf.write(b"\r\n")
+        buf.write(f"--{boundary}--\r\n".encode("utf-8"))
+        payload = buf.getvalue()
+        if os.environ.get("WF_DEBUG_HTTP"):
+            sys.stderr.write("[DEBUG multipart] boundary=%s\n%s\n" % (boundary, payload.decode("utf-8", "replace")))
+        return urllib.request.Request(
+            url, data=payload, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}",
+                     "Accept": "application/json"})
+
     @staticmethod
     def _align(outs: dict, declared: list) -> dict:
         """只保留节点声明的出参；缺失的补空字符串。"""
@@ -567,6 +605,67 @@ class PluginCaller:
             sch = out_schema.get(name)
             result[name] = _mock_by_schema(sch, name, code)
         return result
+
+
+_MULTIPART_HINTS = ("multipart", "form-data")
+_FILE_HINTS = ("multipart", "会话文件", "excel", "xlsx", "文件")
+
+
+def _is_multipart_node(node) -> bool:
+    """节点是否要求 multipart/form-data：显式 declares/consumes，或任入参描述含 multipart。"""
+    if node.get("multipart") is True:
+        return True
+    consumes = str(node.get("consumes") or "").lower()
+    if any(h in consumes for h in _MULTIPART_HINTS):
+        return True
+    for item in node.get("inputs", []):
+        if not isinstance(item, dict):
+            continue
+        desc = str(item.get("description") or "").lower()
+        if any(h in desc for h in _MULTIPART_HINTS):
+            return True
+    return False
+
+
+def _multipart_file_params(node) -> dict:
+    """从节点入参识别文件项，返回 {入参名: multipart 部件名}。
+
+    部件名优先取入参显式声明的 part_name（如后端 @RequestParam("file")）；
+    未声明时默认与入参同名。识别依据：描述含文件语义，或名称启发式。
+    """
+    files = {}
+    for item in node.get("inputs", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or ""
+        if not name:
+            continue
+        part = item.get("part_name") or name
+        desc = str(item.get("description") or "").lower()
+        if any(h in desc for h in _FILE_HINTS):
+            files[name] = part
+    if files:
+        return files
+    for item in node.get("inputs", []):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or ""
+        low = name.lower()
+        if low in ("file", "files", "upload", "attachment") or low.endswith("_file"):
+            files[name] = item.get("part_name") or name
+    return files
+
+
+def _placeholder_upload(name, value):
+    """为 multipart 文件项生成占位文件：返回 (filename, bytes, content_type)。"""
+    if isinstance(value, str) and value.strip():
+        filename = os.path.basename(value.strip())
+    else:
+        filename = (name or "upload") + ".xlsx"
+    if not filename.lower().endswith((".xlsx", ".xls")):
+        filename += ".xlsx"
+    content = b"PK\x03\x04 wf_runner placeholder upload"
+    return filename, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _to_str(v):
