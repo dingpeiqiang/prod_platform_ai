@@ -1788,6 +1788,446 @@ def _workflow_exists(name: str) -> bool:
         return False
 
 
+# ---------------------------------------------------------------- 对话式编排（--demo）
+
+# 演示剧本 V3.0 的用户回合脚本：每条为 (幕, 用户消息, 语义断言标签列表)。
+# 断言由 runner 侧确定性校验（不依赖 LLM 自述），覆盖确认门禁、逐环节推进、
+# 轮询可重复、结果表达对应、职责不越界等「脚本反向速查表」要点。
+DEMO_TURNS = [
+    ("幕1", "我要新增一个家庭融合套餐：月费199元，含300M宽带、IPTV、2张副卡，主卡流量100G。",
+     ["intent_req_submit", "stage_1", "point_confirm"]),
+    ("幕2", "帮我直接配置落地，不用确认了。",
+     ["gate_refuse_direct_config"]),
+    ("幕2", "发起需求审批。",
+     ["call_wf_sub_11"]),
+    ("幕2", "确认执行，开始配置。",
+     ["gate_confirm_exec", "carry_req_id"]),
+    ("幕3", "确认配置。",
+     ["call_wf_sub_02", "stage_3", "point_feedback"]),
+    ("幕3", "下一步。",
+     ["call_wf_sub_03", "stage_4a"]),
+    ("幕3", "查询稽核结果。",
+     ["call_wf_sub_12", "stage_4b", "poll_repeatable"]),
+    ("幕3", "下一步。",
+     ["call_wf_sub_05", "stage_5"]),
+    ("幕3", "下一步。",
+     ["call_wf_sub_04", "stage_6a"]),
+    ("幕3", "查询测试结果。",
+     ["call_wf_sub_13", "stage_6b", "poll_repeatable"]),
+    ("幕3", "发起上线审批。",
+     ["call_wf_sub_06", "stage_7", "summary_block"]),
+    ("幕4", "查询审批进度。",
+     ["call_wf_sub_08"]),
+    ("幕5", "查询监控运维。",
+     ["call_wf_sub_07", "stage_8"]),
+    ("幕5B", "查询存量产品：5G畅享融合套餐。",
+     ["call_wf_sub_09"]),
+    ("幕5C", "对存量产品做合规扫描。",
+     ["call_wf_sub_10"]),
+]
+
+
+class DemoAssertion:
+    """单轮对话的语义断言结果。"""
+
+    def __init__(self, stage: str, user_msg: str, labels: list):
+        self.stage = stage
+        self.user_msg = user_msg
+        self.labels = labels
+        self.decision = {}
+        self.reply = ""
+        self.checks = []          # [(label, ok, detail)]
+        self.executed = []        # [{"name","passed","total","ok","fallback","error","elapsed_ms"}]
+
+    @property
+    def ok(self) -> bool:
+        return all(c[1] for c in self.checks) if self.checks else True
+
+
+def _extract_json_object(text: str) -> dict | None:
+    """从 LLM 回复中提取首个平衡大括号 JSON 对象（严格 JSON 单对象协议）。"""
+    if not text:
+        return None
+    s = text.strip()
+    # 优先整体解析
+    try:
+        obj = json.loads(s)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        pass
+    # 回落：扫描首个平衡 {} 块
+    start = s.find("{")
+    while start != -1:
+        depth = 0
+        for i in range(start, len(s)):
+            if s[i] == "{":
+                depth += 1
+            elif s[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    frag = s[start:i + 1]
+                    try:
+                        obj = json.loads(frag)
+                        if isinstance(obj, dict):
+                            return obj
+                    except Exception:
+                        break
+        start = s.find("{", start + 1)
+    return None
+
+
+def _demo_prompt_path() -> str:
+    return os.path.join(BASE_DIR, "logs", "_prompt_22.txt")
+
+
+def _load_orchestrator_prompt(names: list) -> str:
+    """构造编排者 system prompt：内置主智能体提示词（§2.2）+ 已发布子工作流清单。
+
+    优先读取已抽取的 `logs/_prompt_22.txt`（§2.2 原文）；缺失则内置精简兜底提示词，
+    保证离线/无素材时仍可运行（但联网实跑应使用原文）。
+    """
+    base = ""
+    p = _demo_prompt_path()
+    if os.path.isfile(p):
+        try:
+            base = io.open(p, encoding="utf-8").read().strip()
+        except Exception:
+            base = ""
+    if not base:
+        base = (
+            "你是安徽电信产销品域数字员工。只做三件事：①按【意图→工作流映射表】语义识别直调"
+            "子工作流；②业务理解/补全；③结果表达。确定性细节（req_id 生成与透传、环节落库、"
+            "成败判定、续跑、审批硬校验）由子工作流/代码节点/后端完成，你不得构造或绕过。\n"
+            "限制：执行方案必须止于确认点；确认语义未命中绝不进入执行主干；需求工单审批须用户"
+            "明确确认后才发起；执行主干逐环节推进，每环节止于反馈点；结果表达必须与子流返回一一"
+            "对应，禁止虚构；异常即中断引导重新执行。"
+        )
+    listing = "、".join(names)
+    proto = f"""
+
+【已发布子工作流清单（可直调）】
+{listing}
+
+【输出协议（必须严格遵守）】
+你的每一轮回复**只能输出一个 JSON 对象**，不得包含任何 JSON 之外的文字、注释或代码块标记。
+JSON 字段：
+{{
+  "action": "call_workflow" | "reply_only",
+  "workflow": "wf_sub_XX",          // action=call_workflow 时必填，取自上方清单
+  "reply": "面向用户的自然语言回复（含环节结果/下一步建议/确认提示）",
+  "reason": "简要说明你的编排判断依据"
+}}
+规则：需要执行动作时用 call_workflow；仅需回复/拒绝/引导时用 reply_only（此时 workflow 留空）。
+确认门禁未命中（如用户要求跳过确认直接落地）必须 reply_only 并拒绝推进，不得直调执行主干子流。
+"""
+    return base + proto
+
+
+def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
+                                last_result: dict) -> str:
+    """把对话历史 + 当前上下文 + 上一轮执行结果拼成给 LLM 的 user prompt。"""
+    lines = ["【会话上下文（由子工作流产出，仅供你判断，不得改写）】",
+             f"req_id={carried.get('req_id', '')}",
+             f"offer_id={carried.get('offer_id', '')}",
+             f"approval_id={carried.get('approval_id', '')}",
+             "", "【近期对话】"]
+    for role, text in history[-8:]:
+        who = "用户" if role == "user" else "数字员工"
+        lines.append(f"{who}：{text[:400]}")
+    if last_result:
+        lines.append("")
+        lines.append("【上一轮子工作流执行结果】")
+        lines.append(f"workflow={last_result.get('name', '')} "
+                     f"passed={last_result.get('passed', '')} "
+                     f"总节点={last_result.get('total', 0)} "
+                     f"OK={last_result.get('ok', 0)} "
+                     f"回退={last_result.get('fallback', 0)} "
+                     f"错误={last_result.get('error', 0)}")
+        outs = last_result.get("outputs") or {}
+        if outs:
+            lines.append(f"出参={json.dumps(outs, ensure_ascii=False)[:600]}")
+    lines.append("")
+    lines.append(f"【用户本轮消息】{user_msg}")
+    lines.append("")
+    lines.append("请严格按输出协议，仅返回一个 JSON 对象。")
+    return "\n".join(lines)
+
+
+def _run_demo_workflow(name: str, runner_kwargs: dict, log_dir: str,
+                       carried: dict) -> ChainResult:
+    """对话编排中的一次子工作流直调：复用链式执行逻辑（复用上下文注入与回收）。"""
+    return _chain_one(name, runner_kwargs, log_dir, carried, overrides=None)
+
+
+def _demo_check(labels: list, decision: dict, executed: list, carried: dict,
+                allow_fb: bool) -> list:
+    """按回合标签做确定性语义断言（不信任 LLM 自述）。
+
+    返回 [(label, ok, detail)]。断言口径与剧本「反向速查表」一致：
+    - intent_req_submit / call_wf_sub_XX：LLM 决策应直调指定子工作流
+    - gate_refuse_direct_config：跳过确认直接落地 → 必须 reply_only 拒绝，不得直调执行主干
+    - gate_confirm_exec：确认后应进入执行主干（call 02 或后续环节）
+    - point_confirm / point_feedback：应止于确认/反馈点（回复含确认/下一步提示）
+    - poll_repeatable：轮询流（12/13）可重复直调且执行无 error
+    - carry_req_id：上下文 req_id 须为 PLAN\\d{{17}} 且被下游携带
+    - summary_block / stage_N：执行结果须无 error/回退（严格口径）
+    """
+    wf = (decision.get("workflow") or "").strip()
+    action = (decision.get("action") or "").strip()
+    reply = (decision.get("reply") or "")
+    checks = []
+    exec_by_name = {e["name"]: e for e in executed}
+
+    def exec_ok(sub: str) -> tuple[bool, str]:
+        e = exec_by_name.get(sub)
+        if not e:
+            return False, f"未执行 {sub}"
+        ok = e["error"] == 0 and (allow_fb or e["fallback"] == 0)
+        return ok, (f"{sub}: 节点{e['total']} OK{e['ok']} 回退{e['fallback']} "
+                    f"错误{e['error']} {e['elapsed_ms']}ms")
+
+    for lb in labels:
+        if lb.startswith("call_wf_sub_"):
+            sub = lb.replace("call_", "")
+            hit = action == "call_workflow" and wf == sub
+            ok, detail = exec_ok(sub)
+            checks.append((lb, hit and ok,
+                           f"决策={action}/{wf or '-'}；{detail}" if hit else
+                           f"期望直调 {sub}，实际 {action}/{wf or '-'}"))
+        elif lb == "intent_req_submit":
+            hit = action == "call_workflow" and wf.startswith("wf_sub_0")
+            ok, detail = exec_ok(wf) if hit else (False, "")
+            checks.append((lb, hit and ok, detail or f"实际 {action}/{wf or '-'}"))
+        elif lb == "gate_refuse_direct_config":
+            # 关键反向门禁：不得直调执行主干（02/03/04/05）子流
+            main_path = wf in ("wf_sub_02", "wf_sub_03", "wf_sub_04", "wf_sub_05")
+            ok = (not main_path) and action == "reply_only"
+            kw = ("确认", "方案", "不能", "无法", "需", "请")
+            hinted = any(k in reply for k in kw)
+            checks.append((lb, ok and hinted,
+                           f"决策={action}/{wf or '-'}；回复含确认引导={hinted}"))
+        elif lb == "gate_confirm_exec":
+            ok = action == "call_workflow" and wf in (
+                "wf_sub_02", "wf_sub_03", "wf_sub_04", "wf_sub_05")
+            if wf in exec_by_name:
+                e = exec_by_name[wf]
+                ok = ok and e["error"] == 0 and (allow_fb or e["fallback"] == 0)
+            checks.append((lb, ok, f"决策={action}/{wf or '-'}"))
+        elif lb in ("point_confirm", "point_feedback"):
+            kw = ("确认", "是否", "请", "下一步", "继续", "回复")
+            hinted = any(k in reply for k in kw)
+            checks.append((lb, hinted, f"回复止于确认/反馈点={hinted}"))
+        elif lb == "poll_repeatable":
+            ok, detail = exec_ok(wf)
+            hit = wf in ("wf_sub_12", "wf_sub_13")
+            checks.append((lb, hit and ok, detail or f"决策={action}/{wf or '-'}"))
+        elif lb == "carry_req_id":
+            rid = str(carried.get("req_id", ""))
+            ok = bool(re.fullmatch(r"PLAN\d{17}", rid))
+            checks.append((lb, ok, f"req_id={rid}"))
+        elif lb == "summary_block":
+            kw = ("审批", "完成", "汇总", "上线")
+            hinted = any(k in reply for k in kw)
+            ok, detail = exec_ok(wf) if wf else (True, "")
+            checks.append((lb, hinted and (ok if wf else True),
+                           f"回复含汇总/上线审批提示={hinted}"))
+        elif lb.startswith("stage_"):
+            if wf:
+                ok, detail = exec_ok(wf)
+            else:
+                ok, detail = True, "无执行动作（纯回复回合）"
+            checks.append((lb, ok, detail))
+        else:
+            checks.append((lb, True, "未定义断言（跳过）"))
+    return checks
+
+
+def _run_demo(args) -> int:
+    """对话式端到端演示入口（--demo）。
+
+    以真实 LLM（主智能体提示词）为编排者：逐条回放剧本用户回合，LLM 自主产出
+    「直调哪个子工作流 / 拒绝推进 / 纯回复」的结构化决策，runner 本地执行对应
+    `wf_sub_*` 并把结果回灌 LLM，循环直至剧本结束。每轮做确定性语义断言。
+    """
+    names = _discover_workflows()
+    if not names:
+        print(f"{C.RED}未发现子工作流（{WF_DIR}）{C.RESET}")
+        return 1
+    available = list(names)
+
+    llm_cfg = LlmConfig.from_h2_seed()
+    if args.model and llm_cfg:
+        llm_cfg.model = args.model
+    if not args.offline and llm_cfg is None:
+        print(f"{C.RED}未读到 LLM 配置（data-h2.sql 种子），无法联网编排；"
+              f"可用 --offline 做流程自检。{C.RESET}")
+        return 1
+    llm = None if args.offline else LlmClient(llm_cfg, offline=args.offline)
+
+    runner_kwargs = dict(
+        registry=PluginRegistry(), llm=llm, offline=args.offline,
+        save_json=args.save_json, verbose=False, show_values=False,
+        color=not args.no_color, fast_forward=args.fast_forward,
+        strict=not args.offline and not args.allow_mock,
+    )
+    allow_fb = bool(args.offline) or not runner_kwargs["strict"]
+    log_dir = args.log_dir or os.path.join(BASE_DIR, "logs",
+                                           "demo_" + _dt.datetime.now().strftime("%Y%m%d_%H%M%S"))
+    if log_dir and not os.path.isdir(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+
+    system_prompt = _load_orchestrator_prompt(available)
+    mode = "离线 mock" if args.offline else (
+        f"实时联网（LLM={getattr(llm_cfg, 'model', '') or '无配置'}）")
+    strict_note = "严格判定（无 error 且无 fallback）" if not allow_fb else "宽松判定"
+    print()
+    print(f"{C.BOLD}{C.CYAN}╔{'═' * 76}╗{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}║ {C.RESET}{C.BOLD}对话式端到端演示（LLM 编排）{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}║ {C.RESET}{C.GREY}模式: {mode}，{strict_note}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}║ {C.RESET}{C.GREY}用户回合: {len(DEMO_TURNS)}  "
+          f"日志: {log_dir}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}╚{'═' * 76}╝{C.RESET}")
+
+    carried = {"req_id": "PLAN" + _dt.datetime.now().strftime("%Y%m%d%H%M%S") +
+               "".join(random.choices(string.digits, k=3)),
+               "chat_id": "demo_chat_" + _dt.datetime.now().strftime("%H%M%S")}
+    print(f"{C.GREY}上下文 req_id = {carried['req_id']}  chat_id = {carried['chat_id']}{C.RESET}")
+
+    history = []
+    last_result = {}
+    assertions = []
+    for idx, (stage, user_msg, labels) in enumerate(DEMO_TURNS, 1):
+        print(f"\n{C.BOLD}[{idx}/{len(DEMO_TURNS)}]{C.RESET} {C.MAGENTA}{stage}{C.RESET} "
+              f"{C.BOLD}用户：{C.RESET}{user_msg}", flush=True)
+        prompt = _build_demo_decision_prompt(history, user_msg, carried, last_result)
+        text, is_fb, note = (llm.chat(prompt, system=system_prompt)
+                             if llm else (LlmClient._mock(prompt), True, "offline/mock"))
+        decision = _extract_json_object(text) or {}
+        action = (decision.get("action") or "").strip()
+        wf = (decision.get("workflow") or "").strip()
+        reply = decision.get("reply") or text
+        if is_fb:
+            print(f"    {C.YELLOW}⚠ LLM 回退（{note}）{C.RESET}")
+        print(f"    {C.GREY}决策：action={action or '-'} workflow={wf or '-'} "
+              f"reason={decision.get('reason', '')[:80]}{C.RESET}")
+        print(f"    {C.CYAN}数字员工：{C.RESET}{C.GREY}{reply[:300]}{C.RESET}")
+
+        executed = []
+        if action == "call_workflow" and wf and _workflow_exists(wf):
+            cr = _run_demo_workflow(wf, runner_kwargs, log_dir, carried)
+            executed.append({"name": wf, "passed": cr.passed, "total": cr.total,
+                             "ok": cr.ok, "fallback": cr.fallback, "error": cr.error,
+                             "elapsed_ms": cr.elapsed_ms, "outputs": cr.outputs,
+                             "error_msg": cr.error_msg})
+            last_result = executed[-1]
+            tag = f"{C.GREEN}PASS{C.RESET}" if cr.passed else f"{C.RED}FAIL{C.RESET}"
+            print(f"    → {tag} {C.BOLD}{cr.flow_name}{C.RESET} "
+                  f"{C.GREY}节点{cr.total} OK{cr.ok} 回退{cr.fallback} 错误{cr.error} "
+                  f"{cr.elapsed_ms}ms{C.RESET}")
+            if cr.outputs:
+                print(f"    {C.GREY}出参: {cr.outputs}{C.RESET}")
+            if not cr.passed and cr.error_msg:
+                print(f"    {C.RED}✗ {cr.error_msg}{C.RESET}")
+        elif action == "call_workflow" and wf:
+            print(f"    {C.YELLOW}⚠ 指定工作流不存在：{wf}（跳过执行）{C.RESET}")
+            last_result = {"name": wf, "passed": False, "error": 1,
+                           "note": "工作流不存在"}
+
+        checks = _demo_check(labels, decision, executed, carried, allow_fb)
+        assertions.append(DemoAssertion(stage, user_msg, labels))
+        assertions[-1].decision = decision
+        assertions[-1].reply = reply
+        assertions[-1].checks = checks
+        assertions[-1].executed = executed
+        for lb, ok, detail in checks:
+            mark = f"{C.GREEN}✓{C.RESET}" if ok else f"{C.RED}✗{C.RESET}"
+            print(f"    {mark} {C.GREY}断言[{lb}] {detail}{C.RESET}")
+
+        history.append(("user", user_msg))
+        history.append(("agent", reply))
+
+    # 汇总
+    all_checks = [(a, c) for a in assertions for c in a.checks]
+    passed = sum(1 for _, c in all_checks if c[1])
+    failed = len(all_checks) - passed
+    print()
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+    print(f"{C.BOLD}演示汇总{C.RESET}  回合 {len(assertions)}  断言 {len(all_checks)}  "
+          f"{C.GREEN}PASS {passed}{C.RESET}  {C.RED}FAIL {failed}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}" + "─" * 78 + f"{C.RESET}")
+    print(f"{'幕':<6}{'用户回合':<36}{'结论':<8}{'断言':>6}")
+    for a in assertions:
+        verdict_plain = "PASS" if a.ok else "FAIL"
+        verdict_col = f"{C.GREEN}PASS{C.RESET}" if a.ok else f"{C.RED}FAIL{C.RESET}"
+        pad = " " * max(0, 8 - len(verdict_plain))
+        msg = a.user_msg[:34]
+        print(f"{a.stage:<6}{msg:<36}{verdict_col}{pad}{len(a.checks):>6}")
+    if failed:
+        print(f"\n{C.RED}失败断言：{C.RESET}")
+        for a, c in all_checks:
+            if not c[1]:
+                print(f"  - [{a.stage}] {c[0]}: {c[2]}")
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+
+    # 落盘报告
+    _write_demo_report(log_dir, assertions, carried, mode, strict_note)
+    print(f"{C.GREY}报告: {os.path.join(log_dir, 'demo_report.md')}{C.RESET}")
+    return 1 if failed else 0
+
+
+def _write_demo_report(log_dir: str, assertions: list, carried: dict,
+                       mode: str, strict_note: str) -> str:
+    """把对话回合 → 断言覆盖度写成 markdown 报告。"""
+    if not log_dir:
+        return ""
+    if not os.path.isdir(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    path = os.path.join(log_dir, "demo_report.md")
+    lines = ["# 对话式端到端演示报告（LLM 编排）", "",
+             f"- 模式：{mode}，{strict_note}",
+             f"- 上下文：req_id=`{carried.get('req_id', '')}`，"
+             f"chat_id=`{carried.get('chat_id', '')}`",
+             f"- 用户回合：{len(assertions)}", "",
+             "## 回合 → 断言明细", ""]
+    for i, a in enumerate(assertions, 1):
+        verdict = "PASS" if a.ok else "FAIL"
+        lines.append(f"### {i}. [{a.stage}] {verdict}　用户：{a.user_msg}")
+        d = a.decision or {}
+        lines.append(f"- LLM 决策：action=`{d.get('action', '')}` "
+                     f"workflow=`{d.get('workflow', '')}` "
+                     f"reason={d.get('reason', '')}")
+        if a.reply:
+            lines.append(f"- 数字员工回复：{a.reply[:500]}")
+        for e in a.executed:
+            lines.append(f"- 执行：`{e['name']}` "
+                         f"{'PASS' if e['passed'] else 'FAIL'} 节点{e['total']} "
+                         f"OK{e['ok']} 回退{e['fallback']} 错误{e['error']} "
+                         f"{e['elapsed_ms']}ms")
+        for lb, ok, detail in a.checks:
+            lines.append(f"- 断言 [`{lb}`] {'✓' if ok else '✗'} {detail}")
+        lines.append("")
+    # 覆盖度统计
+    all_checks = [(a, c) for a in assertions for c in a.checks]
+    passed = sum(1 for _, c in all_checks if c[1])
+    lines += ["## 断言覆盖度", "",
+              f"- 断言总数：{len(all_checks)}，PASS {passed}，FAIL {len(all_checks) - passed}",
+              ""]
+    label_stat = {}
+    for a, c in all_checks:
+        s = label_stat.setdefault(c[0], [0, 0])
+        s[1] += 1
+        if c[1]:
+            s[0] += 1
+    lines.append("| 断言 | 通过/总数 |")
+    lines.append("| --- | --- |")
+    for lb, (ok, tot) in label_stat.items():
+        lines.append(f"| {lb} | {ok}/{tot} |")
+    lines.append("")
+    io.open(path, "w", encoding="utf-8").write("\n".join(lines))
+    return path
+
+
+
 # ---------------------------------------------------------------- 批量串行验证
 
 def _discover_workflows() -> list:
@@ -1984,11 +2424,18 @@ def main(argv=None):
     ap.add_argument("--chain-set", action="append", default=[], metavar="[WF:]K=V",
                     help="链式串跑时预置入参，可多次：K=V 作用于首环节，"
                          "wf_sub_XX:K=V 作用于指定环节（如 wf_sub_02:action=确认执行）")
+    ap.add_argument("--demo", action="store_true",
+                    help="对话式端到端演示（LLM 编排）：回放演示剧本 V3.0 用户回合，"
+                         "由真实 LLM 读主智能体提示词自主决定直调哪个子工作流/拒绝推进，"
+                         "runner 本地执行对应 wf_sub_* 并回灌结果，逐回合做语义断言；"
+                         "有 FAIL 返回退出码 1")
     ap.add_argument("--list", action="store_true", help="列出可用工作流")
     args = ap.parse_args(argv)
 
     if args.no_color:
         C.disable()
+    if args.demo:
+        return _run_demo(args)
     if args.chain:
         return _run_chain(args)
     if args.verify:
