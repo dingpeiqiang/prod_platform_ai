@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
@@ -21,6 +22,9 @@ import java.util.regex.Pattern;
 public final class MapOps {
 
     private static final Pattern NUM_PATTERN = Pattern.compile("[\\d.]+");
+
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private MapOps() {
     }
@@ -94,18 +98,38 @@ public final class MapOps {
         return new HashMap<>();
     }
 
+    /** 允许 List 直接传入，或 JSON 数组字符串（工作流节点输出为字符串）。解析失败返回空列表。 */
     @SuppressWarnings("unchecked")
     public static List<Map<String, Object>> castListOfMaps(Object value) {
+        if (value instanceof String text) {
+            return castListOfMaps(parseJson(text));
+        }
         if (value instanceof List<?> list) {
             List<Map<String, Object>> result = new ArrayList<>();
             for (Object item : list) {
                 if (item instanceof Map<?, ?>) {
                     result.add((Map<String, Object>) item);
+                } else if (item instanceof String s) {
+                    Map<String, Object> parsed = castMap(parseJson(s));
+                    if (!parsed.isEmpty()) {
+                        result.add(parsed);
+                    }
                 }
             }
             return result;
         }
         return new ArrayList<>();
+    }
+
+    private static Object parseJson(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return JSON_MAPPER.readValue(text, Object.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")

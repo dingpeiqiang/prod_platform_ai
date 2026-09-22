@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
+  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id；另按 req_id+requirement 读取需求/方案结果→大模型节点生成 offers[]/relations[]→B1 audit_file_upload（服务端按固定模板生成 Excel 并上传 EOP，JSON 直传 offers/relations）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -159,6 +159,136 @@
       {
         "outputs": [
           {
+            "name": "list",
+            "cname": "记录数组JSON（取[0].result_json为执行方案/需求结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement（执行方案/需求解析结果原文，供大模型生成 offers[]/relations[]）",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取需求/方案环节结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案/需求结果记录数组（交节点212 大模型读原文生成 offers[]/relations[]，供 B1 生成稽核 Excel）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000211",
+        "position": {
+          "x": 735,
+          "y": 480
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "offers",
+            "description": "稽核销售品行 JSON 数组字符串（与 2e parse-xlsx 出参同构）",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "relations",
+            "description": "关联关系行 JSON 数组字符串",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 8192,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品稽核清单生成助手。输入是「执行方案/需求结果」原文（JSON 文本，字段为实例化逻辑模型报文，含 baseInfo/optionalInfo 等嵌套结构，以及需求要素）。请据此产出可直接落盘的稽核 Excel 数据模型。\n【输出】只输出一个 JSON 对象，形如：{\"offers\":[{...}],\"relations\":[{...}]}，不得包含任何解释、Markdown 代码块或多余文字。\noffers[] 每个元素对应一个销售品（一档套餐/一个可选包），结构：\n{\"ofr_id\":\"销售品ID(数字串，取自报文中的 ofrId/offerId/prodId 等标识，缺失留空)\",\"offer_name\":\"套餐名称\",\"fields\":{\"列名\":\"值\", ...}}\nrelations[] 每个元素对应一条 A/Z 端关联关系，结构：{\"a_ofr_id\":\"\",\"a_name\":\"\",\"relation\":\"可选依赖\",\"z_ofr_id\":\"\",\"z_name\":\"\"}；若报文无关联关系信息，relations 返回空数组 []。\n【fields 列名必须逐字使用下列中文列名】（未命中的列不要输出该键）：\nOFFER_NBR、省级/市级*、付费模式、套餐客户化名称、套餐名称、基础包/可选包/加装包、是否主套餐/加装包、内容描述(套餐的关键信息，如资费价格、优惠折扣、账户/用户、包含的费用、业务等)、一单清展示（套餐内）、一单清展示（超出资费）、一单清展示（其他提醒）、首月计费模式、次月计费模式、套餐销售时间、套餐停售时间、过渡套餐资费描述（不填则不配置过渡套餐）、是否允许修改生失效时间、是否为不可退订销售品、订购竣工短信提醒、到期提醒、账目类型、降速级别（单套餐/多套餐）-计费配置、断网降速阈值-计费配置、流量提醒-计费配置、账单展示套餐内（如无内容，此处不填）、账单展示套餐外（如无内容，此处不填）。\n【取值映射提示】套餐月费/资费→内容描述与一单清展示（套餐内）；套外资费→一单清展示（超出资费）；流量/语音/短信资源→内容描述；生效方式→首月/次月计费模式；销售有效期→套餐销售时间/套餐停售时间。\n【硬性约束】1. 值与需求原文一致，不得臆造；2. 输出必须是闭合合法 JSON；3. 数字类字段（如 OFFER_NBR）输出字符串或数字均可；4. 多个套餐档位（如 79/99/129/159 四档）必须逐个列入 offers[]。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000211",
+              "relName": "list",
+              "name": "requirement_result",
+              "description": "引用节点211查询出参 list（执行方案/需求结果记录数组，取 [0].result_json 原文）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000211",
+                "a1b2c3d4-0000-4000-8000-000000000211,list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000211,list"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "由大模型依据「执行方案/需求结果」原文生成稽查 Excel 的 offers[]/relations[]（列名与固定模板一致），供 B1 生成并上传稽核 Excel",
+          "title": "大模型生成稽核清单offers/relations"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1095,
+          "y": 480
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000212",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
             "name": "file_id",
             "cname": "上传文件ID",
             "sechema": [],
@@ -178,35 +308,39 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "",
-            "relName": "",
-            "name": "audit_file",
-            "description": "稽核需求Excel（会话文件引用，multipart）",
-            "type": "string",
-            "required": true,
-            "content": "",
-            "part_name": "file"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-            "relName": "offer_id",
-            "name": "offer_id",
-            "description": "销售品ID（节点207解析，供 mock 清单定位）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000212",
+            "relName": "offers",
+            "name": "offers",
+            "description": "稽核销售品行（节点212 大模型依据需求结果生成的 offers[]，与模板列名同构），服务端据此按固定模板生成稽核 Excel",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000207",
-              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000212",
+              "a1b2c3d4-0000-4000-8000-000000000212,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000212,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000212",
+            "relName": "relations",
+            "name": "relations",
+            "description": "关联关系行（节点212 大模型生成的 relations[]），写入【关联关系】sheet",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000212",
+              "a1b2c3d4-0000-4000-8000-000000000212,relations"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000212,relations"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "智能稽核文件上传",
+          "title": "智能稽核文件生成并上传",
           "code": "audit_file_upload",
-          "description": "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
+          "description": "接口B1：智能稽核文件生成并上传。服务端按固定模板（可选包+关联关系 sheet）由 offers[]/relations[] 生成稽核 Excel 后直传 EOP → file_id + sales_id{销售品名:{offerId,location,sheet_name}}；不再依赖会话上传文件",
           "version": "1"
         },
         "authentic_info_new": {
@@ -707,8 +841,18 @@
       },
       {
         "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000211",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000206"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000212",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000211"
+      },
+      {
+        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000202",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000207"
+        "startId": "a1b2c3d4-0000-4000-8000-000000000212"
       },
       {
         "sourcePort": null,
