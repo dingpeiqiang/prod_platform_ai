@@ -306,6 +306,24 @@ public class AppStoreV16Controller {
                 "date_range", MapOps.str(date_range), "metric", metric));
     }
 
+    /**
+     * 演示辅助：注入/解除监控异常（工具11 返回 error_count>0），用于复现 wf_sub_07 异常闭环分支。
+     * POST JSON {offer_id, enable}；enable 缺省 true。非契约接口，仅供演示预置。
+     */
+    @Operation(summary = "注入监控异常(演示)", description = "按 offer_id 注入/解除监控异常，使监控查询返回 error_count>0，复现异常告警闭环分支")
+    @PostMapping("/product/monitor/inject")
+    public Map<String, Object> monitorInject(@RequestBody Map<String, Object> req) {
+        String offerId = MapOps.str(req.get("offer_id")).trim();
+        if (offerId.isEmpty()) {
+            return Map.of("resultCode", "PARAM_MISSING", "resultMsg", "offer_id 必填");
+        }
+        Object enableRaw = req.get("enable");
+        boolean enable = enableRaw == null || Boolean.parseBoolean(String.valueOf(enableRaw));
+        sim.injectMonitorError(offerId, enable);
+        return Map.of("resultCode", "000000", "resultMsg", "ok",
+                "offer_id", offerId, "error_count_injected", String.valueOf(enable));
+    }
+
     /* ================= 接口12：异常告警 send_alert ================= */
 
     @Operation(summary = "异常告警", description = "生成模拟告警单号并写入告警库（供监控查询回显闭环）")

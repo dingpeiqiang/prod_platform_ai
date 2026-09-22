@@ -124,7 +124,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -169,7 +169,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nSQL_URL = 'http://10.86.13.201:31281/api/v1/appstore/audit/sql-query'\nINTERVAL = 5\nMAX_RETRY = 60\nMAX_CONSECUTIVE_FAIL = 5\nSQL_ID_FINISH = '20260626001'\n\nasync def main(args):\n    request_ids = str(args.params.get('requestIds') or '')\n    if not request_ids:\n        ret: Output = {'completed': 'false',\n                       'fail_reason': '缺少 requestIds，请先发起稽核（环节4a）'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'sqlId': SQL_ID_FINISH,\n                               'params': {'requestIds': request_ids}}).encode('utf-8')\n            req = urllib.request.Request(SQL_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'completed': 'false',\n                               'fail_reason': '连续查询失败5次，转人工（requestIds=' + request_ids + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        finished = str(resp.get('isAllFinished', resp.get('finished', ''))).lower()\n        if finished in ('y', 'yes', 'true', '1'):\n            ret: Output = {'completed': 'true', 'fail_reason': ''}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'completed': 'false',\n                   'fail_reason': '稽核处理中，请稍后回复【查询稽核结果】续查（requestIds=' + request_ids + '）'}\n    return ret",
+        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nSQL_URL = 'http://10.86.13.201:31281/api/v1/appstore/audit/sql-query'\nINTERVAL = 5\nMAX_RETRY = 60\nMAX_CONSECUTIVE_FAIL = 5\nSQL_ID_FINISH = '20260626001'\n\ndef _first_sql_row(resp):\n    # B4 返回 {resultCode, execute_sql_resp:[{...}]}；完成标志/结论在首行内，需解包\n    if not isinstance(resp, dict):\n        return {}\n    rows = resp.get('execute_sql_resp') or resp.get('executeSqlResp') or []\n    if isinstance(rows, list) and rows and isinstance(rows[0], dict):\n        return rows[0]\n    if isinstance(rows, dict):\n        return rows\n    return resp\n\nasync def main(args):\n    request_ids = str(args.params.get('requestIds') or '')\n    if not request_ids:\n        ret: Output = {'completed': 'false',\n                       'fail_reason': '缺少 requestIds，请先发起稽核（环节4a）'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'sqlId': SQL_ID_FINISH,\n                               'params': 'requestIds:' + request_ids}).encode('utf-8')\n            req = urllib.request.Request(SQL_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'completed': 'false',\n                               'fail_reason': '连续查询失败5次，转人工（requestIds=' + request_ids + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        row = _first_sql_row(resp)\n        finished = str(row.get('isAllFinished', row.get('finished', ''))).lower()\n        if finished in ('y', 'yes', 'true', '1'):\n            ret: Output = {'completed': 'true', 'fail_reason': ''}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'completed': 'false',\n                   'fail_reason': '稽核处理中，请稍后回复【查询稽核结果】续查（requestIds=' + request_ids + '）'}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -204,37 +204,28 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002205,pass",
             "name": "pass",
-            "cname": "1通过/0不通过",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002205,error_list",
             "name": "error_list",
-            "cname": "问题明细（含 group 类目）",
-            "sechema": [],
-            "type": "array",
-            "required": false
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002205,audit_summary",
             "name": "audit_summary",
-            "cname": "稽核总结",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002205,resultCode",
             "name": "resultCode",
-            "cname": "0成功/非0失败",
-            "sechema": [],
-            "type": "string",
-            "required": false
+            "type": "string"
           }
         ],
-        "submit_way": "post",
+        "code": "import json\nimport urllib.request\nfrom typing import Any, Dict\n\nSQL_URL = 'http://10.86.13.201:31281/api/v1/appstore/audit/sql-query'\nSQL_ID_RESULT = '20260626002'\n\ndef _first_row(resp):\n    if not isinstance(resp, dict):\n        return {}\n    rows = resp.get('execute_sql_resp') or resp.get('executeSqlResp') or []\n    if isinstance(rows, list) and rows and isinstance(rows[0], dict):\n        return rows[0]\n    if isinstance(rows, dict):\n        return rows\n    return resp\n\nasync def main(args):\n    request_ids = str(args.params.get('requestIds') or '')\n    body = json.dumps({'sqlId': SQL_ID_RESULT,\n                       'params': 'requestIds:' + request_ids}).encode('utf-8')\n    req = urllib.request.Request(SQL_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    try:\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n    except Exception as e:\n        ret: Output = {'pass': '', 'error_list': '', 'audit_summary': '',\n                       'resultCode': 'E', 'fail_reason': '稽核结果查询失败：' + repr(e)}\n        return ret\n    row = _first_row(resp)\n    raw_pass = row.get('pass')\n    if raw_pass in (None, ''):\n        if row.get('error_list'):\n            raw_pass = '0'\n        elif str(row.get('isAllFinished', '')).lower() in ('y', 'yes', 'true', '1'):\n            raw_pass = '1'\n        else:\n            raw_pass = ''\n    err = row.get('error_list')\n    if isinstance(err, (list, dict)):\n        err = json.dumps(err, ensure_ascii=False)\n    summary = row.get('audit_summary') or row.get('auditConclusion') or ''\n    ret: Output = {'pass': str(raw_pass),\n                   'error_list': ('' if err is None else str(err)),\n                   'audit_summary': str(summary),\n                   'resultCode': str(resp.get('resultCode', '0'))}\n    return ret",
         "flowJson": null,
-        "authentic_info": "",
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000002203",
@@ -253,27 +244,17 @@
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "查询稽核结果",
-          "code": "audit_sql_query",
-          "description": "接口B4：通用SQL查询（sqlId=20260626002）取最终稽核结果 → error_list[]（含 group 类目）/audit_summary",
-          "version": "1"
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "查询稽核结果"
         },
-        "authentic_info_new": {
-          "auth_type": "1",
-          "auth_info": {
-            "inparams": [],
-            "params": [],
-            "outparams": []
-          }
-        },
+        "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002205",
         "position": {
           "x": 1455,
           "y": 300
         },
         "dependencyData": [],
-        "type": 3,
-        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/sql-query"
+        "type": 6
       },
       {
         "outputs": [
@@ -378,7 +359,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {

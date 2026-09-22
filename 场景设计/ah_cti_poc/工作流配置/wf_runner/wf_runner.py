@@ -1492,6 +1492,295 @@ def _resolve_log_path(log_arg: str, workflow: str) -> str:
     return log_arg
 
 
+# ---------------------------------------------------------------- 链式串跑（--chain）
+
+# 演示剧本 V3.0「演示准备」节定义的链式顺序：需求→需求审批→生成→稽核发起→稽核轮询
+# →资费校准→测试发起→测试轮询→上线审批→监控运维，传递同一 req_id 复现真实业务链路。
+# 顺序遵循剧本「确认执行」路由（02→03→05→04：资费校准先于自动测试；稽核/测试轮询
+# 紧随各自发起环节）。旁路工作流 08/09/10/11 不进入主干链（可按需单独执行）。
+CHAIN_ORDER = [
+    "wf_sub_00", "wf_sub_01", "wf_sub_02", "wf_sub_03", "wf_sub_12",
+    "wf_sub_05", "wf_sub_04", "wf_sub_13", "wf_sub_06", "wf_sub_07",
+]
+
+# 需要跨工作流传递的上下文键（前一环节的输出 → 后一环节的入参）。
+# req_id 贯穿全链；offer_id/approval_id/globalId 在对应环节产出后被后续环节复用。
+CHAIN_CARRY_KEYS = ("req_id", "offer_id", "approval_id", "globalId")
+
+
+def _chain_seed(name: str, carried: dict, start_inputs: list,
+                overrides: dict = None) -> dict:
+    """按工作流开始节点声明的入参，从已携带的上下文里挑选可用值。
+
+    仅传递开始在节点中**声明**的键，避免把无关键注入工作流；req_id 若已在上下文中
+    则原样透传（保证全链同一 req_id），否则由 Runner 生成新值并回填上下文。
+
+    overrides（``{工作流名: {K: V}}``）中针对本工作流（或通配键 ``"*"``）的入参
+    优先级最高，用于预置需求文本、分支数据等演示入参。
+    """
+    declared = {ip.get("name") for ip in (start_inputs or [])}
+    seed = {}
+    for k in CHAIN_CARRY_KEYS:
+        if k in declared and carried.get(k) not in (None, ""):
+            seed[k] = carried[k]
+    if overrides:
+        for src in ("*", name):
+            for k, v in (overrides.get(src) or {}).items():
+                if k in declared:
+                    seed[k] = v
+    return seed
+
+
+def _parse_chain_overrides(pairs) -> dict:
+    """解析 --chain-set：支持 ``K=V``（作用于首环节）与 ``wf_sub_XX:K=V``（指定环节）。"""
+    out = {}
+    for p in pairs or []:
+        if "=" not in p:
+            continue
+        lhs, v = p.split("=", 1)
+        if ":" in lhs:
+            wf_name, k = lhs.split(":", 1)
+            out.setdefault(wf_name.strip(), {})[k.strip()] = v
+        else:
+            out.setdefault("*", {})[lhs.strip()] = v
+    return out
+
+
+def _gateway_base(name: str) -> str:
+    """取工作流内首个插件节点的 URL 主机（网关 BASE_URL），用于演示预置接口调用。"""
+    path = WorkflowRunner._resolve_path(name)
+    wf = Workflow(path)
+    for n in wf.nodes.values():
+        url = str(n.get("url") or "")
+        m = re.match(r"^(https?://[^/]+)", url)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def _http_post_json(url: str, body: dict, timeout: int = 30) -> dict:
+    """POST JSON 并解析响应（演示预置钩子用；失败返回带 error 的字典，不抛异常）。"""
+    payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST",
+                                 headers={"Content-Type": "application/json; charset=utf-8",
+                                          "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+        return json.loads(raw) if raw else {}
+    except Exception as e:  # noqa: BLE001 演示钩子：失败不阻断主链
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _chain_prehook(name: str, carried: dict, overrides: dict) -> None:
+    """链式执行前的演示预置钩子（幂等、失败不阻断主链）。
+
+    目前仅 wf_sub_07：``--chain-set wf_sub_07:inject_monitor_error=1`` 时，按下游已携带的
+    offer_id 调用后端注入接口，使监控查询返回 ``error_count>0``，复现「异常告警闭环」分支；
+    传 ``=0`` 则解除注入（回到「正常-运营报告」分支）。
+    """
+    if name != "wf_sub_07":
+        return
+    settings = (overrides.get("wf_sub_07") or {}) if overrides else {}
+    flag = str(settings.get("inject_monitor_error", "")).strip().lower()
+    if flag not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
+        return
+    offer_id = carried.get("offer_id")
+    if not offer_id:
+        print(f"    {C.YELLOW}⚠ 监控异常注入跳过：上下文无 offer_id{C.RESET}")
+        return
+    base = _gateway_base(name)
+    if not base:
+        print(f"    {C.YELLOW}⚠ 监控异常注入跳过：未解析到网关地址{C.RESET}")
+        return
+    enable = flag in ("1", "true", "yes", "on")
+    resp = _http_post_json(base + "/api/v1/appstore/product/monitor/inject",
+                           {"offer_id": offer_id, "enable": enable})
+    if resp.get("error"):
+        print(f"    {C.YELLOW}⚠ 监控异常注入失败：{resp['error']}{C.RESET}")
+    else:
+        state = "开启" if enable else "解除"
+        print(f"    {C.GREY}监控异常注入已{state}（offer_id={offer_id}，"
+              f"error_count={resp.get('error_count_injected', '')}）{C.RESET}")
+
+
+def _chain_start_inputs(name: str) -> list:
+    """读取工作流开始节点声明的入参列表（用于决定可注入的链路键）。"""
+    path = WorkflowRunner._resolve_path(name)
+    wf = Workflow(path)
+    start = wf.start_node()
+    return (start.get("inputs") if start else []) or []
+
+
+class ChainResult:
+    """链式串跑中单个环节的执行结论。"""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.flow_name = ""
+        self.total = 0
+        self.ok = 0
+        self.fallback = 0
+        self.error = 0
+        self.elapsed_ms = 0
+        self.passed = False
+        self.error_msg = ""
+        self.log_path = ""
+        self.outputs = {}
+
+    def verdict(self) -> str:
+        return "PASS" if self.passed else "FAIL"
+
+
+def _chain_one(name: str, runner_kwargs: dict, log_dir: str,
+               carried: dict, overrides: dict = None) -> ChainResult:
+    """串跑链中单个工作流：注入携带上下文，执行后回收其出参回填上下文。
+
+    判定与 --verify 一致（实时严格 / 离线宽松）。每个工作流各写一份日志，
+    并在头部标注其在链中的序号与注入入参。overrides 为演示预置入参
+    （``{工作流名|"*": {K: V}}``），优先级最高。
+    """
+    cr = ChainResult(name)
+    t0 = time.time()
+    allow_fb = bool(runner_kwargs.get("offline")) or not runner_kwargs.get("strict", True)
+    try:
+        log_file = _resolve_log_path("-", name)
+        if log_dir:
+            log_file = os.path.join(log_dir, os.path.basename(log_file))
+        cr.log_path = log_file
+        runner = WorkflowRunner(log_file=log_file, **runner_kwargs)
+        wf = runner.load(name)
+        cr.flow_name = wf.flow_name
+        seed = _chain_seed(name, carried, _chain_start_inputs(name), overrides)
+        ctx = runner.run(name, seed)
+        cr.total = len(runner.results)
+        cr.ok = sum(1 for r in runner.results if r["status"] == "ok")
+        cr.fallback = sum(1 for r in runner.results if r["status"] == "fallback")
+        cr.error = sum(1 for r in runner.results if r["status"] == "error")
+        cr.passed = cr.error == 0 and (allow_fb or cr.fallback == 0)
+        if not cr.passed:
+            bad = [r for r in runner.results if r["status"] == "error"
+                   or (not allow_fb and r["status"] == "fallback")]
+            first = bad[0] if bad else None
+            if first:
+                cr.error_msg = f"{first['title']}[{first['status']}]: {first.get('note', '')}"
+        # 回收出参：从结束节点 outputs 抽取链路键，回填上下文供下游使用
+        cr.outputs = _collect_chain_outputs(ctx)
+        for k in CHAIN_CARRY_KEYS:
+            if cr.outputs.get(k) not in (None, ""):
+                carried[k] = cr.outputs[k]
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        cr.passed = False
+        cr.error_msg = f"{type(e).__name__}: {e}"
+    cr.elapsed_ms = int((time.time() - t0) * 1000)
+    return cr
+
+
+def _collect_chain_outputs(ctx: dict) -> dict:
+    """从各节点输出中汇总链路键（后出现的非空值覆盖先前值）。"""
+    found = {}
+    for outs in ctx.values():
+        if not isinstance(outs, dict):
+            continue
+        for k in CHAIN_CARRY_KEYS:
+            v = outs.get(k)
+            if v not in (None, ""):
+                found[k] = v
+    return found
+
+
+def _run_chain(args) -> int:
+    """链式串跑入口：按 CHAIN_ORDER 顺序执行，全程传递同一 req_id。
+
+    返回退出码（有 FAIL 则 1）。日志行为与 --verify 一致：每个工作流各写一份。
+    """
+    names = list(getattr(args, "chain_order", None) or CHAIN_ORDER)
+    names = [n for n in names if _workflow_exists(n)]
+    if not names:
+        print(f"{C.RED}未发现链式工作流（{WF_DIR}）{C.RESET}")
+        return 1
+
+    llm_cfg = LlmConfig.from_h2_seed()
+    if args.model and llm_cfg:
+        llm_cfg.model = args.model
+    llm = None if args.offline else LlmClient(llm_cfg, offline=args.offline)
+
+    runner_kwargs = dict(
+        registry=PluginRegistry(), llm=llm, offline=args.offline,
+        save_json=args.save_json, verbose=False, show_values=False,
+        color=not args.no_color, fast_forward=args.fast_forward,
+        strict=not args.offline and not args.allow_mock,
+    )
+    log_dir = args.log_dir or ""
+
+    # 演示预置入参：--chain-text 注入首环节需求文本；--chain-set/--set 指定任意环节入参
+    overrides = _parse_chain_overrides(getattr(args, "chain_set", None))
+    chain_text = getattr(args, "chain_text", "") or ""
+    if chain_text:
+        overrides.setdefault(names[0], {})["requirement_text"] = chain_text
+    for kv in getattr(args, "set", None) or []:
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+            overrides.setdefault(names[0], {})[k.strip()] = v
+
+
+    # 初始上下文：预置一个贯穿全链的 req_id（后端校验 PLAN\\d{17}）
+    carried = {"req_id": "PLAN" + _dt.datetime.now().strftime("%Y%m%d%H%M%S") +
+               "".join(random.choices(string.digits, k=3))}
+    print(f"{C.GREY}链路 req_id = {carried['req_id']}{C.RESET}")
+
+    results = []
+    for i, name in enumerate(names, 1):
+        seed_preview = _chain_seed(name, carried, _chain_start_inputs(name), overrides)
+        print(f"\n{C.BOLD}[{i}/{len(names)}]{C.RESET} {C.CYAN}{name}{C.RESET} ... 执行中"
+              f"  {C.GREY}入参 {seed_preview}{C.RESET}", flush=True)
+        _chain_prehook(name, carried, overrides)
+        cr = _chain_one(name, runner_kwargs, log_dir, carried, overrides)
+        results.append(cr)
+        tag = f"{C.GREEN}PASS{C.RESET}" if cr.passed else f"{C.RED}FAIL{C.RESET}"
+        detail = (f"{C.GREY}节点 {cr.total} · OK {cr.ok} · 回退 {cr.fallback} · "
+                  f"错误 {cr.error} · {cr.elapsed_ms}ms{C.RESET}")
+        print(f"    → {tag}  {C.BOLD}{cr.flow_name}{C.RESET}  {detail}")
+        if cr.passed and cr.outputs:
+            print(f"    {C.GREY}出参: {cr.outputs}{C.RESET}")
+        if not cr.passed and cr.error_msg:
+            print(f"    {C.RED}✗ {cr.error_msg}{C.RESET}")
+        if cr.log_path:
+            print(f"    {C.GREY}日志: {cr.log_path}{C.RESET}")
+
+    passed = sum(1 for r in results if r.passed)
+    failed = len(results) - passed
+    print()
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+    print(f"{C.BOLD}链路汇总{C.RESET}  环节 {len(results)}  "
+          f"{C.GREEN}PASS {passed}{C.RESET}  {C.RED}FAIL {failed}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}" + "─" * 78 + f"{C.RESET}")
+    print(f"{'环节':<28}{'结论':<8}{'节点':>6}{'OK':>6}{'回退':>6}{'错误':>6}{'耗时ms':>10}")
+    for r in results:
+        verdict_plain = "PASS" if r.passed else "FAIL"
+        verdict_col = (f"{C.GREEN}PASS{C.RESET}" if r.passed else f"{C.RED}FAIL{C.RESET}")
+        pad = " " * max(0, 8 - len(verdict_plain))
+        print(f"{r.name:<28}{verdict_col}{pad}{r.total:>6}{r.ok:>6}{r.fallback:>6}"
+              f"{r.error:>6}{r.elapsed_ms:>10}")
+    if failed:
+        print(f"\n{C.RED}失败环节：{C.RESET}")
+        for r in results:
+            if not r.passed:
+                print(f"  - {C.BOLD}{r.name}{C.RESET}  {C.RED}{r.error_msg}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+    return 1 if failed else 0
+
+
+def _workflow_exists(name: str) -> bool:
+    try:
+        WorkflowRunner._resolve_path(name)
+        return True
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------- 批量串行验证
 
 def _discover_workflows() -> list:
@@ -1677,11 +1966,24 @@ def main(argv=None):
                          "有 FAIL 返回退出码 1")
     ap.add_argument("--log-dir", default="", metavar="DIR",
                     help="批量验证时日志输出目录（默认 logs/）")
+    ap.add_argument("--chain", action="store_true",
+                    help="链式串跑：按演示剧本 V3.0 次序（00→01→02→03→12→04→13→05→06→07）"
+                         "逐个执行，全程传递同一 req_id，复现 8 环节步进/稽核与测试两阶段；"
+                         "判定同 --verify（实时严格 / 离线宽松）；每工作流各写一份日志；"
+                         "有 FAIL 返回退出码 1")
+    ap.add_argument("--chain-text", default="", metavar="TEXT",
+                    help="链式串跑时注入首环节（需求理解）的 requirement_text，"
+                         "用于复现剧本「止于确认点」的正常分支；缺省则用工作流内默认样例")
+    ap.add_argument("--chain-set", action="append", default=[], metavar="[WF:]K=V",
+                    help="链式串跑时预置入参，可多次：K=V 作用于首环节，"
+                         "wf_sub_XX:K=V 作用于指定环节（如 wf_sub_02:action=确认执行）")
     ap.add_argument("--list", action="store_true", help="列出可用工作流")
     args = ap.parse_args(argv)
 
     if args.no_color:
         C.disable()
+    if args.chain:
+        return _run_chain(args)
     if args.verify:
         return _run_verify(args)
     if args.list or not args.workflow:

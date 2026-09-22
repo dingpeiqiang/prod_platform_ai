@@ -28,7 +28,7 @@ from gen_workflows import (
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_POLL_AUDIT, CODE_EXTRACT_GLOBAL_ID,
-    CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT,
+    CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
 )
 
 # ============================================================
@@ -1522,6 +1522,7 @@ s3f.append(code_node(208, "稽核发起结果封包", CODE_PACK_RECORD,
     [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),
      inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
      inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id"),
+     inp("offer_id", "主销售品ID（节点207提取，供 4b 面板/回显）", ref_block=nid(207), ref_rel="offer_id"),
      inp("md", "稽核发起回执文案", content="稽核已发起"),
      inp("md_key", "md 落库字段名", content="launch_note")],
     [code_out("record_json", 208)], pos=(780, 135)))
@@ -1575,12 +1576,11 @@ s12f.append(code_node(2204, "轮询稽核完成", CODE_POLL_AUDIT,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
     [code_out("completed", 2204), code_out("fail_reason", 2204)],
     pos=(560, 300)))
-s12f.append(plugin_node(2205, "查询稽核结果", "audit_sql_query",
-    "接口B4：通用SQL查询（sqlId=20260626002）取最终稽核结果 → error_list[]（含 group 类目）/audit_summary",
-    BASE_URL + "/api/v1/appstore/audit/sql-query",
+s12f.append(code_node(2205, "查询稽核结果", CODE_AUDIT_QUERY,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
-    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细（含 group 类目）", "array"),
-     ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/非0失败", "string")]))
+    [code_out("pass", 2205), code_out("error_list", 2205),
+     code_out("audit_summary", 2205), code_out("resultCode", 2205)],
+    pos=(720, 135)))
 s12f.append(llm_node(2206, "整改建议生成",
     "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
     "输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n"

@@ -362,6 +362,7 @@ CODE_EXTRACT_RECORD = (
     "        raw = json.dumps(raw, ensure_ascii=False)\n"
     "    record_json = ''\n"
     "    offer_id = ''\n"
+    "    request_ids = ''\n"
     "    try:\n"
     "        arr = json.loads(raw)\n"
     "        if isinstance(arr, list) and arr:\n"
@@ -378,11 +379,17 @@ CODE_EXTRACT_RECORD = (
     "        inner = json.loads(record_json)\n"
     "        if isinstance(inner, dict):\n"
     "            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n"
+    "            rid = inner.get('requestIds')\n"
+    "            if isinstance(rid, (list, tuple)):\n"
+    "                request_ids = ','.join(str(x) for x in rid)\n"
+    "            elif rid is not None:\n"
+    "                request_ids = str(rid)\n"
     "    except Exception:\n"
     "        offer_id = ''\n"
     "    ret: Output = {\n"
     "        \"record_json\": record_json,\n"
-    "        \"offer_id\": offer_id\n"
+    "        \"offer_id\": offer_id,\n"
+    "        \"requestIds\": request_ids\n"
     "    }\n"
     "    return ret"
 )
@@ -504,6 +511,17 @@ CODE_POLL_AUDIT = (
     "MAX_CONSECUTIVE_FAIL = 5\n"
     "SQL_ID_FINISH = '20260626001'\n"
     "\n"
+    "def _first_sql_row(resp):\n"
+    "    # B4 返回 {resultCode, execute_sql_resp:[{...}]}；完成标志/结论在首行内，需解包\n"
+    "    if not isinstance(resp, dict):\n"
+    "        return {}\n"
+    "    rows = resp.get('execute_sql_resp') or resp.get('executeSqlResp') or []\n"
+    "    if isinstance(rows, list) and rows and isinstance(rows[0], dict):\n"
+    "        return rows[0]\n"
+    "    if isinstance(rows, dict):\n"
+    "        return rows\n"
+    "    return resp\n"
+    "\n"
     "async def main(args):\n"
     "    request_ids = str(args.params.get('requestIds') or '')\n"
     "    if not request_ids:\n"
@@ -516,7 +534,7 @@ CODE_POLL_AUDIT = (
     "        ok = False\n"
     "        try:\n"
     "            body = json.dumps({'sqlId': SQL_ID_FINISH,\n"
-    "                               'params': {'requestIds': request_ids}}).encode('utf-8')\n"
+    "                               'params': 'requestIds:' + request_ids}).encode('utf-8')\n"
     "            req = urllib.request.Request(SQL_URL, data=body,\n"
     "                                         headers={'Content-Type': 'application/json'})\n"
     "            with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
@@ -532,15 +550,16 @@ CODE_POLL_AUDIT = (
     "                return ret\n"
     "            await asyncio.sleep(INTERVAL)\n"
     "            continue\n"
-    "        consecutive_fail = 0\n"
-    "        finished = str(resp.get('isAllFinished', resp.get('finished', ''))).lower()\n"
-    "        if finished in ('y', 'yes', 'true', '1'):\n"
-    "            ret: Output = {'completed': 'true', 'fail_reason': ''}\n"
-    "            return ret\n"
-    "        await asyncio.sleep(INTERVAL)\n"
-    "    ret: Output = {'completed': 'false',\n"
-    "                   'fail_reason': '稽核处理中，请稍后回复【查询稽核结果】续查（requestIds=' + request_ids + '）'}\n"
-    "    return ret"
+        "        consecutive_fail = 0\n"
+        "        row = _first_sql_row(resp)\n"
+        "        finished = str(row.get('isAllFinished', row.get('finished', ''))).lower()\n"
+        "        if finished in ('y', 'yes', 'true', '1'):\n"
+        "            ret: Output = {'completed': 'true', 'fail_reason': ''}\n"
+        "            return ret\n"
+        "        await asyncio.sleep(INTERVAL)\n"
+        "    ret: Output = {'completed': 'false',\n"
+        "                   'fail_reason': '稽核处理中，请稍后回复【查询稽核结果】续查（requestIds=' + request_ids + '）'}\n"
+        "    return ret"
 )
 CODE_POLL_AUDIT = CODE_POLL_AUDIT.replace("BASE_URL", BASE_URL)
 
@@ -642,6 +661,63 @@ CODE_AUDIT_INSERT = (
     "    return ret"
 )
 CODE_AUDIT_INSERT = CODE_AUDIT_INSERT.replace("BASE_URL", BASE_URL)
+
+# CODE_AUDIT_QUERY：wf_sub_12 节点2205「查询稽核结果」（V3.10 修订，接口B4，sqlId=20260626002）。
+#   B4 返回 {resultCode, execute_sql_resp:[{isAllFinished,auditConclusion,error_list,...}]}，
+#   完成标志与最终结论均嵌在 execute_sql_resp[0] 内；插件节点无法解包，故改为代码节点：
+#   调用 B4 取最终结果 → 解包首行 → 归一化 pass（1通过/0不通过）+ error_list/audit_summary。
+#   入参 requestIds（逗号拼接）；params 按接口规范以字符串 "requestIds:id1,id2,..." 传递。
+CODE_AUDIT_QUERY = (
+    "import json\n"
+    "import urllib.request\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "SQL_URL = 'BASE_URL/api/v1/appstore/audit/sql-query'\n"
+    "SQL_ID_RESULT = '20260626002'\n"
+    "\n"
+    "def _first_row(resp):\n"
+    "    if not isinstance(resp, dict):\n"
+    "        return {}\n"
+    "    rows = resp.get('execute_sql_resp') or resp.get('executeSqlResp') or []\n"
+    "    if isinstance(rows, list) and rows and isinstance(rows[0], dict):\n"
+    "        return rows[0]\n"
+    "    if isinstance(rows, dict):\n"
+    "        return rows\n"
+    "    return resp\n"
+    "\n"
+    "async def main(args):\n"
+    "    request_ids = str(args.params.get('requestIds') or '')\n"
+    "    body = json.dumps({'sqlId': SQL_ID_RESULT,\n"
+    "                       'params': 'requestIds:' + request_ids}).encode('utf-8')\n"
+    "    req = urllib.request.Request(SQL_URL, data=body, method='POST',\n"
+    "                                 headers={'Content-Type': 'application/json'})\n"
+    "    try:\n"
+    "        with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
+    "            resp = json.loads(http_resp.read().decode('utf-8'))\n"
+    "    except Exception as e:\n"
+    "        ret: Output = {'pass': '', 'error_list': '', 'audit_summary': '',\n"
+    "                       'resultCode': 'E', 'fail_reason': '稽核结果查询失败：' + repr(e)}\n"
+    "        return ret\n"
+    "    row = _first_row(resp)\n"
+    "    raw_pass = row.get('pass')\n"
+    "    if raw_pass in (None, ''):\n"
+    "        if row.get('error_list'):\n"
+    "            raw_pass = '0'\n"
+    "        elif str(row.get('isAllFinished', '')).lower() in ('y', 'yes', 'true', '1'):\n"
+    "            raw_pass = '1'\n"
+    "        else:\n"
+    "            raw_pass = ''\n"
+    "    err = row.get('error_list')\n"
+    "    if isinstance(err, (list, dict)):\n"
+    "        err = json.dumps(err, ensure_ascii=False)\n"
+    "    summary = row.get('audit_summary') or row.get('auditConclusion') or ''\n"
+    "    ret: Output = {'pass': str(raw_pass),\n"
+    "                   'error_list': ('' if err is None else str(err)),\n"
+    "                   'audit_summary': str(summary),\n"
+    "                   'resultCode': str(resp.get('resultCode', '0'))}\n"
+    "    return ret"
+)
+CODE_AUDIT_QUERY = CODE_AUDIT_QUERY.replace("BASE_URL", BASE_URL)
 
 # CODE_SUMMARY_APPROVAL：wf_sub_06 节点501s 合成结构化汇总（V2.4 新增，设计方案3.2.6 节点7）。
 # 输入=5类自查节点提取的环节结果原文（config/spec/fee/test + requirement），
@@ -767,12 +843,15 @@ CODE_SUMMARY_APPROVAL = (
 #   md      = LLM 渲染的 markdown 文本（落库字段名由 md_key 指定）
 #   md_key  = markdown 落库键名（audit_suggest / risk_summary）
 #   pass/error_list/audit_summary/risk_list/compare_list = 上游结构化出参（字符串或数组，原样透传）
+#   临时态键 requestIds/sales_id/file_id/globalId/testScenes/offer_id = 发起环节封包，
+#     供 4b/6b 轮询环节自查（audit_pending/test_pending 必需 requestIds/globalId）。
 # 兼容：同时把 md 写入 raw 键，供仅认 raw 的老消费方回退。
 CODE_PACK_RECORD = (
     "import json\n"
     "from typing import Any, Dict\n"
     "\n"
-    "_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list')\n"
+    "_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n"
+    "                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id')\n"
     "\n"
     "def _any(v):\n"
     "    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n"
