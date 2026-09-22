@@ -3,10 +3,17 @@
 # 生成:
 #   deploy/out/prod-ai-backend.tar.gz
 #   deploy/out/prod-ai-frontend.tar.gz
-# 前置: 后端已 mvn package，前端已 npm run build
+# 前置: 后端已 mvn package（需先在 backend-app 目录执行
+#       mvn -s .mvn/local-settings.xml -DskipTests clean package）
+# 前端由本脚本自动执行 npm ci + npm run build，无需手动预构建
 # 用法:  powershell -ExecutionPolicy Bypass -File deploy\build-tar.ps1
 # ============================================================
 $ErrorActionPreference = 'Stop'
+
+# 前端部署前缀（与 docker/Sitech.BJ.Dockerfile.frontend 及
+# deploy/frontend/conf/prod-ai.conf 的 /prod-ai 挂载保持一致）。
+# 如需覆盖，可导出环境变量 VITE_BASE_PATH。
+$FrontendBasePath  = $(if ($env:VITE_BASE_PATH) { $env:VITE_BASE_PATH } else { '/prod-ai/' })
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $OutDir      = Join-Path $PSScriptRoot 'out'
@@ -54,15 +61,41 @@ Pop-Location
 Write-Host "[OK] $BackendTar"
 
 # ---------- 2) 前端 tar（包根为 dist/ + conf/ + bin/，解压即见 dist） ----------
+# 2.1 前端构建：自动 npm ci + 设置 VITE_BASE_PATH 后 npm run build，
+#     产物带 /prod-ai 前缀，与 nginx 前缀规则 / 路由 base 匹配。
+$FrontendRoot = Join-Path $ProjectRoot 'frontend'
+if (-not (Test-Path (Join-Path $FrontendRoot 'package.json'))) {
+    Write-Error "未找到前端工程 ${FrontendRoot}，无法自动构建"
+}
+if (-not (Test-Path (Join-Path $FrontendRoot 'node_modules\vite'))) {
+    Write-Host '[BUILD] 首次构建，执行 npm ci 安装依赖（frontend 目录）...'
+    Push-Location $FrontendRoot
+    try {
+        & npm ci
+        if ($LASTEXITCODE -ne 0) { throw "npm ci 失败（exit=$LASTEXITCODE）" }
+    } finally {
+        Pop-Location
+    }
+}
+$env:VITE_BASE_PATH = $FrontendBasePath
+Write-Host "[BUILD] npm run build（frontend 目录，VITE_BASE_PATH=$env:VITE_BASE_PATH）..."
+Push-Location $FrontendRoot
+try {
+    & npm run build
+    if ($LASTEXITCODE -ne 0) { throw "npm run build 失败（exit=$LASTEXITCODE）" }
+} finally {
+    Pop-Location
+}
+
+# 2.2 组装前端 stage 目录
 $FrontendStage = Join-Path $PSScriptRoot '_stage_frontend'
 if (Test-Path $FrontendStage) { Remove-Item -Recurse -Force $FrontendStage }
 New-Item -ItemType Directory -Force -Path "$FrontendStage\dist","$FrontendStage\conf","$FrontendStage\bin" | Out-Null
 
-$Dist = Join-Path $ProjectRoot 'frontend\dist'
+$Dist = Join-Path $FrontendRoot 'dist'
 if (-not (Test-Path (Join-Path $Dist 'index.html'))) {
-    Write-Warning '前端 dist 未找到，请先执行: npm ci && npm run build（frontend 目录）'
-}
-if (Test-Path $Dist) {
+    Write-Warning '前端构建未生成 dist/index.html（构建异常）'
+} else {
     Copy-Item -Recurse -Force (Join-Path $Dist '*') (Join-Path $FrontendStage 'dist\')
 }
 

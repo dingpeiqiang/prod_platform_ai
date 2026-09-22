@@ -18,9 +18,11 @@ USER root
 
 WORKDIR /app
 
-# 构建参数（API 走相对路径，由 Nginx 反代到 backend:6174）
+# 构建参数（与现网保持一致：挂载到 /prod-ai 前缀，由本机 Nginx 剥前缀反代到 backend:6174）
+ARG VITE_BASE_PATH=/prod-ai/
 ARG VITE_API_BASE_URL=
 ARG VITE_APP_TITLE="AI动态表单平台"
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_APP_TITLE=$VITE_APP_TITLE
 

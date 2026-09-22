@@ -70,7 +70,8 @@ EXPOSE 6173
 # 直接以非 root 身份运行 nginx（无需 su-exec；master 即非 root）
 USER nginx
 
+# 统一探活：走 /prod-ai 前缀路径（与 frontend/nginx.conf 的 location = /prod-ai/health 对齐）
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -qO- http://127.0.0.1:6173/health || exit 1
+    CMD wget -qO- http://127.0.0.1:6173/prod-ai/health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
