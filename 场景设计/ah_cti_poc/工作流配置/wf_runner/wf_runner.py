@@ -1546,15 +1546,21 @@ def _parse_chain_overrides(pairs) -> dict:
     return out
 
 
-def _gateway_base(name: str) -> str:
-    """取工作流内首个插件节点的 URL 主机（网关 BASE_URL），用于演示预置接口调用。"""
+def _gateway_base(name: str, base_url: str = "") -> str:
+    """取工作流内首个插件节点的 URL 主机（网关 BASE_URL），用于演示预置接口调用。
+
+    与插件节点一致：若命令行传了 --base-url，则以该地址整体替换主机名，便于指向本地后端验证。
+    """
     path = WorkflowRunner._resolve_path(name)
     wf = Workflow(path)
     for n in wf.nodes.values():
         url = str(n.get("url") or "")
         m = re.match(r"^(https?://[^/]+)", url)
         if m:
-            return m.group(1)
+            base = m.group(1)
+            if base_url:
+                return re.sub(r"^https?://[^/]+", base_url.rstrip("/"), base)
+            return base
     return ""
 
 
@@ -1572,7 +1578,8 @@ def _http_post_json(url: str, body: dict, timeout: int = 30) -> dict:
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-def _chain_prehook(name: str, carried: dict, overrides: dict) -> None:
+def _chain_prehook(name: str, carried: dict, overrides: dict,
+                   base_url: str = "") -> None:
     """链式执行前的演示预置钩子（幂等、失败不阻断主链）。
 
     目前仅 wf_sub_07：``--chain-set wf_sub_07:inject_monitor_error=1`` 时，按下游已携带的
@@ -1589,7 +1596,7 @@ def _chain_prehook(name: str, carried: dict, overrides: dict) -> None:
     if not offer_id:
         print(f"    {C.YELLOW}⚠ 监控异常注入跳过：上下文无 offer_id{C.RESET}")
         return
-    base = _gateway_base(name)
+    base = _gateway_base(name, base_url)
     if not base:
         print(f"    {C.YELLOW}⚠ 监控异常注入跳过：未解析到网关地址{C.RESET}")
         return
@@ -1736,7 +1743,7 @@ def _run_chain(args) -> int:
         seed_preview = _chain_seed(name, carried, _chain_start_inputs(name), overrides)
         print(f"\n{C.BOLD}[{i}/{len(names)}]{C.RESET} {C.CYAN}{name}{C.RESET} ... 执行中"
               f"  {C.GREY}入参 {seed_preview}{C.RESET}", flush=True)
-        _chain_prehook(name, carried, overrides)
+        _chain_prehook(name, carried, overrides, getattr(args, "base_url", "") or "")
         cr = _chain_one(name, runner_kwargs, log_dir, carried, overrides)
         results.append(cr)
         tag = f"{C.GREEN}PASS{C.RESET}" if cr.passed else f"{C.RED}FAIL{C.RESET}"

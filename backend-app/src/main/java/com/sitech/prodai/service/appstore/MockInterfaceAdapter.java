@@ -36,6 +36,12 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     private final OfferSimV16Service sim;
 
+    /** B4 稽核轮询模拟：同一 requestIds 前 N 次返回「处理中」，之后返回完成，复现轮询两阶段。
+     *  键=requestIds 参数串；值=该批次已查询次数。N 由 AUDIT_POLL_PENDING_TIMES 控制。 */
+    private static final int AUDIT_POLL_PENDING_TIMES = 2;
+    private final java.util.concurrent.ConcurrentHashMap<String, Integer> auditPollAttempts =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public MockInterfaceAdapter(OfferSimV16Service sim) {
         this.sim = sim;
     }
@@ -129,12 +135,20 @@ public class MockInterfaceAdapter implements InterfaceFacade {
         String sqlId = firstNonBlank(MapOps.str(req.get("sql_id")), MapOps.str(req.get("sqlId")));
         String params = MapOps.str(req.get("params"));
         int total = countRequestIds(params);
+        // 查完成状态的 sqlId（20260626001）按查询次数模拟「处理中→完成」，复现轮询两阶段；
+        // 查最终结果的 sqlId（20260626002）与其余直接返回完成。
+        boolean pollSql = "20260626001".equals(sqlId);
+        int attempt = pollSql
+                ? auditPollAttempts.merge(params == null ? "" : params, 1, Integer::sum)
+                : Integer.MAX_VALUE;
+        boolean finished = attempt > AUDIT_POLL_PENDING_TIMES;
+        int finishedCount = finished ? total : Math.max(0, total - 1);
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("finishedCount", String.valueOf(total));
-        row.put("isAllFinished", "Y");
-        row.put("processingCount", "0");
+        row.put("finishedCount", String.valueOf(finishedCount));
+        row.put("isAllFinished", finished ? "Y" : "N");
+        row.put("processingCount", finished ? "0" : "1");
         row.put("totalCount", String.valueOf(total));
-        if ("20260626002".equals(sqlId)) {
+        if (finished && "20260626002".equals(sqlId)) {
             // 查最终稽核结果：附确定性结论摘要（mock）
             row.put("auditConclusion", "全部销售品稽核通过（mock）");
         }
