@@ -40,6 +40,15 @@ prodai:
     max-rows: ${METRIC_MAX_ROWS:50000}
   mcp:
     seed-path: ${MCP_SEED_PATH:}
+  # 产销品场景接口适配层：现场切真实接口（仅改此开关与 base-url 即直连 EOP，其余保持默认）
+  appstore:
+    interface:
+      mode: ${APPSTORE_INTERFACE_MODE:real}
+      eop:
+        base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
+        app-key: ${EOP_APP_KEY:eOrder1}
+        dst-sys-id: ${EOP_DST_SYS_ID:OrderCenter}
+        sign: ${EOP_SIGN:123}
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}

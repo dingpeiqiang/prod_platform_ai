@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）→结构化封包（V2.5：error_list+audit_suggest 合成 envelope）；结束前存储 node_name=spec。单商品路径零变化。",
+  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -159,66 +159,15 @@
       {
         "outputs": [
           {
-            "name": "pass",
-            "cname": "1通过/0不通过",
+            "name": "file_id",
+            "cname": "上传文件ID",
             "sechema": [],
             "type": "string",
             "required": false
           },
           {
-            "name": "error_list",
-            "cname": "问题明细（融合组可含 group:<role> 类目）",
-            "sechema": [
-              {
-                "name": "item",
-                "cname": "问题明细（融合组可含 group:<role> 类目）",
-                "sechema": [
-                  {
-                    "name": "item",
-                    "cname": "问题项（对应配置字段/规则）",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "level",
-                    "cname": "严重级别：error 阻断 / warning 提示",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "desc",
-                    "cname": "问题描述，含实际值与期望规则",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "suggest",
-                    "cname": "整改建议",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  }
-                ],
-                "type": "object",
-                "required": false
-              }
-            ],
-            "type": "array",
-            "required": false
-          },
-          {
-            "name": "audit_summary",
-            "cname": "稽核总结",
-            "sechema": [],
-            "type": "string",
-            "required": false
-          },
-          {
-            "name": "resultCode",
-            "cname": "0成功/NET_ERROR/TIMEOUT",
+            "name": "sales_id",
+            "cname": "销售品清单（销售品名→offerId/location/sheet_name）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -229,10 +178,19 @@
         "authentic_info": "",
         "inputs": [
           {
+            "blockID": "",
+            "relName": "",
+            "name": "audit_file",
+            "description": "稽核需求Excel（会话文件引用，multipart）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID（节点207从落地结果解析的offer_id）",
+            "description": "销售品ID（节点207解析，供 mock 清单定位）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -241,36 +199,13 @@
               "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-            "relName": "record_json",
-            "name": "config_json",
-            "description": "落地配置JSON（节点207提取的环节结果原文）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000207",
-              "a1b2c3d4-0000-4000-8000-000000000207,record_json"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,record_json"
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "audit_scene",
-            "description": "稽核场景默认all",
-            "type": "string",
-            "required": true,
-            "content": "all"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "实时稽核",
-          "code": "realtime_spec_audit",
-          "description": "工具2：自研模拟实时稽核，同步返回；offer_id/config_json 取自 config 环节结果（节点207提取原文与解析的offer_id）；融合组 error_list 可含 group:<role> 类目",
+          "title": "智能稽核文件上传",
+          "code": "audit_file_upload",
+          "description": "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -288,116 +223,162 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/realtime"
+        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/file/upload"
       },
       {
         "outputs": [
           {
-            "name": "audit_suggest",
-            "description": "稽核明细清单（七项固定检查项，无条件输出）",
+            "name": "request_id",
+            "cname": "异步报告请求ID",
+            "sechema": [],
             "type": "string",
-            "content": ""
+            "required": false
+          },
+          {
+            "name": "requestIds",
+            "cname": "全部销售品 requestId 集合（逗号拼接）",
+            "sechema": [],
+            "type": "string",
+            "required": false
           }
         ],
-        "max_tokens": 3072,
+        "submit_way": "get",
         "flowJson": null,
-        "inputs": {
-          "llmParam": [
-            {
-              "name": "prompt",
-              "type": "string",
-              "content": "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n七项固定检查项（顺序固定，逐项输出，不得增删）：\n- 基础信息完整性\n- 资源配置完整性\n- 套外资费完整性\n- 字段格式规范性\n- 字段枚举合法性\n- 配置项关联一致性\n- 业务规则完整性\n判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行 `> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参原文 record_json 的 group，禁止增删成员）；error_list 含 `group:<role>` 类目时，对应成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项结构不变。\n输出模板（严格按此渲染）：\n> **稽核对象：销售品ID（offer_id）{offer_id}**\n> **稽核结果：{通过/不通过}**\n> - 基础信息完整性：✅/❌\n> - 资源配置完整性：✅/❌\n> - 套外资费完整性：✅/❌\n> - 字段格式规范性：✅/❌\n> - 字段枚举合法性：✅/❌\n> - 配置项关联一致性：✅/❌\n> - 业务规则完整性：✅/❌\n>\n> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n不新增稽核结论。\n输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。"
-            }
-          ],
-          "inputParameters": [
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-              "relName": "error_list",
-              "name": "error_list",
-              "description": "引用节点202问题明细",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000202",
-                "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-              "relName": "audit_summary",
-              "name": "audit_summary",
-              "description": "引用节点202稽核总结",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000202",
-                "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-              "relName": "record_json",
-              "name": "record_json",
-              "description": "config 环节结果原文（含可选 group，供组维度回显）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000207",
-                "a1b2c3d4-0000-4000-8000-000000000207,record_json"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000207,record_json"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-              "relName": "offer_id",
-              "name": "offer_id",
-              "description": "主 offer_id（稽核对象回显）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000207",
-                "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-              "relName": "pass",
-              "name": "pass",
-              "description": "引用节点202稽核结论（1通过/0不通过）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000202",
-                "a1b2c3d4-0000-4000-8000-000000000202,pass"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,pass"
-            }
-          ]
-        },
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "file_id",
+            "name": "file_id",
+            "description": "上传文件ID（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "sales_id",
+            "name": "sales_id",
+            "description": "销售品清单（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+          }
+        ],
         "checkErr": false,
-        "prompt_system": "",
         "nodeMeta": {
-          "description": "整改建议生成",
-          "title": "整改建议生成"
+          "title": "异步报告生成并通知",
+          "code": "audit_async_notify",
+          "description": "接口B2：异步报告生成并通知（GET），传 sales_id/location/sheet_name/file_id → request_id；须紧跟 B3 成对调用（AI 回调前置落库）",
+          "version": "1"
         },
-        "model": "qwen3-30b-a3b",
-        "temperature": 0.2,
-        "top_p": 0.5,
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000203",
         "position": {
           "x": 1455,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000203",
         "dependencyData": [],
-        "type": 1
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/async/notify"
+      },
+      {
+        "outputs": [
+          {
+            "name": "resultCode",
+            "cname": "0成功/非0失败",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "file_id",
+            "name": "file_id",
+            "description": "上传文件ID（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "sales_id",
+            "name": "sales_id",
+            "description": "销售品清单（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
+            "relName": "request_id",
+            "name": "request_id",
+            "description": "异步报告请求ID（节点203）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000203",
+              "a1b2c3d4-0000-4000-8000-000000000203,request_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,request_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "插入AI稽核结果",
+          "code": "audit_insert_result",
+          "description": "接口B3：插入AI稽核结果（records[]→resultCode），紧跟 B2 调用，保证 AI 回调时 DB 已有记录",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000204",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/result/insert"
       },
       {
         "outputs": [
@@ -411,60 +392,55 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-            "relName": "pass",
-            "name": "pass",
-            "description": "稽核结论（节点202）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,pass"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,pass"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-            "relName": "error_list",
-            "name": "error_list",
-            "description": "问题明细（节点202）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-            "relName": "audit_summary",
-            "name": "audit_summary",
-            "description": "稽核总结（节点202）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
-          },
-          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
-            "relName": "audit_suggest",
-            "name": "md",
-            "description": "稽核明细清单 markdown（节点203）",
+            "relName": "requestIds",
+            "name": "requestIds",
+            "description": "全部 requestId 集合（节点203）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000203",
-              "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+              "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "file_id",
+            "name": "file_id",
+            "description": "上传文件ID（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "sales_id",
+            "name": "sales_id",
+            "description": "销售品清单（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,sales_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "md",
+            "description": "稽核发起回执文案",
+            "type": "string",
+            "required": true,
+            "content": "稽核已发起"
           },
           {
             "blockID": "",
@@ -473,18 +449,18 @@
             "description": "md 落库字段名",
             "type": "string",
             "required": true,
-            "content": "audit_suggest"
+            "content": "launch_note"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "description": "编写代码，处理输入变量来生成返回值",
-          "title": "稽核结果结构化封包"
+          "title": "稽核发起结果封包"
         },
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000208",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -522,16 +498,16 @@
             "blockID": "",
             "relName": "",
             "name": "node_name",
-            "description": "环节名=spec（规格稽核）",
+            "description": "环节名=audit_pending（稽核发起临时态）",
             "type": "string",
             "required": true,
-            "content": "spec"
+            "content": "audit_pending"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
             "relName": "record_json",
             "name": "result_json",
-            "description": "环节结果JSON=结构化封包（error_list+audit_suggest）",
+            "description": "环节结果JSON=发起结果封包（requestIds/sales_id）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -545,17 +521,17 @@
             "blockID": "",
             "relName": "",
             "name": "status",
-            "description": "本环节状态=ok",
+            "description": "本环节状态=pending",
             "type": "string",
             "required": true,
-            "content": "ok"
+            "content": "pending"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "环节结果存储",
+          "title": "稽核发起临时态存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=结构化封包（含 error_list + audit_suggest 明细）；主流程删除后存储下沉子工作流",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；4b 轮询自查读取",
           "version": "1"
         },
         "authentic_info_new": {
@@ -568,7 +544,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000205",
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "dependencyData": [],
@@ -637,7 +613,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000209",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 300
         },
         "dependencyData": [],
@@ -647,7 +623,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "配置规格稽核完成：pass={pass}\n{audit_suggest}\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}，file_id={file_id}）\n> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -657,46 +633,32 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-            "relName": "pass",
-            "name": "pass",
-            "description": "稽核结论",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,pass"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,pass"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
-            "relName": "error_list",
-            "name": "error_list",
-            "description": "问题明细",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,error_list"
-          },
-          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
-            "relName": "audit_suggest",
-            "name": "audit_suggest",
-            "description": "稽核明细清单（七项固定检查项，无条件输出）",
+            "relName": "requestIds",
+            "name": "requestIds",
+            "description": "全部 requestId 集合（节点203）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000203",
-              "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+              "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "file_id",
+            "name": "file_id",
+            "description": "上传文件ID（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
@@ -731,17 +693,17 @@
         "prompt_system": "",
         "nodeMeta": {
           "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
-          "title": "结束(稽核完成)"
+          "title": "结束(稽核已发起)"
         },
         "type": 9,
         "top_p": 1,
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000204",
+        "id": "a1b2c3d4-0000-4000-8000-000000000210",
         "dependencyData": []
       }
     ],
@@ -768,8 +730,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000208",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000204",
         "startId": "a1b2c3d4-0000-4000-8000-000000000203"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000208",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000204"
       },
       {
         "sourcePort": null,
@@ -783,7 +750,7 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000204",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000210",
         "startId": "a1b2c3d4-0000-4000-8000-000000000209"
       }
     ],

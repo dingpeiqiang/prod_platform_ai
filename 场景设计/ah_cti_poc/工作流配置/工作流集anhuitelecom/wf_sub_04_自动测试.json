@@ -109,7 +109,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -207,7 +207,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/start"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/test/offer/start"
       },
       {
         "outputs": [
@@ -232,7 +232,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 360\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n    return ret",
+        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://172.30.8.52:6174/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 360\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -452,7 +452,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/result"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/test/offer/result"
       },
       {
         "outputs": [
@@ -523,7 +523,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -634,7 +634,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -1167,7 +1167,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -1182,7 +1182,7 @@
             "type": "string"
           }
         ],
-        "code": "import urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nREPORT_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/test/offer/report'\n\nasync def main(args):\n    p = args.params\n    global_id = str(p.get('global_id') or p.get('globalId') or '').strip()\n    if not global_id:\n        return {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '未获取到测试流水号，无法生成报告下载地址；报告正文见上方输出，可复制保存',\n        }\n    url = REPORT_URL + '?global_id=' + urllib.parse.quote(global_id)\n    backend_ok = False\n    try:\n        req = urllib.request.Request(url)\n        with urllib.request.urlopen(req, timeout=20) as resp:\n            backend_ok = resp.status == 200 and bool(resp.read())\n    except Exception:\n        backend_ok = False\n    if backend_ok:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': url,\n            'note': '正式版测试报告已生成，可点击链接下载',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': url,\n            'note': '报告下载端点暂不可达或报告未生成，可复制上方报告正文保存；后端就绪后点击链接下载正式版报告',\n        }\n    return ret",
+        "code": "import urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nREPORT_URL = 'http://172.30.8.52:6174/api/v1/appstore/test/offer/report'\n\nasync def main(args):\n    p = args.params\n    global_id = str(p.get('global_id') or p.get('globalId') or '').strip()\n    if not global_id:\n        return {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '未获取到测试流水号，无法生成报告下载地址；报告正文见上方输出，可复制保存',\n        }\n    url = REPORT_URL + '?global_id=' + urllib.parse.quote(global_id)\n    backend_ok = False\n    try:\n        req = urllib.request.Request(url)\n        with urllib.request.urlopen(req, timeout=20) as resp:\n            backend_ok = resp.status == 200 and bool(resp.read())\n    except Exception:\n        backend_ok = False\n    if backend_ok:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': url,\n            'note': '正式版测试报告已生成，可点击链接下载',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': url,\n            'note': '报告下载端点暂不可达或报告未生成，可复制上方报告正文保存；后端就绪后点击链接下载正式版报告',\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -1222,7 +1222,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=04&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://172.30.8.52:6174/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=04&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {

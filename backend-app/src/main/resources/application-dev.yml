@@ -24,6 +24,10 @@ prodai:
     mock-days: 120
   mcp:
     seed-path: classpath:ontology/mcp_tools_seed.json
+  # 产销品场景接口适配层：dev 显式模拟报文（独立跑通，不依赖现场 EOP）
+  appstore:
+    interface:
+      mode: mock
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}

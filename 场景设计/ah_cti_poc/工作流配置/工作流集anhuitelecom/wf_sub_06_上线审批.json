@@ -109,7 +109,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -225,7 +225,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -336,7 +336,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -447,7 +447,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -558,7 +558,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -870,7 +870,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -992,7 +992,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/approval/submit"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/approval/submit"
       },
       {
         "outputs": {

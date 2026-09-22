@@ -379,6 +379,8 @@ wf_sub_04 自查 config → C1 测试发起{offerId} → globalId
 #### 4.5.4 配置化切换设计（开发 mock ↔ 现场 real，基于 application.yml）
 
 > **落地方式**：在 Spring Boot 配置文件（`application.yml` 主配置 + `application-dev.yml`/`application-prod.yml` 分环境覆盖）新增 `prodai.appstore.interface.*` 配置组，由 `@ConfigurationProperties` 绑定。**开发环境返回模拟报文，现场环境仅改配置即直连真实接口**，工作流/插件/后端代码零改动。
+>
+> ⚠️ **实现状态（V3.11）**：本小节**已落地**——配置组 `prodai.appstore.interface.*`（`AppStoreInterfaceProperties`）、`InterfaceFacade` 门面（`MockInterfaceAdapter`/`EopInterfaceAdapter`/`RoutingInterfaceFacade`）、装配类 `AppStoreInterfaceConfig`，以及 **B1~B4 现场接口（`/audit/file/upload`、`/audit/async/notify`、`/audit/result/insert`、`/audit/sql-query`）** 与 **A1/C1~C4 经门面路由**均已实现并通过单测（`InterfaceAdapterTest`，dev=mock）。mock 模式返回结构须与 real 归一后结构完全一致（同构）；real 不可达时自动回退 mock 并在出参附 `note` 标注"已回退模拟"，保证演示不中断。当前仅有 `/requirement/parse-xlsx`（需求文档 Excel 解析）与适配层为已实现件；B1~B4、A1 的**现场真实行为**仍需 EOP 联调验证（mock 可独立跑通）。
 
 **配置项（前缀 `prodai.appstore.interface`）**：
 
@@ -447,6 +449,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - **开发环境**：`mode=mock`，全部走模拟报文（现有 OfferSimV16Service 能力，18 销售品种子），工作流与插件零改动。
 - **现场环境**：`mode=real` + 改 `base-url`（必要时用环境变量覆盖 app-key/sign），工作流/插件/Controller 均不变；EOP 出参经 Adapter 归一为既有裸出参，下游 type=6 代码节点与 LLM 无感知。
 - **混合模式**（可选，逐接口联调）：新增 `prodai.appstore.interface.real-list=similar,audit,test` 白名单，命中名单的接口走 real、其余走 mock，便于现场按接口逐个验证。
+- **传参覆盖（V3.11）**：9 个接口请求体顶层可选 `mode` 字段（`real`/`mock`/空或 `auto`），**传参最优先**——传 `real`/`mock` 覆盖 yml 的 `mode` 与 `real-list`；不传/`auto` 回落 yml（real-list 命中或 mode=real → real，否则默认 mock，无配置默认模拟）。B1 为 multipart，`mode` 走表单字段；其余在 JSON 体顶层。real 不可达时仍自动回退 mock 并附 `note` 标注。
 
 #### 4.5.5 契约兼容要点（信封与字段）
 
@@ -520,7 +523,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ### 5.2 14 个子工作流清单（当前实现基线）
 
-> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 确定性生成（禁止手改 JSON）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.9 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。**
+> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。**
 
 | 子工作流 | 编码 | 入参 | 关键链路 / 代码节点 |
 | --- | --- | --- | --- |

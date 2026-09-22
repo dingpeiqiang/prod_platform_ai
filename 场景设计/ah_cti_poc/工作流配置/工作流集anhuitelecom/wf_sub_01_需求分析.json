@@ -109,7 +109,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
       },
       {
         "outputs": [
@@ -275,7 +275,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/similar/offer/query"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/similar/offer/query"
       },
       {
         "outputs": [
@@ -295,7 +295,7 @@
             "type": "string"
           }
         ],
-        "code": "import json, os, urllib.request\nfrom typing import Any, Dict\n\nTEMPLATE_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/template/schema'\nTEMPLATE_ALIAS = {\n    'personMainPrc': ('个人主资费', '个人主套餐'),\n    'broadBandMainPrc': ('宽带主资费', '宽带主套餐'),\n    'personAddPrc': ('个人附加资费', '个人附加资费'),\n    'broadBandOptSpeedPrc': ('宽带加速包', '宽带附加资费'),\n    'familyBasePrc': ('家庭基础套餐', '家庭基础套餐'),\n    'familyAddPrc': ('家庭附加业务', '家庭附加资费'),\n}\n\ndef _pick(req):\n    r = str(req or '').strip()\n    # ① 精确匹配（模板标识/中文名/产品类型）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if r == tid or r == cn or r == pt:\n            return tid, cn, pt\n    # ② 兜底：子串包含（容忍上游出参夹带标签/说明文字）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if tid in r or (cn and cn in r) or (pt and pt in r):\n            return tid, cn, pt\n    return 'personMainPrc', '个人主资费', '个人主套餐'\n\ndef _fetch(tid):\n    body = json.dumps({'templateId': tid}).encode('utf-8')\n    req = urllib.request.Request(TEMPLATE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    tid, cn, pt = _pick(p.get('template_id') or '')\n    content = '{}'\n    missing = '0'\n    source = 'empty'\n    # ① 后端下发（主路径）\n    try:\n        info = _fetch(tid)\n        schema_text = str((info or {}).get('schema_json') or '')\n        if schema_text.strip() and schema_text.strip() != '{}':\n            content = schema_text\n            cn = str(info.get('template_name_cn') or cn)\n            pt = str(info.get('template_product_type') or pt)\n            source = 'backend'\n    except Exception:\n        info = None\n    # ② 本地文件兜底（仅当显式配置 template_base 时）\n    if source != 'backend':\n        base = str(p.get('template_base') or '').strip()\n        if base:\n            try:\n                with open(os.path.join(base, '%s.schema.json' % tid), 'r', encoding='utf-8') as f:\n                    content = f.read()\n                source = 'file'\n            except Exception:\n                missing = '1'\n    if source == 'empty':\n        missing = '1'\n    ret: Output = {\n        \"template_id\": tid,\n        \"template_name_cn\": cn,\n        \"template_product_type\": pt,\n        \"schema_json\": content,\n        \"schema_file\": '%s.schema.json' % tid,\n        \"missing\": missing,\n        \"source\": source,\n    }\n    return ret",
+        "code": "import json, os, urllib.request\nfrom typing import Any, Dict\n\nTEMPLATE_URL = 'http://172.30.8.52:6174/api/v1/appstore/template/schema'\nTEMPLATE_ALIAS = {\n    'personMainPrc': ('个人主资费', '个人主套餐'),\n    'broadBandMainPrc': ('宽带主资费', '宽带主套餐'),\n    'personAddPrc': ('个人附加资费', '个人附加资费'),\n    'broadBandOptSpeedPrc': ('宽带加速包', '宽带附加资费'),\n    'familyBasePrc': ('家庭基础套餐', '家庭基础套餐'),\n    'familyAddPrc': ('家庭附加业务', '家庭附加资费'),\n}\n\ndef _pick(req):\n    r = str(req or '').strip()\n    # ① 精确匹配（模板标识/中文名/产品类型）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if r == tid or r == cn or r == pt:\n            return tid, cn, pt\n    # ② 兜底：子串包含（容忍上游出参夹带标签/说明文字）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if tid in r or (cn and cn in r) or (pt and pt in r):\n            return tid, cn, pt\n    return 'personMainPrc', '个人主资费', '个人主套餐'\n\ndef _fetch(tid):\n    body = json.dumps({'templateId': tid}).encode('utf-8')\n    req = urllib.request.Request(TEMPLATE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    tid, cn, pt = _pick(p.get('template_id') or '')\n    content = '{}'\n    missing = '0'\n    source = 'empty'\n    # ① 后端下发（主路径）\n    try:\n        info = _fetch(tid)\n        schema_text = str((info or {}).get('schema_json') or '')\n        if schema_text.strip() and schema_text.strip() != '{}':\n            content = schema_text\n            cn = str(info.get('template_name_cn') or cn)\n            pt = str(info.get('template_product_type') or pt)\n            source = 'backend'\n    except Exception:\n        info = None\n    # ② 本地文件兜底（仅当显式配置 template_base 时）\n    if source != 'backend':\n        base = str(p.get('template_base') or '').strip()\n        if base:\n            try:\n                with open(os.path.join(base, '%s.schema.json' % tid), 'r', encoding='utf-8') as f:\n                    content = f.read()\n                source = 'file'\n            except Exception:\n                missing = '1'\n    if source == 'empty':\n        missing = '1'\n    ret: Output = {\n        \"template_id\": tid,\n        \"template_name_cn\": cn,\n        \"template_product_type\": pt,\n        \"schema_json\": content,\n        \"schema_file\": '%s.schema.json' % tid,\n        \"missing\": missing,\n        \"source\": source,\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -698,7 +698,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/result/save"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -708,7 +708,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://172.30.8.52:6174/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {

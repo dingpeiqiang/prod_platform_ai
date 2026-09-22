@@ -31,6 +31,11 @@
     python wf_runner.py wf_sub_01 --log-file run.log.md  # 执行日志写入指定文件
     python wf_runner.py --list                          # 列出可用工作流
 
+    # 批量串行验证（逐个执行全部工作流 JSON，汇总 PASS/FAIL）
+    python wf_runner.py --verify                        # 真实联网 + 严格模式
+    python wf_runner.py --verify --offline              # 离线 mock 回归（快进沙箱）
+    python wf_runner.py --verify --log-dir logs/verify_20260922
+
 默认行为
 -------
 **默认真实执行**（联网调用插件与 LLM），且**严格模式**：任一环节真实调用失败
@@ -1197,6 +1202,13 @@ class WorkflowRunner:
         print(f"{C.BOLD}{C.CYAN}╚{'═' * 76}╝{C.RESET}")
 
     def _emit(self, res: NodeResult, prefix, depth, header=""):
+        # 非 verbose（批量验证）时只记录结果，不逐节点打印
+        if not self.verbose:
+            self.results.append(res.to_dict())
+            if self.logger:
+                hdr = header or TYPE_NAME.get(res.ntype, str(res.ntype))
+                self.logger.node(res, header=hdr)
+            return
         color = TYPE_COLOR.get(res.ntype, "")
         tag = {"ok": f"{C.GREEN}OK{C.RESET}",
                "fallback": f"{C.YELLOW}回退{C.RESET}",
@@ -1381,6 +1393,160 @@ def _resolve_log_path(log_arg: str, workflow: str) -> str:
     return log_arg
 
 
+# ---------------------------------------------------------------- 批量串行验证
+
+def _discover_workflows() -> list:
+    """发现待验证的工作流 JSON：全部 wf_sub_*/wf_main*.json，按名称升序。
+
+    排除 `_test*`（草稿）、`import_headers.json`（非工作流）与 `*_export.json`（插件导出）。
+    """
+    if not os.path.isdir(WF_DIR):
+        return []
+    names = []
+    for fn in sorted(os.listdir(WF_DIR)):
+        if not fn.endswith(".json"):
+            continue
+        if not fn.startswith(("wf_sub_", "wf_main")):
+            continue
+        if fn.endswith("_export.json") or fn.startswith("_test"):
+            continue
+        names.append(os.path.splitext(fn)[0])
+    return names
+
+
+class BatchResult:
+    """单个工作流的验证结论。"""
+
+    def __init__(self, name: str):
+        self.name = name
+        self.flow_name = ""
+        self.total = 0
+        self.ok = 0
+        self.fallback = 0
+        self.error = 0
+        self.elapsed_ms = 0
+        self.passed = False
+        self.error_msg = ""
+        self.log_path = ""
+
+    def verdict(self) -> str:
+        return "PASS" if self.passed else "FAIL"
+
+
+def _verify_one(name: str, runner_kwargs: dict, log_dir: str) -> BatchResult:
+    """串行执行单个工作流并给出 PASS/FAIL 结论。
+
+    判定随模式而异：
+    - **实时联网**（默认，严格）：无 error 且无 fallback 才 PASS；
+    - **离线 mock**（--offline 或 --allow-mock）：fallback 属预期行为，无 error 即 PASS。
+
+    每个工作流重建一个 Runner，避免上一工作流的 results/contexts 互相污染；
+    每个工作流各写一份 logs/<工作流>_<流程名>_<时间戳>.log.md。
+    """
+    br = BatchResult(name)
+    t0 = time.time()
+    allow_fb = bool(runner_kwargs.get("offline")) or not runner_kwargs.get("strict", True)
+    try:
+        log_file = _resolve_log_path("-", name)
+        if log_dir:
+            log_file = os.path.join(log_dir, os.path.basename(log_file))
+        br.log_path = log_file
+        runner = WorkflowRunner(log_file=log_file, **runner_kwargs)
+        wf = runner.load(name)
+        br.flow_name = wf.flow_name
+        runner.run(name, {})
+        br.total = len(runner.results)
+        br.ok = sum(1 for r in runner.results if r["status"] == "ok")
+        br.fallback = sum(1 for r in runner.results if r["status"] == "fallback")
+        br.error = sum(1 for r in runner.results if r["status"] == "error")
+        # 严格（实时）：无 error 且无 fallback；离线/放行：无 error（fallback 属预期）
+        br.passed = br.error == 0 and (allow_fb or br.fallback == 0)
+        if not br.passed:
+            bad = [r for r in runner.results if r["status"] == "error"
+                   or (not allow_fb and r["status"] == "fallback")]
+            first = bad[0] if bad else None
+            if first:
+                br.error_msg = f"{first['title']}[{first['status']}]: {first.get('note', '')}"
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        br.passed = False
+        br.error_msg = f"{type(e).__name__}: {e}"
+    br.elapsed_ms = int((time.time() - t0) * 1000)
+    return br
+
+
+def _run_verify(args) -> int:
+    """批量串行验证入口：逐个跑全部工作流，汇总 PASS/FAIL，返回退出码（有 FAIL 则 1）。"""
+    names = _discover_workflows()
+    if not names:
+        print(f"{C.RED}未发现待验证工作流（{WF_DIR}）{C.RESET}")
+        return 1
+
+    llm_cfg = LlmConfig.from_h2_seed()
+    if args.model and llm_cfg:
+        llm_cfg.model = args.model
+    llm = None if args.offline else LlmClient(llm_cfg, offline=args.offline)
+
+    runner_kwargs = dict(
+        registry=PluginRegistry(), llm=llm, offline=args.offline,
+        save_json=args.save_json, verbose=False, show_values=False,
+        color=not args.no_color, fast_forward=args.fast_forward,
+        strict=not args.offline and not args.allow_mock,
+    )
+    log_dir = args.log_dir or ""
+
+    mode = "离线 mock" if args.offline else (
+        f"实时联网（LLM={getattr(llm_cfg, 'model', '') or '无配置'}）")
+    verdict_note = "，严格判定（无 error 且无 fallback 才 PASS）" if runner_kwargs["strict"] \
+        else "，判定（无 error 即 PASS，回退不计失败）"
+    print()
+    print(f"{C.BOLD}{C.CYAN}╔{'═' * 76}╗{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}║ {C.RESET}{C.BOLD}批量串行验证：{len(names)} 个工作流{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}║ {C.RESET}{C.GREY}模式: {mode}{verdict_note}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}╚{'═' * 76}╝{C.RESET}")
+
+    results = []
+    for i, name in enumerate(names, 1):
+        print(f"\n{C.BOLD}[{i}/{len(names)}]{C.RESET} {C.CYAN}{name}{C.RESET} ... 执行中",
+              flush=True)
+        br = _verify_one(name, runner_kwargs, log_dir)
+        results.append(br)
+        tag = f"{C.GREEN}PASS{C.RESET}" if br.passed else f"{C.RED}FAIL{C.RESET}"
+        detail = (f"{C.GREY}节点 {br.total} · OK {br.ok} · 回退 {br.fallback} · "
+                  f"错误 {br.error} · {br.elapsed_ms}ms{C.RESET}")
+        print(f"    → {tag}  {C.BOLD}{br.flow_name}{C.RESET}  {detail}")
+        if not br.passed and br.error_msg:
+            print(f"    {C.RED}✗ {br.error_msg}{C.RESET}")
+        if br.log_path:
+            print(f"    {C.GREY}日志: {br.log_path}{C.RESET}")
+
+    # 汇总表
+    passed = sum(1 for r in results if r.passed)
+    failed = len(results) - passed
+    print()
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+    print(f"{C.BOLD}验证汇总{C.RESET}  总计 {len(results)}  "
+          f"{C.GREEN}PASS {passed}{C.RESET}  {C.RED}FAIL {failed}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}" + "─" * 78 + f"{C.RESET}")
+    print(f"{'工作流':<28}{'结论':<8}{'节点':>6}{'OK':>6}{'回退':>6}{'错误':>6}{'耗时ms':>10}")
+    for r in results:
+        # ANSI 颜色不占显示宽度：按可见文本 "PASS"/"FAIL" 计算列宽，再着色
+        verdict_plain = "PASS" if r.passed else "FAIL"
+        verdict_col = (f"{C.GREEN}PASS{C.RESET}" if r.passed else f"{C.RED}FAIL{C.RESET}")
+        name_col = f"{r.name:<28}"
+        pad = " " * max(0, 8 - len(verdict_plain))
+        print(f"{name_col}{verdict_col}{pad}{r.total:>6}{r.ok:>6}{r.fallback:>6}"
+              f"{r.error:>6}{r.elapsed_ms:>10}")
+    if failed:
+        print(f"\n{C.RED}失败项：{C.RESET}")
+        for r in results:
+            if not r.passed:
+                print(f"  - {C.BOLD}{r.name}{C.RESET}  {C.RED}{r.error_msg}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
+    return 1 if failed else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="工作流执行工具：按 JSON 逐节点执行并显性打印每个环节的输入/输出",
@@ -1405,11 +1571,20 @@ def main(argv=None):
     ap.add_argument("--base-url", default="", help="覆盖插件 BASE_URL（默认取 JSON 内 url）")
     ap.add_argument("--model", default="", help="覆盖 LLM 模型名")
     ap.add_argument("--timeout", type=int, default=60, help="插件 HTTP 超时秒")
+    ap.add_argument("--verify", action="store_true",
+                    help="批量串行验证：逐个执行全部工作流 JSON（wf_sub_*/wf_main*），"
+                         "汇总 PASS/FAIL；实时联网时严格判定（无 error 且无 fallback 才 PASS），"
+                         "离线/--allow-mock 时无 error 即 PASS；每个工作流各写一份日志；"
+                         "有 FAIL 返回退出码 1")
+    ap.add_argument("--log-dir", default="", metavar="DIR",
+                    help="批量验证时日志输出目录（默认 logs/）")
     ap.add_argument("--list", action="store_true", help="列出可用工作流")
     args = ap.parse_args(argv)
 
     if args.no_color:
         C.disable()
+    if args.verify:
+        return _run_verify(args)
     if args.list or not args.workflow:
         _list_workflows()
         return 0

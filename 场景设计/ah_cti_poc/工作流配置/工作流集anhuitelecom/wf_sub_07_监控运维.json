@@ -209,7 +209,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/product/monitor"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/product/monitor"
       },
       {
         "flowJson": null,
@@ -518,7 +518,7 @@
         },
         "dependencyData": [],
         "type": 3,
-        "url": "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/alert/send"
+        "url": "http://172.30.8.52:6174/api/v1/appstore/alert/send"
       },
       {
         "outputs": [
@@ -568,7 +568,7 @@
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nROOT_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/ops/root-cause'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(ROOT_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    if not info or not info.get('paths'):\n        ret: Output = {\n            'backend_pending': '1',\n            'reason_engine': '',\n            'anomalies': '[]',\n            'paths': '[]',\n            'evidence_triples': '[]',\n            'swrl_fired': '',\n            'applied_rules': '',\n            'action_list': '[]',\n            'note': '根因本体推理(ops_root_cause)端点暂不可达或未命中归因规则；当前仅告警，未归因',\n        }\n    else:\n        def _arr(v):\n            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n        ret: Output = {\n            'backend_pending': '0',\n            'reason_engine': str(info.get('reason_engine') or ''),\n            'anomalies': _arr(info.get('anomalies')),\n            'paths': _arr(info.get('paths')),\n            'evidence_triples': _arr(info.get('evidence_triples')),\n            'swrl_fired': str(info.get('swrl_fired') or ''),\n            'applied_rules': str(info.get('applied_rules') or ''),\n            'action_list': _arr(info.get('action_list')),\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nROOT_URL = 'http://172.30.8.52:6174/api/v1/appstore/ops/root-cause'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(ROOT_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    if not info or not info.get('paths'):\n        ret: Output = {\n            'backend_pending': '1',\n            'reason_engine': '',\n            'anomalies': '[]',\n            'paths': '[]',\n            'evidence_triples': '[]',\n            'swrl_fired': '',\n            'applied_rules': '',\n            'action_list': '[]',\n            'note': '根因本体推理(ops_root_cause)端点暂不可达或未命中归因规则；当前仅告警，未归因',\n        }\n    else:\n        def _arr(v):\n            return json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v or '')\n        ret: Output = {\n            'backend_pending': '0',\n            'reason_engine': str(info.get('reason_engine') or ''),\n            'anomalies': _arr(info.get('anomalies')),\n            'paths': _arr(info.get('paths')),\n            'evidence_triples': _arr(info.get('evidence_triples')),\n            'swrl_fired': str(info.get('swrl_fired') or ''),\n            'applied_rules': str(info.get('applied_rules') or ''),\n            'action_list': _arr(info.get('action_list')),\n            'note': str(info.get('message') or ''),\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -769,7 +769,7 @@
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nWO_URL = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/api/v1/appstore/ops/work-orders'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(WO_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    wo_id = str((info or {}).get('work_order_id') or '')\n    if not info or not wo_id:\n        ret: Output = {\n            'backend_pending': '1',\n            'work_order_id': '',\n            'note': '建工单服务(create_work_order)端点暂不可达，工单未建立，稍后回检重试',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'work_order_id': wo_id,\n            'note': str(info.get('message') or '工单已建立'),\n        }\n    return ret",
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nWO_URL = 'http://172.30.8.52:6174/api/v1/appstore/ops/work-orders'\n\ndef _fetch(offer_id):\n    body = json.dumps({'offer_id': offer_id}).encode('utf-8')\n    req = urllib.request.Request(WO_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    offer_id = str(p.get('offer_id') or '')\n    try:\n        info = _fetch(offer_id)\n    except Exception:\n        info = None\n    wo_id = str((info or {}).get('work_order_id') or '')\n    if not info or not wo_id:\n        ret: Output = {\n            'backend_pending': '1',\n            'work_order_id': '',\n            'note': '建工单服务(create_work_order)端点暂不可达，工单未建立，稍后回检重试',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '0',\n            'work_order_id': wo_id,\n            'note': str(info.get('message') or '工单已建立'),\n        }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -809,7 +809,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://172.30.8.52:6174/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -1300,7 +1300,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://172.30.8.52:6174/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {

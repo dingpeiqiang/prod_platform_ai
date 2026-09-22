@@ -116,6 +116,28 @@ prodai:
     detect-enabled: ${CHANGE_SUB_DETECT_ENABLED:false}
     # 单次检测最大提醒产出数护栏（防大面积资费调整刷屏）
     max-alerts-per-detect: ${CHANGE_SUB_MAX_ALERTS:200}
+  # 产销品场景接口适配层（统一方案 §4.5.4）：mode=mock 走模拟报文（开发默认），
+  # mode=real 直连现场 EOP；real 不可达自动回退 mock 并标注。real-list 为混合模式白名单
+  # （similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult），命中走 real、其余 mock。
+  appstore:
+    interface:
+      mode: ${APPSTORE_INTERFACE_MODE:mock}
+      eop:
+        base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
+        app-key: ${EOP_APP_KEY:eOrder1}
+        dst-sys-id: ${EOP_DST_SYS_ID:OrderCenter}
+        svc-code: ${EOP_SVC_CODE:5012010056}
+        sign: ${EOP_SIGN:123}
+        upload-file-field: ${EOP_UPLOAD_FILE_FIELD:file}
+        timeout-ms: ${EOP_TIMEOUT_MS:60000}
+      poll:
+        audit:
+          interval-ms: 5000
+          max: 60
+        test:
+          interval-ms: 5000
+          max: 60
+      real-list: []
   kb:
     seed-path: ${KB_SEED_PATH:}
   mcp:

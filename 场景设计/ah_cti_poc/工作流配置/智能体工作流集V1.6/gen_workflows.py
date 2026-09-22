@@ -384,11 +384,51 @@ CODE_EXTRACT_RECORD = (
     "    return ret"
 )
 
-# CODE_POLL_PROGRESS：wf_sub_04 节点304 轮询测试进度（V2.4 重写）。
-# 设计方案 3.4.4 约束：不用循环节点（平台 loop/循环 不支持），改为 type=6 代码节点
-# 内嵌轮询逻辑：asyncio.sleep(5) 间隔，最多 360 次（30 分钟超时）；
-# 连续 5 次查询失败终止转人工（fail_reason 出参非空标识异常退出）。
-# 轮询方式：HTTP 直连后端工具5接口（代码节点无平台工具调用能力）。
+# CODE_EXTRACT_GLOBAL_ID：wf_sub_13 节点2303 从 test_pending 封包（record_json）提取
+# globalId 出参，供 C3 轮询（2304）/C4 查询结果（2305）引用。
+CODE_EXTRACT_GLOBAL_ID = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "async def main(args):\n"
+    "    raw = args.params['query_list']\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    record_json = ''\n"
+    "    offer_id = ''\n"
+    "    global_id = ''\n"
+    "    try:\n"
+    "        arr = json.loads(raw)\n"
+    "        if isinstance(arr, list) and arr:\n"
+    "            first = arr[0]\n"
+    "            if isinstance(first, dict):\n"
+    "                record_json = str(first.get('result_json') or '')\n"
+    "        elif isinstance(arr, dict):\n"
+    "            record_json = str(arr.get('result_json') or '')\n"
+    "    except Exception:\n"
+    "        record_json = ''\n"
+    "    if not record_json:\n"
+    "        record_json = raw\n"
+    "    try:\n"
+    "        inner = json.loads(record_json)\n"
+    "        if isinstance(inner, dict):\n"
+    "            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n"
+    "            global_id = str(inner.get('globalId') or inner.get('global_id') or '')\n"
+    "    except Exception:\n"
+    "        offer_id = ''\n"
+    "        global_id = ''\n"
+    "    ret: Output = {\n"
+    "        \"record_json\": record_json,\n"
+    "        \"offer_id\": offer_id,\n"
+    "        \"globalId\": global_id\n"
+    "    }\n"
+    "    return ret"
+)
+
+# CODE_POLL_PROGRESS：wf_sub_13 节点2304 轮询测试进度（V3.10 两阶段拆分后）。
+# 设计方案 4.5.3 约束：不用循环节点（平台 loop/循环 不支持），改为 type=6 代码节点
+# 内嵌轮询逻辑：asyncio.sleep(5) 间隔，单次窗口最多 60 次（5 分钟）；
+# 窗口耗尽非错误（done=false 拟续查，不写 test）；连续 5 次查询失败终止转人工。
+# 轮询方式：HTTP 直连后端工具5接口 C3 get_test_progress（代码节点无平台工具调用能力）。
 CODE_POLL_PROGRESS = (
     "import json\n"
     "import asyncio\n"
@@ -397,7 +437,7 @@ CODE_POLL_PROGRESS = (
     "\n"
     "PROGRESS_URL = 'BASE_URL/api/v1/appstore/test/offer/progress'\n"
     "INTERVAL = 5\n"
-    "MAX_RETRY = 360\n"
+    "MAX_RETRY = 60\n"
     "MAX_CONSECUTIVE_FAIL = 5\n"
     "\n"
     "async def main(args):\n"
@@ -438,10 +478,68 @@ CODE_POLL_PROGRESS = (
     "            return ret\n"
     "        await asyncio.sleep(INTERVAL)\n"
     "    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n"
-    "                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n"
+    "                   'fail_reason': '测试处理中，请稍后回复【查询测试结果】续查（globalId=' + global_id + '）'}\n"
     "    return ret"
 )
 CODE_POLL_PROGRESS = CODE_POLL_PROGRESS.replace("BASE_URL", BASE_URL)
+
+# CODE_POLL_AUDIT：wf_sub_12 节点4b-2 轮询稽核结果（V3.10 新增，场景B）。
+# 与 CODE_POLL_PROGRESS 同构：不用循环节点，type=6 代码节点内嵌轮询；
+# 轮询方式：HTTP 直连后端 B4 通用SQL查询接口（sqlId=20260626001 查完成 N/Y），
+# 单次窗口间隔 5s、上限 60 次（5 分钟）；窗口耗尽非错误（completed=false 拟续查）；
+# 连续 5 次查询失败终止转人工（fail_reason 非空）。
+# 入参 requestIds（逗号拼接）；出参 completed（是否窗口内完成）+ fail_reason。
+CODE_POLL_AUDIT = (
+    "import json\n"
+    "import asyncio\n"
+    "import urllib.request\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "SQL_URL = 'BASE_URL/api/v1/appstore/audit/sql-query'\n"
+    "INTERVAL = 5\n"
+    "MAX_RETRY = 60\n"
+    "MAX_CONSECUTIVE_FAIL = 5\n"
+    "SQL_ID_FINISH = '20260626001'\n"
+    "\n"
+    "async def main(args):\n"
+    "    request_ids = str(args.params.get('requestIds') or '')\n"
+    "    if not request_ids:\n"
+    "        ret: Output = {'completed': 'false',\n"
+    "                       'fail_reason': '缺少 requestIds，请先发起稽核（环节4a）'}\n"
+    "        return ret\n"
+    "    consecutive_fail = 0\n"
+    "    for i in range(MAX_RETRY):\n"
+    "        resp = {}\n"
+    "        ok = False\n"
+    "        try:\n"
+    "            body = json.dumps({'sqlId': SQL_ID_FINISH,\n"
+    "                               'params': {'requestIds': request_ids}}).encode('utf-8')\n"
+    "            req = urllib.request.Request(SQL_URL, data=body,\n"
+    "                                         headers={'Content-Type': 'application/json'})\n"
+    "            with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
+    "                resp = json.loads(http_resp.read().decode('utf-8'))\n"
+    "            ok = isinstance(resp, dict)\n"
+    "        except Exception:\n"
+    "            ok = False\n"
+    "        if not ok:\n"
+    "            consecutive_fail += 1\n"
+    "            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n"
+    "                ret: Output = {'completed': 'false',\n"
+    "                               'fail_reason': '连续查询失败5次，转人工（requestIds=' + request_ids + '）'}\n"
+    "                return ret\n"
+    "            await asyncio.sleep(INTERVAL)\n"
+    "            continue\n"
+    "        consecutive_fail = 0\n"
+    "        finished = str(resp.get('isAllFinished', resp.get('finished', ''))).lower()\n"
+    "        if finished in ('y', 'yes', 'true', '1'):\n"
+    "            ret: Output = {'completed': 'true', 'fail_reason': ''}\n"
+    "            return ret\n"
+    "        await asyncio.sleep(INTERVAL)\n"
+    "    ret: Output = {'completed': 'false',\n"
+    "                   'fail_reason': '稽核处理中，请稍后回复【查询稽核结果】续查（requestIds=' + request_ids + '）'}\n"
+    "    return ret"
+)
+CODE_POLL_AUDIT = CODE_POLL_AUDIT.replace("BASE_URL", BASE_URL)
 
 # CODE_SUMMARY_APPROVAL：wf_sub_06 节点501s 合成结构化汇总（V2.4 新增，设计方案3.2.6 节点7）。
 # 输入=5类自查节点提取的环节结果原文（config/spec/fee/test + requirement），

@@ -2,6 +2,7 @@ package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.appstore.FieldOntologyService;
+import com.sitech.prodai.service.appstore.InterfaceFacade;
 import com.sitech.prodai.service.appstore.NodeResultService;
 import com.sitech.prodai.service.appstore.OfferSimV16Service;
 import com.sitech.prodai.service.common.MapOps;
@@ -35,16 +36,22 @@ public class AppStoreV16Controller {
     private final FieldOntologyService fieldOntologyService;
     private final ProductOntologyService productOntologyService;
     private final com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService;
+    private final com.sitech.prodai.service.appstore.RequirementDocService requirementDocService;
+    private final InterfaceFacade interfaceFacade;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
                                  ProductOntologyService productOntologyService,
-                                 com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService) {
+                                 com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService,
+                                 com.sitech.prodai.service.appstore.RequirementDocService requirementDocService,
+                                 InterfaceFacade interfaceFacade) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
         this.productOntologyService = productOntologyService;
         this.configTemplateService = configTemplateService;
+        this.requirementDocService = requirementDocService;
+        this.interfaceFacade = interfaceFacade;
     }
 
     /* ================= 模板 schema 下发 get_template_schema ================= */
@@ -64,12 +71,60 @@ public class AppStoreV16Controller {
         return body;
     }
 
+    @Operation(summary = "适配层模式显影", description = "返回产销品场景接口适配层当前生效模式（mock/real/mixed），供现场联调与健康检查")
+    @GetMapping("/interface/mode")
+    public Map<String, Object> interfaceMode() {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("resultCode", "0");
+        body.put("mode", interfaceFacade.mode());
+        return body;
+    }
+
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
 
-    @Operation(summary = "相似度分析", description = "以 18 销售品为相似产品库，按业务需求描述返回相似销售品列表及相似度评分")
+    @Operation(summary = "相似度分析", description = "以 18 销售品为相似产品库，按业务需求描述返回相似销售品列表及相似度评分（经适配层，mock/real 可切换）")
     @PostMapping("/similar/offer/query")
     public Map<String, Object> similarOfferQuery(@RequestBody Map<String, Object> req) {
-        return sim.similarOfferQuery(req);
+        return interfaceFacade.similarOfferQuery(req);
+    }
+
+    /* ================= 现场接口 B1~B4（智能稽核，经适配层 mock/real 可切换） ================= */
+
+    @Operation(summary = "智能稽核文件上传", description = "上传稽核需求文档（Excel，multipart），解析销售品清单返回 file_id 与 sales_id（B1，适配层 mock 内置确定性清单/real 走 EOP）；表单可选 mode=real/mock 覆盖本次模式")
+    @PostMapping(value = "/audit/file/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> auditFileUpload(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                               @RequestParam(value = "mode", required = false) String mode) {
+        Map<String, Object> call = new java.util.LinkedHashMap<>();
+        if (file != null && !file.isEmpty()) {
+            call.put("fileName", file.getOriginalFilename());
+            try {
+                call.put("bytes", file.getBytes());
+            } catch (java.io.IOException e) {
+                call.put("bytes", null);
+            }
+        }
+        if (mode != null && !mode.isBlank()) {
+            call.put("mode", mode);
+        }
+        return interfaceFacade.auditFileUpload(call);
+    }
+
+    @Operation(summary = "异步报告生成并通知", description = "按销售品通知 AI 能力中心启动稽核报告生成，返回 request_id 供轮询（B2，GET query）")
+    @PostMapping("/audit/async/notify")
+    public Map<String, Object> auditAsyncNotify(@RequestBody Map<String, Object> req) {
+        return interfaceFacade.auditAsyncNotify(req);
+    }
+
+    @Operation(summary = "插入AI稽核结果", description = "按 records[] 插入 AI 稽核结果（状态 1000 处理中），保证回调时 DB 已有记录（B3）")
+    @PostMapping("/audit/result/insert")
+    public Map<String, Object> auditResultInsert(@RequestBody Map<String, Object> req) {
+        return interfaceFacade.auditResultInsert(req);
+    }
+
+    @Operation(summary = "通用SQL查询", description = "按 sql_id 轮询稽核任务是否完成（20260626001）/查询最终稽核结果（20260626002），出参 execute_sql_resp[]（B4）")
+    @PostMapping("/audit/sql-query")
+    public Map<String, Object> auditSqlQuery(@RequestBody Map<String, Object> req) {
+        return interfaceFacade.auditSqlQuery(req);
     }
 
     /* ================= 接口2：实时规格稽核 realtime_spec_audit ================= */
@@ -78,6 +133,24 @@ public class AppStoreV16Controller {
     @PostMapping("/audit/realtime")
     public Map<String, Object> auditRealtime(@RequestBody Map<String, Object> req) {
         return sim.auditRealtime(req, System.currentTimeMillis());
+    }
+
+    /* ================= 端点 2e：需求文档解析 requirement/parse-xlsx（V3.10，统一方案 6.6） ================= */
+
+    @Operation(summary = "需求文档解析", description = "解析需求文档 .xlsx（可选包宽表 + 关联关系 A/Z 端表），返回结构化需求 offers[]（offer_seq/ofr_id/offer_name/fields）+ relations[]（a_ofr_id/relation/z_ofr_id）+ source_sheets[]；解析失败/无销售品/关系枚举越界返回 resultCode=E41")
+    @PostMapping(value = "/requirement/parse-xlsx", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> requirementParseXlsx(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return requirementDocService.parse(null, null);
+        }
+        try {
+            return requirementDocService.parse(file.getBytes(), file.getOriginalFilename());
+        } catch (java.io.IOException e) {
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("resultCode", "E41");
+            body.put("resultMsg", "需求文档读取失败：" + e.getMessage());
+            return body;
+        }
     }
 
     /* ================= 接口3：配置落地 save_product_config ================= */
@@ -124,10 +197,10 @@ public class AppStoreV16Controller {
 
     /* ================= 接口4：测试发起 offer_test ================= */
 
-    @Operation(summary = "销售品测试发起", description = "按销售品ID异步模拟测试执行（新装/副卡加装/退订），返回 globalId")
+    @Operation(summary = "销售品测试发起", description = "按销售品ID异步模拟测试执行（新装/副卡加装/退订），返回 globalId（经适配层，mock/real 可切换）")
     @PostMapping("/test/offer/start")
     public Map<String, Object> offerTest(@RequestBody Map<String, Object> req) {
-        return sim.testOfferStart(req);
+        return interfaceFacade.testOfferStart(req);
     }
 
     /* ================= 接口5：查询测试场景 get_test_scenes ================= */
@@ -135,7 +208,7 @@ public class AppStoreV16Controller {
     @Operation(summary = "查询测试场景", description = "按 globalId 返回受理类场景集合（S_O_TC/S_ADD_CARD/S_U_TC）")
     @PostMapping("/test/offer/scenes")
     public Map<String, Object> testScenes(@RequestBody Map<String, Object> req) {
-        return sim.testScenes(req);
+        return interfaceFacade.testScenes(req);
     }
 
     /* ================= 接口6：查询测试进度 get_test_progress ================= */
@@ -143,7 +216,7 @@ public class AppStoreV16Controller {
     @Operation(summary = "查询测试进度", description = "按 globalId 推进模拟测试进度状态机（总步骤=场景数+2），支持轮询")
     @PostMapping("/test/offer/progress")
     public Map<String, Object> testProgress(@RequestBody Map<String, Object> req) {
-        return sim.testProgress(req);
+        return interfaceFacade.testProgress(req);
     }
 
     /* ================= 接口7：查询测试结果 get_test_result ================= */
@@ -152,7 +225,9 @@ public class AppStoreV16Controller {
     @PostMapping("/test/offer/result")
     public Map<String, Object> testResult(@RequestBody Map<String, Object> req,
                                           jakarta.servlet.http.HttpServletRequest httpRequest) {
-        return sim.testResult(req, externalBaseUrl(httpRequest));
+        Map<String, Object> call = new java.util.LinkedHashMap<>(req == null ? Map.of() : req);
+        call.put("external_base_url", externalBaseUrl(httpRequest));
+        return interfaceFacade.testResult(call);
     }
 
     @Operation(summary = "自动化测试报告下载", description = "按 globalId 回放测试完成时归档的《销售品自动化测试报告》Markdown（text/markdown 附件下载，附件名 test_report_{globalId}.md）；无该测试任务或报告未生成返回 404")

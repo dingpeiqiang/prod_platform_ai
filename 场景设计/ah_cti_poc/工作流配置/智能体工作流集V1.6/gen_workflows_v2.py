@@ -27,7 +27,7 @@ from gen_workflows import (
     nid, inp, out, code_out, start_node, end_node, llm_node, plugin_node, code_node,
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
-    CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD,
+    CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_POLL_AUDIT, CODE_EXTRACT_GLOBAL_ID,
 )
 
 # ============================================================
@@ -1501,15 +1501,91 @@ s3f.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点206查询出参 list（记录数组JSON）", ref_block=nid(206), ref_rel="list")],
     [code_out("record_json", 207), code_out("offer_id", 207)],
     pos=(390, 135)))
-s3f.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
-    "工具2：自研模拟实时稽核，同步返回；offer_id/config_json 取自 config 环节结果（节点207提取原文与解析的offer_id）；融合组 error_list 可含 group:<role> 类目",
-    BASE_URL + "/api/v1/appstore/audit/realtime",
-    [inp("offer_id", "销售品ID（节点207从落地结果解析的offer_id）", ref_block=nid(207), ref_rel="offer_id"),
-     inp("config_json", "落地配置JSON（节点207提取的环节结果原文）", ref_block=nid(207), ref_rel="record_json"),
-     inp("audit_scene", "稽核场景默认all", content="all")],
-    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细（融合组可含 group:<role> 类目）", "array"),
-     ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
-s3f.append(llm_node(203, "整改建议生成",
+s3f.append(plugin_node(202, "智能稽核文件上传", "audit_file_upload",
+    "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
+    BASE_URL + "/api/v1/appstore/audit/file/upload",
+    [inp("audit_file", "稽核需求Excel（会话文件引用，multipart）", required=True),
+     inp("offer_id", "销售品ID（节点207解析，供 mock 清单定位）", ref_block=nid(207), ref_rel="offer_id")],
+    [("file_id", "上传文件ID", "string"), ("sales_id", "销售品清单（销售品名→offerId/location/sheet_name）", "string")]))
+s3f.append(plugin_node(203, "异步报告生成并通知", "audit_async_notify",
+    "接口B2：异步报告生成并通知（GET），传 sales_id/location/sheet_name/file_id → request_id；须紧跟 B3 成对调用（AI 回调前置落库）",
+    BASE_URL + "/api/v1/appstore/audit/async/notify",
+    [inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
+     inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id")],
+    [("request_id", "异步报告请求ID", "string"), ("requestIds", "全部销售品 requestId 集合（逗号拼接）", "string")],
+    method="get"))
+s3f.append(plugin_node(204, "插入AI稽核结果", "audit_insert_result",
+    "接口B3：插入AI稽核结果（records[]→resultCode），紧跟 B2 调用，保证 AI 回调时 DB 已有记录",
+    BASE_URL + "/api/v1/appstore/audit/result/insert",
+    [inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
+     inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id"),
+     inp("request_id", "异步报告请求ID（节点203）", ref_block=nid(203), ref_rel="request_id")],
+    [("resultCode", "0成功/非0失败", "string")]))
+# 汇总 requestIds → 结构化封包（供 4b 轮询自查 audit_pending 读取）
+s3f.append(code_node(208, "稽核发起结果封包", CODE_PACK_RECORD,
+    [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),
+     inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
+     inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id"),
+     inp("md", "稽核发起回执文案", content="稽核已发起"),
+     inp("md_key", "md 落库字段名", content="launch_note")],
+    [code_out("record_json", 208)], pos=(780, 135)))
+s3f.append(plugin_node(205, "稽核发起临时态存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；4b 轮询自查读取",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
+     inp("node_name", "环节名=audit_pending（稽核发起临时态）", content="audit_pending"),
+     inp("result_json", "环节结果JSON=发起结果封包（requestIds/sales_id）", ref_block=nid(208), ref_rel="record_json"),
+     inp("status", "本环节状态=pending", content="pending")],
+    [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
+# xsbot-panel 独立代码节点
+s3f.append(panel_code_node(209, "构建页面地址面板", "03",
+    panel_inputs(201, off_seq=207, off_rel="offer_id", req_seq=201), biz_title="规格稽核"))
+s3f.append(end_node(210, "结束(稽核已发起)",
+    [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),
+     inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
+     inp("offer_id", "销售品ID（节点207提取，供查看面板）", ref_block=nid(207), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(209), ref_rel="panel")],
+    "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}，file_id={file_id}）\n"
+    "> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n"
+    "{panel}"))
+files3f = workflow(
+    "产销品-规格稽核", "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。", "wf_sub_03", s3f,
+    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,204),
+     edge(204,208), edge(208,205), edge(205,209), edge(209,210)])
+
+# ============================================================
+# wf_sub_12 规格稽核轮询（环节4b，两阶段拆分后半；可重复触发）
+#   自查 audit_pending 取 requestIds → B4 audit_sql_query（sqlId=20260626001，
+#   CODE_POLL_AUDIT 短窗口轮询）→ 完成再查 20260626002 取最终结果 → pass==1 写 spec。
+# ============================================================
+s12f = []
+s12f.append(start_node(2201, [
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成，与发起流同键）", required=True),
+    inp("chat_id", "{chatId}", required=True),
+]))
+s12f.append(plugin_node(2202, "自查稽核发起临时态", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=audit_pending 取回稽核发起临时态（result_json 含 requestIds/sales_id）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2201), ref_rel="req_id"),
+     inp("node_name", "环节名=audit_pending", content="audit_pending"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [ ("list", "记录数组JSON", "string")],
+    method="get", pos=(240, 135)))
+s12f.append(code_node(2203, "提取 requestIds", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点2202查询出参 list", ref_block=nid(2202), ref_rel="list")],
+    [code_out("record_json", 2203), code_out("requestIds", 2203)],
+    pos=(390, 135)))
+s12f.append(code_node(2204, "轮询稽核完成", CODE_POLL_AUDIT,
+    [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
+    [code_out("completed", 2204), code_out("fail_reason", 2204)],
+    pos=(560, 300)))
+s12f.append(plugin_node(2205, "查询稽核结果", "audit_sql_query",
+    "接口B4：通用SQL查询（sqlId=20260626002）取最终稽核结果 → error_list[]（含 group 类目）/audit_summary",
+    BASE_URL + "/api/v1/appstore/audit/sql-query",
+    [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
+    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细（含 group 类目）", "array"),
+     ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/非0失败", "string")]))
+s12f.append(llm_node(2206, "整改建议生成",
     "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
     "输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n"
     "稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n"
@@ -1519,9 +1595,7 @@ s3f.append(llm_node(203, "整改建议生成",
     "判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n"
     "- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n"
     "- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n"
-    "融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行 "
-    "`> 组维度：主 offer_id {offer_id} + 成员 role（offer_id）/...`（逐字引用 config 出参原文 record_json 的 group，禁止增删成员）；"
-    "error_list 含 `group:<role>` 类目时，对应成员所在行标 ❌ 并附明细（item 中 role 定位成员），七项结构不变。\n"
+    "融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行。\n"
     "输出模板（严格按此渲染）：\n"
     "> **稽核对象：销售品ID（offer_id）{offer_id}**\n"
     "> **稽核结果：{通过/不通过}**\n"
@@ -1531,43 +1605,43 @@ s3f.append(llm_node(203, "整改建议生成",
     "> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n"
     "不新增稽核结论。\n"
     "输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。",
-    [inp("error_list", "引用节点202问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_summary", "引用节点202稽核总结", ref_block=nid(202), ref_rel="audit_summary"),
-     inp("record_json", "config 环节结果原文（含可选 group，供组维度回显）", ref_block=nid(207), ref_rel="record_json"),
-     inp("offer_id", "主 offer_id（稽核对象回显）", ref_block=nid(207), ref_rel="offer_id"),
-     inp("pass", "引用节点202稽核结论（1通过/0不通过）", ref_block=nid(202), ref_rel="pass")],
+    [inp("error_list", "引用节点2205问题明细", ref_block=nid(2205), ref_rel="error_list"),
+     inp("audit_summary", "引用节点2205稽核总结", ref_block=nid(2205), ref_rel="audit_summary"),
+     inp("offer_id", "主 offer_id（稽核对象回显，节点2203解析）", ref_block=nid(2203), ref_rel="offer_id"),
+     inp("pass", "引用节点2205稽核结论（1通过/0不通过）", ref_block=nid(2205), ref_rel="pass")],
     [out("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）")], max_tokens=3072))
-# 208 结构化封包：上游结构化出参（pass/error_list/audit_summary）+ LLM 明细清单
-#   → 合成 result_json envelope（error_list 供 sub_04 节点315 CUST-008 等确定性映射）
-s3f.append(code_node(208, "稽核结果结构化封包", CODE_PACK_RECORD,
-    [inp("pass", "稽核结论（节点202）", ref_block=nid(202), ref_rel="pass"),
-     inp("error_list", "问题明细（节点202）", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_summary", "稽核总结（节点202）", ref_block=nid(202), ref_rel="audit_summary"),
-     inp("md", "稽核明细清单 markdown（节点203）", ref_block=nid(203), ref_rel="audit_suggest"),
+s12f.append(code_node(2207, "稽核结果结构化封包", CODE_PACK_RECORD,
+    [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
+     inp("error_list", "问题明细（节点2205）", ref_block=nid(2205), ref_rel="error_list"),
+     inp("audit_summary", "稽核总结（节点2205）", ref_block=nid(2205), ref_rel="audit_summary"),
+     inp("md", "稽核明细清单 markdown（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
      inp("md_key", "md 落库字段名", content="audit_suggest")],
-    [code_out("record_json", 208)], pos=(780, 135)))
-s3f.append(plugin_node(205, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=结构化封包（含 error_list + audit_suggest 明细）；主流程删除后存储下沉子工作流",
+    [code_out("record_json", 2207)], pos=(900, 135)))
+s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核，最终态）；仅 pass==1 时写入（门禁：环节5 与审批四环节硬校验以 spec 为准）",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2201), ref_rel="req_id"),
      inp("node_name", "环节名=spec（规格稽核）", content="spec"),
-     inp("result_json", "环节结果JSON=结构化封包（error_list+audit_suggest）", ref_block=nid(208), ref_rel="record_json"),
+     inp("result_json", "环节结果JSON=结构化封包（error_list+audit_suggest）", ref_block=nid(2207), ref_rel="record_json"),
      inp("status", "本环节状态=ok", content="ok")],
-    [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
-# xsbot-panel 独立代码节点
-s3f.append(panel_code_node(209, "构建页面地址面板", "03",
-    panel_inputs(201, off_seq=207, off_rel="offer_id", req_seq=201), biz_title="规格稽核"))
-s3f.append(end_node(204, "结束(稽核完成)",
-    [inp("pass", "稽核结论", ref_block=nid(202), ref_rel="pass"),
-     inp("error_list", "问题明细", ref_block=nid(202), ref_rel="error_list"),
-     inp("audit_suggest", "稽核明细清单（七项固定检查项，无条件输出）", ref_block=nid(203), ref_rel="audit_suggest"),
-     inp("offer_id", "销售品ID（节点207提取，供查看面板）", ref_block=nid(207), ref_rel="offer_id"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(209), ref_rel="panel")],
-    "配置规格稽核完成：pass={pass}\n{audit_suggest}\n\n"
+    [ ("record_id", "存储记录ID", "string")], pos=(1040, 135)))
+s12f.append(panel_code_node(2209, "构建页面地址面板", "03",
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+s12f.append(end_node(2210, "结束(稽核查询完成)",
+    [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
+     inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
+     inp("fail_reason", "轮询异常/处理中说明（节点2204）", ref_block=nid(2204), ref_rel="fail_reason"),
+     inp("audit_suggest", "稽核明细清单（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
+     inp("offer_id", "销售品ID（节点2203解析，供查看面板）", ref_block=nid(2203), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2209), ref_rel="panel")],
+    "【环节4/8·规格稽核】查询稽核结果：完成={completed}，稽核结论 pass={pass}\n"
+    "{fail_reason}\n\n{audit_suggest}\n\n"
+    "【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n"
     "{panel}"))
-files3f = workflow(
-    "产销品-规格稽核", "子工作流3（融合组扩展）：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→realtime_spec_audit 同步返回→稽核明细呈现（V4.1 无条件输出七项固定检查项清单：通过时逐项 ✅，未通过项 ❌ 并附明细，不再只输出\"稽核通过\"；融合组 error_list 按 group:<role> 定位成员）→结构化封包（V2.5：error_list+audit_suggest 合成 envelope）；结束前存储 node_name=spec。单商品路径零变化。", "wf_sub_03", s3f,
-    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,208), edge(208,205), edge(205,209), edge(209,204)])
+files12f = workflow(
+    "产销品-规格稽核查询", "子工作流12（环节4b 稽核轮询，两阶段拆分后半；可重复触发）：自查 audit_pending 取 requestIds→CODE_POLL_AUDIT 短窗口轮询 B4 audit_sql_query(sqlId=20260626001，间隔5s/上限60次=5分钟)→完成后查 20260626002 取最终 error_list/audit_summary→七项固定检查项明细→结构化封包→pass==1 才 save(node_name=spec)。窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_12", s12f,
+    [edge(2201,2202), edge(2202,2203), edge(2203,2204), edge(2204,2205), edge(2205,2206),
+     edge(2206,2207), edge(2207,2208), edge(2208,2209), edge(2209,2210)])
 
 # ============================================================
 # wf_sub_05 资费校准（融合组扩展）：比对表按 member_role 分组、E27 阈值逐成员内计算；单商品零变化。
@@ -1963,17 +2037,11 @@ CODE_DOWNLOAD_TEST_REPORT = (
 CODE_DOWNLOAD_TEST_REPORT = CODE_DOWNLOAD_TEST_REPORT.replace("BASE_URL", BASE_URL)
 
 # ============================================================
-# wf_sub_04 自动测试（阶段4 精简版：正式版 9 章节报告）
+# wf_sub_04 自动测试·测试发起（阶段6a，两阶段拆分前半；秒级返回）
 #   流程：开始(req_id) → 读取 config 环节结果(309) → 提取原文+offer_id(310)
-#     → 发起测试(302 offer_test 取 globalId) → 轮询进度(304 CODE_POLL_PROGRESS)
-#     → 查询结果(305 get_test_result 取 testScenes/orderId/offerInstId/offerName)
-#     → 自查 spec(317/318 取 error_list)、自查 fee(319/320 取 compare_list/risk_list)
-#     → CODE_MAP_FIXED_CASES(315 确定性 31 条固定用例 + 结论 + 缺陷 + 场景覆盖 + E26 核对)
-#     → LLM(306 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版，受理验证独立成节)
-#     → 存储(308 node_name=test) → 下载测试报告(316) → 结束(307)
-#   注：V2.5 起 sub_03/sub_05 存储结构化 envelope（error_list/compare_list），
-#   故此处恢复 317~320 自检读取（原判定为冗余已删除，现重新接线），
-#   315 的 spec_record/fee_record 入参据此填充，计费/客服分项由「未覆盖」升级为确定性判定。
+#     → C1 发起测试(302 offer_test 取 globalId) → C2 查询测试场景(303 get_test_scenes 取 testScenes)
+#     → CODE_PACK_RECORD 封包 → 存储(308 node_name=test_pending，临时态)
+#     → 面板 → 结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，test_passed==通过 才写 test）
 # ============================================================
 s4f = []
 s4f.append(start_node(301, [
@@ -1993,68 +2061,131 @@ s4f.append(code_node(310, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点309查询出参 list（记录数组JSON）", ref_block=nid(309), ref_rel="list")],
     [code_out("record_json", 310), code_out("offer_id", 310)],
     pos=(390, 135)))
-# 发起测试
+# C1 发起测试
 s4f.append(plugin_node(302, "发起测试", "offer_test",
-    "工具3：自研模拟测试发起，返回模拟测试流水 globalId；offerId 取自 config 环节结果（节点310解析的offer_id）",
+    "接口C1 销售品测试发起：入参 offerId 取自 config 环节结果（节点310解析的offer_id）；出参 resultObject.globalId→globalId",
     BASE_URL + "/api/v1/appstore/test/offer/start",
     [inp("offerId", "销售品ID（节点310从落地结果解析的offer_id）", ref_block=nid(310), ref_rel="offer_id")],
     [
      ("globalId", "测试流水号", "string")]))
-# 轮询测试进度（代码节点内嵌轮询，5s 间隔 / 30 分钟超时）
-s4f.append(code_node(304, "轮询测试进度", CODE_POLL_PROGRESS,
+# C2 查询测试场景（含各场景 orderId/offerInstId 归属）
+s4f.append(plugin_node(303, "查询测试场景", "get_test_scenes",
+    "接口C2 查询测试场景：入参 globalId；出参 resultObject.testScenes[]→testScenes（含各场景 orderId/offerInstId 归属），供 6b 报告场景覆盖与受理凭证引用",
+    BASE_URL + "/api/v1/appstore/test/offer/scenes",
     [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
-    [code_out("done", 304), code_out("failed", 304), code_out("failIndex", 304), code_out("fail_reason", 304)],
-    pos=(690, 300)))
-# 查询测试结果（done=true 后取 testScenes/orderId/offerInstId/offerName）
-s4f.append(plugin_node(305, "查询测试结果", "get_test_result",
-    "工具6：done=true 后调用一次；返回逐场景结果 testScenes（含测点明细 testCasePointResults）、受理凭证 orderId/offerInstId、被测销售品 offerName；presetValue 取自《产品信息.txt》该销售品规则值",
+    [
+     ("testScenes", "逐场景清单（含各场景 orderId/offerInstId 归属）", "array")]))
+# 发起结果封包 → test_pending 临时态（供 6b 轮询自查读取）
+s4f.append(code_node(308, "测试发起结果封包", CODE_PACK_RECORD,
+    [inp("globalId", "测试流水号（节点302）", ref_block=nid(302), ref_rel="globalId"),
+     inp("testScenes", "逐场景清单（节点303）", ref_block=nid(303), ref_rel="testScenes"),
+     inp("md", "测试发起回执文案", content="测试已发起"),
+     inp("md_key", "md 落库字段名", content="launch_note")],
+    [code_out("record_json", 308)], pos=(780, 135)))
+s4f.append(plugin_node(305, "测试发起临时态存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test_pending（测试发起临时态，非最终 test）；result_json=发起结果封包（globalId/testScenes）；6b 轮询自查读取",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+     inp("node_name", "环节名=test_pending（测试发起临时态）", content="test_pending"),
+     inp("result_json", "环节结果JSON=发起结果封包（globalId/testScenes）", ref_block=nid(308), ref_rel="record_json"),
+     inp("status", "本环节状态=pending", content="pending")],
+    [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
+# xsbot-panel 独立代码节点
+s4f.append(panel_code_node(321, "构建页面地址面板", "06",
+    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="自动测试"))
+s4f.append(end_node(307, "结束(测试已发起)",
+    [inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId"),
+     inp("testScenes", "逐场景清单（节点303）", ref_block=nid(303), ref_rel="testScenes"),
+     inp("offer_id", "销售品ID（节点310提取，供查看面板）", ref_block=nid(310), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(321), ref_rel="panel")],
+    "【环节6/8·自动测试】测试已发起（globalId={globalId}，场景清单已获取）\n"
+    "> 测试平台异步执行，请回复【查询测试结果】拉取测试结论（未完成会提示稍后续查）。\n\n"
+    "{panel}"))
+files4f = workflow(
+    "产销品-自动测试", "子工作流4（环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→C1 offer_test 发起取 globalId→C2 get_test_scenes 取 testScenes→封包→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，test_passed==通过 才写 test）。", "wf_sub_04", s4f,
+    [edge(301,309), edge(309,310), edge(310,302), edge(302,303),
+     edge(303,308), edge(308,305), edge(305,321), edge(321,307)])
+
+# ============================================================
+# wf_sub_13 自动测试·测试轮询查询（环节6b，两阶段拆分后半；可重复触发）
+#   自查 test_pending 取 globalId → C3 get_test_progress（CODE_POLL_PROGRESS 短窗口轮询）
+#   → C4 get_test_result（done=true 后取 testScenes/orderId/offerInstId/offerName）
+#   → 自查 spec/fee（317~320）→ CODE_MAP_FIXED_CASES(315) → LLM(2306 九章节报告)
+#   → save(node_name=test)（test_passed==通过 才写）→ 下载报告(2316) → 面板 → 结束
+# ============================================================
+s13f = []
+s13f.append(start_node(2301, [
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成，与发起流同键）", required=True),
+    inp("chat_id", "{chatId}", required=True),
+]))
+# 自查测试发起临时态（node_name=test_pending → globalId/testScenes）
+s13f.append(plugin_node(2302, "自查测试发起临时态", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=test_pending 取回测试发起临时态（result_json 含 globalId/testScenes）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
+     inp("node_name", "环节名=test_pending", content="test_pending"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [ ("list", "记录数组JSON", "string")],
+    method="get", pos=(240, 135)))
+s13f.append(code_node(2303, "提取 globalId", CODE_EXTRACT_GLOBAL_ID,
+    [inp("query_list", "引用节点2302查询出参 list", ref_block=nid(2302), ref_rel="list")],
+    [code_out("record_json", 2303), code_out("offer_id", 2303), code_out("globalId", 2303)],
+    pos=(390, 135)))
+# C3 轮询测试进度（代码节点内嵌轮询，5s 间隔 / 单次窗口 60 次 = 5 分钟）
+s13f.append(code_node(2304, "轮询测试进度", CODE_POLL_PROGRESS,
+    [inp("globalId", "测试流水号（节点2303解析）", ref_block=nid(2303), ref_rel="globalId")],
+    [code_out("done", 2304), code_out("failed", 2304), code_out("failIndex", 2304), code_out("fail_reason", 2304)],
+    pos=(560, 300)))
+# C4 查询测试结果（done=true 后取 testScenes/orderId/offerInstId/offerName）
+s13f.append(plugin_node(2305, "查询测试结果", "get_test_result",
+    "接口C4 查询测试结果：done=true 后调用一次；出参 resultObject.testScenes（含测点明细 testCasePointResults）/orderId/offerInstId/offerName → 既有字段",
     BASE_URL + "/api/v1/appstore/test/offer/result",
-    [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
+    [inp("globalId", "测试流水号（节点2303解析）", ref_block=nid(2303), ref_rel="globalId")],
     [
      ("testRequestId", "测试请求ID", "string"), ("offerName", "被测销售品名称", "string"),
      ("orderId", "受理订单号", "string"), ("offerInstId", "销售品实例ID", "string"),
      ("testScenes", "逐场景结果含测点明细（照列出参）", "array")]))
-# 自检 spec（node_name=spec → 结构化 envelope：error_list/audit_suggest）与
-# 自检 fee（node_name=fee → 结构化 envelope：compare_list/risk_list），
-# 供 315 固定用例的计费(BILL-001~009)/客服(CUST-004/008)分项确定性填充。
-s4f.append(plugin_node(317, "自查稽核结果", "query_node_result",
+# 自查 spec（node_name=spec → 结构化 envelope：error_list/audit_suggest）与
+# 自查 fee（node_name=fee → 结构化 envelope：compare_list/risk_list），
+# 供 2315 固定用例的计费(BILL-001~009)/客服(CUST-004/008)分项确定性填充。
+s13f.append(plugin_node(2317, "自查稽核结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（result_json=结构化 envelope，含 error_list）",
     BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("node_name", "环节名=spec（规格稽核）", content="spec"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
     [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 430)))
-s4f.append(code_node(318, "提取稽核原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点317查询出参 list", ref_block=nid(317), ref_rel="list")],
-    [code_out("record_json", 318)],
+s13f.append(code_node(2318, "提取稽核原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点2317查询出参 list", ref_block=nid(2317), ref_rel="list")],
+    [code_out("record_json", 2318)],
     pos=(390, 430)))
-s4f.append(plugin_node(319, "自查资费结果", "query_node_result",
+s13f.append(plugin_node(2319, "自查资费结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（result_json=结构化 envelope，含 compare_list/risk_list）",
     BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("node_name", "环节名=fee（资费校准）", content="fee"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
     [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 555)))
-s4f.append(code_node(320, "提取资费原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点319查询出参 list", ref_block=nid(319), ref_rel="list")],
-    [code_out("record_json", 320)],
+s13f.append(code_node(2320, "提取资费原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点2319查询出参 list", ref_block=nid(2319), ref_rel="list")],
+    [code_out("record_json", 2320)],
     pos=(390, 555)))
 # CODE_MAP_FIXED_CASES：确定性构建 31 条固定用例表 + 结论 + 缺陷 + 场景覆盖 + E26 核对
-s4f.append(code_node(315, "固定用例映射", CODE_MAP_FIXED_CASES,
-    [inp("test_result_json", "get_test_result 逐场景结果（节点305 testScenes，含测点明细）", ref_block=nid(305), ref_rel="testScenes"),
-     inp("test_offer_name", "被测销售品名称（节点305 offerName，E26 一致性核对）", ref_block=nid(305), ref_rel="offerName"),
-     inp("order_id", "受理订单号（节点305 orderId，ACC-011 受理凭证）", ref_block=nid(305), ref_rel="orderId"),
-     inp("offer_inst_id", "销售品实例ID（节点305 offerInstId，ACC-011/CUST-002 受理凭证）", ref_block=nid(305), ref_rel="offerInstId"),
-     inp("offer_id", "被测销售品ID（节点310解析）", ref_block=nid(310), ref_rel="offer_id"),
-     inp("plan_json", "config 环节结果原文（节点310提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(310), ref_rel="record_json"),
-     inp("spec_record", "稽核环节结构化原文（节点318提取，含 error_list，供 CUST-008 等映射）", ref_block=nid(318), ref_rel="record_json"),
-     inp("fee_record", "资费环节结构化原文（节点320提取，含 compare_list/risk_list，供 BILL-001~009/CUST-004 映射）", ref_block=nid(320), ref_rel="record_json")],
-    [code_out("cases_json", 315), code_out("dimension_summary", 315), code_out("overall_conclusion", 315), code_out("defect_list", 315), code_out("p0_pass", 315), code_out("e26", 315), code_out("e26_note", 315), code_out("scene_cover", 315)],
+s13f.append(code_node(2315, "固定用例映射", CODE_MAP_FIXED_CASES,
+    [inp("test_result_json", "get_test_result 逐场景结果（节点2305 testScenes，含测点明细）", ref_block=nid(2305), ref_rel="testScenes"),
+     inp("test_offer_name", "被测销售品名称（节点2305 offerName，E26 一致性核对）", ref_block=nid(2305), ref_rel="offerName"),
+     inp("order_id", "受理订单号（节点2305 orderId，ACC-011 受理凭证）", ref_block=nid(2305), ref_rel="orderId"),
+     inp("offer_inst_id", "销售品实例ID（节点2305 offerInstId，ACC-011/CUST-002 受理凭证）", ref_block=nid(2305), ref_rel="offerInstId"),
+     inp("offer_id", "被测销售品ID（节点2303解析）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("plan_json", "config 环节结果原文（节点2303提取，含 plan_json/offer_name/member_offers，E26 与场景覆盖依据）", ref_block=nid(2303), ref_rel="record_json"),
+     inp("spec_record", "稽核环节结构化原文（节点2318提取，含 error_list，供 CUST-008 等映射）", ref_block=nid(2318), ref_rel="record_json"),
+     inp("fee_record", "资费环节结构化原文（节点2320提取，含 compare_list/risk_list，供 BILL-001~009/CUST-004 映射）", ref_block=nid(2320), ref_rel="record_json")],
+    [code_out("cases_json", 2315), code_out("dimension_summary", 2315), code_out("overall_conclusion", 2315), code_out("defect_list", 2315), code_out("p0_pass", 2315), code_out("e26", 2315), code_out("e26_note", 2315), code_out("scene_cover", 2315)],
     pos=(900, 300)))
-# LLM（306）：按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版 + 受理验证独立成节
-s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
+# LLM（2306）：按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版 + 受理验证独立成节
+s13f.append(llm_node(2306, "测试报告生成(正式版9章节)",
     "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）、31条固定用例确定性映射结果（cases_json={cases_json}，dimension_summary={dimension_summary}，overall_conclusion={overall_conclusion}，defect_list={defect_list}，scene_cover={scene_cover}，e26={e26}）与受理凭证（orderId={orderId}，offerInstId={offerInstId}），按 K3 模板 V2.0 生成《销售品自动化测试报告》正式版，9 章节结构：\n"
     "一、报告概述（目的/范围/依据/等级定义 P0拦截/P1警告/P2提示）；\n"
     "二、基础信息（12 项：报告编号 TEST-REP-当日-序号/测试任务ID {testRequestId}/被测销售品名称 {offerName}/销售品编码 {offerId}/产品类型（取配置 plan_json 套餐属性）/所属业务域 产销品域/所属部门 产商品中心CRM_POS/生效时间（配置套餐生效规则摘要）/测试方式 全自动智能测试/测试时间 报告生成时间/关联加载方案 {req_id}/测试流水号 {globalId}）；\n"
@@ -2067,57 +2198,61 @@ s4f.append(llm_node(306, "测试报告生成(正式版9章节)",
     "九、版本说明（V1.0）。\n"
     "严格遵守：31 条固定用例清单禁止增删改；用例结果仅依据 cases_json 判定；只基于输入数据生成，禁止虚构测点/结论/统计值；**三章统计与四章逐行结论必须自洽**（四章 ✅ 行数须等于三章通过数、❌ 行数须等于三章阻断数），出现矛盾时以 cases_json 为准重新生成；记录 e26 不一致时按 E26 中断口径输出（不输出通过性明细，标注被测一致性需人工核实）。\n"
     "输出要求：仅输出报告正文（对应出参 test_report），其中四章分项内**受理验证独立成节**（标题'环节7/9·受理验证'，逐字引用 orderId/offerInstId 与逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 结论、关键测点比对，融合品含 S_GROUP_BIND/S_ADDON_SUB）；不输出其他多余文字。",
-    [inp("testScenes", "引用节点305逐场景结果", ref_block=nid(305), ref_rel="testScenes"),
-     inp("testRequestId", "测试请求ID（节点305）", ref_block=nid(305), ref_rel="testRequestId"),
-     inp("offerName", "被测销售品名称（节点305）", ref_block=nid(305), ref_rel="offerName"),
-     inp("orderId", "受理订单号（节点305）", ref_block=nid(305), ref_rel="orderId"),
-     inp("offerInstId", "销售品实例ID（节点305）", ref_block=nid(305), ref_rel="offerInstId"),
-     inp("globalId", "测试流水号（节点302）", ref_block=nid(302), ref_rel="globalId"),
-     inp("req_id", "执行批次号（开始节点）", ref_block=nid(301), ref_rel="req_id"),
-     inp("offerId", "销售品ID（节点310）", ref_block=nid(310), ref_rel="offer_id"),
-     inp("cases_json", "31条固定用例（节点315）", ref_block=nid(315), ref_rel="cases_json"),
-     inp("dimension_summary", "三维度统计（节点315）", ref_block=nid(315), ref_rel="dimension_summary"),
-     inp("overall_conclusion", "整体结论（节点315）", ref_block=nid(315), ref_rel="overall_conclusion"),
-     inp("defect_list", "缺陷清单（节点315）", ref_block=nid(315), ref_rel="defect_list"),
-     inp("scene_cover", "场景覆盖核对（节点315）", ref_block=nid(315), ref_rel="scene_cover"),
-     inp("e26", "被测一致性（节点315）", ref_block=nid(315), ref_rel="e26")],
+    [inp("testScenes", "引用节点2305逐场景结果", ref_block=nid(2305), ref_rel="testScenes"),
+     inp("testRequestId", "测试请求ID（节点2305）", ref_block=nid(2305), ref_rel="testRequestId"),
+     inp("offerName", "被测销售品名称（节点2305）", ref_block=nid(2305), ref_rel="offerName"),
+     inp("orderId", "受理订单号（节点2305）", ref_block=nid(2305), ref_rel="orderId"),
+     inp("offerInstId", "销售品实例ID（节点2305）", ref_block=nid(2305), ref_rel="offerInstId"),
+     inp("globalId", "测试流水号（节点2303）", ref_block=nid(2303), ref_rel="globalId"),
+     inp("req_id", "执行批次号（开始节点）", ref_block=nid(2301), ref_rel="req_id"),
+     inp("offerId", "销售品ID（节点2303）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("cases_json", "31条固定用例（节点2315）", ref_block=nid(2315), ref_rel="cases_json"),
+     inp("dimension_summary", "三维度统计（节点2315）", ref_block=nid(2315), ref_rel="dimension_summary"),
+     inp("overall_conclusion", "整体结论（节点2315）", ref_block=nid(2315), ref_rel="overall_conclusion"),
+     inp("defect_list", "缺陷清单（节点2315）", ref_block=nid(2315), ref_rel="defect_list"),
+     inp("scene_cover", "场景覆盖核对（节点2315）", ref_block=nid(2315), ref_rel="scene_cover"),
+     inp("e26", "被测一致性（节点2315）", ref_block=nid(2315), ref_rel="e26")],
     [out("test_report", "《销售品自动化测试报告》正式版 9 章节正文（含受理验证独立成节）")],
     pos=(1140, 300)))
-# 存储 test 环节结果（node_name=test，衔接 wf_sub_06 四环节门禁）
-s4f.append(plugin_node(308, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试），result_json=正式版测试报告；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查与程序C 归档",
+# 存储 test 环节结果（node_name=test，衔接 wf_sub_06 四环节门禁；test_passed==通过 才写）
+s13f.append(plugin_node(2308, "测试结果存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅 test_passed==通过 时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("node_name", "环节名=test（自动测试）", content="test"),
-     inp("result_json", "环节结果JSON=正式版测试报告", ref_block=nid(306), ref_rel="test_report"),
+     inp("result_json", "环节结果JSON=正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")],
     pos=(1380, 135)))
 # 下载测试报告（阶段1.2）：按测试流水号组装正式下载端点地址，探活失败回退为下载引导
-s4f.append(code_node(316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
-    [inp("global_id", "测试流水号（节点302出参，报告下载端点检索键）", ref_block=nid(302), ref_rel="globalId")],
-    [code_out("download_url", 316), code_out("note", 316)],
+s13f.append(code_node(2316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
+    [inp("global_id", "测试流水号（节点2303解析，报告下载端点检索键）", ref_block=nid(2303), ref_rel="globalId")],
+    [code_out("download_url", 2316), code_out("note", 2316)],
     pos=(1520, 300)))
 # xsbot-panel 独立代码节点
-s4f.append(panel_code_node(321, "构建页面地址面板", "04",
-    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="测试报告"))
-s4f.append(end_node(307, "结束(测试完成)",
-    [inp("offerId", "被测销售品ID（供面板）", ref_block=nid(310), ref_rel="offer_id"),
-     inp("test_report", "正式版测试报告", ref_block=nid(306), ref_rel="test_report"),
-     inp("overall_conclusion", "整体上线结论", ref_block=nid(315), ref_rel="overall_conclusion"),
-     inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId"),
-     inp("download_url", "报告下载地址（节点316）", ref_block=nid(316), ref_rel="download_url"),
-     inp("dl_note", "下载说明（节点316）", ref_block=nid(316), ref_rel="note"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(321), ref_rel="panel")],
-    "《销售品自动化测试报告》（正式版 9 章节）已生成（被测 offer_id={offerId}，测试流水号：{globalId}）\n整体上线结论：{overall_conclusion}\n\n{test_report}\n\n"
+s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
+    panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
+s13f.append(end_node(2310, "结束(测试查询完成)",
+    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
+     inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
+     inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("test_report", "正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
+     inp("overall_conclusion", "整体上线结论", ref_block=nid(2315), ref_rel="overall_conclusion"),
+     inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
+     inp("download_url", "报告下载地址（节点2316）", ref_block=nid(2316), ref_rel="download_url"),
+     inp("dl_note", "下载说明（节点2316）", ref_block=nid(2316), ref_rel="note"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
+    "【环节6/8·自动测试】查询测试结果：完成={done}\n"
+    "{fail_reason}\n\n{test_report}\n\n"
     "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
-    "【下一步】可发送\"上线审批\"提交审批流，将按该测试报告与四环节结果发起上线审批。\n\n{panel}"))
-files4f = workflow(
-    "产销品-自动测试", "子工作流4（阶段4 精简版）：自动测试（含受理验证独立成节）。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文+offer_id→offer_test 发起→轮询进度(CODE_POLL_PROGRESS)→get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(317~320 取 error_list/compare_list)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖核对+E26 被测一致性核对→LLM 按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版（受理验证独立成节环节7/9）→存储 node_name=test→下载测试报告(CODE_DOWNLOAD_TEST_REPORT,端点不可达回退下载引导)→结束。", "wf_sub_04", s4f,
-    [edge(301,309), edge(309,310), edge(310,302), edge(302,304),
-     edge(304,305), edge(305,317), edge(317,318), edge(318,319), edge(319,320),
-     edge(320,315),
-     edge(315,306), edge(306,308), edge(308,316), edge(316,321), edge(321,307)])
+    "【下一步】可发送\"上线审批\"提交审批流（被测 offer_id={offerId}，测试流水号：{globalId}）"
+    "（整体上线结论：{overall_conclusion}）。\n\n{panel}"))
+files13f = workflow(
+    "产销品-测试查询结果", "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→test_passed==通过 才 save(node_name=test)→下载报告(CODE_DOWNLOAD_TEST_REPORT)。窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_13", s13f,
+    [edge(2301,2302), edge(2302,2303), edge(2303,2304), edge(2304,2305),
+     edge(2305,2317), edge(2317,2318), edge(2318,2319), edge(2319,2320),
+     edge(2320,2315),
+     edge(2315,2306), edge(2306,2308), edge(2308,2316), edge(2316,2309), edge(2309,2310)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
@@ -2773,7 +2908,8 @@ files11f = workflow(
      edge(1104,1105), edge(1105,1109), edge(1109,1106)])
 
 # ============================================================
-# 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10 + V3.3 新增 wf_sub_11，共 12 个 JSON；
+# 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10 + V3.3 新增 wf_sub_11
+# + V3.10 两阶段拆分新增 wf_sub_12/13，共 14 个 JSON；
 # 意图调度交由智能体层，无 wf_main_intent）
 # ============================================================
 for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分析.json", files01),
@@ -2781,7 +2917,8 @@ for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分
                  ("wf_sub_04_自动测试.json", files4f), ("wf_sub_05_资费校准.json", files5f),
                  ("wf_sub_06_上线审批.json", files6f), ("wf_sub_07_监控运维.json", files7f),
                  ("wf_sub_08_审批进度查询.json", files8f), ("wf_sub_09_存量产品查询.json", files9f),
-                 ("wf_sub_10_存量合规扫描.json", files10f), ("wf_sub_11_发起需求审批.json", files11f)]:
+                 ("wf_sub_10_存量合规扫描.json", files10f), ("wf_sub_11_发起需求审批.json", files11f),
+                 ("wf_sub_12_规格稽核查询.json", files12f), ("wf_sub_13_测试查询结果.json", files13f)]:
     data = apply_layout(data)
     with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -41,11 +42,15 @@ public class ConfigDocumentParser {
     private static final Pattern XLSX_SI = Pattern.compile("<si>(.*?)</si>", Pattern.DOTALL);
     private static final Pattern XLSX_T = Pattern.compile("<t[^>]*>([^<]*)</t>");
     private static final Pattern XLSX_ROW = Pattern.compile("<row\\b[^>]*>(.*?)</row>", Pattern.DOTALL);
-    private static final Pattern XLSX_CELL = Pattern.compile("<c\\b([^>]*)>(.*?)</c>", Pattern.DOTALL);
+    private static final Pattern XLSX_ROW_OPEN = Pattern.compile("<row\\b[^>]*>");
+    // 说明：需同时匹配成对单元格 <c ...>...</c> 与自闭合空单元格 <c .../>，否则空单元格
+    // 会与后续单元格被吞成一个（列错位）。属性段用惰性 + 排除 '/' 避免吞掉自闭合斜杠。
+    private static final Pattern XLSX_CELL = Pattern.compile("<c\\b([^>/]*)(?:/>|>(.*?)</c>)", Pattern.DOTALL);
     private static final Pattern XLSX_ATTR = Pattern.compile("(\\w+)=\"([^\"]*)\"");
     private static final Pattern XLSX_V = Pattern.compile("<v[^>]*>([^<]*)</v>");
     private static final Pattern XLSX_IS_T = Pattern.compile("<is>.*?<t[^>]*>([^<]*)</t>.*?</is>", Pattern.DOTALL);
     private static final Pattern XLSX_SHEET_DECL = Pattern.compile("<sheet\\b[^>]*>");
+    private static final Pattern XLSX_MERGE_CELL = Pattern.compile("<mergeCell\\b[^>]*ref=\"([^\"]+)\"");
     private static final Pattern SHEET_ENTRY = Pattern.compile("^xl/worksheets/sheet\\d+\\.xml$");
     private static final Pattern CELL_REF = Pattern.compile("^([A-Z]+)(\\d+)$");
     private static final Pattern HEADING_TEXT = Pattern.compile("^#{1,4}\\s*(.+)$");
@@ -314,34 +319,113 @@ public class ConfigDocumentParser {
 
     /** sheet XML → 二维表（含表头行；纯文本投影时逐行 TSV 由 tableMarkdown 兜底）。 */
     private List<List<String>> extractSheetRows(String sheetXml, List<String> shared) {
-        List<List<String>> rows = new ArrayList<>();
+        // 以 (行号, 列号) 精确定位单元格，便于 mergeCells 展开（保留原始行/列坐标，不提前丢空行）
+        Map<Integer, Map<Integer, String>> grid = new TreeMap<>();
+        Map<String, int[]> merges = new LinkedHashMap<>();
+        Matcher mergeMatcher = XLSX_MERGE_CELL.matcher(sheetXml);
+        while (mergeMatcher.find()) {
+            int[] range = parseCellRange(mergeMatcher.group(1));
+            if (range != null) {
+                merges.put(mergeMatcher.group(1), range);
+            }
+        }
+        int maxRow = -1;
+        int maxCol = -1;
         Matcher rowMatcher = XLSX_ROW.matcher(sheetXml);
+        Matcher rowOpen = XLSX_ROW_OPEN.matcher(sheetXml);
         while (rowMatcher.find()) {
-            Map<Integer, String> cells = new LinkedHashMap<>();
-            int maxCol = -1;
+            // 行号只从 <row ...> 开标签读取（group(0) 还含单元格属性，会误取到 r="A1"）
+            String openTag = rowOpen.find(rowMatcher.start()) ? rowOpen.group() : "";
+            Map<String, String> rowAttrs = parseAttrs(openTag);
+            int rowNo = parseInt(rowAttrs.get("r"), maxRow + 1);
+            Map<Integer, String> cells = grid.computeIfAbsent(rowNo, k -> new LinkedHashMap<>());
+            int rowMaxCol = -1;
             Matcher cellMatcher = XLSX_CELL.matcher(rowMatcher.group(1));
             while (cellMatcher.find()) {
                 Map<String, String> attrs = parseAttrs(cellMatcher.group(1));
                 String ref = attrs.getOrDefault("r", "");
                 int col = columnIndex(ref);
                 if (col < 0) {
-                    col = maxCol + 1;
+                    col = rowMaxCol + 1;
                 }
-                maxCol = Math.max(maxCol, col);
-                cells.put(col, resolveCellValue(attrs.get("t"), cellMatcher.group(2), shared));
+                rowMaxCol = Math.max(rowMaxCol, col);
+                // 自闭合空单元格（<c .../>）无内层片段，值为空
+                String inner = cellMatcher.group(2);
+                cells.put(col, inner == null ? ""
+                        : resolveCellValue(attrs.get("t"), inner, shared));
             }
-            if (maxCol < 0) {
+            if (rowMaxCol >= 0) {
+                maxCol = Math.max(maxCol, rowMaxCol);
+                maxRow = Math.max(maxRow, rowNo);
+            }
+        }
+        if (maxRow < 0 || maxCol < 0) {
+            return new ArrayList<>();
+        }
+        // mergeCells 展开：合并区间内每个格子取左上角值（Excel 语义）
+        for (int[] r : merges.values()) {
+            String anchor = grid.getOrDefault(r[0], Map.of()).getOrDefault(r[1], "");
+            if (anchor.isBlank()) {
+                continue;
+            }
+            for (int rr = r[0]; rr <= r[2]; rr++) {
+                Map<Integer, String> cells = grid.computeIfAbsent(rr, k -> new LinkedHashMap<>());
+                for (int cc = r[1]; cc <= r[3]; cc++) {
+                    if (!cells.containsKey(cc) || cells.get(cc).isBlank()) {
+                        cells.put(cc, anchor);
+                    }
+                }
+            }
+        }
+        List<List<String>> rows = new ArrayList<>();
+        for (int rr = 1; rr <= maxRow; rr++) {
+            Map<Integer, String> cells = grid.get(rr);
+            if (cells == null || cells.isEmpty()) {
                 continue;
             }
             List<String> row = new ArrayList<>();
-            for (int c = 0; c <= maxCol; c++) {
-                row.add(cells.getOrDefault(c, ""));
+            for (int cc = 0; cc <= maxCol; cc++) {
+                row.add(cells.getOrDefault(cc, ""));
             }
             if (row.stream().anyMatch(v -> v != null && !v.isBlank())) {
                 rows.add(row);
             }
         }
         return rows;
+    }
+
+    /** "A2:F5" → [起始行, 起始列, 结束行, 结束列]（1-based 行、0-based 列）；非法返回 null。 */
+    private int[] parseCellRange(String ref) {
+        if (ref == null || !ref.contains(":")) {
+            return null;
+        }
+        String[] parts = ref.split(":", 2);
+        Matcher a = CELL_REF.matcher(parts[0].trim().toUpperCase(Locale.ROOT));
+        Matcher b = CELL_REF.matcher(parts[1].trim().toUpperCase(Locale.ROOT));
+        if (!a.matches() || !b.matches()) {
+            return null;
+        }
+        int col1 = columnIndex(parts[0].trim());
+        int col2 = columnIndex(parts[1].trim());
+        int row1 = parseInt(a.group(2), 0);
+        int row2 = parseInt(b.group(2), 0);
+        if (col1 < 0 || col2 < 0 || row1 <= 0 || row2 <= 0) {
+            return null;
+        }
+        return new int[]{
+                Math.min(row1, row2), Math.min(col1, col2),
+                Math.max(row1, row2), Math.max(col1, col2)};
+    }
+
+    private static int parseInt(String s, int fallback) {
+        if (s == null || s.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     // ===== csv：整文件一个 table 块（首行表头） =====
