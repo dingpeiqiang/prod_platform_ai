@@ -182,11 +182,12 @@ DELETE FROM `pd_ai_users` WHERE `username` = 'admin';
 INSERT INTO `pd_ai_users` (
     `username`, `password_hash`, `display_name`, `role`, `is_enabled`, `created_at`, `updated_at`
 )
-VALUES ('admin',
-        'a1b2c3d4e5f60718293a4b5c6d7e8f90:0212b518b03b50cc62a0dadc9e897f48190e21e0af3ba93665b4b0085885e265',
-        '管理员',
-        'admin',
-        1, NOW(6), NOW(6));
+VALUES (
+    'admin',
+    'a1b2c3d4e5f60718293a4b5c6d7e8f90:0212b518b03b50cc62a0dadc9e897f48190e21e0af3ba93665b4b0085885e265',
+    '管理员',
+    'admin',
+    1, NOW(6), NOW(6));
 
 -- ------------------------------------------------------------
 -- 7. ABox 在架商品种子（pd_ops_shelf_offerings）

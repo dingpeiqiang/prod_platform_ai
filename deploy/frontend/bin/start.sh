@@ -79,6 +79,8 @@ prepare_site_conf() {
     fi
     # 修正 root 静态目录（其余配置保持模板默认）
     sed -i -E "s|(^[[:space:]]*root[[:space:]]+)[^;]+;|\\1${HTTP_ROOT};|" "${SITE_CONF}"
+    # 同步修正 ops-web 独立静态页 alias 的 dist 根目录（与 root 保持一致）
+    sed -i -E "s|(/prod-ai-frontend/dist/)ops-web/|${HTTP_ROOT}/ops-web/|" "${SITE_CONF}"
     chmod 644 "${SITE_CONF}"
 }
 
