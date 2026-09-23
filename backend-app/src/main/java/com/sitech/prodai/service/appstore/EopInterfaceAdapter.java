@@ -1,16 +1,26 @@
 package com.sitech.prodai.service.appstore;
 
+import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.sitech.prodai.config.AppStoreInterfaceProperties;
 import com.sitech.prodai.service.common.MapOps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -38,6 +48,8 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     private static final Logger log = LoggerFactory.getLogger(EopInterfaceAdapter.class);
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+    /** B3 batchId 规范时间戳（yyyyMMddHHmmss）。 */
+    private static final DateTimeFormatter BATCH_STAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     /** real 调用失败统一错误码（不回退 mock）。 */
     private static final String ERR_REAL_CALL_FAILED = "REAL_CALL_FAILED";
@@ -59,7 +71,14 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(timeout);
         factory.setReadTimeout(timeout);
-        this.client = RestClient.builder().requestFactory(factory).build();
+        // EOP 响应头 Content-Type 未携带 charset 时，StringHttpMessageConverter 默认按 ISO-8859-1 解码，
+        // 导致 errmsg/errdetail 中文乱码（如 «å å¡ç« å»）。显式以 UTF-8 为默认字符集构造转换器。
+        StringHttpMessageConverter stringConverter =
+                new StringHttpMessageConverter(java.nio.charset.StandardCharsets.UTF_8);
+        this.client = RestClient.builder()
+                .requestFactory(factory)
+                .messageConverters(converters -> converters.add(0, stringConverter))
+                .build();
     }
 
     @Override
@@ -114,22 +133,37 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     @Override
     public Map<String, Object> auditFileUpload(Map<String, Object> req) {
+        String reqId = firstNonBlank(MapOps.str(req.get("req_id")), MapOps.str(req.get("reqId")));
+        String chatId = firstNonBlank(MapOps.str(req.get("chat_id")), MapOps.str(req.get("chatId")));
         Object bytesObj = req.get("bytes");
         byte[] bytes = bytesObj instanceof byte[] b ? b : null;
         String fileName = MapOps.str(firstNonBlank(MapOps.str(req.get("fileName")), MapOps.str(req.get("file_name"))));
-        if (bytes == null || fileName.isBlank()) {
-            return fail(ERR_REAL_CALL_FAILED, "上传文件缺失：real 模式必须提供 fileName 与字节流");
-        }
         String url = businessUrl("upload");
         long begin = System.currentTimeMillis();
         logRealBegin("upload", "POST", url);
         try {
-            String field = props.getEop().getUploadFileField();
-            Map<String, Object> requestObject = new LinkedHashMap<>();
-            requestObject.put("field", field);
-            requestObject.put("fileName", fileName);
-            requestObject.put("fileBase64", java.util.Base64.getEncoder().encodeToString(bytes));
-            Map<String, Object> body = postJson("upload", url, requestObject);
+            Map<String, Object> body;
+            if (bytes != null && bytes.length > 0) {
+                if (fileName.isBlank()) {
+                    fileName = MapOps.str(reqId) + ".xlsx";
+                }
+                // 先落盘暂存（文件名附加时间戳）到 upload-dir，再读取该文件上传 EOP。
+                fileName = stageFile(fileName, bytes);
+                bytes = readStaged(uploadDir(), fileName);
+                // EOP 规范：multipart/form-data 上传，文件字段名由配置指定（默认 file），
+                // req_id/chat_id 作为普通表单字段随文件一并提交。
+                body = postMultipart("upload", url, reqId, chatId, fileName, bytes);
+            } else if (!reqId.isBlank()) {
+                // 兼容形态：无文件字节时仅提交 {req_id, chat_id}（EOP 侧自行生成文件）
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("req_id", reqId);
+                if (!chatId.isBlank()) {
+                    payload.put("chat_id", chatId);
+                }
+                body = postJson("upload", url, payload);
+            } else {
+                return fail(ERR_REAL_CALL_FAILED, "上传文件缺失：real 模式必须提供文件字节流（或 req_id）");
+            }
             if (body.get("file_id") == null && body.get("sales_id") == null) {
                 throw new IllegalStateException("B1 real 出参缺少 file_id/sales_id");
             }
@@ -153,7 +187,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         String fileId = firstNonBlank(MapOps.str(req.get("file_id")), MapOps.str(req.get("fileId")));
         String url = businessUrl("notify");
         long begin = System.currentTimeMillis();
-        logRealBegin("notify", "POST", url);
+        logRealBegin("notify", "GET", url);
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sales_id", salesId);
@@ -162,7 +196,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             if (!fileId.isBlank()) {
                 payload.put("file_id", fileId);
             }
-            Map<String, Object> body = postJson("notify", url, payload);
+            Map<String, Object> body = getJson("notify", url, payload);
             if (body.get("request_id") == null) {
                 throw new IllegalStateException("B2 real 出参缺少 request_id");
             }
@@ -182,7 +216,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         logRealBegin("insert", "POST", url);
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("records", req.get("records") == null ? List.of() : req.get("records"));
+            payload.put("records", normalizeInsertRecords(req.get("records")));
             Map<String, Object> body = postJson("insert", url, payload);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("resultCode", MapOps.str(body.get("resultCode")));
@@ -192,6 +226,35 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         } catch (Exception e) {
             return realFail("insert", url, e);
         }
+    }
+
+    /**
+     * B3 入参归一：工作流（wf_sub_03 节点204）发送的记录字段为内部口径
+     * （{@code sales_id/file_id/request_id/status}），EOP 规范要求
+     * （{@code batchId/reqOrderId/offerId/offerName/requestId/staffId}）。
+     * 此处做字段名映射；已是 EOP 规范字段的记录原样透传，保证 mock/real 同构。
+     */
+    private List<Map<String, Object>> normalizeInsertRecords(Object records) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Map<String, Object> src : MapOps.castListOfMaps(records)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("batchId", firstNonBlank(MapOps.str(src.get("batchId")), MapOps.str(src.get("batch_id")),
+                    MapOps.str(src.get("file_id")), MapOps.str(src.get("fileId")), nowBatchId()));
+            row.put("reqOrderId", firstNonBlank(MapOps.str(src.get("reqOrderId")), MapOps.str(src.get("req_order_id")),
+                    MapOps.str(src.get("request_id")), MapOps.str(src.get("requestId")), "-1"));
+            row.put("offerId", firstNonBlank(MapOps.str(src.get("offerId")), MapOps.str(src.get("offer_id")),
+                    MapOps.str(src.get("sales_id")), MapOps.str(src.get("salesId"))));
+            row.put("offerName", firstNonBlank(MapOps.str(src.get("offerName")), MapOps.str(src.get("offer_name"))));
+            row.put("requestId", firstNonBlank(MapOps.str(src.get("requestId")), MapOps.str(src.get("request_id"))));
+            row.put("staffId", firstNonBlank(MapOps.str(src.get("staffId")), MapOps.str(src.get("staff_id"))));
+            normalized.add(row);
+        }
+        return normalized;
+    }
+
+    /** EOP 规范 batchId 格式：{@code yyyyMMddHHmmss + 4位随机数}。 */
+    private String nowBatchId() {
+        return LocalDateTime.now().format(BATCH_STAMP) + String.format("%04d", ThreadLocalRandom.current().nextInt(0, 10000));
     }
 
     /* ================= B4 通用 SQL 查询（信封，解 resultObject.executeSqlResp[]） ================= */
@@ -319,12 +382,50 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             out.put("resultCode", MapOps.str(body.get("resultCode")));
             out.put("resultMsg", MapOps.str(body.get("resultMsg")));
             copyIfPresent(resultObject, out, "testRequestId", "testRequestName", "offerId", "offerName", "globalId");
-            out.put("testScenes", MapOps.castListOfMaps(resultObject.get("testScenes")));
+            List<Map<String, Object>> scenes = MapOps.castListOfMaps(resultObject.get("testScenes"));
+            out.put("testScenes", scenes);
+            backfillAcceptanceProof(resultObject, scenes, out);
             logRealDone("testResult", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
             return realFail("testResult", url, e);
         }
+    }
+
+    /**
+     * C4 受理凭证回填：EOP 规范中 {@code orderId}/{@code offerInstId} 位于每个 testScene 内，
+     * 而 mock（{@link OfferSimV16Service#testResult}）与下游消费方（wf_sub_13 节点2305/2315）
+     * 均按顶层读取。此处从首个携带该字段的场景回填顶层，保证 mock/real 同构、受理凭证不缺失。
+     */
+    private void backfillAcceptanceProof(Map<String, Object> resultObject,
+                                         List<Map<String, Object>> scenes, Map<String, Object> out) {
+        if (out.get("orderId") == null) {
+            String orderId = firstSceneField(resultObject, scenes, "orderId");
+            if (!orderId.isBlank()) {
+                out.put("orderId", orderId);
+            }
+        }
+        if (out.get("offerInstId") == null) {
+            String offerInstId = firstSceneField(resultObject, scenes, "offerInstId");
+            if (!offerInstId.isBlank()) {
+                out.put("offerInstId", offerInstId);
+            }
+        }
+    }
+
+    /** 依次从 resultObject 顶层、各 testScene 内取首个非空字段值（EOP 字段位置差异兼容）。 */
+    private String firstSceneField(Map<String, Object> resultObject, List<Map<String, Object>> scenes, String field) {
+        String top = MapOps.str(resultObject.get(field));
+        if (!top.isBlank()) {
+            return top;
+        }
+        for (Map<String, Object> scene : scenes) {
+            String v = MapOps.str(scene.get(field));
+            if (!v.isBlank()) {
+                return v;
+            }
+        }
+        return "";
     }
 
     private Map<String, Object> postBare(String key, String url, String globalId) {
@@ -361,6 +462,112 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         return body;
     }
 
+    /**
+     * GET JSON：业务参数以 query 传参，请求头带 X-APP-ID/X-APP-KEY/Api-Key/Staff-Code 鉴权，
+     * 解析并严格校验业务响应（B2 通知接口按 EOP 规范使用 GET）。
+     */
+    private Map<String, Object> getJson(String key, String url, Map<String, Object> query) {
+        logRealRequest(key, url, query);
+        long start = System.currentTimeMillis();
+        String resp;
+        try {
+            resp = client.get().uri(url,
+                            uriBuilder -> {
+                                query.forEach((k, v) -> uriBuilder.queryParam(k, v));
+                                return uriBuilder.build();
+                            })
+                    .headers(headers -> applyAuth(headers, key))
+                    .retrieve()
+                    .body(String.class);
+        } catch (RuntimeException e) {
+            logRealFailure(key, url, System.currentTimeMillis() - start, e);
+            throw e;
+        }
+        logRealResponse(key, url, System.currentTimeMillis() - start, resp);
+        Map<String, Object> body = parse(resp);
+        assertNoEopError(key, body);
+        return body;
+    }
+
+    /**
+     * B1 上传前落盘暂存：把生成的稽核 Excel 写入 {@code eop.upload-dir}，文件名附加时间戳
+     * {@code _yyyyMMddHHmmss}（如 {@code 稽核需求_20260923163045.xlsx}）。目录不存在则自动创建。
+     *
+     * @return 落盘后的文件名（含时间戳）
+     */
+    private String stageFile(String fileName, byte[] bytes) throws IOException {
+        String stamped = withTimestamp(fileName);
+        Path dir = Paths.get(uploadDir());
+        Files.createDirectories(dir);
+        Path target = dir.resolve(stamped);
+        Files.write(target, bytes);
+        log.info("[EopInterfaceAdapter][真实·暂存] B1 稽核文件已落盘 path={} bytes={}", target, bytes.length);
+        return stamped;
+    }
+
+    /** 读取已暂存的上传文件字节流。 */
+    private byte[] readStaged(String dir, String fileName) throws IOException {
+        return Files.readAllBytes(Paths.get(dir).resolve(fileName));
+    }
+
+    /** 落盘目录（未配置回退默认值）。 */
+    private String uploadDir() {
+        String dir = props.getEop().getUploadDir();
+        return dir == null || dir.isBlank() ? "/data/stq/crmpos/crm-pgcent-mng/upload" : dir.trim();
+    }
+
+    /** 文件名附加时间戳：原名（含扩展名）→ {@code 原名_yyyyMMddHHmmss.ext}。 */
+    private String withTimestamp(String fileName) {
+        String name = fileName == null || fileName.isBlank() ? "稽核需求.xlsx" : fileName.trim();
+        String stamp = LocalDateTime.now().format(BATCH_STAMP);
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) {
+            return name.substring(0, dot) + "_" + stamp + name.substring(dot);
+        }
+        return name + "_" + stamp;
+    }
+
+    /**
+     * POST multipart/form-data：文件以配置字段名（默认 {@code file}）提交，req_id/chat_id 作为普通表单字段，
+     * 请求头同样携带 X-APP-ID/X-APP-KEY/Api-Key/Staff-Code 鉴权，解析并严格校验业务响应。
+     */
+    private Map<String, Object> postMultipart(String key, String url, String reqId, String chatId,
+                                              String fileName, byte[] bytes) {
+        logRealRequest(key, url, "multipart file=" + fileName + " bytes=" + bytes.length
+                + " req_id=" + reqId + " chat_id=" + chatId);
+        long start = System.currentTimeMillis();
+        String field = props.getEop().getUploadFileField();
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        form.add(field, new ByteArrayResource(bytes) {
+            @Override
+            public String getFilename() {
+                return fileName;
+            }
+        });
+        if (!reqId.isBlank()) {
+            form.add("req_id", reqId);
+        }
+        if (!chatId.isBlank()) {
+            form.add("chat_id", chatId);
+        }
+        String resp;
+        try {
+            resp = client.post().uri(url)
+                    .headers(headers -> applyAuth(headers, key))
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(form)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RuntimeException e) {
+            logRealFailure(key, url, System.currentTimeMillis() - start, e);
+            throw e;
+        }
+        logRealResponse(key, url, System.currentTimeMillis() - start, resp);
+        Map<String, Object> body = parse(resp);
+        assertNoEopError(key, body);
+        return body;
+    }
+
     /** 附加 EOP 鉴权请求头：X-APP-ID / X-APP-KEY / Api-Key（该接口 ApiID） / Staff-Code。 */
     private void applyAuth(HttpHeaders headers, String key) {
         AppStoreInterfaceProperties.Eop eop = props.getEop();
@@ -372,19 +579,20 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     /** A1/B4：{contractRoot{tcpCont 固定头 + svcCont.requestObject}} 业务报文（鉴权头已在 HTTP 头）。 */
     private Map<String, Object> envelopeRequest(Map<String, Object> requestObject) {
+        AppStoreInterfaceProperties.Eop eop = props.getEop();
         String stamp = LocalDateTime.now().format(STAMP);
         String transactionId = stamp + String.format("%06d", ThreadLocalRandom.current().nextInt(0, 1000000));
 
         Map<String, Object> tcpCont = new LinkedHashMap<>();
         tcpCont.put("apiCode", "");
         tcpCont.put("transactionId", transactionId);
-        tcpCont.put("svcCode", "");
+        tcpCont.put("svcCode", nullSafe(eop.getSvcCode()));
         tcpCont.put("reqTime", stamp);
         tcpCont.put("globalId", transactionId);
         tcpCont.put("version", "V1.0");
-        tcpCont.put("appKey", "");
-        tcpCont.put("dstSysId", "");
-        tcpCont.put("sign", "");
+        tcpCont.put("appKey", nullSafe(eop.getEnvelopeAppKey()));
+        tcpCont.put("dstSysId", nullSafe(eop.getDstSysId()));
+        tcpCont.put("sign", nullSafe(eop.getSign()));
 
         Map<String, Object> svcCont = new LinkedHashMap<>();
         svcCont.put("requestObject", requestObject);
@@ -399,15 +607,23 @@ public class EopInterfaceAdapter implements InterfaceFacade {
     }
 
     /**
-     * 严格校验 EOP 业务错误：响应含 {@code errcode}/{@code errmsg}（如鉴权失败 errcode=242）
-     * 时抛出携带原始错误码/信息的异常，由 {@link #realFail} 归一为 {@code REAL_CALL_FAILED}，
-     * 避免把业务错误静默降级为"未命中"。
+     * 严格校验 EOP 业务错误：响应含 {@code errcode}/{@code errmsg}/{@code errdetail}（如鉴权失败 errcode=242）
+     * 时抛出携带原始错误码/信息/详情的异常，由 {@link #realFail} 归一为 {@code REAL_CALL_FAILED}，
+     * 避免把业务错误静默降级为"未命中"。errdetail 常含下游原始返回（如 405 页面片段），须一并透出便于定位。
      */
     private void assertNoEopError(String key, Map<String, Object> body) {
         String errcode = firstNonBlank(MapOps.str(body.get("errcode")), MapOps.str(body.get("errorCode")));
         String errmsg = firstNonBlank(MapOps.str(body.get("errmsg")), MapOps.str(body.get("errorMsg")));
-        if (!errcode.isBlank() || !errmsg.isBlank()) {
-            throw new IllegalStateException("EOP 业务错误 [" + key + "] errcode=" + errcode + " errmsg=" + errmsg);
+        String errdetail = firstNonBlank(MapOps.str(body.get("errdetail")), MapOps.str(body.get("errorDetail")),
+                MapOps.str(body.get("errDetail")));
+        if (!errcode.isBlank() || !errmsg.isBlank() || !errdetail.isBlank()) {
+            StringBuilder msg = new StringBuilder("EOP 业务错误 [").append(key).append("]")
+                    .append(" errcode=").append(errcode)
+                    .append(" errmsg=").append(errmsg);
+            if (!errdetail.isBlank()) {
+                msg.append(" errdetail=").append(errdetail);
+            }
+            throw new IllegalStateException(msg.toString());
         }
     }
 
@@ -472,11 +688,21 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             throw new IllegalStateException("EOP 返回空响应");
         }
         try {
-            return objectMapper.readValue(resp, new TypeReference<>() {});
+            return LENIENT_MAPPER.readValue(resp, new TypeReference<>() {});
         } catch (Exception e) {
             throw new IllegalStateException("EOP 响应非 JSON: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * EOP 响应解析专用宽松 ObjectMapper：EOP 的 {@code errmsg}/{@code errdetail} 会把下游原始返回
+     * （如 HTML 错误页）原样透传，其中含未转义的换行/控制字符，标准 JSON 解析会直接失败。
+     * 放开字符串内控制字符，保证真实业务错误（errcode/errmsg）能被透出，而非被掩盖成「响应非 JSON」。
+     * 仅用于响应解析，不影响全局注入的 {@code objectMapper} 及请求序列化。
+     */
+    private static final ObjectMapper LENIENT_MAPPER = JsonMapper.builder()
+            .configure(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true)
+            .build();
 
     /* ---------------- real 调用日志（mode=real 时输出完整过程与出入参，统一标注"[真实]"） ---------------- */
 

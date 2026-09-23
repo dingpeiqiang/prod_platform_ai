@@ -132,7 +132,14 @@ prodai:
         app-id: ${EOP_APP_ID:91382a43511f4f7e037856c280f0a1f1}
         app-key: ${EOP_APP_KEY:18ce44e39e63f17316404f20177d4252}
         staff-code: ${EOP_STAFF_CODE:501195900}
+        # 信封（A1/B4）tcpCont 字段：svcCode 必填（为空时 EOP 报「请求报文svcCode为空」）
+        svc-code: ${EOP_SVC_CODE:5012010056}
+        envelope-app-key: ${EOP_ENVELOPE_APP_KEY:eOrder1}
+        dst-sys-id: ${EOP_DST_SYS_ID:OrderCenter}
+        sign: ${EOP_SIGN:123}
         upload-file-field: ${EOP_UPLOAD_FILE_FIELD:file}
+        # B1 上传前稽核 Excel 本地落盘目录（文件名自动附加时间戳 _yyyyMMddHHmmss），落盘后再上传 EOP
+        upload-dir: ${EOP_UPLOAD_DIR:/data/stq/crmpos/crm-pgcent-mng/upload}
         timeout-ms: ${EOP_TIMEOUT_MS:60000}
         # 接口键 → 业务路径（拼到 base-url 之后）
         paths:

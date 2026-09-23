@@ -112,6 +112,10 @@ public class AppStoreV16Controller {
         List<Map<String, Object>> offers = MapOps.castListOfMaps(source.get("offers"));
         List<Map<String, Object>> relations = MapOps.castListOfMaps(source.get("relations"));
         Map<String, Object> call = new java.util.LinkedHashMap<>();
+        // real 模式：EOP 规范按 {req_id, chat_id} 由后端自行生成稽核 Excel（无前端文件上传）；
+        // mock 模式：忽略该两字段，仍按内置确定性报文返回（行为零变化）。
+        call.put("req_id", reqId);
+        call.put("chat_id", MapOps.str(req.get("chat_id")));
         try {
             call.put("bytes", auditExcelGenerator.generate(offers, relations));
             call.put("fileName", MapOps.str(req.getOrDefault("fileName", "稽核需求.xlsx")));

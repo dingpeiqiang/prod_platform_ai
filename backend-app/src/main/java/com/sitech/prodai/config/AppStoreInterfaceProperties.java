@@ -106,8 +106,21 @@ public class AppStoreInterfaceProperties {
         private String staffCode = "501195900";
         /** HTTP 请求头 Api-Key 未配置接口键时的兜底值（一般不用，按接口 ApiID 取）。 */
         private String apiKey = "";
+        /** 信封（A1/B4）tcpCont.svcCode：EOP 服务编码，必填（为空时 EOP 报「请求报文svcCode为空」）。 */
+        private String svcCode = "5012010056";
+        /** 信封（A1/B4）tcpCont.appKey：应用编码。 */
+        private String envelopeAppKey = "eOrder1";
+        /** 信封（A1/B4）tcpCont.dstSysId：目标系统标识。 */
+        private String dstSysId = "OrderCenter";
+        /** 信封（A1/B4）tcpCont.sign：签名（按 EOP 约定，默认占位）。 */
+        private String sign = "123";
         /** B1 稽核文件上传表单字段名。 */
         private String uploadFileField = "file";
+        /**
+         * B1 上传前生成的稽核 Excel 本地落盘目录（文件名自动附加时间戳 {@code _yyyyMMddHHmmss}）。
+         * 先把文件写入该目录暂存，再读取该文件上传 EOP；目录不存在则自动创建。
+         */
+        private String uploadDir = "/data/stq/crmpos/crm-pgcent-mng/upload";
         /** real 接口调用超时（毫秒）。 */
         private int timeoutMs = 60000;
         /**
@@ -173,6 +186,38 @@ public class AppStoreInterfaceProperties {
             this.apiKey = apiKey;
         }
 
+        public String getSvcCode() {
+            return svcCode;
+        }
+
+        public void setSvcCode(String svcCode) {
+            this.svcCode = svcCode;
+        }
+
+        public String getEnvelopeAppKey() {
+            return envelopeAppKey;
+        }
+
+        public void setEnvelopeAppKey(String envelopeAppKey) {
+            this.envelopeAppKey = envelopeAppKey;
+        }
+
+        public String getDstSysId() {
+            return dstSysId;
+        }
+
+        public void setDstSysId(String dstSysId) {
+            this.dstSysId = dstSysId;
+        }
+
+        public String getSign() {
+            return sign;
+        }
+
+        public void setSign(String sign) {
+            this.sign = sign;
+        }
+
         public Map<String, String> getPaths() {
             return paths;
         }
@@ -195,6 +240,14 @@ public class AppStoreInterfaceProperties {
 
         public void setUploadFileField(String uploadFileField) {
             this.uploadFileField = uploadFileField;
+        }
+
+        public String getUploadDir() {
+            return uploadDir;
+        }
+
+        public void setUploadDir(String uploadDir) {
+            this.uploadDir = uploadDir;
         }
 
         public int getTimeoutMs() {

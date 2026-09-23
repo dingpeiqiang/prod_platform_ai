@@ -93,6 +93,34 @@ public class AuditExcelGenerator {
     private static final List<String> RELATION_HEADERS = List.of(
             "序号", "A_OFR_ID", "A_OFR_NAME", "关系", "Z_OFR_ID", "Z_OFR_NAME");
 
+    /**
+     * 既定默认值（按主表头文字）：需求/配置数据未覆盖该列时填入，
+     * 保证稽核 Excel 每列均有落位值、EOP 解析口径稳定（对齐《新增四档5G畅享融合套餐销售品.xlsx》样例口径）。
+     * 未列出的列（如 VOID 语义的「是否允许修改生失效时间」等）按空单元格落位。
+     */
+    private static final Map<String, String> DEFAULT_BY_HEADER = buildDefaults();
+
+    private static Map<String, String> buildDefaults() {
+        Map<String, String> d = new LinkedHashMap<>();
+        d.put("省级/市级*", "全省");
+        d.put("付费模式", "HB");
+        d.put("基础包/可选包/加装包", "基础包");
+        d.put("是否主套餐/加装包", "是");
+        d.put("首月计费模式", "按日计扣");
+        d.put("次月计费模式", "按日计扣");
+        d.put("过渡套餐资费描述（不填则不配置过渡套餐）", "按现有通用规则执行");
+        d.put("是否允许修改生失效时间", "否");
+        d.put("是否为不可退订销售品", "否");
+        d.put("订购竣工短信提醒", "按现有模板返送");
+        d.put("到期提醒", "按现有自动续订模式进行提醒");
+        d.put("账目类型", "60667 天翼套餐月使用费");
+        d.put("降速级别（单套餐/多套餐）-计费配置", "单套餐");
+        d.put("断网降速阈值-计费配置", "600");
+        d.put("流量提醒-计费配置", "提醒");
+        d.put("接听免费范围", "全国");
+        return d;
+    }
+
     /** 列定义：主表头 + 子表头（子表头空表示纵向合并）。 */
     private record OfferColumn(String main, String sub) {
     }
@@ -160,7 +188,7 @@ public class AuditExcelGenerator {
         }
     }
 
-    /** 取值优先取 fields（宽表原始列，键为子表头或主表头文字），核心列回落到 offer 顶层字段。 */
+    /** 取值优先取 fields（宽表原始列，键为子表头或主表头文字），核心列回落到 offer 顶层字段，末位填既定默认值。 */
     private Object resolveOfferValue(OfferColumn col, Map<String, Object> offer,
                                      Map<String, Object> fields, int seq) {
         if ("序号".equals(col.main())) {
@@ -176,6 +204,9 @@ public class AuditExcelGenerator {
             } else if ("套餐客户化名称".equals(col.main()) || "套餐名称".equals(col.main())) {
                 v = offer.get("offer_name");
             }
+        }
+        if (isBlank(v)) {
+            v = DEFAULT_BY_HEADER.get(col.sub().isEmpty() ? col.main() : col.sub());
         }
         return v == null ? "" : v;
     }
