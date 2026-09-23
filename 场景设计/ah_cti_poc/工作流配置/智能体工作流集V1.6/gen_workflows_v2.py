@@ -1570,7 +1570,7 @@ s12f.append(plugin_node(2202, "自查稽核发起临时态", "query_node_result"
     method="get", pos=(240, 135)))
 s12f.append(code_node(2203, "提取 requestIds", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点2202查询出参 list", ref_block=nid(2202), ref_rel="list")],
-    [code_out("record_json", 2203), code_out("requestIds", 2203)],
+    [code_out("record_json", 2203), code_out("offer_id", 2203), code_out("requestIds", 2203)],
     pos=(390, 135)))
 s12f.append(code_node(2204, "轮询稽核完成", CODE_POLL_AUDIT,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
@@ -2588,24 +2588,26 @@ files6f = workflow(
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
-#   开始(offer_id) → query_product_monitor → 异常判定(error_count≠0) →
+#   开始(req_id, chat_id, offer_id 非必填) → query_product_monitor → 异常判定(error_count≠0) →
 #     异常分支：告警文案→send_alert→ops_root_cause(待后端占位)→LLM 根因推理链+优化方案→create_work_order(占位)→结束(异常闭环)
 #     正常分支：LLM 运营摘要 → 结束(正常)
 #   两分支结束节点输出环节9标题头 + 摘要/结论 + xsbot-panel + 环节9 收尾固定块
+#   offer_id 缺省时后端按 req_id 关联解析（监控接口 req_id 兜底）
 # ============================================================
 s7f = []
 s7f.append(start_node(701, [
-    inp("offer_id", "销售品ID（9位存量编码或配置落地返回的新销售品ID；会话内可兜底）", required=True),
-    inp("date_range", "统计周期（默认最近1天，可选）", required=False),
+    inp("req_id", "需求单号（必填，PLAN+yyyyMMddHHmmss+3位随机数；用于关联解析销售品ID与页面定位）", required=True),
     inp("chat_id", "{chatId}", required=True),
+    inp("offer_id", "销售品ID（非必填；9位存量编码或配置落地返回的新销售品ID，缺省时后端按 req_id 关联解析）", required=False),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
-    "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定",
+    "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析",
     BASE_URL + "/api/v1/appstore/product/monitor",
-    [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
+    [inp("offer_id", "销售品ID（非必填）", ref_block=nid(701), ref_rel="offer_id"),
+     inp("req_id", "需求单号（offer_id 缺省时兜底解析）", ref_block=nid(701), ref_rel="req_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
      inp("metric", "指标默认all", content="all")],
-    [("offer_name", "产品名称", "string"),
+    [("offer_id", "销售品ID", "string"), ("offer_name", "产品名称", "string"),
      ("order_count", "订单量", "string"), ("order_trend", "订单量趋势", "string"),
      ("error_count", "异常量", "string"), ("error_trend", "异常量趋势", "string"),
      ("fee_error_rate", "计费差错率", "string"), ("fee_trend", "计费差错率趋势", "string"),
@@ -2652,13 +2654,13 @@ s7f.append(llm_node(707, "根因推理链+优化方案",
 s7f.append(code_node(708, "建工单闭环", CODE_OP_CREATE_WO,
     [inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id")],
     [code_out("backend_pending", 708), code_out("work_order_id", 708), code_out("note", 708)]))
-# xsbot-panel 独立代码节点（异常分支；产品名取自监控查询）
+# xsbot-panel 独立代码节点（异常分支；产品名取自监控查询，offer_id 取自监控查询出参[后端可能按 req_id 解析]，req_id 取自开始节点）
 s7f.append(panel_code_node(712, "构建页面地址面板(异常闭环)", "07",
-    panel_inputs(701, off_seq=701, off_rel="offer_id", name_seq=702, name_rel="offer_name"),
+    panel_inputs(701, off_seq=702, off_rel="offer_id", name_seq=702, name_rel="offer_name", req_seq=701),
     biz_title="单品运营看板"))
 s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     [inp("offer_name", "产品名称", ref_block=nid(702), ref_rel="offer_name"),
-     inp("offer_id", "销售品ID", ref_block=nid(701), ref_rel="offer_id"),
+     inp("offer_id", "销售品ID（监控查询出参，后端可能按 req_id 解析）", ref_block=nid(702), ref_rel="offer_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
      inp("order_count", "订单量", ref_block=nid(702), ref_rel="order_count"),
      inp("order_trend", "订单量趋势", ref_block=nid(702), ref_rel="order_trend"),
@@ -2699,40 +2701,40 @@ s7f.append(end_node(711, "结束(正常-运营报告)",
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "{ops_summary}\n\n"
      "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】\n\n{panel}"))
-# xsbot-panel 独立代码节点（正常分支；产品名取自监控查询）
+# xsbot-panel 独立代码节点（正常分支；产品名取自监控查询，offer_id 取自监控查询出参[后端可能按 req_id 解析]，req_id 取自开始节点）
 s7f.append(panel_code_node(713, "构建页面地址面板(正常)", "07",
-    panel_inputs(701, off_seq=701, off_rel="offer_id", name_seq=702, name_rel="offer_name"),
+    panel_inputs(701, off_seq=702, off_rel="offer_id", name_seq=702, name_rel="offer_name", req_seq=701),
     biz_title="单品运营看板"))
 files7f = workflow(
-    "产销品-监控运维", "子工作流7（阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块）。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
+    "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
     [edge(701,702), edge(702,703), edge(703,710,0), edge(703,704,-1),
      edge(704,705), edge(705,706), edge(706,707), edge(707,708), edge(708,712), edge(712,709),
      edge(710,713), edge(713,711)])
 
 # ============================================================
-# wf_sub_08 审批进度查询（阶段5 重写：approval-id 优先/offer-id 兜底；按 approval_type 区分双轨回显+审批矩阵+收尾块）
-#   开始(approval_id, offer_id) → query_approval_status → LLM 状态摘要归纳(区分需求工单/上线审批 + 审批矩阵 + 收尾块) → 结束
+# wf_sub_08 审批工单查询（入参仅 req_id + chat_id：req_id 为审批工单关联主键，常态按此反查；按 approval_type 区分双轨回显+审批矩阵+收尾块）
+#   开始(req_id, chat_id) → query_approval_status(req_id 关联主键/chat_id 会话入参) → LLM 工单摘要归纳(区分需求工单/上线审批 + 审批矩阵 + 收尾块) → 结束
 # ============================================================
 s8f = []
 s8f.append(start_node(801, [
-    inp("approval_id", "审批单号（可选，与 offer_id 至少一个，approval_id 优先）", required=False),
-    inp("offer_id", "销售品ID（可选，缺失 approval_id 时按此查最新审批单）", required=False),
+    inp("req_id", "需求单号（必填，审批工单关联主键：按此反查审批工单信息）", required=True),
     inp("chat_id", "{chatId}", required=True),
 ]))
-s8f.append(plugin_node(802, "审批状态查询", "query_approval_status",
-    "工具13：自研模拟审批进度查询（approval_id 优先，offer_id 兜底；返回审批单号/状态/当前环节/审批人/意见/更新时间及 approval_type/审批矩阵）",
+s8f.append(plugin_node(802, "审批工单查询", "query_approval_status",
+    "工具13：自研模拟审批工单查询（req_id 关联主键，chat_id 会话入参；返回审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/更新时间及审批矩阵）",
     BASE_URL + "/api/v1/appstore/approval/status",
-    [inp("approval_id", "审批单号", ref_block=nid(801), ref_rel="approval_id"),
-     inp("offer_id", "销售品ID", ref_block=nid(801), ref_rel="offer_id")],
-    [("approval_id", "审批单号", "string"), ("status", "审批中/通过/驳回", "string"),
+    [inp("req_id", "需求单号", ref_block=nid(801), ref_rel="req_id"),
+     inp("chat_id", "会话ID", ref_block=nid(801), ref_rel="chat_id")],
+    [("approval_id", "审批单号", "string"), ("req_id", "需求单号", "string"),
+     ("offer_id", "销售品ID", "string"), ("status", "审批中/通过/驳回", "string"),
      ("approval_type", "审批类型(requirement/launch)", "string"),
      ("current_node", "当前审批环节", "string"), ("approver", "当前审批人", "string"),
      ("opinion", "审批意见", "string"), ("update_time", "更新时间", "string"),
      ("approval_matrix", "审批矩阵 JSON", "array")],
     method="get"))
 s8f.append(llm_node(803, "状态摘要归纳",
-    "你是产销品审批进度查询智能体。基于查询出参（approval_id={approval_id}，status={status}，approval_type={approval_type}，current_node={current_node}，approver={approver}，opinion={opinion}，update_time={update_time}，approval_matrix={approval_matrix}），按 flow-D D-1 固定格式归纳输出：\n"
-    "审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n"
+    "你是产销品审批工单查询智能体。基于查询出参（approval_id={approval_id}，req_id={req_id}，offer_id={offer_id}，status={status}，approval_type={approval_type}，current_node={current_node}，approver={approver}，opinion={opinion}，update_time={update_time}，approval_matrix={approval_matrix}），按 flow-D D-1 固定格式归纳输出：\n"
+    "审批单号 {approval_id}｜需求单号 {req_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n"
     "**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n"
     "| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
     "| :---: | :--- | :--- | :--- | :--- | :--- |\n"
@@ -2740,9 +2742,11 @@ s8f.append(llm_node(803, "状态摘要归纳",
     "审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n"
     "- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n"
     "- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\n"
-    "status=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
-    "输出要求：仅输出审批状态摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。",
+    "status=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
+    "输出要求：仅输出审批工单摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。",
     [inp("approval_id", "审批单号", ref_block=nid(802), ref_rel="approval_id"),
+     inp("req_id", "需求单号", ref_block=nid(802), ref_rel="req_id"),
+     inp("offer_id", "销售品ID", ref_block=nid(802), ref_rel="offer_id"),
      inp("status", "审批状态", ref_block=nid(802), ref_rel="status"),
      inp("approval_type", "审批类型", ref_block=nid(802), ref_rel="approval_type"),
      inp("current_node", "当前环节", ref_block=nid(802), ref_rel="current_node"),
@@ -2750,17 +2754,17 @@ s8f.append(llm_node(803, "状态摘要归纳",
      inp("opinion", "审批意见", ref_block=nid(802), ref_rel="opinion"),
      inp("update_time", "更新时间", ref_block=nid(802), ref_rel="update_time"),
      inp("approval_matrix", "审批矩阵", ref_block=nid(802), ref_rel="approval_matrix")],
-    [out("approval_summary", "审批状态摘要")]))
-# xsbot-panel 独立代码节点（offer_name 沿用 offer_id）
+    [out("approval_summary", "审批工单摘要")]))
+# xsbot-panel 独立代码节点（offer_id/offer_name/req_id 取自审批工单查询出参；chat_id 取自开始节点）
 s8f.append(panel_code_node(805, "构建页面地址面板", "08",
-    panel_inputs(801, off_seq=801, off_rel="offer_id", name_seq=801, name_rel="offer_id"),
+    panel_inputs(801, off_seq=802, off_rel="offer_id", name_seq=802, name_rel="offer_id", req_seq=802),
     biz_title="上线审批看板"))
 s8f.append(end_node(804, "结束(查询完成)",
-    [inp("approval_summary", "审批状态摘要", ref_block=nid(803), ref_rel="approval_summary"),
+    [inp("approval_summary", "审批工单摘要", ref_block=nid(803), ref_rel="approval_summary"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(805), ref_rel="panel")],
     "{approval_summary}\n\n{panel}"))
 files8f = workflow(
-    "产销品-审批进度查询", "子工作流8（阶段5 重写：支持 approval-type 双轨）。query_approval_status（approval_id 优先/offer_id 兜底，V9.1 双轨）→LLM 状态摘要归纳：固定格式（审批单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
+    "产销品-审批工单查询", "子工作流8（入参仅 req_id + chat_id）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传）→LLM 工单摘要归纳：固定格式（审批单号/需求单号/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
     [edge(801,802), edge(802,803), edge(803,805), edge(805,804)])
 
 # ============================================================

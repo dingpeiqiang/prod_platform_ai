@@ -119,13 +119,13 @@
             "type": "string"
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000002203,requestIds",
-            "name": "requestIds",
+            "relName": "a1b2c3d4-0000-4000-8000-000000002203,offer_id",
+            "name": "offer_id",
             "type": "string"
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000002203,offer_id",
-            "name": "offer_id",
+            "relName": "a1b2c3d4-0000-4000-8000-000000002203,requestIds",
+            "name": "requestIds",
             "type": "string"
           }
         ],

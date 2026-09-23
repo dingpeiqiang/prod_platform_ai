@@ -319,22 +319,30 @@ public class AppStoreV16Controller {
 
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
-    @Operation(summary = "审批进度查询", description = "按 approval_id（优先）/offer_id 查询审批单当前状态、环节与意见")
+    @Operation(summary = "审批工单查询", description = "按 req_id 关联查询审批工单完整信息（单号/需求单号/销售品/类型/状态/环节/审批人/意见/矩阵）；"
+            + "chat_id 为会话入参透传回显；approval_id / offer_id 作为兼容兜底")
     @GetMapping("/approval/status")
-    public Map<String, Object> approvalStatus(@RequestParam(required = false) String approval_id,
+    public Map<String, Object> approvalStatus(@RequestParam(required = false) String req_id,
+                                              @RequestParam(required = false) String chat_id,
+                                              @RequestParam(required = false) String approval_id,
                                               @RequestParam(required = false) String offer_id) {
-        return sim.approvalStatus(Map.of("approval_id", MapOps.str(approval_id),
+        return sim.approvalStatus(Map.of("req_id", MapOps.str(req_id),
+                "chat_id", MapOps.str(chat_id),
+                "approval_id", MapOps.str(approval_id),
                 "offer_id", MapOps.str(offer_id)));
     }
 
     /* ================= 接口11：监控查询 query_product_monitor ================= */
 
-    @Operation(summary = "监控查询", description = "按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表）")
+    @Operation(summary = "监控查询", description = "按销售品（offer_id）或需求单号（req_id）返回模拟运行指标（订单量/异常量/计费差错率/告警列表）；"
+            + "offer_id 非必填，缺省时按 req_id 关联解析销售品ID")
     @GetMapping("/product/monitor")
-    public Map<String, Object> productMonitor(@RequestParam("offer_id") String offerId,
+    public Map<String, Object> productMonitor(@RequestParam(required = false) String offer_id,
+                                              @RequestParam(required = false) String req_id,
                                               @RequestParam(required = false) String date_range,
                                               @RequestParam(required = false, defaultValue = "all") String metric) {
-        return sim.productMonitor(Map.of("offer_id", offerId,
+        return sim.productMonitor(Map.of("offer_id", MapOps.str(offer_id),
+                "req_id", MapOps.str(req_id),
                 "date_range", MapOps.str(date_range), "metric", metric));
     }
 

@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-监控运维",
-  "flowRemark": "子工作流7（阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块）。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。",
+  "flowRemark": "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -11,19 +11,10 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "offer_id",
-            "description": "销售品ID（9位存量编码或配置落地返回的新销售品ID；会话内可兜底）",
+            "name": "req_id",
+            "description": "需求单号（必填，PLAN+yyyyMMddHHmmss+3位随机数；用于关联解析销售品ID与页面定位）",
             "type": "string",
             "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "date_range",
-            "description": "统计周期（默认最近1天，可选）",
-            "type": "string",
-            "required": false,
             "content": ""
           },
           {
@@ -33,6 +24,15 @@
             "description": "{chatId}",
             "type": "string",
             "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "offer_id",
+            "description": "销售品ID（非必填；9位存量编码或配置落地返回的新销售品ID，缺省时后端按 req_id 关联解析）",
+            "type": "string",
+            "required": false,
             "content": ""
           }
         ],
@@ -51,6 +51,13 @@
       },
       {
         "outputs": [
+          {
+            "name": "offer_id",
+            "cname": "销售品ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
           {
             "name": "offer_name",
             "cname": "产品名称",
@@ -153,7 +160,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID",
+            "description": "销售品ID（非必填）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -162,6 +169,20 @@
               "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（offer_id 缺省时兜底解析）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000701",
+              "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
@@ -191,7 +212,7 @@
         "nodeMeta": {
           "title": "监控查询",
           "code": "query_product_monitor",
-          "description": "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定",
+          "description": "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析",
           "version": "1"
         },
         "authentic_info_new": {
@@ -828,6 +849,20 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000701",
+              "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
             "relName": "offer_id",
             "name": "offer_id",
             "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
@@ -835,10 +870,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
@@ -897,18 +932,18 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID",
+            "description": "销售品ID（监控查询出参，后端可能按 req_id 解析）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
@@ -1319,6 +1354,20 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000701",
+              "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
             "relName": "offer_id",
             "name": "offer_id",
             "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
@@ -1326,10 +1375,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000702",

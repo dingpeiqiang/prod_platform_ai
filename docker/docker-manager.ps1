@@ -31,7 +31,7 @@ if (Test-Path $DotEnvPath) {
 $Config = @{
     BackendBase = @{
         ImageName     = "prod-platform-backend-base"
-        ImageTag      = "2.7"  # 构建时自动递增版本号
+        ImageTag      = "2.8"  # 构建时自动递增版本号
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"

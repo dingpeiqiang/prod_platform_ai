@@ -3,7 +3,7 @@
   "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/approval/status",
   "releaseTime": null,
   "sequ": 0,
-  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"approval-status-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"offer_id\", \"description\": \"销售品ID，按其查最新审批单；为空返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_approval_status\", \"description\": \"自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度\", \"title\": \"审批进度查询\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"审批状态：审批中 / 通过 / 驳回\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"current_node\", \"cname\": \"当前审批环节（如：产品经理审核/部门主管审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approver\", \"cname\": \"当前审批人\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"opinion\", \"cname\": \"审批意见（最近一条）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"submit_time\", \"cname\": \"提交时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"update_time\", \"cname\": \"最近更新时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"get\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/approval/status\"}",
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"approval-status-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"req_id\", \"description\": \"需求单号，审批工单关联主键，按此反查；为空且无 offer_id/approval_id 时返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"chat_id\", \"description\": \"会话ID，透传回显便于面板/链路定位（可选）\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_approval_status\", \"description\": \"自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 req_id 关联查询该需求单的审批工单完整信息（审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/矩阵）；chat_id 为会话入参透传回显\", \"title\": \"审批工单查询\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"req_id\", \"cname\": \"需求单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"offer_id\", \"cname\": \"销售品ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"chat_id\", \"cname\": \"会话ID（透传）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approval_type\", \"cname\": \"审批类型：requirement（需求工单审批）/ launch（上线审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"审批状态：审批中 / 通过 / 驳回\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"current_node\", \"cname\": \"当前审批环节（如：产品经理审核/部门主管审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approver\", \"cname\": \"当前审批人\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"opinion\", \"cname\": \"审批意见（最近一条）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"submit_time\", \"cname\": \"提交时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"update_time\", \"cname\": \"最近更新时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approval_matrix\", \"cname\": \"审批矩阵（节点/角色/状态/意见/更新时间）\", \"sechema\": [{\"name\": \"item\", \"cname\": \"审批矩阵（节点/角色/状态/意见/更新时间）\", \"sechema\": [], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"get\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/approval/status\"}",
   "userScope": 2,
   "createUserName": "丁培强",
   "releaseUser": null,
@@ -11,7 +11,7 @@
   "ontologyValidation": 0,
   "orgId": "10000",
   "toolProto": 1,
-  "toolDesc": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+  "toolDesc": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 req_id 关联查询该需求单的审批工单完整信息（审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/矩阵）；chat_id 为会话入参透传回显",
   "induction": "Y",
   "llmType": 1,
   "toolIco": null,
@@ -19,8 +19,8 @@
     "openapi": "3.1.0",
     "info": {
       "observationField": "",
-      "description": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
-      "title": "审批进度查询",
+      "description": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 req_id 关联查询该需求单的审批工单完整信息（审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/矩阵）；chat_id 为会话入参透传回显",
+      "title": "审批工单查询",
       "version": "v1.6.0"
     },
     "servers": [
@@ -41,12 +41,18 @@
                   "type": "object",
                   "enum": "",
                   "properties": {
-                    "offer_id": {
+                    "req_id": {
                       "default": "",
-                      "description": "销售品ID，按其查最新审批单；为空返回 PARAM_MISSING",
+                      "description": "需求单号，审批工单关联主键，按此反查；为空且无 offer_id/approval_id 时返回 PARAM_MISSING",
                       "type": "string",
                       "enum": "",
                       "required": true
+                    },
+                    "chat_id": {
+                      "default": "",
+                      "description": "会话ID，透传回显便于面板/链路定位（可选）",
+                      "type": "string",
+                      "enum": ""
                     }
                   },
                   "required": []
@@ -64,6 +70,22 @@
                     "properties": {
                       "approval_id": {
                         "description": "审批单号",
+                        "type": "string"
+                      },
+                      "req_id": {
+                        "description": "需求单号",
+                        "type": "string"
+                      },
+                      "offer_id": {
+                        "description": "销售品ID",
+                        "type": "string"
+                      },
+                      "chat_id": {
+                        "description": "会话ID（透传）",
+                        "type": "string"
+                      },
+                      "approval_type": {
+                        "description": "审批类型：requirement（需求工单审批）/ launch（上线审批）",
                         "type": "string"
                       },
                       "status": {
@@ -89,6 +111,10 @@
                       "update_time": {
                         "description": "最近更新时间",
                         "type": "string"
+                      },
+                      "approval_matrix": {
+                        "description": "审批矩阵（节点/角色/状态/意见/更新时间）",
+                        "type": "array"
                       }
                     },
                     "required": []
@@ -105,7 +131,7 @@
   "id": "approval-status-0001",
   "toolAuthenticInfo": "null",
   "ontology": null,
-  "toolName": "审批进度查询",
+  "toolName": "审批工单查询",
   "usedBySceneNum": null,
   "updateTime": null,
   "versionInfo": null,
@@ -118,7 +144,7 @@
   "createTime": null,
   "knowledgeCategoryName": null,
   "pluginName": null,
-  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-offer_id\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"审批进度查询\", \"name_for_model\": \"query_approval_status\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"审批状态：审批中 / 通过 / 驳回\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"current_node\", \"cname\": \"当前审批环节（如：产品经理审核/部门主管审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approver\", \"cname\": \"当前审批人\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"opinion\", \"cname\": \"审批意见（最近一条）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"submit_time\", \"cname\": \"提交时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"update_time\", \"cname\": \"最近更新时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"eda2882c7a4317f111d883fdc0acfb8b\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"销售品ID，按其查最新审批单；为空返回 PARAM_MISSING\", \"dict_list\": \"\", \"id\": \"b25847be5826a16e694434c242d509ed\", \"isParameter\": 1, \"name\": \"offer_id\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"eda2882c7a4317f111d883fdc0acfb8b\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"get\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/approval/status\"}",
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 req_id 关联查询该需求单的审批工单完整信息（审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/矩阵）；chat_id 为会话入参透传回显\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-req_id\": \"\", \"ROOT-chat_id\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"审批工单查询\", \"name_for_model\": \"query_approval_status\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"req_id\", \"cname\": \"需求单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"offer_id\", \"cname\": \"销售品ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"chat_id\", \"cname\": \"会话ID（透传）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approval_type\", \"cname\": \"审批类型：requirement（需求工单审批）/ launch（上线审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"审批状态：审批中 / 通过 / 驳回\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"current_node\", \"cname\": \"当前审批环节（如：产品经理审核/部门主管审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approver\", \"cname\": \"当前审批人\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"opinion\", \"cname\": \"审批意见（最近一条）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"submit_time\", \"cname\": \"提交时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"update_time\", \"cname\": \"最近更新时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approval_matrix\", \"cname\": \"审批矩阵（节点/角色/状态/意见/更新时间）\", \"sechema\": [{\"name\": \"item\", \"cname\": \"审批矩阵（节点/角色/状态/意见/更新时间）\", \"sechema\": [], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"eda2882c7a4317f111d883fdc0acfb8b\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"需求单号，审批工单关联主键，按此反查；为空且无 offer_id/approval_id 时返回 PARAM_MISSING\", \"dict_list\": \"\", \"id\": \"0a662d685835977c0a07a5285ffb3b54\", \"isParameter\": 1, \"name\": \"req_id\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"eda2882c7a4317f111d883fdc0acfb8b\", \"upNodeName\": \"ROOT\"}, {\"description\": \"会话ID，透传回显便于面板/链路定位（可选）\", \"dict_list\": \"\", \"id\": \"5110ec16dba6333bd38ef07d5abeb0f3\", \"isParameter\": 1, \"name\": \"chat_id\", \"required\": false, \"schema\": {\"type\": \"string\"}, \"upId\": \"eda2882c7a4317f111d883fdc0acfb8b\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"get\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/approval/status\"}",
   "pluginsId": null,
   "prompt": "",
   "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",

@@ -12,7 +12,7 @@ import java.util.Map;
  * 产销品场景接口适配层配置（统一方案 §4.5.4）：开发 mock ↔ 现场 real 配置化切换。
  * <p>
  * mode=mock（默认）走 {@code MockInterfaceAdapter}（包装 OfferSimV16Service 与内置确定性 mock），
- * mode=real 走 {@code EopInterfaceAdapter}（RestClient 直连 EOP 业务地址，请求头带 X-APP-ID/X-APP-KEY 鉴权）。
+ * mode=real 走 {@code EopInterfaceAdapter}（业务报文直接 POST 业务地址，请求头带 X-APP-ID/X-APP-KEY/Api-Key/Staff-Code）。
  * real 调用失败严格报错（{@code resultCode=REAL_CALL_FAILED}，带 EOP 原始 errcode/errmsg），不回退 mock。
  * <p>
  * 混合模式：real-list 白名单命中接口走 real、其余走 mock，便于现场按接口逐个联调。
@@ -98,18 +98,14 @@ public class AppStoreInterfaceProperties {
     public static class Eop {
         /** real 模式 EOP 基础地址（直连业务地址前缀）。 */
         private String baseUrl = "https://eop-ops.cloud.anhuitelecom.com:10008";
-        /** 鉴权请求头 X-APP-ID（空值，由 yml/环境变量注入，勿硬编码）。 */
-        private String appId = "";
-        /** 鉴权请求头 X-APP-KEY（空值，由 yml/环境变量注入，勿硬编码）。 */
-        private String appKey = "";
-        /** tcpCont 固定头：应用标识。 */
-        private String headerAppKey = "eOrder1";
-        /** tcpCont 固定头：目标系统标识。 */
-        private String dstSysId = "OrderCenter";
-        /** SQL 查询服务编码（tcpCont.svcCode）。 */
-        private String svcCode = "5012010056";
-        /** 签名占位（现场若有真实签名算法在此扩展）。 */
-        private String sign = "123";
+        /** HTTP 请求头 X-APP-ID。 */
+        private String appId = "91382a43511f4f7e037856c280f0a1f1";
+        /** HTTP 请求头 X-APP-KEY。 */
+        private String appKey = "18ce44e39e63f17316404f20177d4252";
+        /** HTTP 请求头 Staff-Code（员工编码）。 */
+        private String staffCode = "501195900";
+        /** HTTP 请求头 Api-Key 未配置接口键时的兜底值（一般不用，按接口 ApiID 取）。 */
+        private String apiKey = "";
         /** B1 稽核文件上传表单字段名。 */
         private String uploadFileField = "file";
         /** real 接口调用超时（毫秒）。 */
@@ -120,10 +116,21 @@ public class AppStoreInterfaceProperties {
          * 值拼到 {@code base-url} 之后调用（如 /api/ah/cpcp/similar）。
          */
         private Map<String, String> paths = new LinkedHashMap<>();
+        /**
+         * 接口键 → EOP ApiID（HTTP 请求头 Api-Key 的值）。键为接口键：
+         * similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult。
+         */
+        private Map<String, String> apiKeys = new LinkedHashMap<>();
 
         /** 按接口键取业务路径（未配置返回 null）。 */
         public String path(String key) {
             return paths == null ? null : paths.get(key);
+        }
+
+        /** 按接口键取 Api-Key（HTTP 请求头 Api-Key 的值）；未配置回退 {@link #apiKey}。 */
+        public String apiKey(String key) {
+            String v = apiKeys == null ? null : apiKeys.get(key);
+            return v == null || v.isBlank() ? apiKey : v;
         }
 
         public String getBaseUrl() {
@@ -150,12 +157,20 @@ public class AppStoreInterfaceProperties {
             this.appKey = appKey;
         }
 
-        public String getHeaderAppKey() {
-            return headerAppKey;
+        public String getStaffCode() {
+            return staffCode;
         }
 
-        public void setHeaderAppKey(String headerAppKey) {
-            this.headerAppKey = headerAppKey;
+        public void setStaffCode(String staffCode) {
+            this.staffCode = staffCode;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
         }
 
         public Map<String, String> getPaths() {
@@ -166,28 +181,12 @@ public class AppStoreInterfaceProperties {
             this.paths = paths == null ? new LinkedHashMap<>() : paths;
         }
 
-        public String getDstSysId() {
-            return dstSysId;
+        public Map<String, String> getApiKeys() {
+            return apiKeys;
         }
 
-        public void setDstSysId(String dstSysId) {
-            this.dstSysId = dstSysId;
-        }
-
-        public String getSvcCode() {
-            return svcCode;
-        }
-
-        public void setSvcCode(String svcCode) {
-            this.svcCode = svcCode;
-        }
-
-        public String getSign() {
-            return sign;
-        }
-
-        public void setSign(String sign) {
-            this.sign = sign;
+        public void setApiKeys(Map<String, String> apiKeys) {
+            this.apiKeys = apiKeys == null ? new LinkedHashMap<>() : apiKeys;
         }
 
         public String getUploadFileField() {

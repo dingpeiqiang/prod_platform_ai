@@ -536,24 +536,31 @@ plugins.append(build_plugin(
     },
     "N"))
 
-# ---------------- 工具13 审批进度查询 ----------------
+# ---------------- 工具13 审批工单查询 ----------------
 plugins.append(build_plugin(
-    "approval-status-0001", "审批进度查询", "query_approval_status",
-    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 offer_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+    "approval-status-0001", "审批工单查询", "query_approval_status",
+    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 req_id 关联查询该需求单的审批工单完整信息（审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/矩阵）；chat_id 为会话入参透传回显",
     "/api/v1/appstore/approval/status", "GET",
     {
-        "offer_id": schema_param("offer_id", "string",
-            "销售品ID，按其查最新审批单；为空返回 PARAM_MISSING", True),
+        "req_id": schema_param("req_id", "string",
+            "需求单号，审批工单关联主键，按此反查；为空且无 offer_id/approval_id 时返回 PARAM_MISSING", True),
+        "chat_id": schema_param("chat_id", "string",
+            "会话ID，透传回显便于面板/链路定位（可选）", False),
     },
-    ["offer_id"],
+    ["req_id"],
     {
         "approval_id": {"description": "审批单号", "type": "string"},
+        "req_id": {"description": "需求单号", "type": "string"},
+        "offer_id": {"description": "销售品ID", "type": "string"},
+        "chat_id": {"description": "会话ID（透传）", "type": "string"},
+        "approval_type": {"description": "审批类型：requirement（需求工单审批）/ launch（上线审批）", "type": "string"},
         "status": {"description": "审批状态：审批中 / 通过 / 驳回", "type": "string"},
         "current_node": {"description": "当前审批环节（如：产品经理审核/部门主管审批）", "type": "string"},
         "approver": {"description": "当前审批人", "type": "string"},
         "opinion": {"description": "审批意见（最近一条）", "type": "string"},
         "submit_time": {"description": "提交时间", "type": "string"},
         "update_time": {"description": "最近更新时间", "type": "string"},
+        "approval_matrix": {"description": "审批矩阵（节点/角色/状态/意见/更新时间）", "type": "array"},
     },
     "Y"))
 

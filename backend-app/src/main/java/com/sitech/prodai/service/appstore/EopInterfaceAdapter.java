@@ -6,11 +6,9 @@ import com.sitech.prodai.config.AppStoreInterfaceProperties;
 import com.sitech.prodai.service.common.MapOps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDateTime;
@@ -22,14 +20,12 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 适配层 real 实现（现场环境，统一方案 §4.5.4/§4.5.5）：RestClient 直连 EOP 业务地址，
- * 每个请求头带 {@code X-APP-ID} / {@code X-APP-KEY} 鉴权（值由配置注入），并组装/解包业务信封。
+ * 适配层 real 实现（现场环境，统一方案 §4.5.4/§4.5.5）：业务报文直接 POST 到 EOP 业务地址
+ * （{@code base-url + paths.<接口键>}），HTTP 请求头携带鉴权：
+ * {@code X-APP-ID} / {@code X-APP-KEY}（应用标识） / {@code Api-Key}（该接口 EOP ApiID） / {@code Staff-Code}（员工编码）。
  * <p>
- * 业务地址 = {@code base-url} + {@code paths.<接口键>}；请求头鉴权参见
- * {@link AppStoreInterfaceProperties.Eop#getAppId()} / {@link AppStoreInterfaceProperties.Eop#getAppKey()}。
- * <p>
- * 信封差异按接口区分：A1/B4 为 {@code contractRoot.tcpCont + svcCont.requestObject}；
- * B1 multipart；B2 GET query；B3 {@code {records[]}} 裸体；C1~C4 {@code {offerId}}/{@code globalId} 裸体。
+ * 业务报文差异按接口区分：A1/B4 为 {@code contractRoot.tcpCont + svcCont.requestObject}；
+ * B2 query 参数；B3 {@code {records[]}} 裸体；C1~C4 {@code {offerId}}/{@code globalId} 裸体。
  * 出参解包：A1/B4 解 {@code contractRoot.svcCont.resultObject}；C1~C4 解 {@code resultObject}（裸）；
  * B3 解 {@code resultCode/resultMsg}。统一归一为既有内部出参名（§4.5.5 第 3 点）。
  * <p>
@@ -46,9 +42,11 @@ public class EopInterfaceAdapter implements InterfaceFacade {
     /** real 调用失败统一错误码（不回退 mock）。 */
     private static final String ERR_REAL_CALL_FAILED = "REAL_CALL_FAILED";
 
-    /** EOP 鉴权请求头名。 */
+    /** 鉴权 HTTP 请求头名。 */
     private static final String HEADER_APP_ID = "X-APP-ID";
     private static final String HEADER_APP_KEY = "X-APP-KEY";
+    private static final String HEADER_API_KEY = "Api-Key";
+    private static final String HEADER_STAFF_CODE = "Staff-Code";
 
     private final AppStoreInterfaceProperties props;
     private final ObjectMapper objectMapper;
@@ -112,43 +110,26 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         return out;
     }
 
-    /* ================= B1 稽核文件上传（multipart） ================= */
+    /* ================= B1 稽核文件上传 ================= */
 
     @Override
-    @SuppressWarnings("unchecked")
     public Map<String, Object> auditFileUpload(Map<String, Object> req) {
         Object bytesObj = req.get("bytes");
-        Object nameObj = firstNonBlank(MapOps.str(req.get("fileName")), MapOps.str(req.get("file_name")));
         byte[] bytes = bytesObj instanceof byte[] b ? b : null;
-        String fileName = MapOps.str(nameObj);
+        String fileName = MapOps.str(firstNonBlank(MapOps.str(req.get("fileName")), MapOps.str(req.get("file_name"))));
         if (bytes == null || fileName.isBlank()) {
             return fail(ERR_REAL_CALL_FAILED, "上传文件缺失：real 模式必须提供 fileName 与字节流");
         }
         String url = businessUrl("upload");
         long begin = System.currentTimeMillis();
-        logRealBegin("upload", "POST(multipart)", url);
+        logRealBegin("upload", "POST", url);
         try {
             String field = props.getEop().getUploadFileField();
-            ByteArrayResource resource = new ByteArrayResource(bytes) {
-                @Override
-                public String getFilename() {
-                    return fileName;
-                }
-            };
-            MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-            form.add(field, resource);
-            logRealRequest("upload", "POST(multipart)", url,
-                    Map.of("field", field, "fileName", fileName, "size", bytes.length));
-            long start = System.currentTimeMillis();
-            String resp = client.post().uri(url)
-                    .headers(this::applyAuth)
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(form)
-                    .retrieve()
-                    .body(String.class);
-            logRealResponse("upload", url, System.currentTimeMillis() - start, resp);
-            Map<String, Object> body = parse(resp);
-            assertNoEopError("upload", body);
+            Map<String, Object> requestObject = new LinkedHashMap<>();
+            requestObject.put("field", field);
+            requestObject.put("fileName", fileName);
+            requestObject.put("fileBase64", java.util.Base64.getEncoder().encodeToString(bytes));
+            Map<String, Object> body = postJson("upload", url, requestObject);
             if (body.get("file_id") == null && body.get("sales_id") == null) {
                 throw new IllegalStateException("B1 real 出参缺少 file_id/sales_id");
             }
@@ -159,7 +140,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
     }
 
-    /* ================= B2 异步报告生成并通知（GET query） ================= */
+    /* ================= B2 异步报告生成并通知 ================= */
 
     @Override
     public Map<String, Object> auditAsyncNotify(Map<String, Object> req) {
@@ -170,32 +151,25 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         String location = firstNonBlank(MapOps.str(req.get("location")), "0");
         String sheetName = firstNonBlank(MapOps.str(req.get("sheet_name")), MapOps.str(req.get("sheetName")), "套餐");
         String fileId = firstNonBlank(MapOps.str(req.get("file_id")), MapOps.str(req.get("fileId")));
-        StringBuilder url = new StringBuilder(businessUrl("notify"))
-                .append("?sales_id=").append(salesId)
-                .append("&location=").append(location)
-                .append("&sheet_name=").append(sheetName);
-        if (!fileId.isBlank()) {
-            url.append("&file_id=").append(fileId);
-        }
+        String url = businessUrl("notify");
         long begin = System.currentTimeMillis();
-        logRealBegin("notify", "GET", url.toString());
+        logRealBegin("notify", "POST", url);
         try {
-            logRealRequest("notify", "GET", url.toString(), null);
-            long start = System.currentTimeMillis();
-            String resp = client.get().uri(url.toString())
-                    .headers(this::applyAuth)
-                    .retrieve()
-                    .body(String.class);
-            logRealResponse("notify", url.toString(), System.currentTimeMillis() - start, resp);
-            Map<String, Object> body = parse(resp);
-            assertNoEopError("notify", body);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("sales_id", salesId);
+            payload.put("location", location);
+            payload.put("sheet_name", sheetName);
+            if (!fileId.isBlank()) {
+                payload.put("file_id", fileId);
+            }
+            Map<String, Object> body = postJson("notify", url, payload);
             if (body.get("request_id") == null) {
                 throw new IllegalStateException("B2 real 出参缺少 request_id");
             }
             logRealDone("notify", System.currentTimeMillis() - begin, body);
             return body;
         } catch (Exception e) {
-            return realFail("notify", url.toString(), e);
+            return realFail("notify", url, e);
         }
     }
 
@@ -363,16 +337,16 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         return firstNonBlank(MapOps.str(req.get("globalId")), MapOps.str(req.get("global_id")));
     }
 
-    /* ---------------- EOP 直连（信封组装 / 调用 / 严格解析） ---------------- */
+    /* ---------------- EOP 直连（调用 / 严格解析） ---------------- */
 
-    /** POST JSON：请求头带 X-APP-ID/X-APP-KEY 鉴权，解析响应并严格校验 EOP 业务错误。 */
+    /** POST JSON：请求头带 X-APP-ID/X-APP-KEY/Api-Key/Staff-Code 鉴权，解析并严格校验业务响应。 */
     private Map<String, Object> postJson(String key, String url, Map<String, Object> payload) {
-        logRealRequest(key, "POST", url, payload);
+        logRealRequest(key, url, payload);
         long start = System.currentTimeMillis();
         String resp;
         try {
             resp = client.post().uri(url)
-                    .headers(this::applyAuth)
+                    .headers(headers -> applyAuth(headers, key))
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
                     .retrieve()
@@ -387,29 +361,30 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         return body;
     }
 
-    /** 为直连请求附加 EOP 鉴权请求头（值空时也照传，由现场注入真实值）。 */
-    private void applyAuth(org.springframework.http.HttpHeaders headers) {
+    /** 附加 EOP 鉴权请求头：X-APP-ID / X-APP-KEY / Api-Key（该接口 ApiID） / Staff-Code。 */
+    private void applyAuth(HttpHeaders headers, String key) {
         AppStoreInterfaceProperties.Eop eop = props.getEop();
-        headers.set(HEADER_APP_ID, eop.getAppId() == null ? "" : eop.getAppId());
-        headers.set(HEADER_APP_KEY, eop.getAppKey() == null ? "" : eop.getAppKey());
+        headers.set(HEADER_APP_ID, nullSafe(eop.getAppId()));
+        headers.set(HEADER_APP_KEY, nullSafe(eop.getAppKey()));
+        headers.set(HEADER_API_KEY, nullSafe(eop.apiKey(key)));
+        headers.set(HEADER_STAFF_CODE, nullSafe(eop.getStaffCode()));
     }
 
-    /** A1/B4：{contractRoot{tcpCont 固定头 + svcCont.requestObject}}，POST JSON。 */
+    /** A1/B4：{contractRoot{tcpCont 固定头 + svcCont.requestObject}} 业务报文（鉴权头已在 HTTP 头）。 */
     private Map<String, Object> envelopeRequest(Map<String, Object> requestObject) {
         String stamp = LocalDateTime.now().format(STAMP);
         String transactionId = stamp + String.format("%06d", ThreadLocalRandom.current().nextInt(0, 1000000));
-        AppStoreInterfaceProperties.Eop eop = props.getEop();
 
         Map<String, Object> tcpCont = new LinkedHashMap<>();
         tcpCont.put("apiCode", "");
         tcpCont.put("transactionId", transactionId);
-        tcpCont.put("svcCode", eop.getSvcCode());
+        tcpCont.put("svcCode", "");
         tcpCont.put("reqTime", stamp);
         tcpCont.put("globalId", transactionId);
         tcpCont.put("version", "V1.0");
-        tcpCont.put("appKey", eop.getHeaderAppKey());
-        tcpCont.put("dstSysId", eop.getDstSysId());
-        tcpCont.put("sign", eop.getSign());
+        tcpCont.put("appKey", "");
+        tcpCont.put("dstSysId", "");
+        tcpCont.put("sign", "");
 
         Map<String, Object> svcCont = new LinkedHashMap<>();
         svcCont.put("requestObject", requestObject);
@@ -505,17 +480,18 @@ public class EopInterfaceAdapter implements InterfaceFacade {
 
     /* ---------------- real 调用日志（mode=real 时输出完整过程与出入参，统一标注"[真实]"） ---------------- */
 
-    /** 调用开始：接口键 + 方法 + 完整地址 + 生效配置（base-url/超时/鉴权头是否已注入）。*/
+    /** 调用开始：接口键 + 方法 + 业务地址 + 生效配置（base-url/超时/鉴权头脱敏）。*/
     private void logRealBegin(String key, String method, String url) {
         AppStoreInterfaceProperties.Eop eop = props.getEop();
-        log.info("[EopInterfaceAdapter][真实·BEGIN] key={} {} url={} base-url={} timeout={}ms app-id={} app-key={}",
+        log.info("[EopInterfaceAdapter][真实·BEGIN] key={} {} url={} base-url={} timeout={}ms "
+                        + "X-APP-ID={} X-APP-KEY={} Api-Key={} Staff-Code={}",
                 key, method, url, eop.getBaseUrl(), eop.getTimeoutMs(),
-                mask(eop.getAppId()), mask(eop.getAppKey()));
+                mask(eop.getAppId()), mask(eop.getAppKey()), eop.apiKey(key), eop.getStaffCode());
     }
 
-    /** 请求体/关键业务参数：接口键 + 待发送报文（raw 出参，非密钥）。files 形态只打印字段名/文件名/字节数。*/
-    private void logRealRequest(String key, String method, String url, Object body) {
-        log.info("[EopInterfaceAdapter][真实→EOP] key={} {} {}", key, method, url);
+    /** 待发送业务报文（鉴权头已在请求头，此处只记 body）。*/
+    private void logRealRequest(String key, String url, Object body) {
+        log.info("[EopInterfaceAdapter][真实→EOP] key={} POST {}", key, url);
         log.info("[EopInterfaceAdapter][真实→EOP] key={} request={}", key, toJson(body));
     }
 
@@ -541,6 +517,10 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             return "<empty>";
         }
         return "****" + secret.substring(Math.max(0, secret.length() - 4));
+    }
+
+    private String nullSafe(String v) {
+        return v == null ? "" : v;
     }
 
     private String toJson(Object value) {

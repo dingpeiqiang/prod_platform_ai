@@ -117,7 +117,7 @@ prodai:
     # 单次检测最大提醒产出数护栏（防大面积资费调整刷屏）
     max-alerts-per-detect: ${CHANGE_SUB_MAX_ALERTS:200}
   # 产销品场景接口适配层（统一方案 §4.5.4）：mode=mock 走模拟报文（开发默认），
-  # mode=real 直连 EOP 业务地址（请求头 X-APP-ID/X-APP-KEY 鉴权，值由配置/环境变量注入）；
+  # mode=real 业务报文直接 POST 业务地址，HTTP 请求头带 X-APP-ID/X-APP-KEY/Api-Key/Staff-Code 鉴权；
   # real 调用失败严格报错（REAL_CALL_FAILED，带 EOP 原始 errcode/errmsg），不回退 mock。
   # real-list 为混合模式白名单（similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult），
   # 命中走 real、其余 mock。
@@ -126,12 +126,10 @@ prodai:
       mode: ${APPSTORE_INTERFACE_MODE:mock}
       eop:
         base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
-        # 鉴权请求头 X-APP-ID / X-APP-KEY（空值，现场经环境变量/配置注入，勿硬编码进代码）
-        app-id: ${EOP_APP_ID:}
-        app-key: ${EOP_APP_KEY:}
-        dst-sys-id: ${EOP_DST_SYS_ID:OrderCenter}
-        svc-code: ${EOP_SVC_CODE:5012010056}
-        sign: ${EOP_SIGN:123}
+        # HTTP 请求头鉴权：X-APP-ID / X-APP-KEY / Staff-Code（默认示例值，现场可经环境变量覆盖）
+        app-id: ${EOP_APP_ID:91382a43511f4f7e037856c280f0a1f1}
+        app-key: ${EOP_APP_KEY:18ce44e39e63f17316404f20177d4252}
+        staff-code: ${EOP_STAFF_CODE:501195900}
         upload-file-field: ${EOP_UPLOAD_FILE_FIELD:file}
         timeout-ms: ${EOP_TIMEOUT_MS:60000}
         # 接口键 → 业务路径（拼到 base-url 之后）
@@ -145,6 +143,17 @@ prodai:
           testScenes: ${EOP_PATH_TEST_SCENES:/api/anhui/cpcp/getTestScenes}
           testProgress: ${EOP_PATH_TEST_PROGRESS:/api/anhui/cpcp/getTestProgress}
           testResult: ${EOP_PATH_TEST_RESULT:/api/anhui/cpcp/getTestResult}
+        # 接口键 → EOP ApiID（HTTP 请求头 Api-Key 的值）
+        api-keys:
+          similar: "2069789780752355328"
+          upload: "2069625643688792064"
+          notify: "2069670925484838912"
+          insert: "2092438683005603840"
+          sql: "2077203852248748032"
+          testStart: "2070425775141294080"
+          testScenes: "2070440544124538880"
+          testProgress: "2071410624769560576"
+          testResult: "2070435348195577856"
       poll:
         audit:
           interval-ms: 5000

@@ -60,6 +60,8 @@ public class OfferSimV16Service {
     private final Map<String, Map<String, Object>> approvals = new ConcurrentHashMap<>();
     /** offer_id -> approval_id（幂等：同销售品重复审批返回原审批单） */
     private final Map<String, String> approvalByOffer = new ConcurrentHashMap<>();
+    /** req_id -> approval_id（关联索引：同一需求单双轨审批各记一条，供按 req_id 反查审批工单） */
+    private final Map<String, String> approvalByReq = new ConcurrentHashMap<>();
     /** 模拟审批自动流转时长（毫秒）：提交后 10s 自动"通过"并上架，避免演示中审批一直停在"审批中" */
     private static final long APPROVAL_AUTO_PASS_MS = 10_000L;
     /** 审批矩阵节点定义（节点名 -> 审批角色），四节点矩阵：产品经理→资费主管→运营审核→IT支撑（上线审批） */
@@ -69,11 +71,11 @@ public class OfferSimV16Service {
         {"运营审核", "运营专员"},
         {"上线审批", "IT支撑"}
     };
-    /** 预置模拟"已通过"审批（演示 wf_sub_08 审批通过场景，免等待）：{approval_id, offer_id, approval_type, status, current_node, approver, opinion}
+    /** 预置模拟"已通过"审批（演示 wf_sub_08 审批通过场景，免等待）：{approval_id, offer_id, req_id, approval_type, status, current_node, approver, opinion}
      *  需求轨（requirement）+ 上线轨（launch）各一条，启动即置为 status=通过，查询即可演示审批通过衔接。 */
     private static final String[][] SEED_PASSED_APPROVALS = {
-        {"AP2026091900000001", "900117022", "requirement", "通过", "流程结束（需求已通过）", "需求审核", "需求审核通过，同意进入需求分析"},
-        {"AP2026091900000002", "900102308", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架"}
+        {"AP2026091900000001", "900117022", "PLAN20260919000000001", "requirement", "通过", "流程结束（需求已通过）", "需求审核", "需求审核通过，同意进入需求分析"},
+        {"AP2026091900000002", "900102308", "PLAN20260919000000002", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架"}
     };
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
@@ -102,13 +104,14 @@ public class OfferSimV16Service {
             Map<String, Object> approval = new LinkedHashMap<>();
             approval.put("approval_id", row[0]);
             approval.put("offer_id", row[1]);
-            approval.put("approval_type", row[2]);
+            approval.put("req_id", row[2]);
+            approval.put("approval_type", row[3]);
             approval.put("report_url", "");
             approval.put("approval_flow", "standard");
-            approval.put("status", row[3]);
-            approval.put("current_node", row[4]);
-            approval.put("approver", row[5]);
-            approval.put("opinion", row[6]);
+            approval.put("status", row[4]);
+            approval.put("current_node", row[5]);
+            approval.put("approver", row[6]);
+            approval.put("opinion", row[7]);
             approval.put("submit_time", now);
             approval.put("update_time", now);
             // 已通过终态，created_at 置为远早于自动流转阈值，advanceApproval 不改变状态
@@ -122,6 +125,7 @@ public class OfferSimV16Service {
             approval.put("approval_matrix", matrix);
             approvals.put(row[0], approval);
             approvalByOffer.put(row[1], row[0]);
+            approvalByReq.put(row[2], row[0]);
         }
         log.info("[OfferSimV16] 预置模拟已通过审批 {} 条", approvals.size());
     }
@@ -1361,13 +1365,14 @@ public class OfferSimV16Service {
         // 仍须四环节结果齐全才可推送。
         String approvalType = MapOps.str(req.get("approval_type")).trim();
         String reqId = MapOps.str(req.get("req_id")).trim();
+        // 审批双轨均须 req_id：既作关联索引（req_id -> 审批工单），也作上线轨四环节门禁依据
+        if (reqId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "req_id 必填（审批工单关联与门禁校验依据）");
+        }
         if (!"requirement".equals(approvalType)) {
             // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 req_id 的
             // 四环节结果（config/spec/fee/test）且全部 status=ok，防止未走完执行主干直接发起审批
             // （V1.7 统一键：原 execution_id 参数合并为 req_id 单键）
-            if (reqId.isEmpty()) {
-                return camelFail("PARAM_MISSING", "req_id 必填（四环节结果门禁校验依据）");
-            }
             for (String stage : List.of("config", "spec", "fee", "test")) {
                 Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
                 if (rec == null) {
@@ -1395,6 +1400,7 @@ public class OfferSimV16Service {
         Map<String, Object> approval = new LinkedHashMap<>();
         approval.put("approval_id", approvalId);
         approval.put("offer_id", offerId);
+        approval.put("req_id", reqId);
         approval.put("approval_type", approvalType.isBlank() ? "launch" : approvalType);
         approval.put("report_url", MapOps.str(req.get("report_url")));
         String flow = MapOps.str(req.get("approval_flow"));
@@ -1409,10 +1415,13 @@ public class OfferSimV16Service {
         approval.put("approval_matrix", buildApprovalMatrix());
         approvals.put(approvalId, approval);
         approvalByOffer.put(offerId, approvalId);
-        log.info("[OfferSimV16] 审批提交 approval_id={} offer_id={}", approvalId, offerId);
+        approvalByReq.put(reqId, approvalId);
+        log.info("[OfferSimV16] 审批提交 approval_id={} offer_id={} req_id={} type={}",
+                approvalId, offerId, reqId, approval.get("approval_type"));
 
         Map<String, Object> body = camelOk();
         body.put("approval_id", approvalId);
+        body.put("req_id", reqId);
         body.put("approval_type", approval.get("approval_type"));
         body.put("status", "审批中");
         body.put("approval_matrix", approvalMatrixOf(approval));
@@ -1441,15 +1450,25 @@ public class OfferSimV16Service {
         }
     }
 
+    /**
+     * 审批工单查询：以 req_id 为关联主键（提交时记录 req_id -> approval_id 索引），
+     * chat_id 为会话入参（透传回显，便于面板/链路定位）；approval_id / offer_id 作为兼容兜底。
+     * 命中后返回该审批工单的完整信息：单号 / 需求单号 / 销售品 / 类型 / 状态 / 当前环节 / 审批人 / 意见 / 矩阵。
+     */
     public Map<String, Object> approvalStatus(Map<String, Object> params) {
+        String reqId = MapOps.str(params.get("req_id")).trim();
+        String chatId = MapOps.str(params.get("chat_id")).trim();
         String offerId = MapOps.str(params.get("offer_id")).trim();
         String approvalIdParam = MapOps.str(params.get("approval_id")).trim();
-        if (offerId.isEmpty() && approvalIdParam.isEmpty()) {
-            return camelFail("PARAM_MISSING", "approval_id 与 offer_id 至少一个必填");
+        if (reqId.isEmpty() && offerId.isEmpty() && approvalIdParam.isEmpty()) {
+            return camelFail("PARAM_MISSING", "req_id 必填（approval_id / offer_id 可选兜底）");
         }
         Map<String, Object> approval;
         if (!approvalIdParam.isEmpty()) {
             approval = approvals.get(approvalIdParam);
+        } else if (!reqId.isEmpty()) {
+            String aid = approvalByReq.get(reqId);
+            approval = aid == null ? null : approvals.get(aid);
         } else {
             String aid = approvalByOffer.get(offerId);
             approval = aid == null ? null : approvals.get(aid);
@@ -1460,6 +1479,9 @@ public class OfferSimV16Service {
         advanceApproval(approval);
         Map<String, Object> body = camelOk();
         body.put("approval_id", MapOps.str(approval.get("approval_id")));
+        body.put("req_id", MapOps.str(approval.get("req_id")));
+        body.put("offer_id", MapOps.str(approval.get("offer_id")));
+        body.put("chat_id", chatId);
         body.put("approval_type", MapOps.str(approval.get("approval_type")));
         body.put("status", MapOps.str(approval.get("status")));
         body.put("current_node", MapOps.str(approval.get("current_node")));
@@ -1475,8 +1497,16 @@ public class OfferSimV16Service {
 
     public Map<String, Object> productMonitor(Map<String, Object> params) {
         String offerId = MapOps.str(params.get("offer_id")).trim();
+        String reqId = MapOps.str(params.get("req_id")).trim();
+        // offer_id 非必填：缺省时按 req_id 关联解析（取该需求单 config/requirement 环节结果中的 offer_id）
         if (offerId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "offer_id 必填");
+            if (reqId.isEmpty()) {
+                return camelFail("PARAM_MISSING", "offer_id 与 req_id 至少一个必填");
+            }
+            offerId = resolveOfferIdByReqId(reqId);
+            if (offerId.isEmpty()) {
+                return camelFail("40404", "未找到该需求单关联的销售品（req_id=" + reqId + "）");
+            }
         }
         int seedNum = Math.abs(offerId.hashCode());
         int orderCount = 100 + seedNum % 900;
@@ -1496,6 +1526,8 @@ public class OfferSimV16Service {
         // V2.4：补充产品名称与趋势字段，供 wf_sub_07 运营报告 LLM 节点按固定模板输出
         Map<String, Object> offer = resolveOffer(offerId);
         String offerName = offer == null ? "" : MapOps.str(offer.get("offer_name"));
+        body.put("offer_id", offerId);
+        body.put("req_id", reqId);
         body.put("offer_name", offerName);
         body.put("order_count", String.valueOf(orderCount));
         body.put("order_trend", errorCount > 0 ? "下降" : ((seedNum % 3 == 0) ? "持平" : "上升"));
@@ -1506,6 +1538,29 @@ public class OfferSimV16Service {
         body.put("metric", MapOps.firstNonEmpty(params.get("metric"), "all"));
         body.put("alarm_list", alarmList);
         return body;
+    }
+
+    /**
+     * 按 req_id 关联解析销售品ID（供监控运维 offer_id 缺省时兜底）。
+     * 依次取该需求单的 config / requirement 环节结果，从 result_json 中提取 offer_id/offerId；
+     * 未命中返回空串。仅做只读取值，不写存储。
+     */
+    private String resolveOfferIdByReqId(String reqId) {
+        for (String stage : List.of("config", "requirement")) {
+            Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
+            if (rec == null) {
+                continue;
+            }
+            Map<String, Object> json = parseConfig(MapOps.str(rec.get("result_json")));
+            if (json == null || json.isEmpty()) {
+                continue;
+            }
+            String offerId = MapOps.str(MapOps.firstNonEmpty(json.get("offer_id"), json.get("offerId")));
+            if (!offerId.isBlank()) {
+                return offerId.trim();
+            }
+        }
+        return "";
     }
 
     /* ================= 接口12：异常告警 send_alert ================= */
