@@ -34,6 +34,15 @@
             "type": "string",
             "required": false,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "date_range",
+            "description": "统计周期（非必填；缺省后端按默认周期处理）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,

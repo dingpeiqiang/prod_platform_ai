@@ -597,10 +597,9 @@ CODE_EXTRACT_MERGE = (
     "    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n"
     ")\n"
     "\n"
-    "# 业务默认值：存量产品发布地市默认为全省，schema 支持全省口径（groupIdMessage 随之隐藏）\n"
-    "BUSINESS_DEFAULTS = {\n"
-    "    'releaseInfo.groupId': '全省',\n"
-    "}\n"
+    "# 业务默认值：不强制发布地市取值——需求未提及地市时不填、不默认，\n"
+    "# 由原始需求原文/模板默认决定，避免臆断『全省/非全省/22地市』。\n"
+    "BUSINESS_DEFAULTS = {}\n"
     "\n"
     "# 模板取值溯源：区分“原始需求 / 模板默认 / 模板枚举 / 模型推测”\n"
     "DEFAULT_MARK_RE = re.compile(r'默认(?:为)?([^，。、；：\\s]+)')\n"
@@ -1583,24 +1582,18 @@ s12f.append(code_node(2205, "查询稽核结果", CODE_AUDIT_QUERY,
     pos=(720, 135)))
 s12f.append(llm_node(2206, "整改建议生成",
     "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
-    "输出**稽核明细清单**，无论是否存在问题都必须完整呈现七项固定检查项，禁止只输出\"稽核通过\"。\n"
-    "稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）。\n"
-    "七项固定检查项（顺序固定，逐项输出，不得增删）：\n"
-    "- 基础信息完整性\n- 资源配置完整性\n- 套外资费完整性\n- 字段格式规范性\n- 字段枚举合法性\n"
-    "- 配置项关联一致性\n- 业务规则完整性\n"
-    "判定规则（七项与 error_list 分类一一对应）：pass={pass}；\n"
-    "- error_list 为空或该分类无告警项 → 该项输出 ✅（禁止虚构 ✅，须逐项与 error_list 核对）；\n"
-    "- 某分类存在告警项 → 该项改标 ❌ 并在该行下缩进附 error_list 对应明细（item/level/desc/suggest 逐字引用）。\n"
-    "融合组维度（出参含 group 时）：在稽核对象行下追加组维度回显行。\n"
-    "输出模板（严格按此渲染）：\n"
-    "> **稽核对象：销售品ID（offer_id）{offer_id}**\n"
-    "> **稽核结果：{通过/不通过}**\n"
-    "> - 基础信息完整性：✅/❌\n> - 资源配置完整性：✅/❌\n> - 套外资费完整性：✅/❌\n"
-    "> - 字段格式规范性：✅/❌\n> - 字段枚举合法性：✅/❌\n> - 配置项关联一致性：✅/❌\n"
-    "> - 业务规则完整性：✅/❌\n>\n"
-    "> {pass=1 且无告警项→\"未发现任何异常。\"；否则逐条列 ❌ 项明细}\n"
+    "输出稽核结果。pass={pass}。\n"
+    "【通过分支】pass==1 或 error_list 为空时，只输出一行通过结论，禁止列任何检查项/明细/统计：\n"
+    "  格式：`全部销售品稽核通过（{audit_summary}）`，逐字引用 audit_summary。\n"
+    "  **严禁输出七项检查项清单、严禁输出\"稽核项总数/通过数/失败数\"、严禁出现任何 ❌、失败、缺失、"
+    "\"服务项缺失\"、\"资源容量不匹配\"等字样**；该分支下\"未发现问题\"即是唯一正确结论。\n"
+    "【不通过分支】pass==0 且 error_list 非空时才进入明细渲染：\n"
+    "  稽核对象行：`> **稽核对象：销售品ID（offer_id）{offer_id}**`（逐字引用入参 offer_id，禁止省略该行）；\n"
+    "  逐条引用 error_list 中的实际告警项（item/level/desc/suggest 逐字引用），只列 error_list 中真实存在的项，"
+    "禁止虚构、禁止凑数、禁止补充 error_list 之外的检查项。\n"
+    "融合组维度（出参含 group 时）：在不通过分支的稽核对象行下追加组维度回显行。\n"
     "不新增稽核结论。\n"
-    "输出要求：仅输出上述稽核明细清单内容（对应出参 audit_suggest），不输出其他多余文字。",
+    "输出要求：仅输出上述内容（对应出参 audit_suggest），不输出其他多余文字。",
     [inp("error_list", "引用节点2205问题明细", ref_block=nid(2205), ref_rel="error_list"),
      inp("audit_summary", "引用节点2205稽核总结", ref_block=nid(2205), ref_rel="audit_summary"),
      inp("offer_id", "主 offer_id（稽核对象回显，节点2203解析）", ref_block=nid(2203), ref_rel="offer_id"),
@@ -2599,6 +2592,7 @@ s7f.append(start_node(701, [
     inp("req_id", "需求单号（必填，PLAN+yyyyMMddHHmmss+3位随机数；用于关联解析销售品ID与页面定位）", required=True),
     inp("chat_id", "{chatId}", required=True),
     inp("offer_id", "销售品ID（非必填；9位存量编码或配置落地返回的新销售品ID，缺省时后端按 req_id 关联解析）", required=False),
+    inp("date_range", "统计周期（非必填；缺省后端按默认周期处理）", required=False),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析",
