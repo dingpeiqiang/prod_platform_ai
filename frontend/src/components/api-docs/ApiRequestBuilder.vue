@@ -667,7 +667,36 @@ function loadSaved(item) {
 
 function loadHistory(item) {
   applyRequest(item)
+  restoreHistoryResponse(item)
   showToast('已回填历史请求')
+}
+
+/** 回填历史记录中保存的响应报文（出参），无响应体时给出提示。 */
+function restoreHistoryResponse(item) {
+  const raw = item.response_body
+  if (!raw) {
+    sendError.value = item.error_message || null
+    showToast(item.error_message ? `历史请求失败：${item.error_message}` : '该记录无响应报文')
+    return
+  }
+  let pretty = raw
+  try {
+    pretty = JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    /* 非 JSON 保持原文 */
+  }
+  response.value = {
+    status: item.status,
+    statusText: item.success ? 'OK' : 'Error',
+    ok: !!item.success,
+    timeMs: item.duration_ms ?? 0,
+    sizeText: formatSize(new Blob([raw]).size),
+    pretty,
+    raw,
+    headers: {},
+  }
+  activeRespTab.value = 'body'
+  sendError.value = item.error_message || null
 }
 
 async function exportItem(item) {
