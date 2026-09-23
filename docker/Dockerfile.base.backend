@@ -21,6 +21,10 @@ ARG MAVEN_MIRROR_URL=
 
 WORKDIR /build
 
+# 强制固定本地仓库路径：防止外部 MAVEN_OPTS / settings / 宿主环境变量
+# 注入 Windows 风格 localRepository（曾导致编译类路径为空）
+ENV MAVEN_OPTS="-Dmaven.repo.local=/root/.m2/repository"
+
 # Maven settings：默认阿里云；若传入 MAVEN_MIRROR_URL 则覆盖为公司仓库
 COPY backend-app/.mvn/local-settings.xml /root/.m2/settings.xml
 RUN if [ -n "$MAVEN_MIRROR_URL" ]; then \
@@ -41,8 +45,9 @@ COPY backend-app/ ./
 
 # 1) 在线拉齐依赖与插件并编译
 # 2) 立刻用 mvn -o 自检离线可编（与 Sitech.BJ.Dockerfile.backend 一致），不通过则基础镜像构建失败
-RUN mvn -B -U -DskipTests dependency:resolve dependency:resolve-plugins package \
-    && mvn -o -B -DskipTests clean package \
+# 注意：显式 -Dmaven.repo.local 覆盖一切外部注入，且不设 -U 时的旧值残留
+RUN mvn -B -Dmaven.repo.local=/root/.m2/repository -U -DskipTests dependency:resolve dependency:resolve-plugins package \
+    && mvn -o -B -Dmaven.repo.local=/root/.m2/repository -DskipTests clean package \
     && rm -rf /build/target \
     && mkdir -p /app/logs /app/uploads
 
