@@ -230,6 +230,19 @@
       <groupId>org.apache.poi</groupId>
       <artifactId>poi-ooxml</artifactId>
       <version>5.2.5</version>
+      <exclusions>
+        <exclusion>
+          <groupId>commons-io</groupId>
+          <artifactId>commons-io</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <!-- 统一 commons-io 版本：POI 传递引入旧版（1.x）缺少 UnsynchronizedByteArrayOutputStream.builder()，
+         导致稽核 Excel 生成 NoSuchMethodError；显式提升至 2.16.1（>=2.12 提供该 API） -->
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>2.16.1</version>
     </dependency>
     <!-- Lombok：简化 Entity/DTO 样板代码 -->
     <dependency>

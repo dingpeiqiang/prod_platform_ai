@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-09-23T10:56:01",
+  "results": [
+    {
+      "seq": 701,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000701",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 4 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105601291",
+        "chat_id": "CHAT-MOCK-0001",
+        "offer_id": "900693408",
+        "date_range": "【样例】date_range（可 --set date_range=... 覆盖）"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105601291",
+        "chat_id": "CHAT-MOCK-0001",
+        "offer_id": "900693408",
+        "date_range": "【样例】date_range（可 --set date_range=... 覆盖）"
+      }
+    },
+    {
+      "seq": 702,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000702",
+      "title": "监控查询",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/product/monitor",
+      "elapsed_ms": 181,
+      "inputs": {
+        "offer_id": "900693408",
+        "req_id": "PLAN20260923105601291",
+        "date_range": "【样例】date_range（可 --set date_range=... 覆盖）",
+        "metric": "all"
+      },
+      "outputs": {
+        "offer_id": "900693408",
+        "offer_name": "新增销售品900693408",
+        "order_count": "991",
+        "order_trend": "持平",
+        "error_count": "0",
+        "error_trend": "持平",
+        "fee_error_rate": "0.0010",
+        "fee_trend": "持平",
+        "alarm_list": []
+      }
+    },
+    {
+      "seq": 703,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000703",
+      "title": "异常判定",
+      "type": 2,
+      "status": "ok",
+      "note": "条件求值",
+      "elapsed_ms": 0,
+      "inputs": {
+        "error_count": "0"
+      },
+      "outputs": {
+        "error_count": "0"
+      }
+    },
+    {
+      "seq": 710,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000710",
+      "title": "运营摘要生成(正常分支)",
+      "type": 1,
+      "status": "ok",
+      "note": "live:qwen3-30b-a3b",
+      "elapsed_ms": 449,
+      "inputs": {
+        "offer_name": "新增销售品900693408",
+        "order_count": "991",
+        "order_trend": "持平",
+        "error_count": "0",
+        "fee_error_rate": "0.0010",
+        "alarm_list": []
+      },
+      "outputs": {
+        "ops_summary": "新增销售品900693408/991/0/0.0010/[]"
+      }
+    },
+    {
+      "seq": 713,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000713",
+      "title": "构建页面地址面板(正常)",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105601291",
+        "offer_id": "900693408",
+        "offer_name": "新增销售品900693408"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=新增销售品900693408&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105601291&stage=07&view=stage\",\"title\":\"单品运营看板\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 711,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000711",
+      "title": "结束(正常-运营报告)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "ops_summary": "新增销售品900693408/991/0/0.0010/[]",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=新增销售品900693408&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105601291&stage=07&view=stage\",\"title\":\"单品运营看板\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "【环节9/9·监控运维】✅ 执行成功\n\n新增销售品900693408/991/0/0.0010/[]\n\n> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=新增销售品900693408&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105601291&stage=07&view=stage\",\"title\":\"单品运营看板\"}]}\n```\n"
+      }
+    }
+  ]
+}

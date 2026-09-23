@@ -1,0 +1,175 @@
+{
+  "generated_at": "2026-09-23T10:55:36",
+  "results": [
+    {
+      "seq": 301,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000301",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 2 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 309,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000309",
+      "title": "读取配置环节结果",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/result/query",
+      "elapsed_ms": 74,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "config",
+        "latest_only": "1"
+      },
+      "outputs": {
+        "list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "config",
+            "result_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:53",
+            "update_time": "2026-09-23 10:52:53"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 310,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000310",
+      "title": "提取配置结果原文",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "query_list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "config",
+            "result_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:53",
+            "update_time": "2026-09-23 10:52:53"
+          }
+        ]
+      },
+      "outputs": {
+        "record_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "offer_id": "900693408",
+        "requestIds": ""
+      }
+    },
+    {
+      "seq": 302,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000302",
+      "title": "发起测试",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/test/offer/start",
+      "elapsed_ms": 65,
+      "inputs": {
+        "offerId": "900693408"
+      },
+      "outputs": {
+        "globalId": ""
+      }
+    },
+    {
+      "seq": 303,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000303",
+      "title": "查询测试场景",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes",
+      "elapsed_ms": 62,
+      "inputs": {
+        "globalId": ""
+      },
+      "outputs": {
+        "testScenes": ""
+      }
+    },
+    {
+      "seq": 308,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000308",
+      "title": "测试发起结果封包",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "globalId": "",
+        "testScenes": "",
+        "md": "测试已发起",
+        "md_key": "launch_note"
+      },
+      "outputs": {
+        "record_json": "{\"launch_note\": \"测试已发起\", \"raw\": \"测试已发起\"}"
+      }
+    },
+    {
+      "seq": 305,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000305",
+      "title": "测试发起临时态存储",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/result/save",
+      "elapsed_ms": 90,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "test_pending",
+        "result_json": "{\"launch_note\": \"测试已发起\", \"raw\": \"测试已发起\"}",
+        "status": "pending"
+      },
+      "outputs": {
+        "record_id": "REC20260923000194"
+      }
+    },
+    {
+      "seq": 321,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000321",
+      "title": "构建页面地址面板",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105235660",
+        "offer_id": "900693408"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=06&view=stage\",\"title\":\"自动测试\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 307,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000307",
+      "title": "结束(测试已发起)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "globalId": "",
+        "testScenes": "",
+        "offer_id": "900693408",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=06&view=stage\",\"title\":\"自动测试\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "【环节6/8·自动测试】测试已发起（globalId=，场景清单已获取）\n> 测试平台异步执行，请回复【查询测试结果】拉取测试结论（未完成会提示稍后续查）。\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=06&view=stage\",\"title\":\"自动测试\"}]}\n```\n"
+      }
+    }
+  ]
+}

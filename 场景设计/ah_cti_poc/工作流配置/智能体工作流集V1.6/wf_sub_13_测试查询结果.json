@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-测试查询结果",
-  "flowRemark": "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→test_passed==通过 才 save(node_name=test)→下载报告(CODE_DOWNLOAD_TEST_REPORT)。窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。",
+  "flowRemark": "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→**【门禁A】done==true 才继续**→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→**【门禁B】p0_pass==1（P0 全通过）才 save(node_name=test)**→下载报告(CODE_DOWNLOAD_TEST_REPORT)。done!=true 或 p0_pass!=1 均不写 test（跳过存储直接结束）；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -217,6 +217,117 @@
         "type": 6
       },
       {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+                    "relName": "done",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000002304",
+                      "a1b2c3d4-0000-4000-8000-000000002304,done"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "true"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "轮询完成判定"
+        },
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002321",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304",
+            "name": "轮询测试进度",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000002304,done",
+                "name": "done",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
         "outputs": [
           {
             "name": "testRequestId",
@@ -399,8 +510,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002305",
         "position": {
-          "x": 1455,
-          "y": 300
+          "x": 1815,
+          "y": 430
         },
         "dependencyData": [],
         "type": 3,
@@ -470,7 +581,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002317",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -511,7 +622,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002318",
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "dependencyData": [],
@@ -581,7 +692,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002319",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 300
         },
         "dependencyData": [],
@@ -622,7 +733,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002320",
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 300
         },
         "dependencyData": [],
@@ -795,7 +906,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002315",
         "position": {
-          "x": 3255,
+          "x": 3615,
           "y": 300
         },
         "dependencyData": [],
@@ -1029,12 +1140,123 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 3615,
-          "y": 300
+          "x": 4335,
+          "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002306",
         "dependencyData": [],
         "type": 1
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+                    "relName": "p0_pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000002315",
+                      "a1b2c3d4-0000-4000-8000-000000002315,p0_pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000002315,p0_pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "测试通过判定"
+        },
+        "position": {
+          "x": 3975,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002322",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315",
+            "name": "固定用例映射",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000002315,p0_pass",
+                "name": "p0_pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
       },
       {
         "outputs": [
@@ -1101,7 +1323,7 @@
         "nodeMeta": {
           "title": "测试结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅 test_passed==通过 时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅 test_passed==通过（p0_pass==1）时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -1114,7 +1336,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002308",
         "position": {
-          "x": 3975,
+          "x": 4695,
           "y": 300
         },
         "dependencyData": [],
@@ -1160,7 +1382,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002316",
         "position": {
-          "x": 4335,
+          "x": 5055,
           "y": 300
         },
         "dependencyData": [],
@@ -1228,11 +1450,213 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002309",
         "position": {
-          "x": 4695,
+          "x": 5415,
           "y": 300
         },
         "dependencyData": [],
         "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节6/8·自动测试】查询测试结果：完成={done}\n{fail_reason}\n\n测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n【下一步】请稍后回复\"查询测试结果\"续查；若持续无进展请联系人工核查测试发起（环节6a）。\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "done",
+            "name": "done",
+            "description": "是否窗口内完成（节点2304）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,done"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "fail_reason",
+            "name": "fail_reason",
+            "description": "轮询异常/处理中说明（节点2304）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "被测销售品ID（供面板）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002309",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002309",
+              "a1b2c3d4-0000-4000-8000-000000002309,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002309,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(测试处理中-未写test)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1815,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002323",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节6/8·自动测试】查询测试结果：整体上线结论 {overall_conclusion}（存在 P0 阻断，未通过）\n\n{test_report}\n\n测试未通过，本次未写入测试结论（test 仍为空），无法推进上线审批。\n【下一步】请按报告四/五章的 ❌ 阻断项整改配置后，重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "done",
+            "name": "done",
+            "description": "是否窗口内完成（节点2304）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,done"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "被测销售品ID（供面板）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002306",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "正式版测试报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002306",
+              "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+            "relName": "overall_conclusion",
+            "name": "overall_conclusion",
+            "description": "整体上线结论",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002315",
+              "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002309",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002309",
+              "a1b2c3d4-0000-4000-8000-000000002309,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002309,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(测试未通过-未写test)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 4335,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002324",
+        "dependencyData": []
       },
       {
         "outputs": {
@@ -1385,7 +1809,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5055,
+          "x": 5775,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002310",
@@ -1410,8 +1834,18 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002305",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002321",
         "startId": "a1b2c3d4-0000-4000-8000-000000002304"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002305",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002321"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002323",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002321"
       },
       {
         "sourcePort": null,
@@ -1440,8 +1874,18 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002306",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002322",
         "startId": "a1b2c3d4-0000-4000-8000-000000002315"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002306",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002322"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002324",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002322"
       },
       {
         "sourcePort": null,

@@ -1,0 +1,328 @@
+{
+  "generated_at": "2026-09-23T10:55:32",
+  "results": [
+    {
+      "seq": 401,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000401",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 2 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 406,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000406",
+      "title": "读取配置环节结果",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/result/query",
+      "elapsed_ms": 76,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "config",
+        "latest_only": "1"
+      },
+      "outputs": {
+        "list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "config",
+            "result_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:53",
+            "update_time": "2026-09-23 10:52:53"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 407,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000407",
+      "title": "提取配置结果原文",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 1,
+      "inputs": {
+        "query_list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "config",
+            "result_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:53",
+            "update_time": "2026-09-23 10:52:53"
+          }
+        ]
+      },
+      "outputs": {
+        "record_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "offer_id": "900693408",
+        "requestIds": ""
+      }
+    },
+    {
+      "seq": 402,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000402",
+      "title": "计费校验",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/billing/rules/verify",
+      "elapsed_ms": 53,
+      "inputs": {
+        "config_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "check_scene": "all"
+      },
+      "outputs": {
+        "pass": "1",
+        "risk_list": [],
+        "compare_list": [
+          {
+            "project_name": "套餐月租",
+            "requirement_desc": "",
+            "billing_desc": "（首月按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（国内，按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "商品有效期",
+            "requirement_desc": "长期有效",
+            "billing_desc": "长期有效（自动续展）",
+            "result": "一致"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 403,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000403",
+      "title": "风险解读",
+      "type": 1,
+      "status": "ok",
+      "note": "live:qwen3-30b-a3b",
+      "elapsed_ms": 1706,
+      "inputs": {
+        "risk_list": [],
+        "compare_list": [
+          {
+            "project_name": "套餐月租",
+            "requirement_desc": "",
+            "billing_desc": "（首月按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（国内，按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "商品有效期",
+            "requirement_desc": "长期有效",
+            "billing_desc": "长期有效（自动续展）",
+            "result": "一致"
+          }
+        ]
+      },
+      "outputs": {
+        "risk_summary": "比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\n|------|------------------|----------------------|----------|\n| 套餐月租 |  | （首月按天折算） | 一致 |\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\n| 语音赠送量 |  | （按天折算） | 一致 |\n| 短信赠送量 |  | （按天折算） | 一致 |\n| 流量超出资费 |  |  | 一致 |\n| 语音超出资费 |  |  | 一致 |\n| 短信超出资费 |  |  | 一致 |\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\n\n**校准结论：** 资费配置与计费规则完全一致\n\n风险解读：\n未发现叠加/互斥冲突"
+      }
+    },
+    {
+      "seq": 408,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000408",
+      "title": "资费结果结构化封包",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "pass": "1",
+        "risk_list": [],
+        "compare_list": [
+          {
+            "project_name": "套餐月租",
+            "requirement_desc": "",
+            "billing_desc": "（首月按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（国内，按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信赠送量",
+            "requirement_desc": "",
+            "billing_desc": "（按天折算）",
+            "result": "一致"
+          },
+          {
+            "project_name": "流量超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "语音超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "短信超出资费",
+            "requirement_desc": "",
+            "billing_desc": "",
+            "result": "一致"
+          },
+          {
+            "project_name": "商品有效期",
+            "requirement_desc": "长期有效",
+            "billing_desc": "长期有效（自动续展）",
+            "result": "一致"
+          }
+        ],
+        "md": "比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\n|------|------------------|----------------------|----------|\n| 套餐月租 |  | （首月按天折算） | 一致 |\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\n| 语音赠送量 |  | （按天折算） | 一致 |\n| 短信赠送量 |  | （按天折算） | 一致 |\n| 流量超出资费 |  |  | 一致 |\n| 语音超出资费 |  |  | 一致 |\n| 短信超出资费 |  |  | 一致 |\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\n\n**校准结论：** 资费配置与计费规则完全一致\n\n风险解读：\n未发现叠加/互斥冲突",
+        "md_key": "risk_summary"
+      },
+      "outputs": {
+        "record_json": "{\"pass\": \"1\", \"risk_list\": [], \"compare_list\": [{\"project_name\": \"套餐月租\", \"requirement_desc\": \"\", \"billing_desc\": \"（首月按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"流量赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（国内，按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"语音赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"短信赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"流量超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"语音超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"短信超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"商品有效期\", \"requirement_desc\": \"长期有效\", \"billing_desc\": \"长期有效（自动续展）\", \"result\": \"一致\"}], \"risk_summary\": \"比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\\n|------|------------------|----------------------|----------|\\n| 套餐月租 |  | （首月按天折算） | 一致 |\\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\\n| 语音赠送量 |  | （按天折算） | 一致 |\\n| 短信赠送量 |  | （按天折算） | 一致 |\\n| 流量超出资费 |  |  | 一致 |\\n| 语音超出资费 |  |  | 一致 |\\n| 短信超出资费 |  |  | 一致 |\\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\\n\\n**校准结论：** 资费配置与计费规则完全一致\\n\\n风险解读：\\n未发现叠加/互斥冲突\", \"raw\": \"比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\\n|------|------------------|----------------------|----------|\\n| 套餐月租 |  | （首月按天折算） | 一致 |\\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\\n| 语音赠送量 |  | （按天折算） | 一致 |\\n| 短信赠送量 |  | （按天折算） | 一致 |\\n| 流量超出资费 |  |  | 一致 |\\n| 语音超出资费 |  |  | 一致 |\\n| 短信超出资费 |  |  | 一致 |\\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\\n\\n**校准结论：** 资费配置与计费规则完全一致\\n\\n风险解读：\\n未发现叠加/互斥冲突\"}"
+      }
+    },
+    {
+      "seq": 405,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000405",
+      "title": "环节结果存储",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/result/save",
+      "elapsed_ms": 139,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "fee",
+        "result_json": "{\"pass\": \"1\", \"risk_list\": [], \"compare_list\": [{\"project_name\": \"套餐月租\", \"requirement_desc\": \"\", \"billing_desc\": \"（首月按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"流量赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（国内，按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"语音赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"短信赠送量\", \"requirement_desc\": \"\", \"billing_desc\": \"（按天折算）\", \"result\": \"一致\"}, {\"project_name\": \"流量超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"语音超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"短信超出资费\", \"requirement_desc\": \"\", \"billing_desc\": \"\", \"result\": \"一致\"}, {\"project_name\": \"商品有效期\", \"requirement_desc\": \"长期有效\", \"billing_desc\": \"长期有效（自动续展）\", \"result\": \"一致\"}], \"risk_summary\": \"比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\\n|------|------------------|----------------------|----------|\\n| 套餐月租 |  | （首月按天折算） | 一致 |\\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\\n| 语音赠送量 |  | （按天折算） | 一致 |\\n| 短信赠送量 |  | （按天折算） | 一致 |\\n| 流量超出资费 |  |  | 一致 |\\n| 语音超出资费 |  |  | 一致 |\\n| 短信超出资费 |  |  | 一致 |\\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\\n\\n**校准结论：** 资费配置与计费规则完全一致\\n\\n风险解读：\\n未发现叠加/互斥冲突\", \"raw\": \"比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\\n|------|------------------|----------------------|----------|\\n| 套餐月租 |  | （首月按天折算） | 一致 |\\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\\n| 语音赠送量 |  | （按天折算） | 一致 |\\n| 短信赠送量 |  | （按天折算） | 一致 |\\n| 流量超出资费 |  |  | 一致 |\\n| 语音超出资费 |  |  | 一致 |\\n| 短信超出资费 |  |  | 一致 |\\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\\n\\n**校准结论：** 资费配置与计费规则完全一致\\n\\n风险解读：\\n未发现叠加/互斥冲突\"}",
+        "status": "ok"
+      },
+      "outputs": {
+        "record_id": "REC20260923000193"
+      }
+    },
+    {
+      "seq": 409,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000409",
+      "title": "构建页面地址面板",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105235660",
+        "offer_id": "900693408"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=05&view=stage\",\"title\":\"资费校准\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 404,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000404",
+      "title": "结束(资费校准完成)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "pass": "1",
+        "risk_list": [],
+        "risk_summary": "比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\n|------|------------------|----------------------|----------|\n| 套餐月租 |  | （首月按天折算） | 一致 |\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\n| 语音赠送量 |  | （按天折算） | 一致 |\n| 短信赠送量 |  | （按天折算） | 一致 |\n| 流量超出资费 |  |  | 一致 |\n| 语音超出资费 |  |  | 一致 |\n| 短信超出资费 |  |  | 一致 |\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\n\n**校准结论：** 资费配置与计费规则完全一致\n\n风险解读：\n未发现叠加/互斥冲突",
+        "offer_id": "900693408",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=05&view=stage\",\"title\":\"资费校准\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "资费校准完成：pass=1\n比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：\n| 项目 | 套餐描述（需求） | 计费配置描述（系统） | 比对结果 |\n|------|------------------|----------------------|----------|\n| 套餐月租 |  | （首月按天折算） | 一致 |\n| 流量赠送量 |  | （国内，按天折算） | 一致 |\n| 语音赠送量 |  | （按天折算） | 一致 |\n| 短信赠送量 |  | （按天折算） | 一致 |\n| 流量超出资费 |  |  | 一致 |\n| 语音超出资费 |  |  | 一致 |\n| 短信超出资费 |  |  | 一致 |\n| 商品有效期 | 长期有效 | 长期有效（自动续展） | 一致 |\n\n**校准结论：** 资费配置与计费规则完全一致\n\n风险解读：\n未发现叠加/互斥冲突\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=05&view=stage\",\"title\":\"资费校准\"}]}\n```\n"
+      }
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-09-23T10:52:35",
+  "results": [
+    {
+      "seq": 1,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000001",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 3 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "requirement_text": "我要上新一个 5G-A 套餐，月费 199 元，包含 120GB 国内流量和 1000 分钟国内通话，套外流量 3 元/GB、套外语音 0.15 元/分钟，流量可结转至次月，营业厅和 APP 渠道可办理。",
+        "reporter": "张三",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "requirement_text": "我要上新一个 5G-A 套餐，月费 199 元，包含 120GB 国内流量和 1000 分钟国内通话，套外流量 3 元/GB、套外语音 0.15 元/分钟，流量可结转至次月，营业厅和 APP 渠道可办理。",
+        "reporter": "张三",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 2,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000002",
+      "title": "需求字段抽取",
+      "type": 1,
+      "status": "ok",
+      "note": "live:qwen3-30b-a3b",
+      "elapsed_ms": 1460,
+      "inputs": {
+        "requirement_text": "我要上新一个 5G-A 套餐，月费 199 元，包含 120GB 国内流量和 1000 分钟国内通话，套外流量 3 元/GB、套外语音 0.15 元/分钟，流量可结转至次月，营业厅和 APP 渠道可办理。"
+      },
+      "outputs": {
+        "elements_json": "{\"name\":\"5G-A 套餐\",\"product_type\":\"个人主套餐\",\"series\":\"\",\"members\":\"\",\"price\":\"199\",\"resources\":\"120GB 国内流量、1000 分钟国内通话\",\"out_price\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"billing_cycle\":\"按月付费\",\"effective_way\":\"X月X日生效\",\"validity\":\"\",\"change_rule\":\"\",\"cancel_rule\":\"\"}"
+      }
+    },
+    {
+      "seq": 3,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000003",
+      "title": "需求提报单渲染",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 3,
+      "inputs": {
+        "elements_json": "{\"name\":\"5G-A 套餐\",\"product_type\":\"个人主套餐\",\"series\":\"\",\"members\":\"\",\"price\":\"199\",\"resources\":\"120GB 国内流量、1000 分钟国内通话\",\"out_price\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"billing_cycle\":\"按月付费\",\"effective_way\":\"X月X日生效\",\"validity\":\"\",\"change_rule\":\"\",\"cancel_rule\":\"\"}",
+        "reporter": "张三"
+      },
+      "outputs": {
+        "report_text": "## 销售品需求提报单\n### 1. 需求基本信息\n| 字段 | 内容 |\n| --- | --- |\n| 需求单号 | PLAN20260923105235660 |\n| 提报日期 | 2026-09-23 |\n| 提报人 | 张三 |\n\n### 2. 产品/销售品信息\n| 字段 | 内容 |\n| --- | --- |\n| 销售品名称 | 5G-A 套餐 |\n| 产品类型 | 个人主套餐 |\n\n### 3. 资费方案要点\n| 字段 | 内容 |\n| --- | --- |\n| 套餐档位（月费） | 199 元/月 |\n| 套内资源 | 120GB 国内流量、1000 分钟国内通话 |\n| 套外资费 | 套外流量 3 元/GB、套外语音 0.15 元/分钟 |\n| 计费周期 | 按月付费 |\n\n### 4. 订购/变更/退订规则\n| 字段 | 内容 |\n| --- | --- |\n| 生效方式 | X月X日生效 |\n\n### 5. 待补充字段\n无",
+        "pending_fields": "",
+        "pending_count": "",
+        "req_id": "PLAN20260923105235660",
+        "elements": "{\"name\": \"5G-A 套餐\", \"product_type\": \"个人主套餐\", \"series\": \"\", \"price\": \"199\", \"resources\": \"120GB 国内流量、1000 分钟国内通话\", \"out_price\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"billing_cycle\": \"按月付费\", \"effective_way\": \"X月X日生效\", \"validity\": \"\", \"change_rule\": \"\", \"cancel_rule\": \"\"}"
+      }
+    },
+    {
+      "seq": 4,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000004",
+      "title": "待补充判定",
+      "type": 2,
+      "status": "ok",
+      "note": "条件求值",
+      "elapsed_ms": 0,
+      "inputs": {
+        "pending_count": ""
+      },
+      "outputs": {
+        "pending_count": ""
+      }
+    },
+    {
+      "seq": 5,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000005",
+      "title": "保存需求工单",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/result/save",
+      "elapsed_ms": 138,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "requirement_report",
+        "result_json": "{\"name\": \"5G-A 套餐\", \"product_type\": \"个人主套餐\", \"series\": \"\", \"price\": \"199\", \"resources\": \"120GB 国内流量、1000 分钟国内通话\", \"out_price\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"billing_cycle\": \"按月付费\", \"effective_way\": \"X月X日生效\", \"validity\": \"\", \"change_rule\": \"\", \"cancel_rule\": \"\"}",
+        "status": "ok"
+      },
+      "outputs": {
+        "record_id": "REC20260923000188"
+      }
+    },
+    {
+      "seq": 9,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000009",
+      "title": "构建页面地址面板(提报成功)",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105235660"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 7,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000007",
+      "title": "结束(无待补充-止于确认点)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "report_text": "## 销售品需求提报单\n### 1. 需求基本信息\n| 字段 | 内容 |\n| --- | --- |\n| 需求单号 | PLAN20260923105235660 |\n| 提报日期 | 2026-09-23 |\n| 提报人 | 张三 |\n\n### 2. 产品/销售品信息\n| 字段 | 内容 |\n| --- | --- |\n| 销售品名称 | 5G-A 套餐 |\n| 产品类型 | 个人主套餐 |\n\n### 3. 资费方案要点\n| 字段 | 内容 |\n| --- | --- |\n| 套餐档位（月费） | 199 元/月 |\n| 套内资源 | 120GB 国内流量、1000 分钟国内通话 |\n| 套外资费 | 套外流量 3 元/GB、套外语音 0.15 元/分钟 |\n| 计费周期 | 按月付费 |\n\n### 4. 订购/变更/退订规则\n| 字段 | 内容 |\n| --- | --- |\n| 生效方式 | X月X日生效 |\n\n### 5. 待补充字段\n无",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "《销售品需求提报单》已生成（需求单号：PLAN20260923105235660）。\n\n## 销售品需求提报单\n### 1. 需求基本信息\n| 字段 | 内容 |\n| --- | --- |\n| 需求单号 | PLAN20260923105235660 |\n| 提报日期 | 2026-09-23 |\n| 提报人 | 张三 |\n\n### 2. 产品/销售品信息\n| 字段 | 内容 |\n| --- | --- |\n| 销售品名称 | 5G-A 套餐 |\n| 产品类型 | 个人主套餐 |\n\n### 3. 资费方案要点\n| 字段 | 内容 |\n| --- | --- |\n| 套餐档位（月费） | 199 元/月 |\n| 套内资源 | 120GB 国内流量、1000 分钟国内通话 |\n| 套外资费 | 套外流量 3 元/GB、套外语音 0.15 元/分钟 |\n| 计费周期 | 按月付费 |\n\n### 4. 订购/变更/退订规则\n| 字段 | 内容 |\n| --- | --- |\n| 生效方式 | X月X日生效 |\n\n### 5. 待补充字段\n无\n\n**是否发起【需求工单审批】？**\n回复【发起需求审批】即发起需求工单审批（审批通过后衔接需求分析生成《加载方案》）；未回复确认前不会自动发起审批。\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=00&view=stage\",\"title\":\"需求提报单\"}]}\n```\n"
+      }
+    }
+  ]
+}

@@ -1575,6 +1575,11 @@ s12f.append(code_node(2204, "轮询稽核完成", CODE_POLL_AUDIT,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
     [code_out("completed", 2204), code_out("fail_reason", 2204)],
     pos=(560, 300)))
+# 完成门禁：completed==true 才继续查询；否则（处理中/缺 requestIds/轮询异常）跳过查询与存储，直接结束
+s12f.append(selector_node2(2211, "轮询完成判定",
+    [dep_node(2204, "轮询稽核完成", ["completed"])],
+    [(-1, [cond_item(cond_ref(2204, "completed", "轮询稽核完成"), 1, cond_str("true"))])],
+    pos=(430, 300)))
 s12f.append(code_node(2205, "查询稽核结果", CODE_AUDIT_QUERY,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
     [code_out("pass", 2205), code_out("error_list", 2205),
@@ -1606,6 +1611,12 @@ s12f.append(code_node(2207, "稽核结果结构化封包", CODE_PACK_RECORD,
      inp("md", "稽核明细清单 markdown（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
      inp("md_key", "md 落库字段名", content="audit_suggest")],
     [code_out("record_json", 2207)], pos=(900, 135)))
+# 通过门禁：pass==1 才写 spec（门禁：环节5 资费校准与审批四环节硬校验以 spec 为准）；
+# pass!=1（不通过/未完成）跳过存储，避免空壳 spec 蒙混放行下游。
+s12f.append(selector_node2(2212, "稽核通过判定",
+    [dep_node(2205, "查询稽核结果", ["pass"])],
+    [(-1, [cond_item(cond_ref(2205, "pass", "查询稽核结果"), 1, cond_str("1"))])],
+    pos=(720, 450)))
 s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核，最终态）；仅 pass==1 时写入（门禁：环节5 与审批四环节硬校验以 spec 为准）",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1616,6 +1627,30 @@ s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(1040, 135)))
 s12f.append(panel_code_node(2209, "构建页面地址面板", "03",
     panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+# 未完成/轮询异常分支结束（未写 spec）：展示 completed/fail_reason + 面板，引导续查
+s12f.append(end_node(2213, "结束(稽核处理中-未写spec)",
+    [inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
+     inp("fail_reason", "轮询异常/处理中说明（节点2204）", ref_block=nid(2204), ref_rel="fail_reason"),
+     inp("offer_id", "销售品ID（节点2203解析，供查看面板）", ref_block=nid(2203), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2209), ref_rel="panel")],
+    "【环节4/8·规格稽核】查询稽核结果：完成={completed}\n"
+    "{fail_reason}\n\n"
+    "稽核尚未完成，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n"
+    "【下一步】请稍后回复\"查询稽核结果\"续查；若持续无进展请联系人工核查稽核发起（环节4a）。\n\n"
+    "{panel}"))
+# 未通过分支结束（未写 spec）：展示 ❌ 明细 + 面板，引导整改后重新发起
+s12f.append(panel_code_node(2215, "构建页面地址面板(未通过)", "03",
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+s12f.append(end_node(2214, "结束(稽核未通过-未写spec)",
+    [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
+     inp("audit_suggest", "稽核明细清单（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
+     inp("offer_id", "销售品ID（节点2203解析，供查看面板）", ref_block=nid(2203), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2215), ref_rel="panel")],
+    "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}（未通过）\n\n"
+    "{audit_suggest}\n\n"
+    "稽核未通过，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n"
+    "【下一步】请按上述 ❌ 明细整改配置后，重新回复\"下一步\"发起稽核（环节4a）。\n\n"
+    "{panel}"))
 s12f.append(end_node(2210, "结束(稽核查询完成)",
     [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
      inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
@@ -1628,8 +1663,10 @@ s12f.append(end_node(2210, "结束(稽核查询完成)",
     "【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n"
     "{panel}"))
 files12f = workflow(
-    "产销品-规格稽核查询", "子工作流12（环节4b 稽核轮询，两阶段拆分后半；可重复触发）：自查 audit_pending 取 requestIds→CODE_POLL_AUDIT 短窗口轮询 B4 audit_sql_query(sqlId=20260626001，间隔5s/上限60次=5分钟)→完成后查 20260626002 取最终 error_list/audit_summary→七项固定检查项明细→结构化封包→pass==1 才 save(node_name=spec)。窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_12", s12f,
-    [edge(2201,2202), edge(2202,2203), edge(2203,2204), edge(2204,2205), edge(2205,2206),
+    "产销品-规格稽核查询", "子工作流12（环节4b 稽核轮询，两阶段拆分后半；可重复触发）：自查 audit_pending 取 requestIds→CODE_POLL_AUDIT 短窗口轮询 B4 audit_sql_query(sqlId=20260626001，间隔5s/上限60次=5分钟)→**【门禁A】completed==true 才继续**→查 20260626002 取最终 error_list/audit_summary→七项固定检查项明细→结构化封包→**【门禁B】pass==1 才 save(node_name=spec)**。completed!=true 或 pass!=1 均不写 spec（跳过存储直接结束），杜绝空壳 spec 蒙混下游；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_12", s12f,
+    [edge(2201,2202), edge(2202,2203), edge(2203,2204),
+     edge(2204,2211), edge(2211,2205,-1), edge(2211,2213,0),
+     edge(2205,2212), edge(2212,2206,-1), edge(2212,2214,0),
      edge(2206,2207), edge(2207,2208), edge(2208,2209), edge(2209,2210)])
 
 # ============================================================
@@ -2125,6 +2162,11 @@ s13f.append(code_node(2304, "轮询测试进度", CODE_POLL_PROGRESS,
     [inp("globalId", "测试流水号（节点2303解析）", ref_block=nid(2303), ref_rel="globalId")],
     [code_out("done", 2304), code_out("failed", 2304), code_out("failIndex", 2304), code_out("fail_reason", 2304)],
     pos=(560, 300)))
+# 完成门禁：done==true 才继续查询结果；否则（处理中/缺 globalId/轮询异常）跳过查询与存储，直接结束
+s13f.append(selector_node2(2321, "轮询完成判定",
+    [dep_node(2304, "轮询测试进度", ["done"])],
+    [(-1, [cond_item(cond_ref(2304, "done", "轮询测试进度"), 1, cond_str("true"))])],
+    pos=(430, 300)))
 # C4 查询测试结果（done=true 后取 testScenes/orderId/offerInstId/offerName）
 s13f.append(plugin_node(2305, "查询测试结果", "get_test_result",
     "接口C4 查询测试结果：done=true 后调用一次；出参 resultObject.testScenes（含测点明细 testCasePointResults）/orderId/offerInstId/offerName → 既有字段",
@@ -2203,9 +2245,15 @@ s13f.append(llm_node(2306, "测试报告生成(正式版9章节)",
      inp("e26", "被测一致性（节点2315）", ref_block=nid(2315), ref_rel="e26")],
     [out("test_report", "《销售品自动化测试报告》正式版 9 章节正文（含受理验证独立成节）")],
     pos=(1140, 300)))
+# 通过门禁：p0_pass==1（P0 用例全通过）才写 test（门禁：环节6 与审批四环节硬校验以 test 为准）；
+# 存在 P0 阻断（或测试未完成）跳过存储，避免空壳/未通过 test 蒙混放行上线审批。
+s13f.append(selector_node2(2322, "测试通过判定",
+    [dep_node(2315, "固定用例映射", ["p0_pass"])],
+    [(-1, [cond_item(cond_ref(2315, "p0_pass", "固定用例映射"), 1, cond_str("1"))])],
+    pos=(1140, 450)))
 # 存储 test 环节结果（node_name=test，衔接 wf_sub_06 四环节门禁；test_passed==通过 才写）
 s13f.append(plugin_node(2308, "测试结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅 test_passed==通过 时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅 test_passed==通过（p0_pass==1）时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("node_name", "环节名=test（自动测试）", content="test"),
@@ -2221,6 +2269,30 @@ s13f.append(code_node(2316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
 # xsbot-panel 独立代码节点
 s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
+# 未完成/轮询异常分支结束（未写 test）：展示 done/fail_reason + 面板，引导续查
+s13f.append(end_node(2323, "结束(测试处理中-未写test)",
+    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
+     inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
+     inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
+    "【环节6/8·自动测试】查询测试结果：完成={done}\n"
+    "{fail_reason}\n\n"
+    "测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
+    "【下一步】请稍后回复\"查询测试结果\"续查；若持续无进展请联系人工核查测试发起（环节6a）。\n\n"
+    "{panel}"))
+# 存在 P0 阻断分支结束（未写 test）：展示报告正文 + 面板，引导整改后重测
+s13f.append(end_node(2324, "结束(测试未通过-未写test)",
+    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
+     inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("test_report", "正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
+     inp("overall_conclusion", "整体上线结论", ref_block=nid(2315), ref_rel="overall_conclusion"),
+     inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
+    "【环节6/8·自动测试】查询测试结果：整体上线结论 {overall_conclusion}（存在 P0 阻断，未通过）\n\n"
+    "{test_report}\n\n"
+    "测试未通过，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
+    "【下一步】请按报告四/五章的 ❌ 阻断项整改配置后，重新回复\"下一步\"发起测试（环节6a）。\n\n"
+    "{panel}"))
 s13f.append(end_node(2310, "结束(测试查询完成)",
     [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
      inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
@@ -2237,11 +2309,12 @@ s13f.append(end_node(2310, "结束(测试查询完成)",
     "【下一步】可发送\"上线审批\"提交审批流（被测 offer_id={offerId}，测试流水号：{globalId}）"
     "（整体上线结论：{overall_conclusion}）。\n\n{panel}"))
 files13f = workflow(
-    "产销品-测试查询结果", "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→test_passed==通过 才 save(node_name=test)→下载报告(CODE_DOWNLOAD_TEST_REPORT)。窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_13", s13f,
-    [edge(2301,2302), edge(2302,2303), edge(2303,2304), edge(2304,2305),
+    "产销品-测试查询结果", "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→**【门禁A】done==true 才继续**→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→**【门禁B】p0_pass==1（P0 全通过）才 save(node_name=test)**→下载报告(CODE_DOWNLOAD_TEST_REPORT)。done!=true 或 p0_pass!=1 均不写 test（跳过存储直接结束）；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_13", s13f,
+    [edge(2301,2302), edge(2302,2303), edge(2303,2304),
+     edge(2304,2321), edge(2321,2305,-1), edge(2321,2323,0),
      edge(2305,2317), edge(2317,2318), edge(2318,2319), edge(2319,2320),
-     edge(2320,2315),
-     edge(2315,2306), edge(2306,2308), edge(2308,2316), edge(2316,2309), edge(2309,2310)])
+     edge(2320,2315), edge(2315,2322), edge(2322,2306,-1), edge(2322,2324,0),
+     edge(2306,2308), edge(2308,2316), edge(2316,2309), edge(2309,2310)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）

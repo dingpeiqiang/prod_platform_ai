@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-09-23T10:55:25",
+  "results": [
+    {
+      "seq": 2201,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002201",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 2 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 2202,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002202",
+      "title": "自查稽核发起临时态",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/result/query",
+      "elapsed_ms": 107,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "audit_pending",
+        "latest_only": "1"
+      },
+      "outputs": {
+        "list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "audit_pending",
+            "result_json": "{\"offer_id\": \"900693408\", \"launch_note\": \"稽核已发起\", \"raw\": \"稽核已发起\"}",
+            "status": "pending",
+            "create_time": "2026-09-23 10:53:06",
+            "update_time": "2026-09-23 10:53:06"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2203,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002203",
+      "title": "提取 requestIds",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 1,
+      "inputs": {
+        "query_list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "audit_pending",
+            "result_json": "{\"offer_id\": \"900693408\", \"launch_note\": \"稽核已发起\", \"raw\": \"稽核已发起\"}",
+            "status": "pending",
+            "create_time": "2026-09-23 10:53:06",
+            "update_time": "2026-09-23 10:53:06"
+          }
+        ]
+      },
+      "outputs": {
+        "record_json": "{\"offer_id\": \"900693408\", \"launch_note\": \"稽核已发起\", \"raw\": \"稽核已发起\"}",
+        "offer_id": "900693408",
+        "requestIds": ""
+      }
+    },
+    {
+      "seq": 2204,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002204",
+      "title": "轮询稽核完成",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "requestIds": ""
+      },
+      "outputs": {
+        "completed": "false",
+        "fail_reason": "缺少 requestIds，请先发起稽核（环节4a）"
+      }
+    },
+    {
+      "seq": 2205,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002205",
+      "title": "查询稽核结果",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 59,
+      "inputs": {
+        "requestIds": ""
+      },
+      "outputs": {
+        "pass": "",
+        "error_list": "",
+        "audit_summary": "",
+        "resultCode": "REAL_CALL_FAILED"
+      }
+    },
+    {
+      "seq": 2206,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002206",
+      "title": "整改建议生成",
+      "type": 1,
+      "status": "ok",
+      "note": "live:qwen3-30b-a3b",
+      "elapsed_ms": 583,
+      "inputs": {
+        "error_list": "",
+        "audit_summary": "",
+        "offer_id": "900693408",
+        "pass": ""
+      },
+      "outputs": {
+        "audit_suggest": "全部销售品稽核通过（）"
+      }
+    },
+    {
+      "seq": 2207,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002207",
+      "title": "稽核结果结构化封包",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "pass": "",
+        "error_list": "",
+        "audit_summary": "",
+        "md": "全部销售品稽核通过（）",
+        "md_key": "audit_suggest"
+      },
+      "outputs": {
+        "record_json": "{\"audit_suggest\": \"全部销售品稽核通过（）\", \"raw\": \"全部销售品稽核通过（）\"}"
+      }
+    },
+    {
+      "seq": 2208,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002208",
+      "title": "稽核结果存储",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/result/save",
+      "elapsed_ms": 82,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "spec",
+        "result_json": "{\"audit_suggest\": \"全部销售品稽核通过（）\", \"raw\": \"全部销售品稽核通过（）\"}",
+        "status": "ok"
+      },
+      "outputs": {
+        "record_id": "REC20260923000192"
+      }
+    },
+    {
+      "seq": 2209,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002209",
+      "title": "构建页面地址面板",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105235660",
+        "offer_id": "900693408"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=03&view=stage\",\"title\":\"规格稽核\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 2210,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000002210",
+      "title": "结束(稽核查询完成)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "pass": "",
+        "completed": "false",
+        "fail_reason": "缺少 requestIds，请先发起稽核（环节4a）",
+        "audit_suggest": "全部销售品稽核通过（）",
+        "offer_id": "900693408",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=03&view=stage\",\"title\":\"规格稽核\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "【环节4/8·规格稽核】查询稽核结果：完成=false，稽核结论 pass=\n缺少 requestIds，请先发起稽核（环节4a）\n\n全部销售品稽核通过（）\n\n【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=03&view=stage\",\"title\":\"规格稽核\"}]}\n```\n"
+      }
+    }
+  ]
+}

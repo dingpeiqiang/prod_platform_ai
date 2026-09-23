@@ -54,6 +54,12 @@ springdoc:
   show-actuator: false
 
 prodai:
+  # 产销品场景接口适配层（统一方案 §4.5.4）：mock=内置确定性模拟报文（演示/联调）；
+  # real=直连 EOP 业务地址。此处显式钉 mock 作为部署基线（jar 内配置亦已固定 mock，仅部署层再钉一道）。
+  appstore:
+    interface:
+      mode: mock
+      real-list: []
   ontology:
     demo-enabled: false
     data-source: classpath

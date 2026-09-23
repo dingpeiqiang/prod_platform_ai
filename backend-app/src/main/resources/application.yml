@@ -123,7 +123,9 @@ prodai:
   # 命中走 real、其余 mock。
   appstore:
     interface:
-      mode: ${APPSTORE_INTERFACE_MODE:mock}
+      # 固定 mock，不读环境变量（避免宿主机 APPSTORE_INTERFACE_MODE 覆盖导致误走 real）；
+      # 接 EOP 时直接改此值或由 deploy 外部 config/application.yml 覆盖。
+      mode: mock
       eop:
         base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
         # HTTP 请求头鉴权：X-APP-ID / X-APP-KEY / Staff-Code（默认示例值，现场可经环境变量覆盖）

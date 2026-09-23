@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-09-23T10:56:41",
+  "results": [
+    {
+      "seq": 801,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000801",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 2 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105639816",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105639816",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 802,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000802",
+      "title": "审批工单查询",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/approval/status",
+      "elapsed_ms": 215,
+      "inputs": {
+        "req_id": "PLAN20260923105639816",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "approval_id": "",
+        "req_id": "",
+        "offer_id": "",
+        "status": "",
+        "approval_type": "",
+        "current_node": "",
+        "approver": "",
+        "opinion": "",
+        "update_time": "",
+        "approval_matrix": ""
+      }
+    },
+    {
+      "seq": 803,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000803",
+      "title": "状态摘要归纳",
+      "type": 1,
+      "status": "ok",
+      "note": "live:qwen3-30b-a3b",
+      "elapsed_ms": 1028,
+      "inputs": {
+        "approval_id": "",
+        "req_id": "",
+        "offer_id": "",
+        "status": "",
+        "approval_type": "",
+        "current_node": "",
+        "approver": "",
+        "opinion": "",
+        "update_time": "",
+        "approval_matrix": ""
+      },
+      "outputs": {
+        "approval_summary": "审批单号 ｜需求单号 ｜状态：｜当前环节：（审批人 ）｜最近意见：｜更新时间：\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n\n> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）"
+      }
+    },
+    {
+      "seq": 805,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000805",
+      "title": "构建页面地址面板",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "",
+        "offer_id": "",
+        "offer_name": ""
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=&stage=08&view=stage\",\"title\":\"上线审批看板\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 804,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000804",
+      "title": "结束(查询完成)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "approval_summary": "审批单号 ｜需求单号 ｜状态：｜当前环节：（审批人 ）｜最近意见：｜更新时间：\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n\n> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=&stage=08&view=stage\",\"title\":\"上线审批看板\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "审批单号 ｜需求单号 ｜状态：｜当前环节：（审批人 ）｜最近意见：｜更新时间：\n\n**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n\n> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=&name=&chatId=CHAT-MOCK-0001&req_id=&stage=08&view=stage\",\"title\":\"上线审批看板\"}]}\n```\n"
+      }
+    }
+  ]
+}

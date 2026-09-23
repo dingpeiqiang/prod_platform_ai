@@ -1,0 +1,245 @@
+{
+  "generated_at": "2026-09-23T10:52:53",
+  "results": [
+    {
+      "seq": 101,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000101",
+      "title": "开始节点",
+      "type": 0,
+      "status": "ok",
+      "note": "入参 2 项",
+      "elapsed_ms": 0,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      },
+      "outputs": {
+        "req_id": "PLAN20260923105235660",
+        "chat_id": "CHAT-MOCK-0001"
+      }
+    },
+    {
+      "seq": 102,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000102",
+      "title": "读取执行方案",
+      "type": 3,
+      "status": "ok",
+      "note": "live:get http://10.86.13.201:31281/api/v1/appstore/result/query",
+      "elapsed_ms": 103,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "requirement",
+        "latest_only": "1"
+      },
+      "outputs": {
+        "list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "requirement",
+            "result_json": "{\"baseInfo\": {\"prodPrcName\": \"5G-A 套餐\", \"effRuleId\": \"X月X日生效\", \"cancelRuleId\": \"预约生效\", \"effDate\": \"system_date\", \"expDate\": \"2099-12-31\", \"prodId\": \"\", \"pricingId\": \"\", \"prodPrcId\": \"\", \"orderNo\": \"\"}, \"releaseInfo\": {\"chnClassLimit\": \"营业前台\", \"groupId\": \"全省\", \"groupIdMessage\": \"22个地市\"}, \"optionalInfo\": {\"printContent\": {\"prcMonthFee\": \"199\", \"containResource\": \"120GB 国内流量、1000 分钟国内通话\", \"chargeStandard\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"limitCondition\": \"\", \"otherEquity\": \"\"}, \"prcSmsCfg\": {\"opType\": \"\", \"sysNoteNow\": \"\", \"sysNoteNext\": \"\", \"sysNoteCancle\": \"\", \"sysNoteErke\": \"\"}, \"acctMonth\": {\"calcMode\": \"首月按天折算，一次性收取，次月按月收取\", \"fixFee\": \"199\", \"acctItem\": \"\", \"isSplitRate\": \"使用默认税率\", \"splitRate9\": \"\", \"splitRate6\": \"\", \"fixValidity\": \"长期有效\", \"fixValidityVAlue\": \"\"}, \"acctFav\": {\"favCondition\": \"\", \"favItemType\": \"\", \"favGroup\": \"\", \"favType\": \"\", \"favDiscount\": \"\", \"favFee\": \"\", \"favValidity\": \"\", \"favValidityVAlue\": \"\", \"favDesc\": \"\"}, \"dlowFavFee\": {\"fav1Method\": \"实时报保底\", \"fav1Fee\": \"\", \"fav1ItemType\": \"全科目(不包含特殊科目）\", \"fav1Group\": \"\", \"fav1Validity\": \"长期有效\", \"fav1ValidityVAlue\": \"\"}, \"billGprsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内-通用-单月\", \"theshold\": \"120\", \"unit\": \"GB\", \"sid\": \"\", \"adjust\": \"全额赠送流量\", \"carryFlag\": \"是\", \"outChargeMode\": \"3元/GB\", \"remindFlag\": \"提醒\"}, \"billVoiceCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内主叫\", \"theshold\": \"1000\", \"adjust\": \"全额赠送流量\", \"outCharge\": \"0.15\", \"remindFlag\": \"否\"}, \"billSmsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"短信\", \"theshold\": \"\", \"adjust\": \"账务固费首月收费方式连带\", \"outCharge\": \"0.1\", \"remindFlag\": \"否\"}, \"SmsInstCfg\": {\"SvcName\": \"\", \"SmsInst\": \"\", \"SmsContent\": \"\", \"SmsCity\": \"\", \"AccessNO\": \"10086\", \"ProdPrcType\": \"\", \"ProdPrcid\": \"\"}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:47",
+            "update_time": "2026-09-23 10:52:47"
+          }
+        ]
+      }
+    },
+    {
+      "seq": 106,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000106",
+      "title": "提取执行方案原文",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "query_list": [
+          {
+            "req_id": "PLAN20260923105235660",
+            "node_name": "requirement",
+            "result_json": "{\"baseInfo\": {\"prodPrcName\": \"5G-A 套餐\", \"effRuleId\": \"X月X日生效\", \"cancelRuleId\": \"预约生效\", \"effDate\": \"system_date\", \"expDate\": \"2099-12-31\", \"prodId\": \"\", \"pricingId\": \"\", \"prodPrcId\": \"\", \"orderNo\": \"\"}, \"releaseInfo\": {\"chnClassLimit\": \"营业前台\", \"groupId\": \"全省\", \"groupIdMessage\": \"22个地市\"}, \"optionalInfo\": {\"printContent\": {\"prcMonthFee\": \"199\", \"containResource\": \"120GB 国内流量、1000 分钟国内通话\", \"chargeStandard\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"limitCondition\": \"\", \"otherEquity\": \"\"}, \"prcSmsCfg\": {\"opType\": \"\", \"sysNoteNow\": \"\", \"sysNoteNext\": \"\", \"sysNoteCancle\": \"\", \"sysNoteErke\": \"\"}, \"acctMonth\": {\"calcMode\": \"首月按天折算，一次性收取，次月按月收取\", \"fixFee\": \"199\", \"acctItem\": \"\", \"isSplitRate\": \"使用默认税率\", \"splitRate9\": \"\", \"splitRate6\": \"\", \"fixValidity\": \"长期有效\", \"fixValidityVAlue\": \"\"}, \"acctFav\": {\"favCondition\": \"\", \"favItemType\": \"\", \"favGroup\": \"\", \"favType\": \"\", \"favDiscount\": \"\", \"favFee\": \"\", \"favValidity\": \"\", \"favValidityVAlue\": \"\", \"favDesc\": \"\"}, \"dlowFavFee\": {\"fav1Method\": \"实时报保底\", \"fav1Fee\": \"\", \"fav1ItemType\": \"全科目(不包含特殊科目）\", \"fav1Group\": \"\", \"fav1Validity\": \"长期有效\", \"fav1ValidityVAlue\": \"\"}, \"billGprsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内-通用-单月\", \"theshold\": \"120\", \"unit\": \"GB\", \"sid\": \"\", \"adjust\": \"全额赠送流量\", \"carryFlag\": \"是\", \"outChargeMode\": \"3元/GB\", \"remindFlag\": \"提醒\"}, \"billVoiceCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内主叫\", \"theshold\": \"1000\", \"adjust\": \"全额赠送流量\", \"outCharge\": \"0.15\", \"remindFlag\": \"否\"}, \"billSmsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"短信\", \"theshold\": \"\", \"adjust\": \"账务固费首月收费方式连带\", \"outCharge\": \"0.1\", \"remindFlag\": \"否\"}, \"SmsInstCfg\": {\"SvcName\": \"\", \"SmsInst\": \"\", \"SmsContent\": \"\", \"SmsCity\": \"\", \"AccessNO\": \"10086\", \"ProdPrcType\": \"\", \"ProdPrcid\": \"\"}}}",
+            "status": "ok",
+            "create_time": "2026-09-23 10:52:47",
+            "update_time": "2026-09-23 10:52:47"
+          }
+        ]
+      },
+      "outputs": {
+        "record_json": "{\"baseInfo\": {\"prodPrcName\": \"5G-A 套餐\", \"effRuleId\": \"X月X日生效\", \"cancelRuleId\": \"预约生效\", \"effDate\": \"system_date\", \"expDate\": \"2099-12-31\", \"prodId\": \"\", \"pricingId\": \"\", \"prodPrcId\": \"\", \"orderNo\": \"\"}, \"releaseInfo\": {\"chnClassLimit\": \"营业前台\", \"groupId\": \"全省\", \"groupIdMessage\": \"22个地市\"}, \"optionalInfo\": {\"printContent\": {\"prcMonthFee\": \"199\", \"containResource\": \"120GB 国内流量、1000 分钟国内通话\", \"chargeStandard\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"limitCondition\": \"\", \"otherEquity\": \"\"}, \"prcSmsCfg\": {\"opType\": \"\", \"sysNoteNow\": \"\", \"sysNoteNext\": \"\", \"sysNoteCancle\": \"\", \"sysNoteErke\": \"\"}, \"acctMonth\": {\"calcMode\": \"首月按天折算，一次性收取，次月按月收取\", \"fixFee\": \"199\", \"acctItem\": \"\", \"isSplitRate\": \"使用默认税率\", \"splitRate9\": \"\", \"splitRate6\": \"\", \"fixValidity\": \"长期有效\", \"fixValidityVAlue\": \"\"}, \"acctFav\": {\"favCondition\": \"\", \"favItemType\": \"\", \"favGroup\": \"\", \"favType\": \"\", \"favDiscount\": \"\", \"favFee\": \"\", \"favValidity\": \"\", \"favValidityVAlue\": \"\", \"favDesc\": \"\"}, \"dlowFavFee\": {\"fav1Method\": \"实时报保底\", \"fav1Fee\": \"\", \"fav1ItemType\": \"全科目(不包含特殊科目）\", \"fav1Group\": \"\", \"fav1Validity\": \"长期有效\", \"fav1ValidityVAlue\": \"\"}, \"billGprsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内-通用-单月\", \"theshold\": \"120\", \"unit\": \"GB\", \"sid\": \"\", \"adjust\": \"全额赠送流量\", \"carryFlag\": \"是\", \"outChargeMode\": \"3元/GB\", \"remindFlag\": \"提醒\"}, \"billVoiceCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内主叫\", \"theshold\": \"1000\", \"adjust\": \"全额赠送流量\", \"outCharge\": \"0.15\", \"remindFlag\": \"否\"}, \"billSmsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"短信\", \"theshold\": \"\", \"adjust\": \"账务固费首月收费方式连带\", \"outCharge\": \"0.1\", \"remindFlag\": \"否\"}, \"SmsInstCfg\": {\"SvcName\": \"\", \"SmsInst\": \"\", \"SmsContent\": \"\", \"SmsCity\": \"\", \"AccessNO\": \"10086\", \"ProdPrcType\": \"\", \"ProdPrcid\": \"\"}}}",
+        "offer_id": "",
+        "requestIds": ""
+      }
+    },
+    {
+      "seq": 111,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000111",
+      "title": "生成商品编码",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "existing_offer_id": "",
+        "plan_json": "{\"baseInfo\": {\"prodPrcName\": \"5G-A 套餐\", \"effRuleId\": \"X月X日生效\", \"cancelRuleId\": \"预约生效\", \"effDate\": \"system_date\", \"expDate\": \"2099-12-31\", \"prodId\": \"\", \"pricingId\": \"\", \"prodPrcId\": \"\", \"orderNo\": \"\"}, \"releaseInfo\": {\"chnClassLimit\": \"营业前台\", \"groupId\": \"全省\", \"groupIdMessage\": \"22个地市\"}, \"optionalInfo\": {\"printContent\": {\"prcMonthFee\": \"199\", \"containResource\": \"120GB 国内流量、1000 分钟国内通话\", \"chargeStandard\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"limitCondition\": \"\", \"otherEquity\": \"\"}, \"prcSmsCfg\": {\"opType\": \"\", \"sysNoteNow\": \"\", \"sysNoteNext\": \"\", \"sysNoteCancle\": \"\", \"sysNoteErke\": \"\"}, \"acctMonth\": {\"calcMode\": \"首月按天折算，一次性收取，次月按月收取\", \"fixFee\": \"199\", \"acctItem\": \"\", \"isSplitRate\": \"使用默认税率\", \"splitRate9\": \"\", \"splitRate6\": \"\", \"fixValidity\": \"长期有效\", \"fixValidityVAlue\": \"\"}, \"acctFav\": {\"favCondition\": \"\", \"favItemType\": \"\", \"favGroup\": \"\", \"favType\": \"\", \"favDiscount\": \"\", \"favFee\": \"\", \"favValidity\": \"\", \"favValidityVAlue\": \"\", \"favDesc\": \"\"}, \"dlowFavFee\": {\"fav1Method\": \"实时报保底\", \"fav1Fee\": \"\", \"fav1ItemType\": \"全科目(不包含特殊科目）\", \"fav1Group\": \"\", \"fav1Validity\": \"长期有效\", \"fav1ValidityVAlue\": \"\"}, \"billGprsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内-通用-单月\", \"theshold\": \"120\", \"unit\": \"GB\", \"sid\": \"\", \"adjust\": \"全额赠送流量\", \"carryFlag\": \"是\", \"outChargeMode\": \"3元/GB\", \"remindFlag\": \"提醒\"}, \"billVoiceCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内主叫\", \"theshold\": \"1000\", \"adjust\": \"全额赠送流量\", \"outCharge\": \"0.15\", \"remindFlag\": \"否\"}, \"billSmsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"短信\", \"theshold\": \"\", \"adjust\": \"账务固费首月收费方式连带\", \"outCharge\": \"0.1\", \"remindFlag\": \"否\"}, \"SmsInstCfg\": {\"SvcName\": \"\", \"SmsInst\": \"\", \"SmsContent\": \"\", \"SmsCity\": \"\", \"AccessNO\": \"10086\", \"ProdPrcType\": \"\", \"ProdPrcid\": \"\"}}}"
+      },
+      "outputs": {
+        "offer_id": "900693408"
+      }
+    },
+    {
+      "seq": 103,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000103",
+      "title": "配置落地",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/product/config/save",
+      "elapsed_ms": 65,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "plan_json": "{\"baseInfo\": {\"prodPrcName\": \"5G-A 套餐\", \"effRuleId\": \"X月X日生效\", \"cancelRuleId\": \"预约生效\", \"effDate\": \"system_date\", \"expDate\": \"2099-12-31\", \"prodId\": \"\", \"pricingId\": \"\", \"prodPrcId\": \"\", \"orderNo\": \"\"}, \"releaseInfo\": {\"chnClassLimit\": \"营业前台\", \"groupId\": \"全省\", \"groupIdMessage\": \"22个地市\"}, \"optionalInfo\": {\"printContent\": {\"prcMonthFee\": \"199\", \"containResource\": \"120GB 国内流量、1000 分钟国内通话\", \"chargeStandard\": \"套外流量 3 元/GB、套外语音 0.15 元/分钟\", \"limitCondition\": \"\", \"otherEquity\": \"\"}, \"prcSmsCfg\": {\"opType\": \"\", \"sysNoteNow\": \"\", \"sysNoteNext\": \"\", \"sysNoteCancle\": \"\", \"sysNoteErke\": \"\"}, \"acctMonth\": {\"calcMode\": \"首月按天折算，一次性收取，次月按月收取\", \"fixFee\": \"199\", \"acctItem\": \"\", \"isSplitRate\": \"使用默认税率\", \"splitRate9\": \"\", \"splitRate6\": \"\", \"fixValidity\": \"长期有效\", \"fixValidityVAlue\": \"\"}, \"acctFav\": {\"favCondition\": \"\", \"favItemType\": \"\", \"favGroup\": \"\", \"favType\": \"\", \"favDiscount\": \"\", \"favFee\": \"\", \"favValidity\": \"\", \"favValidityVAlue\": \"\", \"favDesc\": \"\"}, \"dlowFavFee\": {\"fav1Method\": \"实时报保底\", \"fav1Fee\": \"\", \"fav1ItemType\": \"全科目(不包含特殊科目）\", \"fav1Group\": \"\", \"fav1Validity\": \"长期有效\", \"fav1ValidityVAlue\": \"\"}, \"billGprsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内-通用-单月\", \"theshold\": \"120\", \"unit\": \"GB\", \"sid\": \"\", \"adjust\": \"全额赠送流量\", \"carryFlag\": \"是\", \"outChargeMode\": \"3元/GB\", \"remindFlag\": \"提醒\"}, \"billVoiceCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"国内主叫\", \"theshold\": \"1000\", \"adjust\": \"全额赠送流量\", \"outCharge\": \"0.15\", \"remindFlag\": \"否\"}, \"billSmsCfg\": {\"prodPrc\": \"\", \"billPrcId\": \"\", \"subBillPrcIds\": \"\", \"conditionCode\": \"\", \"subConditionCodes\": \"\", \"resourceType\": \"短信\", \"theshold\": \"\", \"adjust\": \"账务固费首月收费方式连带\", \"outCharge\": \"0.1\", \"remindFlag\": \"否\"}, \"SmsInstCfg\": {\"SvcName\": \"\", \"SmsInst\": \"\", \"SmsContent\": \"\", \"SmsCity\": \"\", \"AccessNO\": \"10086\", \"ProdPrcType\": \"\", \"ProdPrcid\": \"\"}}}",
+        "confirmed": "true",
+        "operator": "system",
+        "offer_id": "900693408"
+      },
+      "outputs": {
+        "offer_id": "900693408",
+        "save_result": [
+          {
+            "category": "基础信息",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "资源配置",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "营销资源",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "销售规则",
+            "result": "success",
+            "reason": ""
+          }
+        ],
+        "status": "SUCCESS",
+        "product_config": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "script_url": "http://10.86.13.201:31281/api/v1/appstore/product/config/script?offer_id=900693408"
+      }
+    },
+    {
+      "seq": 107,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000107",
+      "title": "融合成员回显",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "group_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "status": "SUCCESS"
+      },
+      "outputs": {
+        "fusion_echo": "",
+        "fusion_status": "SUCCESS",
+        "fusion_note": ""
+      }
+    },
+    {
+      "seq": 108,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000108",
+      "title": "配置要点简介",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "product_config": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}"
+      },
+      "outputs": {
+        "config_summary": "【配置销售品要点简介】\n- 销售品名称：5G-A 套餐\n- 套餐档位（月费）：199 元/月\n- 套内资源：120GB 国内流量、1000 分钟国内通话\n- 套外资费：套外流量 3 元/GB、套外语音 0.15 元/分钟\n- 计费周期：自然月\n- 流量结转：可结转至次月\n- 订购规则：新老用户均可订购；新用户立即生效\n- 退订规则：允许退订，次月生效"
+      }
+    },
+    {
+      "seq": 105,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000105",
+      "title": "环节结果存储",
+      "type": 3,
+      "status": "ok",
+      "note": "live:post http://10.86.13.201:31281/api/v1/appstore/result/save",
+      "elapsed_ms": 136,
+      "inputs": {
+        "req_id": "PLAN20260923105235660",
+        "node_name": "config",
+        "result_json": "{\"offer_id\":\"900693408\",\"offer_name\":\"新增销售品900693408\",\"in_fee\":{\"档位\":\"\",\"计费周期\":\"自然月\",\"国内通用流量\":\"无\",\"国内语音拨打\":\"无\",\"短信\":\"无\"},\"out_fee\":{\"套外流量\":\"无\",\"套外语音\":\"无\",\"套外短彩信\":\"无\"},\"order_rule\":\"新老用户均可订购；新用户立即生效\",\"cancel_rule\":\"允许退订，次月生效\",\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G-A 套餐\",\"effRuleId\":\"X月X日生效\",\"cancelRuleId\":\"预约生效\",\"effDate\":\"system_date\",\"expDate\":\"2099-12-31\",\"prodId\":\"\",\"pricingId\":\"\",\"prodPrcId\":\"\",\"orderNo\":\"\"},\"releaseInfo\":{\"chnClassLimit\":\"营业前台\",\"groupId\":\"全省\",\"groupIdMessage\":\"22个地市\"},\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199\",\"containResource\":\"120GB 国内流量、1000 分钟国内通话\",\"chargeStandard\":\"套外流量 3 元/GB、套外语音 0.15 元/分钟\",\"limitCondition\":\"\",\"otherEquity\":\"\"},\"prcSmsCfg\":{\"opType\":\"\",\"sysNoteNow\":\"\",\"sysNoteNext\":\"\",\"sysNoteCancle\":\"\",\"sysNoteErke\":\"\"},\"acctMonth\":{\"calcMode\":\"首月按天折算，一次性收取，次月按月收取\",\"fixFee\":\"199\",\"acctItem\":\"\",\"isSplitRate\":\"使用默认税率\",\"splitRate9\":\"\",\"splitRate6\":\"\",\"fixValidity\":\"长期有效\",\"fixValidityVAlue\":\"\"},\"acctFav\":{\"favCondition\":\"\",\"favItemType\":\"\",\"favGroup\":\"\",\"favType\":\"\",\"favDiscount\":\"\",\"favFee\":\"\",\"favValidity\":\"\",\"favValidityVAlue\":\"\",\"favDesc\":\"\"},\"dlowFavFee\":{\"fav1Method\":\"实时报保底\",\"fav1Fee\":\"\",\"fav1ItemType\":\"全科目(不包含特殊科目）\",\"fav1Group\":\"\",\"fav1Validity\":\"长期有效\",\"fav1ValidityVAlue\":\"\"},\"billGprsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内-通用-单月\",\"theshold\":\"120\",\"unit\":\"GB\",\"sid\":\"\",\"adjust\":\"全额赠送流量\",\"carryFlag\":\"是\",\"outChargeMode\":\"3元/GB\",\"remindFlag\":\"提醒\"},\"billVoiceCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"国内主叫\",\"theshold\":\"1000\",\"adjust\":\"全额赠送流量\",\"outCharge\":\"0.15\",\"remindFlag\":\"否\"},\"billSmsCfg\":{\"prodPrc\":\"\",\"billPrcId\":\"\",\"subBillPrcIds\":\"\",\"conditionCode\":\"\",\"subConditionCodes\":\"\",\"resourceType\":\"短信\",\"theshold\":\"\",\"adjust\":\"账务固费首月收费方式连带\",\"outCharge\":\"0.1\",\"remindFlag\":\"否\"},\"SmsInstCfg\":{\"SvcName\":\"\",\"SmsInst\":\"\",\"SmsContent\":\"\",\"SmsCity\":\"\",\"AccessNO\":\"10086\",\"ProdPrcType\":\"\",\"ProdPrcid\":\"\"}}}}",
+        "status": "ok"
+      },
+      "outputs": {
+        "record_id": "REC20260923000190"
+      }
+    },
+    {
+      "seq": 109,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000109",
+      "title": "构建页面地址面板",
+      "type": 6,
+      "status": "ok",
+      "note": "内联 Python 执行",
+      "elapsed_ms": 0,
+      "inputs": {
+        "chat_id": "CHAT-MOCK-0001",
+        "req_id": "PLAN20260923105235660",
+        "offer_id": "900693408"
+      },
+      "outputs": {
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=02&view=stage\",\"title\":\"落地配置看板\"}]}\n```\n"
+      }
+    },
+    {
+      "seq": 104,
+      "node_id": "a1b2c3d4-0000-4000-8000-000000000104",
+      "title": "结束(配置落地完成)",
+      "type": 9,
+      "status": "ok",
+      "note": "结束渲染",
+      "elapsed_ms": 0,
+      "inputs": {
+        "offer_id": "900693408",
+        "save_result": [
+          {
+            "category": "基础信息",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "资源配置",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "营销资源",
+            "result": "success",
+            "reason": ""
+          },
+          {
+            "category": "销售规则",
+            "result": "success",
+            "reason": ""
+          }
+        ],
+        "status": "SUCCESS",
+        "fusion_echo": "",
+        "fusion_note": "",
+        "config_summary": "【配置销售品要点简介】\n- 销售品名称：5G-A 套餐\n- 套餐档位（月费）：199 元/月\n- 套内资源：120GB 国内流量、1000 分钟国内通话\n- 套外资费：套外流量 3 元/GB、套外语音 0.15 元/分钟\n- 计费周期：自然月\n- 流量结转：可结转至次月\n- 订购规则：新老用户均可订购；新用户立即生效\n- 退订规则：允许退订，次月生效",
+        "script_url": "http://10.86.13.201:31281/api/v1/appstore/product/config/script?offer_id=900693408",
+        "panel": "\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=02&view=stage\",\"title\":\"落地配置看板\"}]}\n```\n"
+      },
+      "outputs": {
+        "content": "智能配置完成：offer_id=900693408\n\n四类字段写入结果：[{\"category\": \"基础信息\", \"result\": \"success\", \"reason\": \"\"}, {\"category\": \"资源配置\", \"result\": \"success\", \"reason\": \"\"}, {\"category\": \"营销资源\", \"result\": \"success\", \"reason\": \"\"}, {\"category\": \"销售规则\", \"result\": \"success\", \"reason\": \"\"}]\n状态：SUCCESS\n\n【配置销售品要点简介】\n- 销售品名称：5G-A 套餐\n- 套餐档位（月费）：199 元/月\n- 套内资源：120GB 国内流量、1000 分钟国内通话\n- 套外资费：套外流量 3 元/GB、套外语音 0.15 元/分钟\n- 计费周期：自然月\n- 流量结转：可结转至次月\n- 订购规则：新老用户均可订购；新用户立即生效\n- 退订规则：允许退订，次月生效\n\n【配置脚本下载】下载地址：http://10.86.13.201:31281/api/v1/appstore/product/config/script?offer_id=900693408（为空填写\"暂不可用，见智能配置结果\"）\n\n\n\n```xsbot-panel\n{\"version\":\"1.0\",\"message_id\":\"CHAT-MOCK-0001\",\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=900693408&name=&chatId=CHAT-MOCK-0001&req_id=PLAN20260923105235660&stage=02&view=stage\",\"title\":\"落地配置看板\"}]}\n```\n"
+      }
+    }
+  ]
+}
