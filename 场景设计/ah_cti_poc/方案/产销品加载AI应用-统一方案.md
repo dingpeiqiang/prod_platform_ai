@@ -263,7 +263,7 @@
 | --- | --- | --- | --- | --- |
 | 1 query_similar_offer | POST /api/v1/appstore/similar/offer/query | businessDesc(≤5000) | similarOffer(similarOfferId/Name/Score/Desc/offerInfo.fields 24 字段；**real A1 无 offerInfo，按 ID 补 K4/K5**) | 未命中走"无相似产品"分支不中断（E1）；现场映射 A1（4.5.2/4.5.5） |
 | 2 realtime_spec_audit | POST /api/v1/appstore/audit/realtime | offer_id, config_json, audit_scene(spec/fee/all) | pass / error_list[] / audit_summary / resultCode | 同步返回；pass=0 中断引导（E8）；**V3.9 起退出环节4主链路，保留单测/兜底** |
-| 2a audit_file_upload | POST /api/v1/appstore/audit/file/upload | file(Excel), file_field | file_id / sales_id{名称:{offerId,location,sheet_name}} | **新增**；现场映射 B1；解析销售品清单（E35） |
+| 2a audit_file_upload | POST /api/v1/appstore/audit/file/upload | req_id, chat_id | file_id / sales_id{名称:{offerId,location,sheet_name}} | **新增**；现场映射 B1；后端按 req_id 查需求与配置信息**自行生成稽核 Excel** 后上传（无前端文件）；解析销售品清单（E35） |
 | 2b audit_async_notify | POST /api/v1/appstore/audit/async/notify | sales_id, location, sheet_name, file_id | success / request_id | **新增**；现场映射 B2；逐品调用（E36） |
 | 2c audit_insert_result | POST /api/v1/appstore/audit/result/insert | records[{batchId,reqOrderId,offerId,offerName,requestId,staffId}] | resultCode / resultMsg | **新增**；现场映射 B3；**紧跟 2b 调用**（回调前置落库，E37） |
 | 2d audit_sql_query | POST /api/v1/appstore/audit/sql/query | sqlId(20260626001/20260626002), params(requestIds:id1,id2) | executeSqlResp[](isAllFinished/finishedCount/totalCount) | **新增**；现场映射 B4；轮询完成态+取结果（E38/E39） |
@@ -307,7 +307,7 @@ globalId 格式（50+19 位）；实时稽核 60s 内同步返回；工具6 orde
 | # | 现场接口 (ApiId 尾号) | 路径 | 内部映射 | 承载 | 适配动作 |
 | --- | --- | --- | --- | --- | --- |
 | A1 | 相似度分析 `...328` | `/api/ah/cpcp/similar` | 工具1 `query_similar_offer` | 环节2 wf_sub_01 | real：`{businessDesc}`→`contractRoot.tcpCont+svcCont.requestObject` 信封；出参 `contractRoot.svcCont.resultObject.similarOfferList[]`（**仅 4 字段**：similarOfferId/Name/Score/Desc）→ 取 Top1 归一为 `similarOffer`；**22 字段 offerInfo 不由 A1 提供**，见 4.5.5 第 6 点 |
-| B1 | 智能稽核文件上传 `...064` | `/api/ah/cpcp/upload` | **新增** `audit_file_upload` | 环节4a wf_sub_03 | multipart 上传 Excel→`file_id`/`sales_id{}`；mock 返回预置清单 |
+| B1 | 智能稽核文件上传 `...064` | `/api/ah/cpcp/upload` | **新增** `audit_file_upload` | 环节4a wf_sub_03 | 入参 `req_id/chat_id`，后端按 req_id 查需求与配置信息**生成稽核 Excel** 后上传→`file_id`/`sales_id{}`；mock 返回预置清单 |
 | B2 | 异步报告生成并通知 `...912` | `/api/ah/cpcp/async_report_notify_direct` | **新增** `audit_async_notify` | 环节4a wf_sub_03 | GET 传 `sales_id/location/sheet_name/file_id`→`request_id` |
 | B3 | 插入 AI 稽核结果 `...840` | `/api/ahhui/cpcp/insertAiAuditResult` | **新增** `audit_insert_result` | 环节4a wf_sub_03 | `records[]`→`resultCode`；**紧跟 B2 调用**（AI 回调前置落库） |
 | B4 | 通用 SQL 查询 `...032` | `/api/ah/slzx/invokeInfo/executeSqlService` | **新增** `audit_sql_query` | 环节4b wf_sub_12 | `sqlId=20260626001`（轮询完成 N/Y）/`20260626002`（取结果）；`params=requestIds:i1,i2,...`；由 CODE_POLL_AUDIT 短窗口轮询 |
@@ -335,9 +335,9 @@ wf_sub_01 节点105 → A1 相似度分析（信封：{businessDesc}）
 
 ```
 【阶段4a · 稽核发起 wf_sub_03】（秒级返回）
-用户上传稽核需求Excel（会话文件引用 audit_file）
+用户触发稽核（传入 req_id + chat_id）
         │
-        ▼  B1 智能稽核文件上传（multipart）
+        ▼  B1 智能稽核文件上传（后端按 req_id 查需求与配置信息生成稽核 Excel 后上传）
 file_id + sales_id{ 销售品名:{offerId, location, sheet_name} }
         │
         ▼  遍历 sales_id 每个销售品（逐一）：
@@ -550,7 +550,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 发起需求审批（环节1/8） | `wf_sub_11` | req_id | 自查 requirement_report → CODE_EXTRACT_RECORD 取原文 → submit_release_approval(approval-type=requirement) → LLM 回执渲染 |
 | 需求分析（环节2/8，模板轨，止于确认点） | `wf_sub_01` | req_id | CODE_EXTRACT_RECORD → 相似查询(节点105) → CODE_GET_TEMPLATE(节点106) → 要素提取 LLM → CODE_VALIDATE_ELEMENTS(节点108 质量闸) → CODE_MERGE_NESTED(节点109) → CODE_OP_VALIDATE_NESTED(节点110 本体校验闸 /validate-nested) → CODE_RENDER_TABLE(节点111) → 保存 requirement → **输出方案止于确认点** |
 | 智能配置（环节3/8） | `wf_sub_02` | req_id | 自查 requirement → CODE_EXTRACT_RECORD → save_product_config → CODE_FUSION_GROUP_ECHO 融合成员回显 → save(node=config) |
-| 稽核发起（环节4a/8） | `wf_sub_03` | req_id, audit_file | 自查 config → CODE_EXTRACT_RECORD 取 offer_id → **`audit_file_upload`（B1 上传 Excel 解析 sales_id）→ 逐品 `audit_async_notify`（B2）+ `audit_insert_result`（B3）** → 汇总 requestIds → save(node=**audit_pending**：requestIds/sales_id 清单) → **秒级返回"稽核已发起"止于反馈点**（不轮询） |
+| 稽核发起（环节4a/8） | `wf_sub_03` | req_id, chat_id | 自查 config → CODE_EXTRACT_RECORD 取 offer_id → **`audit_file_upload`（B1：后端按 req_id 查需求与配置信息生成稽核 Excel 后上传，解析 sales_id）→ 逐品 `audit_async_notify`（B2）+ `audit_insert_result`（B3）** → 汇总 requestIds → save(node=**audit_pending**：requestIds/sales_id 清单) → **秒级返回"稽核已发起"止于反馈点**（不轮询） |
 | 稽核轮询查询（环节4b/8，可重复触发） | `wf_sub_12` | req_id | 自查 **audit_pending** 取 requestIds → **CODE_POLL_AUDIT**（短窗口轮询 `audit_sql_query` sqlId=20260626001，读 `isAllFinished`）→ 完成则 `audit_sql_query`（sqlId=20260626002 取结果）→ 归一 error_list（含 group 类目）→ 整改建议 → **pass==1 才 save(node=spec)**；未完成输出"处理中"引导续查（不写 spec） |
 | 资费校准（环节5/8，成员分组） | `wf_sub_05` | req_id | 自查 config → CODE_EXTRACT_RECORD → check_billing_rule(check_scene=all, member_role 分组) → 风险解读 → save(node=fee) |
 | 自动测试（环节6/8，含受理验证） | `wf_sub_04` | req_id | 自查 config → **C1 `offer_test` 发起（取 globalId）→ C2 `get_test_scenes` 取场景集合** → save(node=**test_pending**：globalId/testScenes) → **秒级返回"测试已发起"+场景清单止于反馈点**（不轮询） |
@@ -659,7 +659,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 **字段宽度归属（G5）**：文档 38 列多数**不在 24 字段注册表**内，按三类归属处理——① **映射入 24 字段**（套餐名称/价格档位/套内流量语音/付费模式等，走模板轨 6.2）；② **落模板 schema**（账单展示套餐内外/一单清三栏/首月次月计费等模板叶子路径，经 CODE_MERGE_NESTED 对位）；③ **冗余入报告**（销售停售时间/省级市级/内容描述等展示类，随 `plan_md`/报告输出，不入 24 字段）。
 
-**双角色（G6）**：Excel 既作**需求提报输入**（本节点，G1 解析端点），也作**稽核清单输入**（环节4 已有 B1 `audit_file_upload`，文档直接复用为稽核 Excel，口径一致）。
+**稽核 Excel 独立生成（G6）**：环节4 稽核清单 Excel **不再复用需求输入文档**——B1 `audit_file_upload` 改为后端按 `req_id` 查需求与配置信息**自行生成稽核 Excel** 后上传（入参仅 `req_id`+`chat_id`，无前端文件）。
 
 **知识资产补充（G7，可选）**：4 个新销售品（900117029~032）**不在任何知识资产/种子**中；`900117020~027` 已被权益随心选占用，029~032 不冲突。建议同步补 `存量产品目录`/K4/K5 可选条（不强制，不影响主链路）。
 

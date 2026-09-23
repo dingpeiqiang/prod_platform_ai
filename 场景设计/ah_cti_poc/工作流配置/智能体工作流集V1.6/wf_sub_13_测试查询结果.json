@@ -582,7 +582,7 @@
         "id": "a1b2c3d4-0000-4000-8000-000000002317",
         "position": {
           "x": 2175,
-          "y": 300
+          "y": 430
         },
         "dependencyData": [],
         "type": 3,
@@ -594,9 +594,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000002318,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002318,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -705,9 +710,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000002320,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002320,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -1140,8 +1150,8 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 4335,
-          "y": 430
+          "x": 3975,
+          "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002306",
         "dependencyData": [],
@@ -1237,7 +1247,7 @@
           "title": "测试通过判定"
         },
         "position": {
-          "x": 3975,
+          "x": 4695,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002322",
@@ -1336,8 +1346,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002308",
         "position": {
-          "x": 4695,
-          "y": 300
+          "x": 5055,
+          "y": 430
         },
         "dependencyData": [],
         "type": 3,
@@ -1353,6 +1363,11 @@
           {
             "relName": "a1b2c3d4-0000-4000-8000-000000002316,note",
             "name": "note",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002316,backend_pending",
+            "name": "backend_pending",
             "type": "string"
           }
         ],
@@ -1382,7 +1397,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002316",
         "position": {
-          "x": 5055,
+          "x": 5415,
           "y": 300
         },
         "dependencyData": [],
@@ -1450,8 +1465,76 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002309",
         "position": {
-          "x": 5415,
+          "x": 4335,
           "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002325,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板(处理中)"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002325",
+        "position": {
+          "x": 1815,
+          "y": 170
         },
         "dependencyData": [],
         "type": 6
@@ -1512,7 +1595,7 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000002309",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002325",
             "relName": "panel",
             "name": "panel",
             "description": "xsbot-panel 页面地址片段",
@@ -1520,10 +1603,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000002309",
-              "a1b2c3d4-0000-4000-8000-000000002309,panel"
+              "a1b2c3d4-0000-4000-8000-000000002325",
+              "a1b2c3d4-0000-4000-8000-000000002325,panel"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000002309,panel"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002325,panel"
           }
         ],
         "checkErr": false,
@@ -1537,7 +1620,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002323",
@@ -1652,7 +1735,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 4335,
+          "x": 5055,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002324",
@@ -1844,8 +1927,13 @@
       },
       {
         "sourcePort": 0,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002323",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002325",
         "startId": "a1b2c3d4-0000-4000-8000-000000002321"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002323",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002325"
       },
       {
         "sourcePort": null,
@@ -1874,12 +1962,22 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002322",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002306",
         "startId": "a1b2c3d4-0000-4000-8000-000000002315"
       },
       {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002309",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002306"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002322",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002309"
+      },
+      {
         "sourcePort": -1,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002306",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002308",
         "startId": "a1b2c3d4-0000-4000-8000-000000002322"
       },
       {
@@ -1889,23 +1987,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002308",
-        "startId": "a1b2c3d4-0000-4000-8000-000000002306"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000002316",
         "startId": "a1b2c3d4-0000-4000-8000-000000002308"
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002309",
-        "startId": "a1b2c3d4-0000-4000-8000-000000002316"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000002310",
-        "startId": "a1b2c3d4-0000-4000-8000-000000002309"
+        "startId": "a1b2c3d4-0000-4000-8000-000000002316"
       }
     ],
     "flowId": "wf_sub_13",

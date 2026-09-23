@@ -124,7 +124,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -233,9 +233,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000605,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000605,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -344,9 +349,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000607,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000607,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -455,9 +465,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000609,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000609,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -566,9 +581,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000611,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000611,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {

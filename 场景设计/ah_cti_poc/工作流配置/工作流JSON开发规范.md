@@ -358,6 +358,7 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
    - 所有 `dependencyData`/`dep_node` 引用的节点与出参真实存在。
    - 所有 `inp(..., ref_block=nid(x))` 的 `x` 是有效上游节点。
    - 所有引用出参（`ref_rel`）在对应上游节点 `outputs` 中已声明。
+   - **代码节点出参声明完备性**：代码节点（type=6）`Output={...}` 返回的每个顶层键，必须在 `code_out(...)` 出参中已声明（平台按「返回键 ⊆ 声明出参」严格校验，返回未声明键会导致节点校验失败、工作流无法执行；本地 `wf_runner` 宽松忽略故不可见）。
    - 插件 array 出参 `sechema` 有 item 树（对齐 `ARRAY_ITEM_FIELDS`）。
    - **结束节点占位符校验**：对每个 type=9 节点，提取 `outputs.content` 中所有 `{...}` 占位符（跳过 `xsbot-panel` 代码块内的内嵌 JSON），逐个核对是否与 `inputs[].name` 逐字一致（含大小写）；不一致即 FAIL（对齐 11.1，防止"节点无法显示"）。
 4. 到平台上逐个导入并人工核对（条件分支 sourcePort 语义、结束节点模板、子流路由）。

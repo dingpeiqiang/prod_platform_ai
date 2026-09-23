@@ -276,7 +276,7 @@
 ```
 
 **要点强调（V3.10 六项设计决策落点）：**
-- **G1 解析端点**：Excel 需求文档由后端 `/requirement/parse-xlsx` 归一为 `offers[]` + `relations[]`，与 B1 稽核上传同模式（同份 Excel 亦作环节4稽核清单，**双角色**）；
+- **G1 解析端点**：Excel 需求文档由后端 `/requirement/parse-xlsx` 归一为 `offers[]` + `relations[]`；环节4 稽核清单 Excel **独立生成**（B1 `audit_file_upload` 由后端按 `req_id` 查需求与配置信息生成后上传，**不复用需求输入文档**）；
 - **G2 父/子键一品多品**：1 份需求 = **1 个父 `req_id`**（后端 `PLAN\d{17}` 校验零改动）+ **N 个子 `offer_seq`**（1..N）；`plan_json`/`config_json` 承载 `offers[]` 数组，代码节点内嵌循环逐品处理（平台无循环节点约束不破）；
 - **G3 关联关系复用融合组**：关联关系表"可选依赖(100000)"↔ `group_rules.依赖[].type=OPTIONAL_DEPEND`（**先例 GP900113046** 副卡功能费），"互斥(200000)/强制依赖(110000)/默认依赖(120000)"分别映射 `group_rules.互斥/依赖`，**不新增契约**；
 - **G4 融合结构零扩展**：四档=融合主卡套餐 + 副卡 7320110001600005 可选依赖，与 `GP900113046` **结构完全同构**，直接复用 6.1 融合机制；
@@ -352,7 +352,7 @@
 输入：下一步
 预期：
 【环节4/8·规格稽核·发起】✅ 已发起（wf_sub_03）
-- 关键数据：上传稽核 Excel（B1）→ 解析 sales_id → 逐品异步通知（B2）+ 结果落库（B3）；requestIds=N 个
+- 关键数据：B1 按 req_id 生成稽核 Excel 并上传 → 解析 sales_id → 逐品异步通知（B2）+ 结果落库（B3）；requestIds=N 个
 - 存储 node_name=audit_pending（临时态：requestIds/sales_id 清单，**不写 spec**）
 - 下一步建议：稍后回复【查询稽核结果】触发轮询取结果（未完成不允许推进环节5）。
 ```
@@ -427,7 +427,7 @@
    全部一致；E26 被测一致性核对通过；受理场景（S_O_TC/S_ADD_CARD/S_U_TC + 融合专属 S_GROUP_BIND/S_ADDON_SUB）逐项通过
 ```
 
-**技术口径（V3.10 工作流版，14 子流）：** 智能体语义识别命中"确认执行" → **步进式**依次直调 `wf_sub_02`（智能配置：`save_product_config` 透传落地 + CODE_FUSION_GROUP_ECHO 成员回显）→ `wf_sub_03`（稽核发起：B1 上传→逐品 B2+B3，秒级返回 `audit_pending`）→ 用户触发 `wf_sub_12`（稽核轮询：CODE_POLL_AUDIT sqlId=20260626001→20260626002，完成写 `spec`）→ `wf_sub_05`（资费校准：`check_billing_rule` check_scene=all）→ `wf_sub_04`（测试发起：C1 `offer_test`+C2 `get_test_scenes`，秒级返回 `test_pending`）→ 用户触发 `wf_sub_13`（测试轮询：CODE_POLL_PROGRESS→C4 `get_test_result`→CODE_MAP_FIXED_CASES 31 条→九章节报告→`/report/download`，完成写 `test`）；每子工作流经 `result/save` 存储（req_id=统一键，后端持久化），每环节打印后**止于反馈点**。
+**技术口径（V3.10 工作流版，14 子流）：** 智能体语义识别命中"确认执行" → **步进式**依次直调 `wf_sub_02`（智能配置：`save_product_config` 透传落地 + CODE_FUSION_GROUP_ECHO 成员回显）→ `wf_sub_03`（稽核发起：B1 按 req_id 生成稽核 Excel 并上传→逐品 B2+B3，秒级返回 `audit_pending`）→ 用户触发 `wf_sub_12`（稽核轮询：CODE_POLL_AUDIT sqlId=20260626001→20260626002，完成写 `spec`）→ `wf_sub_05`（资费校准：`check_billing_rule` check_scene=all）→ `wf_sub_04`（测试发起：C1 `offer_test`+C2 `get_test_scenes`，秒级返回 `test_pending`）→ 用户触发 `wf_sub_13`（测试轮询：CODE_POLL_PROGRESS→C4 `get_test_result`→CODE_MAP_FIXED_CASES 31 条→九章节报告→`/report/download`，完成写 `test`）；每子工作流经 `result/save` 存储（req_id=统一键，后端持久化），每环节打印后**止于反馈点**。
 
 **验收映射：** 步进式推进纪律（每环节 100% 输出结果 + 下一步建议并止于反馈点，无跳步/并行/擅自推进）；稽核/测试两阶段交互门禁（`spec`/`test` 完成才写，天然"未完成不允许推进"）；每环节结果打印率 100%。
 

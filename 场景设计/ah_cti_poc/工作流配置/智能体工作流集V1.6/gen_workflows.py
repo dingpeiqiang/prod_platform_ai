@@ -14,15 +14,12 @@ BASE_URL = "http://10.86.13.201:31281"
 def nid(seq, ns="a1b2c3d4"):
     return "%s-0000-4000-8000-%012d" % (ns, seq)
 
-def inp(name, desc, ptype="string", required=True, content="", ref_block="", ref_rel="",
-        part_name=""):
+def inp(name, desc, ptype="string", required=True, content="", ref_block="", ref_rel=""):
     d = {
         "blockID": ref_block, "relName": ref_rel, "name": name,
         "description": desc, "type": "ref" if ref_block else ptype,
         "required": required, "content": content
     }
-    if part_name:
-        d["part_name"] = part_name
     if ref_block:
         d["nameValue"] = [ref_block, ref_block + "," + ref_rel]
         d["currValue"] = ref_block + "," + ref_rel
@@ -353,6 +350,8 @@ CODE_004A = CODE_004A_CATS + CODE_004A
 # 存在于 list[0].result_json 字段内，须提取后再透传（禁止把数组整体传给落地/稽核等工具）。
 # V2.4 新增：追加 offer_id 出参——从 result_json 原文解析内层 JSON 后取 offer_id，
 # 供 wf_sub_03 稽核（节点202）/wf_sub_04 发起测试（节点302）引用，修复开始节点无 offer_id 出参导致的断链。
+# V3.11 修复：移除未声明的 requestIds 出参——代码曾无条件返回 requestIds，但各调用点均未声明该出参，
+# 平台按「返回键 ⊆ 声明出参」严格校验会判节点失败致工作流无法执行（本地 wf_runner 宽松忽略故不可见）。
 CODE_EXTRACT_RECORD = (
     "import json\n"
     "from typing import Any, Dict\n"
@@ -362,7 +361,6 @@ CODE_EXTRACT_RECORD = (
     "        raw = json.dumps(raw, ensure_ascii=False)\n"
     "    record_json = ''\n"
     "    offer_id = ''\n"
-    "    request_ids = ''\n"
     "    try:\n"
     "        arr = json.loads(raw)\n"
     "        if isinstance(arr, list) and arr:\n"
@@ -379,17 +377,11 @@ CODE_EXTRACT_RECORD = (
     "        inner = json.loads(record_json)\n"
     "        if isinstance(inner, dict):\n"
     "            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n"
-    "            rid = inner.get('requestIds')\n"
-    "            if isinstance(rid, (list, tuple)):\n"
-    "                request_ids = ','.join(str(x) for x in rid)\n"
-    "            elif rid is not None:\n"
-    "                request_ids = str(rid)\n"
     "    except Exception:\n"
     "        offer_id = ''\n"
     "    ret: Output = {\n"
     "        \"record_json\": record_json,\n"
-    "        \"offer_id\": offer_id,\n"
-    "        \"requestIds\": request_ids\n"
+    "        \"offer_id\": offer_id\n"
     "    }\n"
     "    return ret"
 )

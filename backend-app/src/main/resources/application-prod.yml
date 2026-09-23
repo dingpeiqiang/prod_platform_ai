@@ -40,10 +40,11 @@ prodai:
     max-rows: ${METRIC_MAX_ROWS:50000}
   mcp:
     seed-path: ${MCP_SEED_PATH:}
-  # 产销品场景接口适配层：现场切真实接口（业务报文直接 POST 业务地址；HTTP 请求头鉴权）
+  # 产销品场景接口适配层：默认 mock（演示/联调）；接 EOP 现场时改为 real（业务报文直接 POST 业务地址；HTTP 请求头鉴权）
   appstore:
     interface:
-      mode: ${APPSTORE_INTERFACE_MODE:real}
+      # 固定 mock，不读环境变量；接 EOP 时直接改此值为由 deploy 外部 config/application.yml 覆盖为 real
+      mode: mock
       eop:
         base-url: ${EOP_BASE_URL:https://eop-ops.cloud.anhuitelecom.com:10008}
         # 请求头 X-APP-ID / X-APP-KEY / Staff-Code（默认示例值，现场可经环境变量覆盖）

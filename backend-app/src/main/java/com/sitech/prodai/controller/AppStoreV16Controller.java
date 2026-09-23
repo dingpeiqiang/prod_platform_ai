@@ -2,6 +2,7 @@ package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.appstore.AuditExcelGenerator;
+import com.sitech.prodai.service.appstore.AuditRequirementSource;
 import com.sitech.prodai.service.appstore.FieldOntologyService;
 import com.sitech.prodai.service.appstore.InterfaceFacade;
 import com.sitech.prodai.service.appstore.NodeResultService;
@@ -39,6 +40,7 @@ public class AppStoreV16Controller {
     private final com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService;
     private final com.sitech.prodai.service.appstore.RequirementDocService requirementDocService;
     private final AuditExcelGenerator auditExcelGenerator;
+    private final AuditRequirementSource auditRequirementSource;
     private final InterfaceFacade interfaceFacade;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
@@ -47,6 +49,7 @@ public class AppStoreV16Controller {
                                  com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService,
                                  com.sitech.prodai.service.appstore.RequirementDocService requirementDocService,
                                  AuditExcelGenerator auditExcelGenerator,
+                                 AuditRequirementSource auditRequirementSource,
                                  InterfaceFacade interfaceFacade) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
@@ -55,6 +58,7 @@ public class AppStoreV16Controller {
         this.configTemplateService = configTemplateService;
         this.requirementDocService = requirementDocService;
         this.auditExcelGenerator = auditExcelGenerator;
+        this.auditRequirementSource = auditRequirementSource;
         this.interfaceFacade = interfaceFacade;
     }
 
@@ -94,37 +98,20 @@ public class AppStoreV16Controller {
 
     /* ================= 现场接口 B1~B4（智能稽核，经适配层 mock/real 可切换） ================= */
 
-    @Operation(summary = "智能稽核文件上传", description = "上传稽核需求文档（Excel，multipart），解析销售品清单返回 file_id 与 sales_id（B1，适配层 mock 内置确定性清单/real 走 EOP）；无文件时服务端按固定模板（可选包+关联关系 sheet）由 offers/relations 生成 Excel 后上传（application/json）；可选 mode=real/mock 覆盖本次模式")
-    @PostMapping(value = "/audit/file/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Map<String, Object> auditFileUpload(@RequestParam(value = "file", required = false) org.springframework.web.multipart.MultipartFile file,
-                                               @RequestParam(value = "mode", required = false) String mode) {
-        Map<String, Object> call = new java.util.LinkedHashMap<>();
-        if (file != null && !file.isEmpty()) {
-            call.put("fileName", file.getOriginalFilename());
-            try {
-                call.put("bytes", file.getBytes());
-            } catch (java.io.IOException e) {
-                call.put("bytes", null);
-            }
-        }
-        if (mode != null && !mode.isBlank()) {
-            call.put("mode", mode);
-        }
-        return interfaceFacade.auditFileUpload(call);
-    }
-
-    @Operation(summary = "智能稽核文件生成并上传", description = "无上传文件时，服务端按固定模板（可选包+关联关系 sheet）由 offers[]/relations[] 生成稽核 Excel 后上传 EOP（B1）。入参与 2e /requirement/parse-xlsx 出参同构：offers[{ofr_id,offer_name,fields{列名→值}}]、relations[{a_ofr_id,a_name,relation,z_ofr_id,z_name}]；可选 fileName/mode")
+    @Operation(summary = "智能稽核文件上传", description = "入参 req_id + chat_id（无前端文件）：服务端按 req_id 查需求（requirement_report）与配置（requirement）信息，生成稽核 Excel（可选包+关联关系 sheet）后上传，解析销售品清单返回 file_id 与 sales_id（B1，适配层 mock/real 可切换）；可选 mode=real/mock 覆盖本次模式")
     @PostMapping(value = "/audit/file/upload", consumes = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
-    public Map<String, Object> auditFileUploadGenerated(@RequestBody Map<String, Object> req) {
-        Map<String, Object> call = new java.util.LinkedHashMap<>();
-        List<Map<String, Object>> offers = MapOps.castListOfMaps(req.get("offers"));
-        List<Map<String, Object>> relations = MapOps.castListOfMaps(req.get("relations"));
-        if (offers.isEmpty()) {
+    public Map<String, Object> auditFileUpload(@RequestBody Map<String, Object> req) {
+        String reqId = MapOps.str(req.get("req_id"));
+        Map<String, Object> source = auditRequirementSource.resolve(reqId);
+        if (source == null) {
             Map<String, Object> body = new java.util.LinkedHashMap<>();
             body.put("resultCode", "E35");
-            body.put("resultMsg", "稽核文件生成失败：offers 为空（无可稽核销售品）");
+            body.put("resultMsg", "稽核文件生成失败：按 req_id=" + reqId + " 查无需求/配置数据（无可稽核销售品）");
             return body;
         }
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(source.get("offers"));
+        List<Map<String, Object>> relations = MapOps.castListOfMaps(source.get("relations"));
+        Map<String, Object> call = new java.util.LinkedHashMap<>();
         try {
             call.put("bytes", auditExcelGenerator.generate(offers, relations));
             call.put("fileName", MapOps.str(req.getOrDefault("fileName", "稽核需求.xlsx")));

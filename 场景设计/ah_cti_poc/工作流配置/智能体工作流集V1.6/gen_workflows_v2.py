@@ -330,10 +330,31 @@ CODE_GET_TEMPLATE = CODE_GET_TEMPLATE.replace("BASE_URL", BASE_URL)
 # 输出：table_text（markdown 分节多表）
 CODE_RENDER_TABLE = (
     "import json\n"
+    "import re\n"
     "from typing import Any, Dict\n"
     "\n"
     "SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\n"
     "SYSTEM_GEN_KEYS = ('orderNo',)\n"
+    "# 不可从自然语言需求提取的字段（系统生成/编码/规则类，x-required 亦不计入待补充）：\n"
+    "# 与要素校验节点 108 的 NON_EXTRACTABLE_PATTERNS 保持一致，禁止在此罗列系统类字段为待补充。\n"
+    "NON_EXTRACTABLE_PATTERNS = (\n"
+    "    r'(effDate|expDate)$',\n"
+    "    r'(effRuleId|cancelRuleId)$',\n"
+    "    r'(prodId|pricingId|prodPrcId|inProdPrcId|outProdPrcId|billPrcId|conditionCode|groupId)$',\n"
+    "    r'orderNo$',\n"
+    "    r'groupIdMessage$',\n"
+    "    r'subBillPrcIds$',\n"
+    "    r'^optionalInfo\\.prcSmsCfg\\.',\n"
+    "    r'acctItem$',\n"
+    "    r'powerCode$',\n"
+    "    r'familyCata$',\n"
+    "    r'splitRate(9|6)$',\n"
+    "    r'(favValidityVAlue|fixValidityVAlue)$',\n"
+    ")\n"
+    "\n"
+    "def _is_non_extractable(path):\n"
+    "    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n"
+    "\n"
     "SOURCE_MAP = {\n"
     "    '原始需求': '原始需求提取', 'AI补全': '相似产品补全',\n"
     "    '本体推理': '本体推理', '默认值': '默认值', '同源派生': '同源派生',\n"
@@ -401,7 +422,7 @@ CODE_RENDER_TABLE = (
     "                if key in SKIP_KEYS or not isinstance(obj_data, dict):\n"
     "                    continue\n"
     "                if key not in obj_data or obj_data[key] in ('', None):\n"
-    "                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS and not hidden(obj_schema, sub, key, obj_data, path):\n"
+    "                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS and not _is_non_extractable(cur) and not hidden(obj_schema, sub, key, obj_data, path):\n"
     "                        pending.append((INDENT_UNIT * depth) + label)\n"
     "                    continue\n"
     "                val = fmt_value(obj_data[key])\n"
@@ -1122,7 +1143,7 @@ s01.append(plugin_node(102, "读取需求工单", "query_node_result",
 # 取需求字段原文：派生 record_json 供产品识别/要素提取复用（node 103）
 s01.append(code_node(103, "提取需求字段原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
-    [code_out("record_json", 103)],
+    [code_out("record_json", 103), code_out("offer_id", 103)],
     pos=(390, 135)))
 # 产品识别（LLM）：识别产品类型 → 选模板 + 生成要素提取所需上下文
 s01.append(llm_node(104, "产品识别与模板选择",
@@ -1153,7 +1174,9 @@ s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
     [inp("template_id", "模板标识（节点104选定）", ref_block=nid(104), ref_rel="template_id"),
      inp("template_base", "模板目录（方案/templates，随包迁移）", content=r"D:\工作\sitech\项目\研发\git_workspace\AI\prod_platform_ai\场景设计\ah_cti_poc\方案\templates")],
-    [code_out("template_id", 106), code_out("schema_json", 106), code_out("missing", 106)],
+    [code_out("template_id", 106), code_out("schema_json", 106), code_out("missing", 106),
+     code_out("template_name_cn", 106), code_out("template_product_type", 106),
+     code_out("schema_file", 106), code_out("source", 106)],
     pos=(530, 300)))
 # 要素提取（LLM）：按模板 x-label 提取配置要素嵌套 JSON
 s01.append(llm_node(107, "配置要素提取",
@@ -1177,7 +1200,8 @@ s01.append(code_node(108, "要素校验与方案合并", CODE_EXTRACT_MERGE,
      inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer"),
      inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30"),
      inp("record_json", "需求字段原文（节点103；供价格类叶子确定性兜底）", ref_block=nid(103), ref_rel="record_json")],
-    [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108), code_out("status", 108)],
+    [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108), code_out("status", 108),
+     code_out("template", 108), code_out("ve_result", 108)],
     pos=(690, 300)))
 # 方案表格渲染：按模板 schema 分节渲染业务可读表格
 s01.append(code_node(109, "方案表格渲染", CODE_RENDER_TABLE,
@@ -1502,10 +1526,10 @@ s3f.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [code_out("record_json", 207), code_out("offer_id", 207)],
     pos=(390, 135)))
 s3f.append(plugin_node(202, "智能稽核文件上传", "audit_file_upload",
-    "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
+    "接口B1：智能稽核文件上传（后端按 req_id 查需求与配置信息生成稽核 Excel 后上传）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；入参仅 req_id + chat_id，无前端文件（开发 mock 返回预置清单）",
     BASE_URL + "/api/v1/appstore/audit/file/upload",
-    [inp("audit_file", "稽核需求Excel（会话文件引用，multipart）", required=True, part_name="file"),
-     inp("offer_id", "销售品ID（节点207解析，供 mock 清单定位）", ref_block=nid(207), ref_rel="offer_id")],
+    [inp("req_id", "执行主干批次号（=开始节点 req_id；后端按此查需求+配置生成稽核 Excel）", ref_block=nid(201), ref_rel="req_id"),
+     inp("chat_id", "会话消息ID（会话上下文）", ref_block=nid(201), ref_rel="chat_id")],
     [("file_id", "上传文件ID", "string"), ("sales_id", "销售品清单（销售品名→offerId/location/sheet_name）", "string")]))
 s3f.append(code_node(203, "异步报告生成并通知", CODE_AUDIT_LAUNCH,
     [inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
@@ -1545,7 +1569,7 @@ s3f.append(end_node(210, "结束(稽核已发起)",
     "> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n"
     "{panel}"))
 files3f = workflow(
-    "产销品-规格稽核", "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。", "wf_sub_03", s3f,
+    "产销品-规格稽核", "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。", "wf_sub_03", s3f,
     [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,204),
      edge(204,208), edge(208,205), edge(205,209), edge(209,210)])
 
@@ -1583,7 +1607,7 @@ s12f.append(selector_node2(2211, "轮询完成判定",
 s12f.append(code_node(2205, "查询稽核结果", CODE_AUDIT_QUERY,
     [inp("requestIds", "全部 requestId 集合（节点2203）", ref_block=nid(2203), ref_rel="requestIds")],
     [code_out("pass", 2205), code_out("error_list", 2205),
-     code_out("audit_summary", 2205), code_out("resultCode", 2205)],
+     code_out("audit_summary", 2205), code_out("resultCode", 2205), code_out("fail_reason", 2205)],
     pos=(720, 135)))
 s12f.append(llm_node(2206, "整改建议生成",
     "你是配置规格稽核结果呈现助手。基于稽核出参（error_list={error_list}，audit_summary={audit_summary}）"
@@ -1613,10 +1637,11 @@ s12f.append(code_node(2207, "稽核结果结构化封包", CODE_PACK_RECORD,
     [code_out("record_json", 2207)], pos=(900, 135)))
 # 通过门禁：pass==1 才写 spec（门禁：环节5 资费校准与审批四环节硬校验以 spec 为准）；
 # pass!=1（不通过/未完成）跳过存储，避免空壳 spec 蒙混放行下游。
+# 说明：整改建议生成(2206)前置到本判定之前，使“通过/未通过”两分支均可引用 audit_suggest。
 s12f.append(selector_node2(2212, "稽核通过判定",
     [dep_node(2205, "查询稽核结果", ["pass"])],
     [(-1, [cond_item(cond_ref(2205, "pass", "查询稽核结果"), 1, cond_str("1"))])],
-    pos=(720, 450)))
+    pos=(880, 450)))
 s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核，最终态）；仅 pass==1 时写入（门禁：环节5 与审批四环节硬校验以 spec 为准）",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1628,11 +1653,13 @@ s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
 s12f.append(panel_code_node(2209, "构建页面地址面板", "03",
     panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
 # 未完成/轮询异常分支结束（未写 spec）：展示 completed/fail_reason + 面板，引导续查
+s12f.append(panel_code_node(2216, "构建页面地址面板(处理中)", "03",
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
 s12f.append(end_node(2213, "结束(稽核处理中-未写spec)",
     [inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
      inp("fail_reason", "轮询异常/处理中说明（节点2204）", ref_block=nid(2204), ref_rel="fail_reason"),
      inp("offer_id", "销售品ID（节点2203解析，供查看面板）", ref_block=nid(2203), ref_rel="offer_id"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2209), ref_rel="panel")],
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2216), ref_rel="panel")],
     "【环节4/8·规格稽核】查询稽核结果：完成={completed}\n"
     "{fail_reason}\n\n"
     "稽核尚未完成，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n"
@@ -1665,9 +1692,10 @@ s12f.append(end_node(2210, "结束(稽核查询完成)",
 files12f = workflow(
     "产销品-规格稽核查询", "子工作流12（环节4b 稽核轮询，两阶段拆分后半；可重复触发）：自查 audit_pending 取 requestIds→CODE_POLL_AUDIT 短窗口轮询 B4 audit_sql_query(sqlId=20260626001，间隔5s/上限60次=5分钟)→**【门禁A】completed==true 才继续**→查 20260626002 取最终 error_list/audit_summary→七项固定检查项明细→结构化封包→**【门禁B】pass==1 才 save(node_name=spec)**。completed!=true 或 pass!=1 均不写 spec（跳过存储直接结束），杜绝空壳 spec 蒙混下游；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_12", s12f,
     [edge(2201,2202), edge(2202,2203), edge(2203,2204),
-     edge(2204,2211), edge(2211,2205,-1), edge(2211,2213,0),
-     edge(2205,2212), edge(2212,2206,-1), edge(2212,2214,0),
-     edge(2206,2207), edge(2207,2208), edge(2208,2209), edge(2209,2210)])
+     edge(2204,2211), edge(2211,2205,-1), edge(2211,2216,0), edge(2216,2213),
+     edge(2205,2206), edge(2206,2212), edge(2212,2207,-1), edge(2212,2215,0),
+     edge(2207,2208), edge(2208,2209), edge(2209,2210),
+     edge(2215,2214)])
 
 # ============================================================
 # wf_sub_05 资费校准（融合组扩展）：比对表按 member_role 分组、E27 阈值逐成员内计算；单商品零变化。
@@ -2189,7 +2217,7 @@ s13f.append(plugin_node(2317, "自查稽核结果", "query_node_result",
     method="get", pos=(240, 430)))
 s13f.append(code_node(2318, "提取稽核原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点2317查询出参 list", ref_block=nid(2317), ref_rel="list")],
-    [code_out("record_json", 2318)],
+    [code_out("record_json", 2318), code_out("offer_id", 2318)],
     pos=(390, 430)))
 s13f.append(plugin_node(2319, "自查资费结果", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（result_json=结构化 envelope，含 compare_list/risk_list）",
@@ -2201,7 +2229,7 @@ s13f.append(plugin_node(2319, "自查资费结果", "query_node_result",
     method="get", pos=(240, 555)))
 s13f.append(code_node(2320, "提取资费原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点2319查询出参 list", ref_block=nid(2319), ref_rel="list")],
-    [code_out("record_json", 2320)],
+    [code_out("record_json", 2320), code_out("offer_id", 2320)],
     pos=(390, 555)))
 # CODE_MAP_FIXED_CASES：确定性构建 31 条固定用例表 + 结论 + 缺陷 + 场景覆盖 + E26 核对
 s13f.append(code_node(2315, "固定用例映射", CODE_MAP_FIXED_CASES,
@@ -2247,6 +2275,7 @@ s13f.append(llm_node(2306, "测试报告生成(正式版9章节)",
     pos=(1140, 300)))
 # 通过门禁：p0_pass==1（P0 用例全通过）才写 test（门禁：环节6 与审批四环节硬校验以 test 为准）；
 # 存在 P0 阻断（或测试未完成）跳过存储，避免空壳/未通过 test 蒙混放行上线审批。
+# 说明：测试报告生成(2306)与页面地址面板(2309)前置到本判定之前，使“通过/未通过/处理中”三分支均可引用。
 s13f.append(selector_node2(2322, "测试通过判定",
     [dep_node(2315, "固定用例映射", ["p0_pass"])],
     [(-1, [cond_item(cond_ref(2315, "p0_pass", "固定用例映射"), 1, cond_str("1"))])],
@@ -2264,17 +2293,19 @@ s13f.append(plugin_node(2308, "测试结果存储", "save_node_result",
 # 下载测试报告（阶段1.2）：按测试流水号组装正式下载端点地址，探活失败回退为下载引导
 s13f.append(code_node(2316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
     [inp("global_id", "测试流水号（节点2303解析，报告下载端点检索键）", ref_block=nid(2303), ref_rel="globalId")],
-    [code_out("download_url", 2316), code_out("note", 2316)],
+    [code_out("download_url", 2316), code_out("note", 2316), code_out("backend_pending", 2316)],
     pos=(1520, 300)))
 # xsbot-panel 独立代码节点
 s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
 # 未完成/轮询异常分支结束（未写 test）：展示 done/fail_reason + 面板，引导续查
+s13f.append(panel_code_node(2325, "构建页面地址面板(处理中)", "06",
+    panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
 s13f.append(end_node(2323, "结束(测试处理中-未写test)",
     [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
      inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
      inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2325), ref_rel="panel")],
     "【环节6/8·自动测试】查询测试结果：完成={done}\n"
     "{fail_reason}\n\n"
     "测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
@@ -2311,10 +2342,11 @@ s13f.append(end_node(2310, "结束(测试查询完成)",
 files13f = workflow(
     "产销品-测试查询结果", "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→**【门禁A】done==true 才继续**→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→**【门禁B】p0_pass==1（P0 全通过）才 save(node_name=test)**→下载报告(CODE_DOWNLOAD_TEST_REPORT)。done!=true 或 p0_pass!=1 均不写 test（跳过存储直接结束）；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_13", s13f,
     [edge(2301,2302), edge(2302,2303), edge(2303,2304),
-     edge(2304,2321), edge(2321,2305,-1), edge(2321,2323,0),
+     edge(2304,2321), edge(2321,2305,-1), edge(2321,2325,0), edge(2325,2323),
      edge(2305,2317), edge(2317,2318), edge(2318,2319), edge(2319,2320),
-     edge(2320,2315), edge(2315,2322), edge(2322,2306,-1), edge(2322,2324,0),
-     edge(2306,2308), edge(2308,2316), edge(2316,2309), edge(2309,2310)])
+     edge(2320,2315), edge(2315,2306), edge(2306,2309), edge(2309,2322),
+     edge(2322,2308,-1), edge(2322,2324,0),
+     edge(2308,2316), edge(2316,2310)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
@@ -2548,7 +2580,7 @@ s6f.append(plugin_node(604, "自查稽核结果", "query_node_result",
     method="get", pos=(240, 260)))
 s6f.append(code_node(605, "提取稽核原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点604查询出参 list", ref_block=nid(604), ref_rel="list")],
-    [code_out("record_json", 605)],
+    [code_out("record_json", 605), code_out("offer_id", 605)],
     pos=(390, 260)))
 s6f.append(plugin_node(606, "自查资费结果", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=fee 取回资费校准环节结果",
@@ -2560,7 +2592,7 @@ s6f.append(plugin_node(606, "自查资费结果", "query_node_result",
     method="get", pos=(240, 385)))
 s6f.append(code_node(607, "提取资费原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点606查询出参 list", ref_block=nid(606), ref_rel="list")],
-    [code_out("record_json", 607)],
+    [code_out("record_json", 607), code_out("offer_id", 607)],
     pos=(390, 385)))
 s6f.append(plugin_node(608, "自查测试结果", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=test 取回自动测试环节结果（正式版9章节报告，含受理凭证 orderId/offerInstId）",
@@ -2572,7 +2604,7 @@ s6f.append(plugin_node(608, "自查测试结果", "query_node_result",
     method="get", pos=(240, 510)))
 s6f.append(code_node(609, "提取测试原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点608查询出参 list", ref_block=nid(608), ref_rel="list")],
-    [code_out("record_json", 609)],
+    [code_out("record_json", 609), code_out("offer_id", 609)],
     pos=(390, 510)))
 s6f.append(plugin_node(610, "自查执行方案", "query_node_result",
     "节点结果查询（复用）：req_id=入参 req_id，node_name=requirement 取回执行方案（需求摘要）",
@@ -2584,7 +2616,7 @@ s6f.append(plugin_node(610, "自查执行方案", "query_node_result",
     method="get", pos=(240, 635)))
 s6f.append(code_node(611, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点610查询出参 list", ref_block=nid(610), ref_rel="list")],
-    [code_out("record_json", 611)],
+    [code_out("record_json", 611), code_out("offer_id", 611)],
     pos=(390, 635)))
 s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
     [inp("config_result", "配置环节原文（节点603提取）", ref_block=nid(603), ref_rel="record_json"),

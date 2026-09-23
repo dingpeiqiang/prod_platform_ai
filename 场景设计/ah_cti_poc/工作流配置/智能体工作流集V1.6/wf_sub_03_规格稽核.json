@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
+  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -124,7 +124,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -178,35 +178,39 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "",
-            "relName": "",
-            "name": "audit_file",
-            "description": "稽核需求Excel（会话文件引用，multipart）",
-            "type": "string",
-            "required": true,
-            "content": "",
-            "part_name": "file"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-            "relName": "offer_id",
-            "name": "offer_id",
-            "description": "销售品ID（节点207解析，供 mock 清单定位）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（=开始节点 req_id；后端按此查需求+配置生成稽核 Excel）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000207",
-              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（会话上下文）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "智能稽核文件上传",
           "code": "audit_file_upload",
-          "description": "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
+          "description": "接口B1：智能稽核文件上传（后端按 req_id 查需求与配置信息生成稽核 Excel 后上传）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；入参仅 req_id + chat_id，无前端文件（开发 mock 返回预置清单）",
           "version": "1"
         },
         "authentic_info_new": {
