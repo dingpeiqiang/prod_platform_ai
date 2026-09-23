@@ -28,6 +28,7 @@ from gen_workflows import (
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_POLL_AUDIT, CODE_EXTRACT_GLOBAL_ID,
+    CODE_EXTRACT_REQUEST_IDS,
     CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
 )
 
@@ -1591,7 +1592,7 @@ s12f.append(plugin_node(2202, "自查稽核发起临时态", "query_node_result"
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
     [ ("list", "记录数组JSON", "string")],
     method="get", pos=(240, 135)))
-s12f.append(code_node(2203, "提取 requestIds", CODE_EXTRACT_RECORD,
+s12f.append(code_node(2203, "提取 requestIds", CODE_EXTRACT_REQUEST_IDS,
     [inp("query_list", "引用节点2202查询出参 list", ref_block=nid(2202), ref_rel="list")],
     [code_out("record_json", 2203), code_out("offer_id", 2203), code_out("requestIds", 2203)],
     pos=(390, 135)))

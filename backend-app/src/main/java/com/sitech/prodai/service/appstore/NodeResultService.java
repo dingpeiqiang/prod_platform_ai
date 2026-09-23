@@ -225,6 +225,26 @@ public class NodeResultService {
         return latestOf(hit);
     }
 
+    /**
+     * 按 node_name 取全部环节结果（跨 req_id），供「按 result_json 内 offer_id 反查」场景使用。
+     * 用于新增销售品未入内存档案时（如后端重启/多实例），从持久化的 config 环节结果重建产品档案。
+     *
+     * @return 命中记录列表（按更新时间倒序）；无命中返回空列表
+     */
+    public List<Map<String, Object>> listByNodeName(String nodeName) {
+        if (nodeName == null || nodeName.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<NodeResultRecord> hit = mapper.selectList(new LambdaQueryWrapper<NodeResultRecord>()
+                .eq(NodeResultRecord::getNodeName, nodeName.trim()));
+        hit.sort(Comparator.comparing((NodeResultRecord r) -> tsOf(r)).reversed());
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (NodeResultRecord r : hit) {
+            list.add(snapshot(r));
+        }
+        return list;
+    }
+
     private NodeResultRecord latestOf(List<NodeResultRecord> hit) {
         NodeResultRecord latest = null;
         for (NodeResultRecord r : hit) {

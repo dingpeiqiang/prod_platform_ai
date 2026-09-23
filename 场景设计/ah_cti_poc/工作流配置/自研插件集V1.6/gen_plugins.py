@@ -323,11 +323,11 @@ plugins.append(build_plugin(
 # ---------------- 工具3 销售品测试发起 ----------------
 plugins.append(build_plugin(
     "offer-test-0001", "销售品测试发起", "offer_test",
-    "自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）",
+    "自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据或新增销售品落地档案（新增品由工具7配置落地写入，重启后自动从持久化 config 环节结果重建），异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）",
     "/api/v1/appstore/test/offer/start", "POST",
     {
         "offerId": schema_param("offerId", "string",
-            "被测销售品ID（offer表主键，如 900102308）；须为《产品信息.txt》18个销售品之一，未收录返回 4001", True),
+            "被测销售品ID（offer表主键，如 900102308；存量品须为《产品信息.txt》18个销售品之一，新增品须已完成配置落地，二者皆无返回 4001）", True),
     },
     ["offerId"],
     {

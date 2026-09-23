@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# ⚠ 本文件自 V1.6 起仅作「共享常量库」，工作流 JSON 唯一生成入口为 gen_workflows_v2.py，
+#   请勿单独运行本文件（其 legacy files 构建与写盘已被 v2 取代）。
 # 生成产销品加载AI应用 V1.7 工作流导出JSON（8子工作流，主工作流已删除）
 # V1.7 LLM智能调度模式：智能体按【意图→子工作流智能调度映射表】直调 wf_sub_01~08，
 # 主流程 wf_cpcp_main 固定编排弃用并删除；四环节结果存储下沉各子工作流
@@ -382,6 +384,51 @@ CODE_EXTRACT_RECORD = (
     "    ret: Output = {\n"
     "        \"record_json\": record_json,\n"
     "        \"offer_id\": offer_id\n"
+    "    }\n"
+    "    return ret"
+)
+
+# CODE_EXTRACT_REQUEST_IDS：wf_sub_12 节点2203 从 audit_pending 封包（record_json）提取
+# requestIds 出参，供 B4 轮询（2204）/查稽核结果（2205）引用。
+# 与 CODE_EXTRACT_GLOBAL_ID 同款「专用提取器」：返回键与调用点声明出参严格一致
+# （平台按「返回键 ⊆ 声明出参」校验；共用 CODE_EXTRACT_RECORD 已不再返回 requestIds）。
+CODE_EXTRACT_REQUEST_IDS = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "async def main(args):\n"
+    "    raw = args.params['query_list']\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    record_json = ''\n"
+    "    offer_id = ''\n"
+    "    request_ids = ''\n"
+    "    try:\n"
+    "        arr = json.loads(raw)\n"
+    "        if isinstance(arr, list) and arr:\n"
+    "            first = arr[0]\n"
+    "            if isinstance(first, dict):\n"
+    "                record_json = str(first.get('result_json') or '')\n"
+    "        elif isinstance(arr, dict):\n"
+    "            record_json = str(arr.get('result_json') or '')\n"
+    "    except Exception:\n"
+    "        record_json = ''\n"
+    "    if not record_json:\n"
+    "        record_json = raw\n"
+    "    try:\n"
+    "        inner = json.loads(record_json)\n"
+    "        if isinstance(inner, dict):\n"
+    "            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n"
+    "            rid = inner.get('requestIds') or inner.get('request_ids') or ''\n"
+    "            if isinstance(rid, list):\n"
+    "                rid = ','.join(str(x) for x in rid)\n"
+    "            request_ids = str(rid)\n"
+    "    except Exception:\n"
+    "        offer_id = ''\n"
+    "        request_ids = ''\n"
+    "    ret: Output = {\n"
+    "        \"record_json\": record_json,\n"
+    "        \"offer_id\": offer_id,\n"
+    "        \"requestIds\": request_ids\n"
     "    }\n"
     "    return ret"
 )
@@ -1986,11 +2033,16 @@ files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = 
      edge(1306,1308), edge(1308,1402), edge(1402,1403), edge(1403,1405), edge(1405,1404)])
 
 
-for fn, data in files.items():
-    data = apply_layout(data)
-    with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print("written:", fn)
+# NOTE: 本文件自 V1.6 起仅作为「共享常量库」（CODE_* / 节点构造器 / workflow / apply_layout 等），
+#   工作流 JSON 的唯一生成入口是 gen_workflows_v2.py（from gen_workflows import ...）。
+#   legacy files 构建已被 v2 取代，其写盘仅在直接运行本文件时执行，
+#   以免被 import 时无条件覆盖 v2 产物（历史「流程陷阱」）。
+if __name__ == "__main__":
+    for fn, data in files.items():
+        data = apply_layout(data)
+        with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print("written:", fn)
 
-print("total:", len(files))
+    print("total:", len(files))
 

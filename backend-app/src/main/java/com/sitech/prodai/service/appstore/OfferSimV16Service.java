@@ -1946,11 +1946,49 @@ public class OfferSimV16Service {
     }
 
     /**
-     * 销售品档案统一解析：新增品独立档案优先，未命中再查存量种子库（存量链路行为不变）。
+     * 销售品档案统一解析：新增品独立档案优先，未命中再查存量种子库（存量链路行为不变）；
+     * 仍未命中时，回退到持久化的 config 环节结果（覆盖后端重启/多实例导致内存档案丢失的
+     * 新增销售品场景），从 result_json 反查同 offer_id 的落地配置重建档案并回填内存缓存。
      */
     private Map<String, Object> resolveOffer(String offerId) {
-        Map<String, Object> profile = offerId == null ? null : newProductArchive.get(offerId.trim());
-        return profile != null ? profile : seed.findOffer(offerId);
+        if (offerId == null || offerId.isBlank()) {
+            return seed.findOffer(offerId);
+        }
+        String key = offerId.trim();
+        Map<String, Object> profile = newProductArchive.get(key);
+        if (profile != null) {
+            return profile;
+        }
+        Map<String, Object> seedOffer = seed.findOffer(key);
+        if (seedOffer != null) {
+            return seedOffer;
+        }
+        return recoverNewProductProfile(key);
+    }
+
+    /**
+     * 新增销售品档案兜底：跨 req_id 扫描已持久化的 config 环节结果，按 offer_id 命中后
+     * 依据其 plan_json 重建产品档案并写入内存缓存，使重启后仍可直接用配置数据发起测试。
+     *
+     * @return 重建成功返回档案；未命中返回 null
+     */
+    private Map<String, Object> recoverNewProductProfile(String offerId) {
+        for (Map<String, Object> rec : nodeResult.listByNodeName("config")) {
+            Map<String, Object> json = parseConfig(MapOps.str(rec.get("result_json")));
+            if (json == null || json.isEmpty()) {
+                continue;
+            }
+            String recOfferId = MapOps.str(MapOps.firstNonEmpty(json.get("offer_id"), json.get("offerId"))).trim();
+            if (!offerId.equals(recOfferId)) {
+                continue;
+            }
+            Map<String, Object> plan = parseConfig(MapOps.str(json.get("plan_json")));
+            Map<String, Object> rebuilt = buildOfferProfile(plan == null || plan.isEmpty() ? json : plan, offerId);
+            newProductArchive.put(offerId, rebuilt);
+            log.info("[OfferSimV16] 新增销售品档案自持久化 config 环节结果重建: offer_id={}", offerId);
+            return rebuilt;
+        }
+        return null;
     }
 
     /** plan 字段值提取：按字段名取首个非空 value（键名对齐本体注册表 24 字段；兼容 fields/flat_fields/payload 三形态，V2.8） */
