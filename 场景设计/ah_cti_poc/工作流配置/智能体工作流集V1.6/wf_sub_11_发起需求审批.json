@@ -126,12 +126,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001103,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000001103,offer_id",
             "name": "offer_id",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000001103,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {

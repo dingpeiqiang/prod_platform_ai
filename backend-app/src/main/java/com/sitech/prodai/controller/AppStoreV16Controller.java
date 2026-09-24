@@ -178,10 +178,10 @@ public class AppStoreV16Controller {
 
     /* ================= 接口2：实时规格稽核 realtime_spec_audit ================= */
 
-    @Operation(summary = "实时规格稽核", description = "按销售品ID与配置JSON对照规则库实时稽核，同步返回通过/驳回+问题明细+整改建议")
+    @Operation(summary = "实时规格稽核", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, offer_id, config_json}]}，逐品对照规则库实时稽核，聚合返回 {req_id, status, offers:[{offer_seq, offer_id, pass, error_list, audit_summary}]}")
     @PostMapping("/audit/realtime")
     public Map<String, Object> auditRealtime(@RequestBody Map<String, Object> req) {
-        return sim.auditRealtime(req, System.currentTimeMillis());
+        return sim.auditRealtimeBatch(req, System.currentTimeMillis());
     }
 
     /* ================= 端点 2e：需求文档解析 requirement/parse-xlsx（V3.10，统一方案 6.6） ================= */
@@ -204,11 +204,11 @@ public class AppStoreV16Controller {
 
     /* ================= 接口3：配置落地 save_product_config ================= */
 
-    @Operation(summary = "配置落地", description = "解析执行方案JSON四类字段写入模拟CRM配置库；内部二次校验 confirmed==true 与存储 CONFIRMED 标记门禁；同 plan_json 幂等")
+    @Operation(summary = "配置落地", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, plan_json, offer_id}]}，逐品解析执行方案JSON写入模拟CRM配置库（同 plan_json 幂等），聚合返回 {req_id, status, offers:[{offer_seq, offer_id, save_result, status, saved_at, product_config, script_url, group?}]}")
     @PostMapping("/product/config/save")
     public Map<String, Object> saveProductConfig(@RequestBody Map<String, Object> req,
                                                  jakarta.servlet.http.HttpServletRequest httpRequest) {
-        return sim.saveProductConfig(req, externalBaseUrl(httpRequest));
+        return sim.saveProductConfigBatch(req, externalBaseUrl(httpRequest));
     }
 
     @Operation(summary = "配置上线脚本下载", description = "V2.5：按 offer_id 回放配置落地环节生成的 CRM/billing 落库 SQL 脚本（text/plain 附件下载，附件名 launch_{offer_id}.sql）；未落地产品返回 404")
@@ -244,39 +244,157 @@ public class AppStoreV16Controller {
         return b;
     }
 
+    /* ---- V3.12 多商品批量聚合辅助（测试类端点经适配层逐品调用后在此聚合） ---- */
+
+    /** offers[] 缺失时的参数级错误信封。 */
+    private Map<String, Object> offersMissing() {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("resultCode", "PARAM_MISSING");
+        body.put("resultMsg", "offers 必填（多商品数组，元素含 offer_seq/offer_id 等）");
+        return body;
+    }
+
+    /** 组装批量外层信封：{resultCode, resultMsg, req_id, status, offers[]}；整批态按逐品 status 聚合。 */
+    private Map<String, Object> batchBody(Map<String, Object> req, List<Map<String, Object>> items) {
+        long success = items.stream().filter(i -> "success".equals(MapOps.str(i.get("status")))).count();
+        String status = items.isEmpty() ? "FAIL"
+                : (success == items.size() ? "SUCCESS" : (success == 0 ? "FAIL" : "PARTIAL"));
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("resultCode", "0");
+        body.put("resultMsg", "success");
+        body.put("req_id", MapOps.str(req == null ? null : req.get("req_id")));
+        body.put("status", status);
+        body.put("offers", items);
+        return body;
+    }
+
     /* ================= 接口4：测试发起 offer_test ================= */
 
-    @Operation(summary = "销售品测试发起", description = "按销售品ID异步模拟测试执行（新装/副卡加装/退订），返回 globalId（经适配层，mock/real 可切换）")
+    @Operation(summary = "销售品测试发起", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, offer_id}]}，逐品经适配层发起异步测试（内部逐品调冻结的 C1 单体契约），聚合返回 {req_id, status, offers:[{offer_seq, offer_id, globalId}]}")
     @PostMapping("/test/offer/start")
     public Map<String, Object> offerTest(@RequestBody Map<String, Object> req) {
-        return interfaceFacade.testOfferStart(req);
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(req == null ? null : req.get("offers"));
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            String offerId = MapOps.str(MapOps.firstNonEmpty(offer.get("offer_id"), offer.get("offerId"))).trim();
+            Map<String, Object> call = new java.util.LinkedHashMap<>();
+            call.put("offer_id", offerId);
+            if (req.containsKey("mode")) {
+                call.put("mode", req.get("mode"));
+            }
+            Map<String, Object> r = interfaceFacade.testOfferStart(call);
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", offerId);
+            String globalId = MapOps.str(MapOps.firstNonEmpty(r.get("globalId"), r.get("global_id")));
+            item.put("globalId", globalId);
+            item.put("status", globalId.isBlank() ? "fail" : "success");
+            if (r.containsKey("resultMsg")) {
+                item.put("resultMsg", r.get("resultMsg"));
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
     }
 
     /* ================= 接口5：查询测试场景 get_test_scenes ================= */
 
-    @Operation(summary = "查询测试场景", description = "按 globalId 返回受理类场景集合（S_O_TC/S_ADD_CARD/S_U_TC）")
+    @Operation(summary = "查询测试场景", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, globalId}]}，逐品返回受理类场景集合（S_O_TC/S_ADD_CARD/S_U_TC）")
     @PostMapping("/test/offer/scenes")
     public Map<String, Object> testScenes(@RequestBody Map<String, Object> req) {
-        return interfaceFacade.testScenes(req);
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(req == null ? null : req.get("offers"));
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            String globalId = MapOps.str(MapOps.firstNonEmpty(offer.get("globalId"), offer.get("global_id"))).trim();
+            Map<String, Object> call = new java.util.LinkedHashMap<>();
+            call.put("global_id", globalId);
+            if (req.containsKey("mode")) {
+                call.put("mode", req.get("mode"));
+            }
+            Map<String, Object> r = interfaceFacade.testScenes(call);
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("globalId", globalId);
+            item.put("testScenes", r.get("testScenes"));
+            item.put("status", MapOps.empty(r.get("testScenes")) ? "fail" : "success");
+            items.add(item);
+        }
+        return batchBody(req, items);
     }
 
     /* ================= 接口6：查询测试进度 get_test_progress ================= */
 
-    @Operation(summary = "查询测试进度", description = "按 globalId 推进模拟测试进度状态机（总步骤=场景数+2），支持轮询")
+    @Operation(summary = "查询测试进度", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, globalId}]}，逐品推进模拟测试进度状态机（总步骤=场景数+2），支持轮询")
     @PostMapping("/test/offer/progress")
     public Map<String, Object> testProgress(@RequestBody Map<String, Object> req) {
-        return interfaceFacade.testProgress(req);
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(req == null ? null : req.get("offers"));
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            String globalId = MapOps.str(MapOps.firstNonEmpty(offer.get("globalId"), offer.get("global_id"))).trim();
+            Map<String, Object> call = new java.util.LinkedHashMap<>();
+            call.put("global_id", globalId);
+            if (req.containsKey("mode")) {
+                call.put("mode", req.get("mode"));
+            }
+            Map<String, Object> r = interfaceFacade.testProgress(call);
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("globalId", globalId);
+            item.put("status", "success");
+            for (String k : java.util.List.of("totalSteps", "activeIndex", "done", "failed", "failIndex",
+                    "totalSceneCount", "finishedSceneCount", "failedSceneCount", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
     }
 
     /* ================= 接口7：查询测试结果 get_test_result ================= */
 
-    @Operation(summary = "查询测试结果", description = "按 globalId 生成逐场景测点比对明细（presetValue 取自《产品信息.txt》）与受理凭证；报告归档后出参回传 report_url 下载链接")
+    @Operation(summary = "查询测试结果", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, globalId}]}，逐品生成逐场景测点比对明细与受理凭证；报告归档后出参回传 report_url 下载链接")
     @PostMapping("/test/offer/result")
     public Map<String, Object> testResult(@RequestBody Map<String, Object> req,
                                           jakarta.servlet.http.HttpServletRequest httpRequest) {
-        Map<String, Object> call = new java.util.LinkedHashMap<>(req == null ? Map.of() : req);
-        call.put("external_base_url", externalBaseUrl(httpRequest));
-        return interfaceFacade.testResult(call);
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(req == null ? null : req.get("offers"));
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            String globalId = MapOps.str(MapOps.firstNonEmpty(offer.get("globalId"), offer.get("global_id"))).trim();
+            Map<String, Object> call = new java.util.LinkedHashMap<>();
+            call.put("global_id", globalId);
+            call.put("external_base_url", externalBaseUrl(httpRequest));
+            if (req.containsKey("mode")) {
+                call.put("mode", req.get("mode"));
+            }
+            Map<String, Object> r = interfaceFacade.testResult(call);
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("globalId", globalId);
+            boolean okResult = "0".equals(MapOps.str(r.get("resultCode")));
+            item.put("status", okResult ? "success" : "fail");
+            for (String k : java.util.List.of("resultCode", "resultMsg", "testRequestId", "testRequestName", "offerName",
+                    "orderId", "offerInstId", "testScenes", "testCases", "report_url", "offer_group_check")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
     }
 
     @Operation(summary = "自动化测试报告下载", description = "按 globalId 回放测试完成时归档的《销售品自动化测试报告》Markdown（text/markdown 附件下载，附件名 test_report_{globalId}.md）；无该测试任务或报告未生成返回 404")
@@ -294,30 +412,29 @@ public class AppStoreV16Controller {
 
     /* ================= 接口8：计费规则校验 check_billing_rule ================= */
 
-    @Operation(summary = "计费规则校验", description = "内置规则引擎校验配置JSON，输出模拟风险清单（默认通过，支持构造冲突用例）")
+    @Operation(summary = "计费规则校验", description = "V3.12 多商品批量：入参 {req_id, check_scene, offers:[{offer_seq, config_json}]}，逐品内置规则引擎校验配置JSON，聚合返回 {req_id, status, offers:[{offer_seq, pass, risk_list, compare_list}]}")
     @PostMapping("/billing/rules/verify")
     public Map<String, Object> billingRulesVerify(@RequestBody Map<String, Object> req) {
-        return sim.billingRulesVerify(req);
+        return sim.billingRulesVerifyBatch(req);
     }
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
-    @Operation(summary = "上线审批推送", description = "生成模拟审批单号并写入审批状态库；校验 approve_confirmed==true 与 execution_id 四环节结果门禁；同 offer_id 幂等")
+    @Operation(summary = "上线审批推送", description = "V3.12 多商品批量：入参 {req_id, approval_flow, offers:[{offer_seq, offer_id, report_url}]}，逐品生成审批单号并四环节门禁校验（同 offer_id 幂等），聚合返回 {req_id, status, offers:[{offer_seq, approval_id, status, ...}]}")
     @PostMapping("/approval/submit")
     public Map<String, Object> approvalSubmit(@RequestBody Map<String, Object> req) {
-        return sim.approvalSubmit(req);
+        return sim.approvalSubmitBatch(req);
     }
 
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
-    @Operation(summary = "审批工单查询", description = "按 req_id 关联查询审批工单完整信息（单号/需求单号/销售品/类型/状态/环节/审批人/意见/矩阵）；"
-            + "chat_id 为会话入参透传回显；approval_id / offer_id 作为兼容兜底")
+    @Operation(summary = "审批工单查询", description = "V3.12 多商品批量：入参 {req_id, chat_id}（或 offers[] 兜底），按 req_id 关联返回该需求全部品审批工单信息，聚合返回 {req_id, status, offers:[{offer_seq, approval_id, offer_id, status, current_node, ...}]}")
     @GetMapping("/approval/status")
     public Map<String, Object> approvalStatus(@RequestParam(required = false) String req_id,
                                               @RequestParam(required = false) String chat_id,
                                               @RequestParam(required = false) String approval_id,
                                               @RequestParam(required = false) String offer_id) {
-        return sim.approvalStatus(Map.of("req_id", MapOps.str(req_id),
+        return sim.approvalStatusBatch(Map.of("req_id", MapOps.str(req_id),
                 "chat_id", MapOps.str(chat_id),
                 "approval_id", MapOps.str(approval_id),
                 "offer_id", MapOps.str(offer_id)));
@@ -325,16 +442,18 @@ public class AppStoreV16Controller {
 
     /* ================= 接口11：监控查询 query_product_monitor ================= */
 
-    @Operation(summary = "监控查询", description = "按销售品（offer_id）或需求单号（req_id）返回模拟运行指标（订单量/异常量/计费差错率/告警列表）；"
-            + "offer_id 非必填，缺省时按 req_id 关联解析销售品ID")
+    @Operation(summary = "监控查询", description = "V3.12 多商品批量：入参 {req_id, offers:[{offer_seq, offer_id}]}（或按 req_id 关联解析），逐品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），聚合返回 {req_id, status, offers:[...]}")
     @GetMapping("/product/monitor")
     public Map<String, Object> productMonitor(@RequestParam(required = false) String offer_id,
                                               @RequestParam(required = false) String req_id,
                                               @RequestParam(required = false) String date_range,
                                               @RequestParam(required = false, defaultValue = "all") String metric) {
-        return sim.productMonitor(Map.of("offer_id", MapOps.str(offer_id),
-                "req_id", MapOps.str(req_id),
-                "date_range", MapOps.str(date_range), "metric", metric));
+        Map<String, Object> req = new java.util.LinkedHashMap<>();
+        req.put("offer_id", MapOps.str(offer_id));
+        req.put("req_id", MapOps.str(req_id));
+        req.put("date_range", MapOps.str(date_range));
+        req.put("metric", metric);
+        return sim.productMonitorBatch(req);
     }
 
     /**

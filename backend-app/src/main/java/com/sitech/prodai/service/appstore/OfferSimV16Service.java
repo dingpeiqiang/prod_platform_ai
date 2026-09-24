@@ -1563,6 +1563,49 @@ public class OfferSimV16Service {
         return "";
     }
 
+    /**
+     * 按 req_id 关联解析「全部」销售品（多商品监控运维 offer_id 缺省时兜底）。
+     * 依次取该需求单的 config / requirement 环节结果，解析其 offers[]（回退顶层 offer_id），
+     * 归一为 [{offer_seq, offer_id}]；未命中返回空列表。仅只读取值，不写存储。
+     */
+    private List<Map<String, Object>> resolveOffersByReqId(String reqId) {
+        for (String stage : List.of("config", "requirement")) {
+            Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
+            if (rec == null) {
+                continue;
+            }
+            Map<String, Object> json = parseConfig(MapOps.str(rec.get("result_json")));
+            if (json == null || json.isEmpty()) {
+                continue;
+            }
+            List<Map<String, Object>> raw = MapOps.castListOfMaps(json.get("offers"));
+            List<Map<String, Object>> out = new ArrayList<>();
+            int seq = 1;
+            for (Map<String, Object> o : raw) {
+                String oid = MapOps.str(MapOps.firstNonEmpty(o.get("offer_id"), o.get("offerId"))).trim();
+                if (oid.isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("offer_seq", o.get("offer_seq") == null ? seq : o.get("offer_seq"));
+                item.put("offer_id", oid);
+                out.add(item);
+                seq++;
+            }
+            if (!out.isEmpty()) {
+                return out;
+            }
+            String offerId = MapOps.str(MapOps.firstNonEmpty(json.get("offer_id"), json.get("offerId"))).trim();
+            if (!offerId.isEmpty()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("offer_seq", 1);
+                item.put("offer_id", offerId);
+                return List.of(item);
+            }
+        }
+        return List.of();
+    }
+
     /* ================= 接口12：异常告警 send_alert ================= */
 
     public synchronized Map<String, Object> sendAlert(Map<String, Object> req) {
@@ -2207,5 +2250,255 @@ public class OfferSimV16Service {
         body.put("code", code);
         body.put("msg", msg);
         return body;
+    }
+
+    /* =====================================================================================
+     * V3.12 多商品批量编排层（面向工作流的 /api/v1/appstore/* 端点）
+     *
+     * 边界：本层收 offers[] 数组，服务端 for 循环逐品调用既有「单体」业务逻辑（冻结层，
+     * 对接 EOP 真实接口 B1~B4 / C1~C4 的入参一律不变），再聚合为 {req_id, status, offers[]} 返回。
+     * 工作流层一次 HTTP 调用传/收数组，无需跨节点循环（平台无循环节点）。
+     * ===================================================================================== */
+
+    /** 从请求体取 offers[] 数组（List 或 JSON 数组字符串均可）。 */
+    private List<Map<String, Object>> offersOf(Map<String, Object> req) {
+        return MapOps.castListOfMaps(req == null ? null : req.get("offers"));
+    }
+
+    /**
+     * 构造逐品单体请求：顶层共享字段（req_id/check_scene/approval_flow/mode/...，剔除 offers）
+     * + 当前元素字段（元素优先覆盖同名顶层键）。
+     */
+    private Map<String, Object> elementRequest(Map<String, Object> req, Map<String, Object> offer) {
+        Map<String, Object> one = new LinkedHashMap<>(req);
+        one.remove("offers");
+        for (Map.Entry<String, Object> e : offer.entrySet()) {
+            if (e.getValue() != null) {
+                one.put(e.getKey(), e.getValue());
+            }
+        }
+        return one;
+    }
+
+    /** 单品态归一：success（无失败）/ partial / fail。 */
+    private static String offerStatus(Object itemStatus) {
+        String s = MapOps.str(itemStatus).toLowerCase();
+        if (s.equals("success") || s.equals("ok") || s.equals("通过") || s.equals("1")) {
+            return "success";
+        }
+        if (s.equals("partial")) {
+            return "partial";
+        }
+        return "fail";
+    }
+
+    /** 由逐品结果聚合整批态：全 success=SUCCESS，含 fail 且含 success=PARTIAL，全 fail=FAIL。 */
+    private static String batchStatus(List<Map<String, Object>> items) {
+        if (items.isEmpty()) {
+            return "FAIL";
+        }
+        long success = items.stream().filter(i -> "success".equals(MapOps.str(i.get("status")))).count();
+        if (success == items.size()) {
+            return "SUCCESS";
+        }
+        return success == 0 ? "FAIL" : "PARTIAL";
+    }
+
+    /** 组装批量外层信封：{resultCode, resultMsg, req_id, status, offers[]}。 */
+    private Map<String, Object> batchBody(Map<String, Object> req, List<Map<String, Object>> items) {
+        Map<String, Object> body = ok();
+        body.put("req_id", MapOps.str(req.get("req_id")));
+        body.put("status", batchStatus(items));
+        body.put("offers", items);
+        return body;
+    }
+
+    /** 参数级失败（无 offers[]）时返回错误信封。 */
+    private Map<String, Object> offersMissing() {
+        return paramMissing("offers 必填（多商品数组，元素含 offer_seq/offer_id 等）");
+    }
+
+    /* ---- 配置落地批量 ---- */
+
+    public Map<String, Object> saveProductConfigBatch(Map<String, Object> req, String externalBaseUrl) {
+        List<Map<String, Object>> offers = offersOf(req);
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            Map<String, Object> r = saveProductConfig(one, externalBaseUrl);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
+            item.put("status", offerStatus(r.get("status")));
+            for (String k : List.of("save_result", "saved_at", "product_config", "script_url", "group", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
+    }
+
+    /* ---- 稽核实时批量（内部逐品；对接 B1~B4 时入参冻结） ---- */
+
+    public Map<String, Object> auditRealtimeBatch(Map<String, Object> req, long startTime) {
+        List<Map<String, Object>> offers = offersOf(req);
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            Map<String, Object> r = auditRealtime(one, startTime);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", MapOps.firstNonEmpty(offer.get("offer_id"), offer.get("offerId")));
+            item.put("status", "0".equals(MapOps.str(r.get("pass"))) ? "fail" : "success");
+            for (String k : List.of("pass", "error_list", "audit_summary", "requestIds", "sales_id", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
+    }
+
+    /* ---- 资费校验批量 ---- */
+
+    public Map<String, Object> billingRulesVerifyBatch(Map<String, Object> req) {
+        List<Map<String, Object>> offers = offersOf(req);
+        if (offers.isEmpty()) {
+            return offersMissing();
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            if (MapOps.empty(one.get("config_json"))) {
+                one.put("config_json", toJson(offer));
+            }
+            Map<String, Object> r = billingRulesVerify(one);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("status", "0".equals(MapOps.str(r.get("pass"))) ? "fail" : "success");
+            for (String k : List.of("pass", "risk_list", "compare_list", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
+    }
+
+    /* ---- 上线审批批量 ---- */
+
+    public Map<String, Object> approvalSubmitBatch(Map<String, Object> req) {
+        List<Map<String, Object>> offers = offersOf(req);
+        if (offers.isEmpty()) {
+            // 兼容需求轨（wf_sub_11，需求阶段无 offers[]）：按顶层 offer_id/report_url 合成单元素
+            if (MapOps.empty(req.get("offer_id")) && MapOps.empty(req.get("report_url"))) {
+                return offersMissing();
+            }
+            Map<String, Object> single = new LinkedHashMap<>();
+            single.put("offer_id", MapOps.str(req.get("offer_id")));
+            single.put("report_url", MapOps.str(req.get("report_url")));
+            offers = List.of(single);
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            Map<String, Object> r = approvalSubmit(one);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
+            String st = MapOps.str(r.get("status"));
+            item.put("status", "NOT_CONFIRMED".equals(st) ? "fail" : offerStatus(st));
+            for (String k : List.of("approval_id", "req_id", "approval_type", "status", "approval_matrix", "reason", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
+    }
+
+    /* ---- 监控查询批量（按 req_id 关联全部品；显式 offers[] 时按元素） ---- */
+
+    public Map<String, Object> productMonitorBatch(Map<String, Object> req) {
+        List<Map<String, Object>> offers = offersOf(req);
+        if (offers.isEmpty()) {
+            // 兼容按 req_id / offer_id 查询：优先按 req_id 关联解析「全部」商品（多商品），
+            // 否则退化为显式 offer_id 单元素（走既有解析逻辑）。
+            String reqId = MapOps.str(req.get("req_id")).trim();
+            if (!reqId.isEmpty()) {
+                offers = resolveOffersByReqId(reqId);
+            }
+            if (offers.isEmpty()) {
+                if (MapOps.empty(req.get("offer_id"))) {
+                    return offersMissing();
+                }
+                Map<String, Object> single = new LinkedHashMap<>();
+                single.put("offer_id", MapOps.str(req.get("offer_id")));
+                offers = List.of(single);
+            }
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            String offerId = MapOps.firstNonEmpty(offer.get("offer_id"), offer.get("offerId")).toString();
+            Map<String, Object> r = productMonitor(one);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offerId));
+            item.put("status", r.containsKey("error_count") ? "success" : "fail");
+            for (String k : List.of("offer_name", "order_count", "order_trend", "error_count", "error_trend",
+                    "fee_error_rate", "fee_trend", "metric", "alarm_list", "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
+    }
+
+    /* ---- 审批进度查询批量（按 req_id 关联全部品审批单） ---- */
+
+    public Map<String, Object> approvalStatusBatch(Map<String, Object> req) {
+        List<Map<String, Object>> offers = offersOf(req);
+        String reqId = MapOps.str(req.get("req_id")).trim();
+        if (offers.isEmpty()) {
+            if (reqId.isEmpty() && MapOps.empty(req.get("offer_id"))) {
+                return offersMissing();
+            }
+            offers = List.of(new LinkedHashMap<>());
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> offer : offers) {
+            Map<String, Object> one = elementRequest(req, offer);
+            if (MapOps.empty(one.get("req_id"))) {
+                one.put("req_id", reqId);
+            }
+            Map<String, Object> r = approvalStatus(one);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offer_seq", offer.get("offer_seq"));
+            item.put("offer_id", MapOps.str(r.get("offer_id")));
+            item.put("status", r.containsKey("approval_id") ? "success" : "fail");
+            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "status",
+                    "current_node", "approver", "opinion", "submit_time", "update_time", "approval_matrix",
+                    "resultCode", "resultMsg")) {
+                if (r.containsKey(k)) {
+                    item.put(k, r.get(k));
+                }
+            }
+            items.add(item);
+        }
+        return batchBody(req, items);
     }
 }

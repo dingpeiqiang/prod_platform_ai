@@ -917,6 +917,20 @@ class Workflow:
     def next_nodes(self, node_id):
         return self._out_edges.get(node_id, [])
 
+    def _reachable(self, start_id):
+        """从 start 出发按边可达的全部节点 id（忽略条件分支，用于就绪判定）。"""
+        seen = set()
+        stack = [start_id]
+        while stack:
+            cur = stack.pop()
+            if cur in seen:
+                continue
+            seen.add(cur)
+            for e in self._out_edges.get(cur, []):
+                if e["end"] not in seen:
+                    stack.append(e["end"])
+        return seen
+
 
 def seq_of(node_id: str) -> int:
     try:
@@ -1003,21 +1017,34 @@ class WorkflowRunner:
         # 开始节点：组装工作流入参
         self._run_start(wf, start, initial, ctx, prefix, depth)
 
-        # 拓扑遍历
+        # 拓扑遍历：就绪即执行——仅当某节点的所有「可达前驱」都已执行时才运行，
+        # 避免节点在其上游尚未产出时被提前调度而读到空出参（条件分支未走的分支前驱已执行/不可达则视为满足）。
+        reachable = wf._reachable(start["id"])
         pending = [e["end"] for e in wf.next_nodes(start["id"])]
         visited = {start["id"]}
+        executed = {start["id"]}
         steps = 0
         end_results = []
         while pending:
             steps += 1
             if steps > max_steps:
                 raise RuntimeError(f"{name}: 超过最大步数 {max_steps}（疑似环）")
-            node_id = pending.pop(0)
+            ready_idx = None
+            for i, nid in enumerate(pending):
+                preds = [e["start"] for e in wf._in_edges.get(nid, [])]
+                if all((p in executed) or (p not in reachable) for p in preds):
+                    ready_idx = i
+                    break
+            if ready_idx is None:
+                ready_idx = 0  # 存在环或不可满足依赖，退回原顺序，避免死锁
+            node_id = pending.pop(ready_idx)
             node = wf.nodes.get(node_id)
             if node is None:
+                executed.add(node_id)
                 continue
             ntype = node.get("type")
             res = self._run_node(wf, node, ctx, prefix, depth)
+            executed.add(node_id)
 
             if ntype == 9:
                 end_results.append(res)

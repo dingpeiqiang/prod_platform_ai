@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-自动测试",
-  "flowRemark": "子工作流4（环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→C1 offer_test 发起取 globalId→C2 get_test_scenes 取 testScenes→封包→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，test_passed==通过 才写 test）。",
+  "flowRemark": "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，全品通过才写 test）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -119,12 +119,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000310,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000310,offer_id",
             "name": "offer_id",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000310,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -159,8 +169,15 @@
       {
         "outputs": [
           {
-            "name": "globalId",
-            "cname": "测试流水号",
+            "name": "offers",
+            "cname": "逐品测试发起结果数组JSON（[{offer_seq,offer_id,globalId,status}]）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "整批状态 SUCCESS/PARTIAL/FAIL",
             "sechema": [],
             "type": "string",
             "required": false
@@ -171,25 +188,39 @@
         "authentic_info": "",
         "inputs": [
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000310",
-            "relName": "offer_id",
-            "name": "offerId",
-            "description": "销售品ID（节点310从落地结果解析的offer_id）",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品销售品ID数组（节点310提取，每元素含 offer_seq/offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000310",
-              "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000310,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000310,offers"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "发起测试",
           "code": "offer_test",
-          "description": "接口C1 销售品测试发起：入参 offerId 取自 config 环节结果（节点310解析的offer_id）；出参 resultObject.globalId→globalId",
+          "description": "接口C1（V3.12 多商品批量）：入参 {req_id, offers:[{offer_seq, offer_id}]}（offer_id 取自 config 环节结果，节点310逐品解析），逐品经适配层发起异步测试（内部逐品调冻结 C1 单体契约），聚合返回 {req_id, status, offers:[{offer_seq, offer_id, globalId}]}",
           "version": "1"
         },
         "authentic_info_new": {
@@ -212,54 +243,17 @@
       {
         "outputs": [
           {
-            "name": "testScenes",
-            "cname": "逐场景清单（含各场景 orderId/offerInstId 归属）",
-            "sechema": [
-              {
-                "name": "item",
-                "cname": "逐场景清单（含各场景 orderId/offerInstId 归属）",
-                "sechema": [
-                  {
-                    "name": "testSceneId",
-                    "cname": "场景ID",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "testSceneName",
-                    "cname": "场景名称（套餐新装/副卡加装/套餐退订）",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "testSceneNbr",
-                    "cname": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "testSceneDesc",
-                    "cname": "场景描述",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  },
-                  {
-                    "name": "sort",
-                    "cname": "排序",
-                    "sechema": [],
-                    "type": "string",
-                    "required": false
-                  }
-                ],
-                "type": "object",
-                "required": false
-              }
-            ],
-            "type": "array",
+            "name": "offers",
+            "cname": "逐品场景清单数组JSON（[{offer_seq,globalId,testScenes}]）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "整批状态 SUCCESS/PARTIAL/FAIL",
+            "sechema": [],
+            "type": "string",
             "required": false
           }
         ],
@@ -268,25 +262,39 @@
         "authentic_info": "",
         "inputs": [
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
-            "relName": "globalId",
-            "name": "globalId",
-            "description": "测试流水号（节点302出参）",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品测试流水号数组（节点302出参 offers，每元素含 offer_seq/globalId）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000302",
-              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+              "a1b2c3d4-0000-4000-8000-000000000302,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,offers"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "查询测试场景",
           "code": "get_test_scenes",
-          "description": "接口C2 查询测试场景：入参 globalId；出参 resultObject.testScenes[]→testScenes（含各场景 orderId/offerInstId 归属），供 6b 报告场景覆盖与受理凭证引用",
+          "description": "接口C2（V3.12 多商品批量）：入参 {req_id, offers:[{offer_seq, globalId}]}（globalId 取自节点302逐品输出），逐品返回受理类场景集合，聚合返回 {req_id, status, offers:[{offer_seq, globalId, testScenes}]}，供 6b 报告场景覆盖与受理凭证引用",
           "version": "1"
         },
         "authentic_info_new": {
@@ -314,36 +322,36 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n                'offers', 'req_id', 'plan_json')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
-            "relName": "globalId",
-            "name": "globalId",
-            "description": "测试流水号（节点302）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000302",
-              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-          },
-          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
-            "relName": "testScenes",
-            "name": "testScenes",
-            "description": "逐场景清单（节点303）",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品测试发起结果数组（节点303出参 offers，含 offer_seq/globalId/testScenes）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000303",
-              "a1b2c3d4-0000-4000-8000-000000000303,testScenes"
+              "a1b2c3d4-0000-4000-8000-000000000303,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,testScenes"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,req_id"
           },
           {
             "blockID": "",
@@ -419,7 +427,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000308",
             "relName": "record_json",
             "name": "result_json",
-            "description": "环节结果JSON=发起结果封包（globalId/testScenes）",
+            "description": "环节结果JSON=发起结果封包（req_id+offers[]）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -443,7 +451,7 @@
         "nodeMeta": {
           "title": "测试发起临时态存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=test_pending（测试发起临时态，非最终 test）；result_json=发起结果封包（globalId/testScenes）；6b 轮询自查读取",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=test_pending（测试发起临时态，非最终 test）；result_json=发起结果封包（req_id+offers[]，每元素含 offer_seq/globalId/testScenes）；6b 轮询自查读取",
           "version": "1"
         },
         "authentic_info_new": {
@@ -535,7 +543,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试已发起（globalId={globalId}，场景清单已获取）\n> 测试平台异步执行，请回复【查询测试结果】拉取测试结论（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试已发起（整批状态={status}），逐品测试流水号与场景清单：\n{offers}\n> 测试平台异步执行，请回复【查询测试结果】拉取测试结论（未完成会提示稍后续查）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -545,38 +553,38 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
-            "relName": "globalId",
-            "name": "globalId",
-            "description": "测试流水号",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000302",
-              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-          },
-          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
-            "relName": "testScenes",
-            "name": "testScenes",
-            "description": "逐场景清单（节点303）",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品测试发起结果数组（节点303出参 offers）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000303",
-              "a1b2c3d4-0000-4000-8000-000000000303,testScenes"
+              "a1b2c3d4-0000-4000-8000-000000000303,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,testScenes"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
+            "relName": "status",
+            "name": "status",
+            "description": "整批状态（节点303出参 status）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000303",
+              "a1b2c3d4-0000-4000-8000-000000000303,status"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,status"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000310",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID（节点310提取，供查看面板）",
+            "description": "首品销售品ID（节点310提取，供查看面板）",
             "type": "ref",
             "required": true,
             "content": "",

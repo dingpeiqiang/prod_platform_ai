@@ -4,7 +4,7 @@
 >
 > - **平台**：AI应用开发（九思大模型 · 低代码智能体平台）
 > - **场景**：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> - **当前基线**：V3.10（2026-09-22）——14 个工作流 JSON（`wf_sub_00`~`wf_sub_13`）+ 智能体（LLM）语义识别直调 + `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点 + **现场接口适配层（9 接口配置化封装，4.5 章）** + **需求文档（Excel）驱动支持：父/子键一品多品 + 品间关联关系复用融合组机制（6.6 章，V3.10 新增）**。原始版本履历（V1.2~V3.8）见原主方案（已删除），本方案不再逐条罗列，仅在必要时备注关键口径沿革。
+> - **当前基线**：V3.11（2026-09-24）——14 个工作流 JSON（`wf_sub_00`~`wf_sub_13`）+ 智能体（LLM）语义识别直调 + `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点 + **现场接口适配层（9 接口配置化封装，4.5 章）** + **需求文档（Excel）驱动支持：父/子键一品多品 + 品间关联关系复用融合组机制；文档解析由智能体层挂载 skill 完成（工作流保持文本驱动，不接收文件），（6.6 章，V3.10 新增解析能力、V3.11 改为 skill 承载）** + **智能体提示词业务场景编排强化（2.2 章：一次一调/发起即止/分段推进/键位门禁，V3.11）**。原始版本履历（V1.2~V3.8）见原主方案（已删除），本方案不再逐条罗列，仅在必要时备注关键口径沿革。
 > - **相关文档**：《工作流JSON开发规范》（`工作流配置/`）、《知识文档来源与采编指南》《端到端演示剧本》《本体应用方案》、`cpcp_product_ontology.ttl`、《SitechAI开发平台配置规范》。
 
 ---
@@ -21,13 +21,13 @@
 - **8 环节统一编号**：1 需求提报 / 2 需求分析 / 3 智能配置 / 4 规格稽核 / 5 资费校准 / 6 自动测试（**受理验证并入环节6，不独立成节**）/ 7 上线审批 / 8 监控运维；标题头统一 `【环节N/8·全名】`。
 - **步进式人机协同（V3.6 起替代 V3.2 自动串行口径）**：用户确认配置后**逐环节调度**（`wf_sub_02`→`wf_sub_03`→`wf_sub_05`→`wf_sub_04`），每一环节处理成功后先输出该环节结果 + 下一步建议，随即暂停等待用户反馈，用户确认后才调度下一环节；仅环节失败/异常时提前中断。
 - **需求工单审批/上线审批均二次确认**：提报单就绪即止于确认点（V3.3 起 `wf_sub_00` 不再自动发起审批，由新增子流 `wf_sub_11` 在用户明确回复【发起需求审批】后发起）；上线审批须执行主干全部成功后由用户确认发起，后端四环节硬校验兜底。
-- **需求文档（Excel）驱动与一品多品（V3.10 新增）**：环节1 需求提报支持上传结构化《需求文档》（.xlsx，如《新增四档5G畅享融合套餐销售品.xlsx》），由后端解析端点归一为结构化需求；一份需求文档可含多个新增销售品（4 档套餐）与品间关联关系，采用**父/子键**（父 `req_id` 承载需求 + 子 `offer_seq` 区分各品）在同一 req_id 轨道内并行加载，**品间关联关系复用融合组机制（group_rules 组内依赖）**。详见 6.6 章。
+- **需求文档（Excel）驱动与一品多品（V3.10 新增解析能力 / V3.11 改为 skill 承载）**：环节1 需求提报支持上传结构化《需求文档》（.xlsx，如《新增四档5G畅享融合套餐销售品.xlsx》）。**工作流 start 节点无法接收文件/附件，故文档解析不由工作流承担**——当用户上传 .xlsx 时，**智能体（LLM）挂载 skill 解析文档**，将多品结构化需求转为**结构化文本**，再作为 `requirement_text` 直调 `wf_sub_00`（文本轨 LLM 抽取多品）。一份需求文档可含多个新增销售品（4 档套餐）与品间关联关系，采用**父/子键**（父 `req_id` 承载需求 + 子 `offer_seq` 区分各品）在同一 req_id 轨道内并行加载，**品间关联关系复用融合组机制（group_rules 组内依赖）**。详见 6.6 章。
 
 ### 1.2 全流程 8 环节总表（环节编号全文以此为准）
 
 | 环节 | 全名 | 承载子流 | 关键动作 | 判定字段 |
 | --- | --- | --- | --- | --- |
-| 1 | 需求提报 + 需求工单审批 | `wf_sub_00`（止于确认点）+ `wf_sub_11`（发起需求审批） | 要素提取（文本/Excel 需求文档）→ CODE_RENDER_REQ 渲染提报单 →**止于确认点**；用户回复【发起需求审批】后由 `wf_sub_11` 发起 `submit_release_approval`(approval-type=requirement) | 提报单就绪 / 审批单号 |
+| 1 | 需求提报 + 需求工单审批 | `wf_sub_00`（止于确认点）+ `wf_sub_11`（发起需求审批）※ .xlsx 上传时解析由智能体 skill 前置完成 | 用户上传 .xlsx → **智能体挂载 skill 解析为多品结构化文本**（工作流不接收文件）→ 作为 `requirement_text` 直调 `wf_sub_00`：LLM 要素提取（多品）→ CODE_RENDER_REQ 渲染提报单 →**止于确认点**；用户回复【发起需求审批】后由 `wf_sub_11` 发起 `submit_release_approval`(approval-type=requirement) | 提报单就绪 / 审批单号 |
 | 2 | 需求分析 | `wf_sub_01`（模板轨） | 要素提取 → validate_elements 质量门禁 → merge_nested → validate_nested 本体校验闸 → render_table → 保存 requirement → **输出方案止于确认点** | plan_json / plan_md |
 | 3 | 智能配置 | `wf_sub_02` | 自查 requirement → save_product_config → CODE_FUSION_GROUP_ECHO 融合成员回显 | status==SUCCESS/PARTIAL |
 | 4 | 规格稽核 | `wf_sub_03`（4a 发起）+ `wf_sub_12`（4b 轮询查询） | 上传稽核Excel → 逐品异步通知+落库（秒级返回）→ 用户触发 4b：SQL 轮询 → 取结果，归一 error_list（含 group 类目） | pass==1（`spec` 落库后） |
@@ -42,7 +42,7 @@
 
 | 平台能力 | 在本场景中的角色 |
 | --- | --- |
-| 智能体（助手） | 产销品数字员工统一入口（对话式 + 流程式调度中枢）；由智能体（LLM）按 3.2 提示词【意图→工作流映射表】**语义识别直调** 14 个子工作流（逐环节步进推进；需求工单审批须用户明确确认后才发起）；流程结束后承接**消息查询**（审批进度/监控结果）与**异常处置引导**（重新执行/修改执行方案） |
+| 智能体（助手） | 产销品数字员工统一入口（对话式 + 流程式调度中枢）；由智能体（LLM）按 3.2 提示词【意图→工作流映射表】**语义识别直调** 14 个子工作流（逐环节步进推进；需求工单审批须用户明确确认后才发起）；**上传 .xlsx 时由智能体挂载 skill 解析文档为结构化文本**（工作流不接收文件）；流程结束后承接**消息查询**（审批进度/监控结果）与**异常处置引导**（重新执行/修改执行方案） |
 | 工作流 | 承载 8 个业务环节的 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`；req_id 单必填入参自查链路，无意图调度主流程）；子流内部含环节结果存储节点（save_node_result） |
 | 插件/工具 | 封装 HTTP API 能力接口（相似度分析/智能稽核/智能测试等 13 工具 + 8 个后端适配端点 + 节点结果存储查询插件，共 22 个），全部自研模拟实现（兼容《产品信息.txt》18 个销售品） |
 | 知识库 | `knowledge/` 目录：K1 业务规范 / K2 资费规则 / K3 测试规范 / K4 存量销售品资料 / K5 FAQ + `ontology-fields.json`、`seed_offer_groups.json`、templates 注册表、存量产品目录、K5 存量报文等结构化资产 |
@@ -54,10 +54,10 @@
 
 | 原平台构件（第 2~6 章业务口径描述） | V2.0 工作流 JSON 实现（当前基线） |
 | --- | --- |
-| 智能体常驻提示词 | 智能体（LLM）按 3.2 提示词【意图→工作流映射表】做**语义识别并直调** 14 个子流；无独立意图调度主流程 |
+| 智能体常驻提示词 | 智能体（LLM）按 3.2 提示词【意图→工作流映射表】做**语义识别并直调** 14 个子流；上传 .xlsx 时挂载 skill 解析文档为结构化文本（工作流不接收文件）；无独立意图调度主流程 |
 | 子工作流 `wf_sub_01~08` | 14 个工作流 JSON：`wf_sub_00`~`wf_sub_13`（`gen_workflows_v2.py` 确定性生成，位于 `工作流配置/智能体工作流集V1.6/`） |
 | 插件工具 1~14 契约 | 后端 AppStoreV16Controller `/api/v1/appstore/*` 适配端点（13 工具 + 8 个 V2.0 新增端点，网关 `BASE_URL=http://10.86.13.201:31281`） |
-| 代码节点 | 确定性逻辑内嵌为工作流 **type=6 代码节点**（CODE_RENDER_REQ / CODE_GET_TEMPLATE / CODE_VALIDATE_ELEMENTS / CODE_MERGE_NESTED / CODE_OP_VALIDATE_NESTED / CODE_RENDER_TABLE / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_MAP_FIXED_CASES / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_SUMMARY_APPROVAL / CODE_DOWNLOAD_* 等） |
+| 代码节点 | 确定性逻辑内嵌为工作流 **type=6 代码节点**（CODE_RENDER_REQ / CODE_GET_TEMPLATE / CODE_VALIDATE_ELEMENTS / CODE_MERGE_NESTED / CODE_OP_VALIDATE_NESTED / CODE_RENDER_TABLE / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_MAP_FIXED_CASES / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_SUMMARY_APPROVAL / CODE_DOWNLOAD_* 等）（需求文档解析不在工作流内，由智能体 skill 承担） |
 | 平台知识库 K1~K5 + 向量召回 | `knowledge/` 目录 + 确定性代码节点/后端服务按需读取（K4 按销售品 ID 单文件精确定位，禁止全量读取） |
 | 平台门禁 | 后端硬校验保留（req_id 格式 5002 / 四环节门禁 / 幂等）；**确认门禁已移除**——方案确认与审批确认由智能体语义识别保证（提示词【限制】） |
 
@@ -83,6 +83,8 @@
 ### 2.2 提示词【角色 + 技能 + 意图映射表 + 限制】（职责分层）
 
 > **职责分层口径**：智能体（LLM）**只负责三件事**——① 语义识别（按【意图→工作流映射表】直调子工作流）；② 业务理解/补全（需求分析提取要素、补全字段、生成《加载方案》）；③ 结果表达（按固定模板输出环节结果、下一步建议、异常引导、汇总块）。**确定性技术细节不进提示词**：req_id 生成与透传、环节结果落库（node_name）、环节成败判定（status/pass/test_passed）、fail_node 续跑、审批四环节硬校验——由子流自查链路（query_node_result）+ type=6 代码节点 + 后端硬校验兜底（见第 5 章）。全流程 8 环节口径、步进式人机协同。
+>
+> **业务场景编排强化口径（V3.11 提示词优化）**：本轮优化聚焦"意图→工作流"的**编排确定性**，将编排规则显式化为五个可直接执行的约束——① **一次一调**：一条用户消息只直调一个子流，同轮不重复直调；② **发起即止**：凡"发起"类子流（wf_sub_00/03/04/11）返回后止于反馈点，下一环节需用户下一条消息驱动；③ **分段推进**：环节4/8 与环节6/8 各拆"发起段+查询段"两段，映射表以 4a/4b/6a/6b 独立列出行，避免把"下一步"误判为查询、或把"查询结果"误判为重复发起；④ **键位门禁**：`spec`（环节4 查询段 pass==1）与 `test`（环节6 查询段 test_passed==通过）落库是推进环节5/环节7 的硬前置，映射表与【限制】第 5 条同步显式列出主干顺序 `02→03→12→05→04→13`；⑤ **审批双轨消歧**：含"需求"的审批意图→`wf_sub_11`（提报后），含"上线/裸发起审批"→`wf_sub_06`（主干全成后），**阶段判定优先于字面匹配**，防"发起需求审批"误命中上线审批流（wf_sub_06）。
 
 ```
 【角色】
@@ -100,37 +102,72 @@
    即视为已由模板默认值/相似产品补全或不在待补充判定范围，不得提示用户补充。
    **提报单生成后必须提示"是否发起【需求工单审批】"并止于确认点**；**执行方案生成后
    同样止于确认点**并提示"请确认执行方案，回复【确认配置】后开始配置落地"。
+   **需求文档联运（V3.10 解析 / V3.11 改为 skill 承载）**：**工作流 start 节点无法接收文件/附件**，故当用户
+   上传 .xlsx 需求文档时，**由你（智能体）挂载 skill 解析该文档**，得到多品结构化文本（多品清单 + 品间关联关系），
+   再将该文本**作为 `requirement_text` 直调 `wf_sub_00`**（文本轨 LLM 抽取多品，父 req_id + 各品 offer_seq）
+   渲染提报单——一份文档可含多个销售品，提报单按"一档一行"清单表格呈现，**只读展示解析结果，不自行拆合品/编号**。
+   **严禁调用任何"需求文档解析"子工作流或向后端传 `requirement_file`**（工作流层不承担文件解析）。
+   解析失败（无销售品/关联关系非法/skill 不可用）按 E41 异常模板引导用户检查 Excel。
 2. 执行主干引导（环节3/8~6/8）：用户确认后**逐环节推进**——每环节子流返回后立即输出结果 + 下一步
    建议并暂停等待用户反馈，用户确认（继续/下一步/同意）后才直调下一环节；仅失败/异常时中断。
+   **指出调度顺序**：环节4/8 拆"发起+查询"两段、环节6/8 拆"发起+查询"两段（见映射表 4a/4b/6a/6b）。
 3. 审批与上线（环节7/8）：四环节全部成功后输出【执行主干全部完成】汇总块并提示"是否发起上线审批"；
    用户确认后才发起。
 4. 查询与运维（环节8/8+辅助）：按用户消息直调 审批进度查询/监控运维/存量产品查询/存量合规扫描
    对应子工作流并展示结果。
 
 【意图→工作流映射表（语义识别 → 业务动作 → 直调子工作流）】
-| 用户意图 | 业务动作 / 直调子工作流 | 业务说明 |
-| --- | --- | --- |
-| 提报/修改需求（环节1/8） | 需求提报 → 先生成提报单**止于确认点**；用户回复【发起需求审批】后再发起审批 | req_id 由子流生成/透传，LLM 不管理 |
-| 发起需求工单审批（环节1/8） | 直调 wf_sub_11 发起需求工单审批（须用户明确确认） | 发起即止于回执展示 |
-| 生成加载方案（环节2/8） | 需求分析，输出《加载方案》**止于确认点** | 未确认前不得进入执行主干 |
-| 确认配置（环节3/8~6/8） | 执行主干**逐环节步进推进**：智能配置→稽核发起→资费校准→自动测试；每环节止于反馈点，用户确认后才推进下一环节，失败即中断 | |
-| 查询稽核结果（环节4/8，可重复） | 直调 wf_sub_12（轮询流）；未完成输出"处理中"引导稍后再试，完成且 pass==1 方可推进环节5 | req_id |
-| 重新执行失败环节 | 从上次失败环节继续（子流自查自动续跑，已成功环节不重复） | fail_node 映射 |
-| 上线审批（环节7/8） | 发起上线审批（用户确认后发起；后端四环节硬校验） | |
-| 查询审批进度（辅助） | 直调 wf_sub_08（需求工单审批/上线审批双轨） | approval_id/offer_id |
-| 查询监控运维（环节8/8） | 直调 wf_sub_07（异常根因+工单闭环） | offer_id |
-| 查询存量产品（辅助） | 直调 wf_sub_09（只读） | 产品名/ID |
-| 存量合规扫描（辅助） | 直调 wf_sub_10 | 存量范围 |
-| 业务问答/超范围 | 按 K1~K5 知识库检索回答；超范围按答案为空提示 | 检索词 |
+> **调度总纪律**：一次用户消息**只直调一个子流**；同一条子流不得在同一轮重复直调；凡"发起"类
+> 子流（wf_sub_00/03/04/11）返回后一律**止于反馈点**，等用户下一条消息再直调下一子流。
+> **实体携带**：所有子流均以 `req_id` 为唯一键，从会话上下文沿用最近一次值透传（LLM 不生成、不改写）；
+> 环节4/8 另行携带 `chat_id`；辅助查询另携 `offer_id`/`approval_id`/产品名。
+
+| # | 用户意图（语义词） | 业务动作 / 直调子工作流 | 编排要点（携带参数 / 止于何处 / 下一轮触发） |
+| --- | --- | --- | --- |
+| 1 | 提报/描述/上传需求、修改需求（环节1/8） | `wf_sub_00` 需求提报（上传 .xlsx 时解析由 **skill** 前置完成） | 文本需求直接传 `requirement_text`；**上传 .xlsx 时先挂载 skill 解析为结构化文本**，再作为 `requirement_text` 传入；**生成提报单即止于确认点**；下一轮"发起需求审批"才推进 |
+| 2 | **发起需求审批** / 发起需求工单审批 / 提交需求审批（**含"需求"二字**，环节1/8） | `wf_sub_11` | **提报单确认点后唯一合法的审批流**；须用户明确回复且提报单已就绪；发起后止于回执展示。**严禁在此误调 wf_sub_06** |
+| 3 | 生成/查看加载方案、分析需求（环节2/8） | `wf_sub_01` 需求分析（模板轨） | req_id；**输出《加载方案》即止于确认点**；未确认前绝不进入主干 |
+| 4a | 确认配置 / 开始配置 / 确认执行方案（环节3/8） | `wf_sub_02` 智能配置 | req_id；返回结果 + 下一步建议后**止于反馈点** |
+| 4b | 下一步 / 继续 / 同意（环节4/8 发起段） | `wf_sub_03` 稽核发起（4a） | req_id + chat_id；秒级返回"稽核已发起"后**止于反馈点**；不轮询 |
+| 4c | 查询稽核结果 / 稽核好了吗（环节4/8 查询段，可重复） | `wf_sub_12` 稽核轮询查询（4b） | req_id；未完成输出"处理中"引导稍后再试（可再次触发）；完成 `pass==1` 方可推进环节5 |
+| 5 | 下一步 / 继续（环节5/8） | `wf_sub_05` 资费校准 | req_id；`pass==1` 打印结果 + 下一步建议后**止于反馈点** |
+| 6a | 下一步 / 继续（环节6/8 发起段） | `wf_sub_04` 测试发起（6a） | req_id；秒级返回"测试已发起（场景N个）"后**止于反馈点**；不轮询 |
+| 6b | 查询测试结果 / 测试好了吗（环节6/8 查询段，可重复） | `wf_sub_13` 测试轮询查询（6b） | req_id；未完成输出"处理中"引导稍后再试（可再次触发）；完成 `test_passed==通过` 写 test |
+| 7 | 发起上线审批 / 提交上线审批 / 发起审批（**仅执行主干四环节全成后**，环节7/8） | `wf_sub_06` 上线审批 | **前置守卫**：仅当 config/spec/fee/test 四环节均已完成（落库齐全）且用户回复【发起审批/发起上线审批】时方可触发；未达阶段**不得调度 wf_sub_06**，应回退提示正确动作。req_id；后端四环节硬校验；**推送即结束**，返回 approval_id/status |
+| 8 | 重新执行 / 继续上次失败环节 | 按 fail_node 续跑：STAGE1→`wf_sub_02`、STAGE2→`wf_sub_03`(发起)/`wf_sub_12`(查询)、STAGE3→`wf_sub_05`、STAGE4→`wf_sub_04`(发起)/`wf_sub_13`(查询) | 已成功环节由子流自查回放，不重复调用写接口 |
+| 9 | 查询审批进度（辅助） | `wf_sub_08`（需求工单审批/上线审批双轨） | approval_id / offer_id（至少一个） |
+| 10 | 查询监控运维 / 运行监控（环节8/8） | `wf_sub_07`（异常根因+工单闭环） | offer_id（可带 date_range/metric） |
+| 11 | 查询存量产品（辅助，只读） | `wf_sub_09` | 产品名 / 产品 ID |
+| 12 | 存量合规扫描（辅助） | `wf_sub_10` | 存量范围 |
+| 13 | 业务问答 / 超范围 | 按 K1~K5 知识库检索回答；超范围按答案为空提示 | 检索词 |
+
+> **映射歧义裁决**："下一步/继续"在环节4/8、环节6/8 的**发起段**语义=推进到该环节的"发起"子流
+> （wf_sub_03 / wf_sub_04）；"查询稽核结果 / 查询测试结果"语义=该环节的"查询"子流（wf_sub_12 / wf_sub_13）。
+> 未拿到环节4/8 `pass==1`（spec 落库）不得进入环节5；未拿到环节6/8 `test_passed==通过`（test 落库）
+> 不得进入环节7。发起段重复触发（如用户再次说"下一步"而查询段未完成）时，应提示**先查询结果**而非重复发起。
+
+> **审批意图消歧（强约束，防误调度）**：`submit_release_approval` 为**双轨**，两条审批流**互不调用、触发点不同**——
+> - **含"需求"字样**（发起需求审批 / 发起需求工单审批）→ 只调 **`wf_sub_11`**（requirement 轨），受理于**提报单确认点后（流程开头）**；
+> - **含"上线"字样或裸"发起审批/提交审批"** → 只调 **`wf_sub_06`**（launch 轨），受理于**执行主干四环节全成后（流程结尾）**，且用户已确认。
+>
+> **阶段判定优先于字面匹配**：调度 `wf_sub_06` 前必须确认 config/spec/fee/test 四环节结果齐全；**未齐全时**——即便用户字面说了"发起审批"，也**不得**调度 `wf_sub_06`，而应回退为"当前尚不具备上线审批条件（缺 {环节}），请先完成执行主干"类提示。
+> **反向同理**：提报单尚未就绪时，即便用户说"发起需求审批"，也应先引导其完成需求提报，不得凭空发起。
+> **严禁**将含"需求"的审批意图调度到 `wf_sub_06`（曾出现误命中"上线审批流"导致 612 节点要求补销售品 ID 的错误，务必按本消歧约束执行）。
+>
+> **否定式硬拦截（最高优先，防误命中）**：在调度任何"审批"类子流前，先做**否定检查**——
+> 1. 消息含"需求"字样（发起需求审批 / 需求工单审批）→ **只允许** `wf_sub_11`，**禁止**选择 `wf_sub_06`；
+> 2. 当前 `req_id` 对应的四环节（config/spec/fee/test）**尚未全部完成** → **禁止**选择 `wf_sub_06`（无论用户怎么说"审批"）；
+> 3. 若既非明确"需求审批"、且四环节又未齐 → **宁可不调度**，先反问用户确认意图（"您是要①发起需求工单审批，还是②发起上线审批？"），**严禁猜测调度**；
+> 4. 一旦发现将调用的子流与当前阶段不符（如提报阶段却要跑 `wf_sub_06`），**立即中止**并输出正确的阶段引导，不得继续执行。
 
 【限制】
 1. 仅回答产销品加载相关业务，超范围按"答案为空"提示。
 2. 执行方案确认门禁：需求分析生成《加载方案》后必须止于确认点，用户明确回复确认前不得进入执行主干。
-3. 确认语义未命中绝不进入执行主干；执行主干不跳步、不并行。
+3. 确认语义未命中绝不进入执行主干；执行主干不跳步、不并行、不重复直调同一子流。
 4. 需求工单审批须用户明确确认后才发起：提报单生成后必须提示"是否发起【需求工单审批】"，未明确回复
-   【发起需求审批】前不得发起。
-5. 逐环节确认推进：执行主干按序推进，每环节结果输出 + 下一步建议后暂停等待用户反馈，严禁未经确认
-   擅自推进下一环节；仅失败/异常时提前中断。
+   【发起需求审批】前不得发起；"发起需求审批"只调 `wf_sub_11`（requirement 轨），**绝不误调 `wf_sub_06`**。
+5. 逐环节确认推进：执行主干按序推进（02→03→12→05→04→13），每环节结果输出 + 下一步建议后暂停等待
+   用户反馈，严禁未经确认擅自推进下一环节；仅失败/异常时提前中断。
 6. 结果表达铁律：环节结果、✅ 与统计值必须与子工作流返回结果一一对应，禁止凑数、虚构、自行推断成败。
    **环节4/8 规格稽核专项铁律（防幻觉）**：稽核明细（稽核项/失败项/服务项缺失/容量不匹配等）**只允许逐字引用
    `wf_sub_12` 出参 `audit_suggest` 与 `error_list`**；出参为空或 `error_list` 为空（mock 下恒为空）时，
@@ -143,8 +180,11 @@
    子流返回为准；**需求未提及的字段不得自行补默认（尤其不得臆断为"全省/非全省/22个地市"），也不得就字段
    取值向用户发出"是否与预期不符/是否需要调整"之类未经出参支撑的额外提示**。方案确认消息只按子流出参照实转述。
 10. 待补充字段铁律（防幻觉）：**待补充字段只能逐字引用子流出参 `pending_required`**——为空时必须输出"无待补充"，
-   严禁自行列出任何"待补充字段"或把模板必填项（如收费科目 acctItem、税率 isSplitRate、发布地市 groupId 等）
-   当作待补充提示用户补充。判定"是否可进入执行"只看 `pending_required`：为空即视为方案齐备，可直接确认执行。
+    严禁自行列出任何"待补充字段"或把模板必填项（如收费科目 acctItem、税率 isSplitRate、发布地市 groupId 等）
+    当作待补充提示用户补充。判定"是否可进入执行"只看 `pending_required`：为空即视为方案齐备，可直接确认执行。
+11. 审批双轨消歧（防误调度）：含"需求"的审批意图→`wf_sub_11`（提报后）；含"上线/裸发起审批"→`wf_sub_06`
+    （主干四环节全成后）。**阶段判定优先于字面匹配**——四环节未齐（config/spec/fee/test 缺任一）时不得调度
+    `wf_sub_06`，按"尚不具备上线审批条件（缺 {环节}）"回退提示；提报单未就绪时不得发起 `wf_sub_11`。
 ```
 
 ### 2.3 配置项
@@ -152,7 +192,7 @@
 | 配置项 | 取值 |
 | --- | --- |
 | 插件 | 挂载第 4 章全部插件工具与后端适配端点（22 个：13 工具 + 节点结果存储查询插件 + 8 适配端点） |
-| 工作流 | 挂载 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`，见 `工作流配置/智能体工作流集V1.6/`，`gen_workflows_v2.py` 生成；无意图调度主流程，由智能体语义识别直调） |
+| 工作流 | 挂载 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`，见 `工作流配置/智能体工作流集V1.6/`，`gen_workflows_v2.py` 生成；无意图调度主流程，由智能体语义识别直调；需求文档解析由挂载 skill 承担，不占工作流） |
 | 知识库 | 产销品业务规范库 / 资费规则库 / 测试规范库 / 存量销售品资料库 / FAQ（K1~K5，`knowledge/` 目录） |
 
 ---
@@ -163,7 +203,7 @@
 
 | 业务环节 | 业务目标 | 平台实现载体 |
 | --- | --- | --- |
-| 需求提报（环节1/8） | 收集需求（文本/Excel 需求文档）、生成需求工单；审批须用户明确确认后才发起 | `wf_sub_00` 止于确认点（LLM 要素提取 → CODE_RENDER_REQ 渲染提报单 + "是否发起【需求工单审批】？"）；**V3.10：Excel 需求文档经 `/requirement/parse-xlsx` 解析为结构化需求（多品 + 关联关系）后再提取**；用户回复【发起需求审批】后由 `wf_sub_11` 承接：自查 requirement_report → 提取原文 → `submit_release_approval`(approval-type=requirement) |
+| 需求提报（环节1/8） | 收集需求（文本/Excel 需求文档）、生成需求工单；审批须用户明确确认后才发起 | **上传 .xlsx 时由智能体挂载 skill 解析为多品结构化文本**（工作流 start 节点不接收文件）；skill 产物作为 `requirement_text` 直调 `wf_sub_00`：LLM 要素提取（多品）→ CODE_RENDER_REQ 渲染提报单 + "是否发起【需求工单审批】？"，止于确认点；用户回复【发起需求审批】后由 `wf_sub_11` 承接：自查 requirement_report → 提取原文 → `submit_release_approval`(approval-type=requirement) |
 | 需求分析（环节2/8） | 业务要素→配置字段映射，生成《加载方案》并存储；生成后止于确认点 | `wf_sub_01` 模板轨：要素提取 → CODE_VALIDATE_ELEMENTS 质量门禁 → CODE_MERGE_NESTED → CODE_OP_VALIDATE_NESTED 本体校验闸 → CODE_RENDER_TABLE → 保存 requirement → 输出方案即止于确认点 |
 | 用户确认 | 人工确认执行方案后再配置落地 | 智能体提示词【限制】识别确认语义（未命中确认不调度 `wf_sub_02`） |
 | 执行主干（步进式） | 配置→稽核→资费→测试逐环节推进 | 智能体语义识别"确认配置"后逐环节调度 `wf_sub_02`→`wf_sub_03`→`wf_sub_05`→`wf_sub_04`（每环节止于反馈点，失败即中断）；稽核/测试环节再经用户触发各自轮询流 `wf_sub_12`/`wf_sub_13` 取结果；异常按 fail_node 续跑 |
@@ -220,7 +260,7 @@
 | 18 | `/explain` | 校验/合规结论可解释说明 | 各子流解释类输出 |
 | 19 | `/report/download` | 九章节正式版测试报告下载 | wf_sub_04（CODE_DOWNLOAD_TEST_REPORT） |
 | 20 | `/script/download` | CRM/billing 落库 SQL 上线脚本下载 | wf_sub_06（V2.1 已随审批推送即结束移除 CODE_DOWNLOAD_LAUNCH_SCRIPT，端点保留但子流不再调用） |
-| 21 | `/requirement/parse-xlsx` | **V3.10 新增**：需求文档（.xlsx）解析为结构化需求（多品清单 + 品间关联关系 + 宽表列），与 B1 稽核上传同模式（multipart + 解析） | wf_sub_00（CODE_PARSE_REQUIREMENT_XLSX，6.6 章 G1） |
+| 21 | `/requirement/parse-xlsx` | **V3.10 新增**：需求文档（.xlsx）解析为结构化需求（多品清单 + 品间关联关系 + 宽表列），与 B1 稽核上传同模式（multipart + 解析） | **智能体挂载 skill 调用**（6.6 章 G1；工作流层不接收文件，V3.11 起无子流节点承载） |
 
 > **代码节点化**：原技能包脚本子命令（build_plan/extract_record/poll/dispatcher/map_fixed_cases 等）全部重构为工作流 type=6 代码节点，确定性逻辑内嵌于 14 个工作流 JSON。
 >
@@ -267,7 +307,7 @@
 | 2b audit_async_notify | POST /api/v1/appstore/audit/async/notify | sales_id, location, sheet_name, file_id | success / request_id | **新增**；现场映射 B2；逐品调用（E36） |
 | 2c audit_insert_result | POST /api/v1/appstore/audit/result/insert | records[{batchId,reqOrderId,offerId,offerName,requestId,staffId}] | resultCode / resultMsg | **新增**；现场映射 B3；**紧跟 2b 调用**（回调前置落库，E37） |
 | 2d audit_sql_query | POST /api/v1/appstore/audit/sql/query | sqlId(20260626001/20260626002), params(requestIds:id1,id2) | executeSqlResp[](isAllFinished/finishedCount/totalCount) | **新增**；现场映射 B4；轮询完成态+取结果（E38/E39） |
-| 2e requirement_parse_xlsx | POST /api/v1/appstore/requirement/parse-xlsx | file(.xlsx) | requirement{offers[{offer_seq,ofr_id,offer_name,sheet_name,fields{...}}], relations[{a_ofr_id,a_name,relation,z_ofr_id,z_name}], source_sheets[]} | **V3.10 新增**；需求文档→结构化需求（多品 + 关联关系 + 宽表列，6.6 章 G1）；文件非法/无销售品 → E41 |
+| 2e requirement_parse_xlsx | POST /api/v1/appstore/requirement/parse-xlsx | file(.xlsx) | requirement{offers[{offer_seq,ofr_id,offer_name,sheet_name,fields{...}}], relations[{a_ofr_id,a_name,relation,z_ofr_id,z_name}], source_sheets[]} | **V3.10 新增**；需求文档→结构化需求（多品 + 关联关系 + 宽表列，6.6 章 G1）；**V3.11 由智能体挂载 skill 调用（工作流层不接收文件，不再由任何子流节点调用）**；文件非法/无销售品 → E41 |
 | 3 offer_test | POST /api/v1/appstore/test/offer/start | offerId | globalId(50+14位+10位随机) | 发起动作；resultCode=1 终止（E10）；现场映射 C1 |
 | 4 get_test_scenes | POST /api/v1/appstore/test/offer/scenes | globalId | testScenes[]（S_O_TC/S_ADD_CARD/S_U_TC...） | 空场景列表终止（E11）；现场映射 C2 |
 | 5 get_test_progress | POST /api/v1/appstore/test/offer/progress | globalId | totalSteps/activeIndex/done/failed/failIndex | 由 CODE_POLL_PROGRESS 轮询；现场映射 C3 |
@@ -393,7 +433,7 @@ wf_sub_04 自查 config → C1 测试发起{offerId} → globalId
 
 > **落地方式**：在 Spring Boot 配置文件（`application.yml` 主配置 + `application-dev.yml`/`application-prod.yml` 分环境覆盖）新增 `prodai.appstore.interface.*` 配置组，由 `@ConfigurationProperties` 绑定。**开发环境返回模拟报文，现场环境仅改配置即直连真实接口**，工作流/插件/后端代码零改动。
 >
-> ⚠️ **实现状态（V3.11）**：本小节**已落地**——配置组 `prodai.appstore.interface.*`（`AppStoreInterfaceProperties`）、`InterfaceFacade` 门面（`MockInterfaceAdapter`/`EopInterfaceAdapter`/`RoutingInterfaceFacade`）、装配类 `AppStoreInterfaceConfig`，以及 **B1~B4 现场接口（`/audit/file/upload`、`/audit/async/notify`、`/audit/result/insert`、`/audit/sql-query`）** 与 **A1/C1~C4 经门面路由**均已实现并通过单测（`InterfaceAdapterTest`，dev=mock）。mock 模式返回结构须与 real 归一后结构完全一致（同构）；real 不可达时自动回退 mock 并在出参附 `note` 标注"已回退模拟"，保证演示不中断。当前仅有 `/requirement/parse-xlsx`（需求文档 Excel 解析）与适配层为已实现件；B1~B4、A1 的**现场真实行为**仍需 EOP 联调验证（mock 可独立跑通）。
+> ⚠️ **实现状态（V3.11）**：本小节**已落地**——配置组 `prodai.appstore.interface.*`（`AppStoreInterfaceProperties`）、`InterfaceFacade` 门面（`MockInterfaceAdapter`/`EopInterfaceAdapter`/`RoutingInterfaceFacade`）、装配类 `AppStoreInterfaceConfig`，以及 **B1~B4 现场接口（`/audit/file/upload`、`/audit/async/notify`、`/audit/result/insert`、`/audit/sql-query`）** 与 **A1/C1~C4 经门面路由**均已实现并通过单测（`InterfaceAdapterTest`，dev=mock）；`/requirement/parse-xlsx` 解析逻辑后端（`RequirementDocService`）亦已实现，同名解析能力另以**智能体内嵌 skill** 形式落地（`场景设计/ah_cti_poc/skills/requirement-doc-parse/`，供无后端环境使用，见 6.6）。mock 模式返回结构须与 real 归一后结构完全一致（同构）；real 不可达时自动回退 mock 并在出参附 `note` 标注"已回退模拟"，保证演示不中断。B1~B4、A1 的**现场真实行为**仍需 EOP 联调验证（mock 可独立跑通）。
 
 **配置项（前缀 `prodai.appstore.interface`）**：
 
@@ -482,7 +522,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ### 5.1 智能体调度模式与执行主干时序
 
-> **核心口径**：无独立意图调度主流程，智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调 14 个子工作流。确定性纪律（req_id/落库/成败判定/续跑/四环节硬校验）由子流自查链路 + type=6 代码节点 + 后端硬校验兜底，**不依赖 LLM 自觉**。
+> **核心口径**：无独立意图调度主流程，智能体（LLM）按 3.2 提示词【意图→工作流映射表】语义识别直调 14 个子工作流。确定性纪律（req_id/落库/成败判定/续跑/四环节硬校验）由子流自查链路 + type=6 代码节点 + 后端硬校验兜底，**不依赖 LLM 自觉**。需求文档解析由智能体挂载 skill 承担（工作流层不接收文件）。
 
 ```
 前置：wf_sub_00 提报单就绪止于确认点 → 用户回复【发起需求审批】→ wf_sub_11 发起需求工单审批
@@ -542,11 +582,11 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ### 5.2 14 个子工作流清单（当前实现基线）
 
-> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。**
+> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。V3.11 需求文档解析**不由工作流承担**（工作流 start 节点无法接收文件/附件），改由智能体挂载 skill 解析为结构化文本后作为 `requirement_text` 传入 `wf_sub_00`。**
 
 | 子工作流 | 编码 | 入参 | 关键链路 / 代码节点 |
 | --- | --- | --- | --- |
-| 需求提报（环节1/8，止于确认点） | `wf_sub_00` | requirement_text, requirement_file | LLM 要素提取（**V3.10：若传 `requirement_file`(.xlsx) 先经 CODE_PARSE_REQUIREMENT_XLSX 调 `/requirement/parse-xlsx` 解析为多品结构化需求**）→ CODE_RENDER_REQ 渲染提报单+req_id 生成（**一品多品时生成父 req_id + 子 offer_seq 清单**）→ save(node=requirement_report) → **止于确认点**（"是否发起【需求工单审批】？"，不直接发起审批） |
+| 需求提报（环节1/8，止于确认点） | `wf_sub_00` | requirement_text | LLM 要素提取（上传 .xlsx 时其结构化文本由智能体 skill 前置解析后作为 `requirement_text` 传入，可含多品）→ CODE_RENDER_REQ 渲染提报单+req_id 生成（**一品多品时生成父 req_id + 子 offer_seq 清单**）→ save(node=requirement_report) → **止于确认点**（"是否发起【需求工单审批】？"，不直接发起审批） |
 | 发起需求审批（环节1/8） | `wf_sub_11` | req_id | 自查 requirement_report → CODE_EXTRACT_RECORD 取原文 → submit_release_approval(approval-type=requirement) → LLM 回执渲染 |
 | 需求分析（环节2/8，模板轨，止于确认点） | `wf_sub_01` | req_id | CODE_EXTRACT_RECORD → 相似查询(节点105) → CODE_GET_TEMPLATE(节点106) → 要素提取 LLM → CODE_VALIDATE_ELEMENTS(节点108 质量闸) → CODE_MERGE_NESTED(节点109) → CODE_OP_VALIDATE_NESTED(节点110 本体校验闸 /validate-nested) → CODE_RENDER_TABLE(节点111) → 保存 requirement → **输出方案止于确认点** |
 | 智能配置（环节3/8） | `wf_sub_02` | req_id | 自查 requirement → CODE_EXTRACT_RECORD → save_product_config → CODE_FUSION_GROUP_ECHO 融合成员回显 → save(node=config) |
@@ -565,7 +605,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ### 5.3 关键算法与提示词要点
 
-1. **req_id 生成规则（统一键）**：由 `wf_sub_00` 内嵌代码节点 CODE_RENDER_REQ 以系统时钟生成 `PLAN` + yyyyMMddHHmmss + 3 位随机数（如 `PLAN20260913143025087`），LLM 不参与；会话内沿用最近值。后端硬校验：格式 `PLAN\d{17}`（非法 5002）；requirement 环节同键覆盖写（删除旧记录后重插）。**V3.10 一品多品父子键**：父 `req_id` 仍严格满足 `PLAN\d{17}`（后端校验不变，零改动）；同一需求文档的 N 个新增销售品以**子序号 `offer_seq`（1..N）** 区分，子键以 `req_id` + `offer_seq` 复合寻址（落库时以 `req_id` 为主键、`offer_seq` 内嵌于 `config_json`/`plan_json` 的 `offers[]` 元素），**不新增 req_id、不扩展后端校验**。详见 6.6 章 G2。
+1. **req_id 生成规则（统一键）**：由 `wf_sub_00` 内嵌代码节点 CODE_RENDER_REQ 以系统时钟生成 `PLAN` + yyyyMMddHHmmss + 3 位随机数（如 `PLAN20260913143025087`），LLM 不参与；会话内沿用最近值（上传 .xlsx 时 skill 只产出文本、不生成 req_id，req_id 仍由工作流生成）。后端硬校验：格式 `PLAN\d{17}`（非法 5002）；requirement 环节同键覆盖写（删除旧记录后重插）。**V3.10 一品多品父子键**：父 `req_id` 仍严格满足 `PLAN\d{17}`（后端校验不变，零改动）；同一需求文档的 N 个新增销售品以**子序号 `offer_seq`（1..N）** 区分，子键以 `req_id` + `offer_seq` 复合寻址（落库时以 `req_id` 为主键、`offer_seq` 内嵌于 `config_json`/`plan_json` 的 `offers[]` 元素），**不新增 req_id、不扩展后端校验**。详见 6.6 章 G2。
 2. **字段体系与补全策略（3 模块/9 分类/24 字段）**：字段来源仅"原始需求/AI补全"两态；取值链——**原始需求 → 相似产品（最高相似度，标 AI补全）→ 本体默认值（引擎补全，标 AI补全）→ 待补充**，禁止跳级虚构。**仅套餐档位（价格）未提取到时维持"待补充"**（禁推理/禁照搬）；套餐编码恒填"系统待生成"（不计入待补充）；引擎对"待补充"字段按本体默认值推理补全（三类资源→"无"、适用地区→全国、计费周期→自然月等）。pending_fields 判定唯一事实源=引擎反查（value="待补充"），LLM 不自判。
 3. **门禁体系**：① 方案确认门禁（智能体语义识别；后端 save_product_config 已移除 CONFIRMED 标记校验）；② 需求工单审批二次确认（`wf_sub_11` 承接）；③ 上线审批四环节硬校验（后端 latestRecord(req_id,"config"/"spec"/"fee"/"test") 全非空）；④ 待补充字段时**不保存执行方案、不产出 req_id**（从源头禁止进入智能配置）。
 4. **测试进度轮询（CODE_POLL_PROGRESS）**：在 `wf_sub_13`（6b 轮询流）内短窗口轮询，间隔 5s、单次窗口最多 60 次（5 分钟）；窗口耗尽非中断，输出"测试处理中"引导用户重复触发续查；连续 5 次查询失败终止（E40c）；done=true 通过、failed=true 取完整结果供报告定位失败原因（E12）；整体超时（E13）；分支出参 `done/failed/failIndex/fail_reason`。
@@ -627,9 +667,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - **核心规则**：C1~C4 字符/格式清洗；C5 命名归一（product_type 三态）；C6 系列归集；C7 档位抽取；C8 融合成员识别；C9 模板映射；C10 正文版本识别（22号文/6号文）；**C11~C13 同名去重**（900113046 22号文更全→active，900102306 6号文→dup）；C14 卫星短信≠套餐内短信；C15 价格类字段禁照搬。
 - **可审计纪律**：任何清洗动作都有明确规则依据，可重复执行。
 
-### 6.6 需求文档（Excel）驱动与一品多品加载（V3.10 新增）
+### 6.6 需求文档（Excel）驱动与一品多品加载（V3.10 新增解析能力，V3.11 改为 skill 承载）
 
-> **背景**：客户提供《新增四档5G畅享融合套餐销售品.xlsx》作为需求提报输入，要求产销品数字员工支持该需求文档的加载流程（全流程 8 环节）。文档含三个 sheet：**可选包**（4 个新增销售品宽表，38 列）、**关联关系**（A/Z 端关系表）、Sheet3（空）。本节将该能力**最小化**并入现有方案，**业务逻辑/接口契约/8 环节口径零改动**。
+> **背景**：客户提供《新增四档5G畅享融合套餐销售品.xlsx》作为需求提报输入，要求产销品数字员工支持该需求文档的加载流程（全流程 8 环节）。文档含三个 sheet：**可选包**（4 个新增销售品宽表，38 列）、**关联关系**（A/Z 端关系表）、Sheet3（空）。本节将该能力**最小化**并入现有方案，**业务逻辑/接口契约/8 环节口径零改动**。**V3.11 变更**：**工作流 start 节点无法接收文件/附件**，故文档解析**不由任何工作流承担**——改由**智能体挂载 skill** 解析 .xlsx 为**结构化文本**（多品清单 + 品间关联关系），再作为 `requirement_text` 直调 `wf_sub_00`（文本轨 LLM 抽取多品）。曾试行的"内嵌解析节点于 `wf_sub_00`"与"独立子流 `wf_sub_14`"两种工作流内解析方案**均已废弃**。
 
 #### 6.6.1 需求文档结构（输入契约）
 
@@ -652,7 +692,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 | # | 差异（gap） | 设计决策 |
 | --- | --- | --- |
-| G1 🔴 | `wf_sub_00` 仅接收 `requirement_text`（生成器 498 行），LLM 翻译为**平面字段**，**无 Excel/表格解析**（`requirement_file` 仅旧 V1.7 遗留未用） | **后端新增解析端点** `/api/v1/appstore/requirement/parse-xlsx`（2e 工具，与 B1 稽核上传同模式：multipart 上传 → 解析返回结构化需求）；`wf_sub_00` 新增 type=6 节点 CODE_PARSE_REQUIREMENT_XLSX 调用，失败 E41 |
+| G1 🔴 | `wf_sub_00` 仅接收 `requirement_text`（生成器 498 行），LLM 翻译为**平面字段**，**无 Excel/表格解析**；且**工作流 start 节点无法接收文件/附件**（`requirement_file` 无法作为工作流入参落地） | **后端提供解析端点** `/api/v1/appstore/requirement/parse-xlsx`（2e 工具，与 B1 稽核上传同模式：multipart 上传 → 解析返回结构化需求，已实现）；**V3.11 由智能体挂载 skill（`ah_cti_poc/skills/requirement-doc-parse/`，内嵌解析）** 将文档解析为结构化文本后作为 `requirement_text` 直调 `wf_sub_00`；**工作流层不接收文件、不含解析节点**，失败由智能体按 E41 引导 |
 | G2 🔴 | 现方案 req_id **单品粒度**（单键 → 单一 plan_json/config_json/spec/fee/test），无法承载"1 份需求 → 4 个销售品" | **父/子键**：1 份需求 = 1 个父 `req_id`（严格满足 `PLAN\d{17}`，后端校验零改动）+ N 个子序号 `offer_seq`（1..N）；`plan_json`/`config_json` 承载 `offers[{offer_seq,...}]` 数组，代码节点内**循环**逐品处理，各环节结果按 req_id 单键落库（组结构内嵌） |
 | G3 🟠 | 现仅有**组内成员关系**，品间关联关系（A/Z 端）无承载机制 | **复用 `group_rules` 组内依赖**：关联关系表的"可选依赖"↔ `dependency=OPTIONAL_DEPEND`（先例 `GP900113046` 副卡功能费）；"互斥/强制依赖/默认依赖"分别映射 `group_rules.互斥/依赖`，不新增契约 |
 | G4 🟢 | 融合结构是否需扩展 | **无需扩展**：`GP900113046` 与本次需求（主卡套餐 + 宽带 + 天翼高清 + 副卡功能费可选依赖）**结构完全同构**，四档直接复用现有融合机制（6.1 章）；`seed_offer_groups.json` 新增 4 组 `GP900117029`~`GP900117032`（可选） |
@@ -667,7 +707,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 | 环节 | 适配落点 | 说明 |
 | --- | --- | --- |
-| 1 需求提报 | `wf_sub_00` + 端点 2e + CODE_PARSE_REQUIREMENT_XLSX + CODE_RENDER_REQ | 上传 .xlsx → 解析为 `offers[]`（4 品）+ `relations[]`；提报单渲染为**四档清单表格**（含关联关系），父 req_id + offer_seq 清单；止于确认点 |
+| 1 需求提报 | 智能体 skill（解析）+ `wf_sub_00`（提报）+ 端点 2e | 上传 .xlsx → **智能体挂载 skill** 解析为 `offers[]`（4 品）+ `relations[]` 的结构化文本（工作流不接收文件）；skill 产物作为 `requirement_text` 直调 `wf_sub_00`：LLM 抽取 → CODE_RENDER_REQ 渲染提报单为**四档清单表格**（含关联关系），父 req_id + offer_seq 清单；止于确认点 |
 | 1' 需求工单审批 | `wf_sub_11` | 无改动（requirement 轨，父 req_id） |
 | 2 需求分析 | `wf_sub_01` 模板轨 | 逐品（offer_seq 循环）跑模板轨六步，融合组场景走 6.1 机制；生成含 4 品的 `plan_json{offers[],group_rules}`；止于确认点 |
 | 3 智能配置 | `wf_sub_02` + CODE_FUSION_GROUP_ECHO | 循环逐品 `save_product_config`，`CODE_FUSION_GROUP_ECHO` 回显融合成员（四档主卡 + 副卡 7320110001600005） |
@@ -679,10 +719,91 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 #### 6.6.4 影响面与纪律边界
 
-- **新增**：后端 1 个解析端点（`/requirement/parse-xlsx`，2e）；`wf_sub_00` 1 个 type=6 节点（CODE_PARSE_REQUIREMENT_XLSX）；`wf_sub_01/02` 内"逐品循环"逻辑（type=6 节点内嵌循环，平台无循环节点约束不破）；异常 E41（需求文档解析失败）。
-- **零改动**：req_id 后端校验（`PLAN\d{17}`）、接口契约、24 字段注册表、8 环节编号、审批四环节硬校验、步进式人机协同、两个二次确认点、落库键语义（`spec`/`test` 仅完成后写入）。
+- **新增**：后端 1 个解析端点（`/requirement/parse-xlsx`，2e，**已实现；智能体侧另有内嵌解析 skill 可脱端点运行**）；**智能体已挂载 1 个文档解析 skill**（`ah_cti_poc/skills/requirement-doc-parse/`，.xlsx → 多品结构化文本，工作流外）；`wf_sub_01/02` 内"逐品循环"逻辑（type=6 节点内嵌循环，平台无循环节点约束不破）；异常 E41（需求文档解析失败，由智能体引导）。
+- **零改动（工作流层）**：**无任何工作流 JSON 改动**（已回退试行的 wf_sub_14 与 wf_sub_00 双轨改造，恢复 14 子流基线）；req_id 后端校验（`PLAN\d{17}`）、接口契约、24 字段注册表、8 环节编号、审批四环节硬校验、步进式人机协同、两个二次确认点、落库键语义（`spec`/`test` 仅完成后写入）全部不变。
 - **可选补充**：`seed_offer_groups.json` 新增 `GP900117029`~`GP900117032` 四组（复用 `GP900113046` 结构）；`存量产品目录`/K4/K5 补 4 品资料。
-- **生成器落点**：`gen_workflows_v2.py` 的 `wf_sub_00` 入参段（498 行附近）新增 `requirement_file` 解析分支；`CODE_RENDER_REQ`（517 行附近）扩展父/子键结构；`CODE_FUSION_GROUP_ECHO`（1231 行附近）与 `wf_sub_02` 融合扩展段（1423 行附近）支持 `offers[]` 循环。**（本次仅出方案，暂不生成工作流 JSON；经确认后再改生成器重新生成。）**
+- **落点**：① **智能体层**——**已挂载文档解析 skill**（`ah_cti_poc/skills/requirement-doc-parse/`，内嵌解析，可选调 2e 端点），提示词补充"上传 .xlsx 时先经 skill 解析，再作为 `requirement_text` 调 `wf_sub_00`"；② **工作流层**——`wf_sub_00` 保持单轨（`requirement_text` + LLM 抽取 + CODE_RENDER_REQ）；③ 后续若需多品循环，由 `CODE_FUSION_GROUP_ECHO`（1231 行附近）与 `wf_sub_02` 融合扩展段（1423 行附近）支持 `offers[]` 循环。**（V3.11：工作流层不承载文档解析，无需改生成器；试行的 wf_sub_14 方案已废弃并回退。）**
+
+#### 6.6.5 多商品支撑方案（V3.11 补充）
+
+> 本节回答："14 个子工作流**是否**支持多商品、**如何**支撑"。结论：**在现有 14 子流基线上，通过"父/子键 + 内嵌循环"即可支撑一品多商品，无需新增子流、不改契约。**
+
+##### 6.6.5.1 架构约束（为什么不能靠子流粒度解决）
+
+14 个子工作流均为**单商品粒度**，源于两点硬约束：
+
+1. **落库寻址单值槽位**：节点结果存储以 `req_id + node_name` 复合主键（`pd_ai_node_results` 表，见 7.1 部署项7），每个 `node_name`（`plan_json`/`config_json`/`spec`/`fee`/`test`）对同一 `req_id` 仅存**一份**，天然只能装"1 份需求"的结果。
+2. **`offer_id` 为单标量**：各环节接口以单个 `offerId` 为业务主键（如测试发起 `{offerId}`、监控 `product/monitor`），工作流节点内 `offer_id` 变量为单值。
+
+因此多商品**不能**通过"一个商品一条子流实例"承载（会导致 `req_id` 分叉、审批无法汇总、契约改动大）。**统一解法**：把"多商品"下沉到**数据与代码节点循环**两层，子流粒度不变。
+
+##### 6.6.5.2 数据模型：父 `req_id` + 子 `offer_seq`
+
+| 层级 | 键 | 说明 |
+| --- | --- | --- |
+| 需求层（父） | `req_id` | 1 份需求文档 = 1 个父 `req_id`，严格满足 `PLAN\d{17}`（后端校验零改动） |
+| 商品层（子） | `offer_seq` | 需求内商品序号，1..N（与解析产物 `offers[].offer_seq` 一致），显式编号不依赖数组序 |
+| 复合载体 | `offers[]` | `plan_json`/`config_json` 内嵌 `offers[{offer_seq, ofr_id, offer_name, fields{}}]` 数组；组关系入 `group_rules` |
+| 逐品落库 | `req_id + node_name` | 每阶段仍单键落库，**组结构内嵌**于该键内（即"父键承载 N 品结果数组"） |
+
+即：**父键管"这份需求"，子序号管"第几品"**；所有下游接口按品调用时，从 `offers[]` 取当前 `offer_seq` 对应子对象展开为单品参数。
+
+##### 6.6.5.3 逐品循环实现纪律（type=6 内嵌 for）
+
+平台**无独立循环节点**（仅 `type=6` 代码节点可在节点内写 `for`），故所有"逐品"均须在代码节点内以**内嵌循环**实现：
+
+- **循环输入**：上游 `offers[]` 数组（来自 6.6 skill 解析产物或 `plan_json`/`config_json`）。
+- **循环体**：对每品执行该环节的调用/渲染，产出结果写入 `results[offer_seq]`。
+- **循环输出**：聚合为单键结果（如 `spec_results[]`、`fee_results[]`），仍以父 `req_id` 落 `node_name`。
+- **失败隔离**：单品失败记录该 `offer_seq` 明细，不影响其余品；整体通过性 = 全部品通过（如 `spec` 仅当 N 品全 pass 才写入）。
+- **节点 type 合规**：仅使用 0/1/2/3/6/9/13；循环不引入新 type。**生成器确定性生成**（`gen_workflows_v2.py`），禁手改 JSON。
+
+##### 6.6.5.4 逐子流支撑矩阵（14 子流）
+
+| 子流 | 环节 | 多品支撑方式 | 改造量 |
+| --- | --- | --- | --- |
+| `wf_sub_00` | 需求提报 | LLM 抽取 + CODE_RENDER_REQ 改为渲染 `offers[]`（四档清单 + 关联关系） | 逻辑扩展 |
+| `wf_sub_01` | 需求分析 | 模板轨六步内嵌 `offers[]` 循环逐品跑；生成含 N 品的 `plan_json{offers[],group_rules}` | 内嵌循环 |
+| `wf_sub_02` | 智能配置 | 内嵌循环逐品 `save_product_config`；**风险**：`CODE_GEN_OFFER_ID`（节点111）单值，需扩展为逐品生成唯一 offerId | 内嵌循环 |
+| `wf_sub_03` | 规格稽核发起 | 逐品组装 `sales_id` 集合并一次性发起（请求集合逗号拼接） | 内嵌循环 |
+| `wf_sub_04` | 测试发起 | 逐品发起后汇总 `globalId`（多品 → 多个 globalId） | 内嵌循环 |
+| `wf_sub_05` | 资费校准 | 逐品校验，`compare_list` 含 `member_role` 分组 | 内嵌循环 |
+| `wf_sub_06` | 上线审批 | 按品校验，父 `req_id` 汇总 N 品四环节结果（config/spec/fee/test 齐全）后推送 | 逻辑扩展 |
+| `wf_sub_07` | 监控运维 | 逐品（`offer_id`）监控聚合 | 聚合/可选 |
+| `wf_sub_08` | 审批进度查询 | 旁路只读，天然支持 | 零改造 |
+| `wf_sub_09` | 存量查询 | 旁路只读 | 零改造 |
+| `wf_sub_10` | 存量合规辅助 | 旁路只读 | 零改造 |
+| `wf_sub_11` | 需求工单审批 | 父 `req_id` 天然支持 | 零改造 |
+| `wf_sub_12` | 规格稽核轮询 | 父 `req_id` + 子 `offer_seq`（结果按 `requestIds` 归集） | 内嵌循环 |
+| `wf_sub_13` | 测试轮询 | 父 `req_id` + 子 `offer_seq`（结果按 `globalId` 归集） | 内嵌循环 |
+
+##### 6.6.5.5 分环节推进顺序（多品的时序纪律）
+
+多品不改变 8 环节步进式人机协同，仅将每环节内部由"单品一步"变为"逐品 N 步后聚合"：
+
+1. **提报（环节1）**：skill 解析出 `offers[]`（序号 1..N）→ `wf_sub_00` 渲染 N 档清单 → **止于确认点**（一次确认覆盖 N 品）。
+2. **需求审批（1'）**：`wf_sub_11` 按父 `req_id` 发起（N 品共用一张工单）。
+3. **分析（环节2）**：`wf_sub_01` 逐品跑模板轨 → 合并为单份 `plan_json{offers[]}` → 止于确认点。
+4. **配置（环节3）**：`wf_sub_02` 逐品 `save_product_config`。
+5. **稽核（环节4）**：`wf_sub_03` 逐品组装 `sales_id` → 一次性发起 → `wf_sub_12` 轮询取回逐品结果；`error_list` 含 group 类目。
+6. **资费（环节5）**：`wf_sub_05` 逐品校验（member_role 分组）。
+7. **测试（环节6）**：`wf_sub_04` 逐品发起 + `wf_sub_13` 逐品轮询；组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对。
+8. **审批（环节7）**：`wf_sub_06` 汇总 N 品四环节齐全后推送。
+
+##### 6.6.5.6 关键风险与对策
+
+| 风险 | 说明 | 对策 |
+| --- | --- | --- |
+| `CODE_GEN_OFFER_ID` 单值碰撞 | `wf_sub_02` 节点111 单值生成，多品易碰撞 | 扩展为逐品生成，以 `offer_seq` 参与种子保证唯一 |
+| 无循环节点 | 平台仅 type=6 内嵌 for | 循环全部内嵌代码节点，禁引入新 type；`gen_workflows_v2.py` 确定性生成 |
+| 单品失败污染整体 | 任一品失败不应误判其余品 | 逐品结果隔离 + 失败明细带 `offer_seq`；写入性键（spec/fee/test）以"全品通过"为门禁 |
+| 出参键越界 | 聚合数组键须 ⊆ 代码节点返回键 | 聚合键（如 `spec_results[]`）显式纳入节点返回；出参 ⊆ 代码节点返回键纪律不破 |
+| 多 globalId/requestIds 归集 | 稽核/测试异步结果需按品对齐 | 以 `offer_seq`/`sales_id`/`requestId` 为关联键归集，落库仍父键单键 |
+| 后端幂等 | 多品重跑可能重复写 | 各环节自查 `req_id + node_name` 已存成功记录→回放跳过（E19），逐品幂等 |
+
+##### 6.6.5.7 验证口径
+
+以《新增四档5G畅享融合套餐销售品.xlsx》（4 品 + 副卡 `7320110001600005` 可选依赖）为端到端样本：skill 解析 → `wf_sub_00` 渲染四档提报单 → 四档逐品分析/配置/稽核/资费/测试 → 副卡可选依赖组核对（E26）→ 上线审批汇总。**验收点**：① 4 品 `offer_seq` 均落库于同一父 `req_id`；② 各写入键仅当 4 品全通过才写入；③ 单品故障时明细可定位且不阻断其余品。
 
 ---
 
@@ -701,7 +822,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 7 | 后端依赖 | 13 工具模拟服务 + 8 适配端点（AppStoreV16Controller）+ NodeResultService（pd_ai_node_results 表）；**V3.9 新增** InterfaceFacade（mock/real 策略）+ 智能稽核四接口适配（`/audit/file/upload`、`/audit/async/notify`、`/audit/result/insert`、`/audit/sql/query`）；**V3.10 新增** 需求文档解析端点 `/requirement/parse-xlsx` |
 | 8 | 接口模式配置 | `application.yml` 新增 `prodai.appstore.interface.*`：`mode=mock`（开发，返回模拟报文）/`real`（现场，直连真实接口）+ `eop.*`（base-url/app-key/dst-sys-id/svc-code/sign/upload-file-field/timeout）+ `poll.audit.*`/`poll.test.*`（见 4.5.4；分环境由 application-dev.yml / application-prod.yml 覆盖） |
 | 9 | 模型纪律 | 温度 0.2；出参逐字引用不加工 |
-| 10 | 环境 | 平台/Agent 运行时加载 14 JSON + knowledge/ + 后端服务 |
+| 10 | 环境 | 平台/Agent 运行时加载 14 JSON + knowledge/ + 后端服务 + 挂载文档解析 skill |
 
 ### 7.2 变量命名约定
 
@@ -722,7 +843,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | E3 | 未确认即触发配置 | 智能体语义识别 | 拒绝进入执行主干，引导回复"确认配置" |
 | E5 | 自查无执行方案 | wf_sub_02 自查 | CODE_EXTRACT_RECORD total==0 终止，引导重走需求分析 |
 | E6 | 配置落地 FAIL | wf_sub_02 | 主干中断→异常模板④，引导重新执行/修改执行方案 |
-| E7 | 实时稽核超时 | wf_sub_03 | 重试 1 次仍超时→中断，保留请求报文 |
+| E7 | 实时稽核超时 | ~~wf_sub_03~~（实时稽核已退出主链路，规格稽核改异步两阶段 wf_sub_03/wf_sub_12） | 重试 1 次仍超时→中断，保留请求报文 |
 | E8 | 稽核 pass=0 | wf_sub_12 | 中断（可联动 send_alert high），打印 error_list 明细（不写 spec） |
 | E9 | 资费校验 pass=0 | wf_sub_05 | 中断，打印风险清单，引导修改执行方案 |
 | E10 | 测试发起失败 resultCode=1 | wf_sub_04（6a 发起） | 中断 |
@@ -756,7 +877,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | E40a | 测试发起无 globalId | wf_sub_04（6a 发起流） | 中断，提示重新发起测试 |
 | E40b | 测试轮询单次窗口未完成 | wf_sub_13 CODE_POLL_PROGRESS | **非中断**：输出"测试处理中，请稍后回复【查询测试结果】"，引导重复触发（不写 test，不允许推进） |
 | E40c | 测试轮询连续失败 | wf_sub_13 CODE_POLL_PROGRESS | 连续 5 次失败→中断，保留 globalId 人工续查 |
-| E41 | 需求文档（.xlsx）解析失败/无销售品/关联关系非法 | wf_sub_00 CODE_PARSE_REQUIREMENT_XLSX（`/requirement/parse-xlsx`） | 中断，提示检查 Excel 格式（可选包/关联关系 sheet）与内容；`offers[]` 为空或关系枚举越界（∉ 7 类）视为 E41（V3.10） |
+| E41 | 需求文档（.xlsx）解析失败/无销售品/关联关系非法 | **智能体挂载 skill**（调 `/requirement/parse-xlsx`） | 中断，提示检查 Excel 格式（可选包/关联关系 sheet）与内容；`offers[]` 为空或关系枚举越界（∉ 7 类）视为 E41（V3.10 新增解析能力，V3.11 由智能体 skill 承担、工作流外） |
 
 ### 7.4 知识库文档清单与维护（详见《细化设计方案》第 4 章）
 
@@ -786,7 +907,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 1. **插件级**：逐工具连通性/入参提取/出参归纳（裸报文、实时稽核同步、存储读写一致、globalId 传递）。
 2. **工作流级**：正向用例（提报→审批→方案→确认→逐环节推进→审批）；反向用例（**未确认不配置、提报单未确认不发起审批、执行方案未确认不调度 wf_sub_02、跳步审批被拒**）；步进式推进用例（每环节止于反馈点）；异常中断与续跑用例；硬校验用例（四环节不全拒审批）；消息查询用例；分支用例。
 3. **智能体级**：多轮对话体验、确认交互、引导问题命中、FAQ 准确率。
-4. **专项回归**（见第 6 章）：融合 F1~F8、模板轨六步、本体校验闸 E33、存量报文三道闸、清洗 C1~C15 可重复执行；**需求文档驱动回归（V3.10）**：.xlsx 上传→解析（4 品 + 关联关系）、父/子键一品多品逐品加载、品间可选依赖复用融合组、E41 非法文档中断。
+4. **专项回归**（见第 6 章）：融合 F1~F8、模板轨六步、本体校验闸 E33、存量报文三道闸、清洗 C1~C15 可重复执行；**需求文档驱动回归（V3.10 解析 / V3.11 skill 承载）**：.xlsx 上传→**智能体 skill 解析**（4 品 + 关联关系）为结构化文本→作为 `requirement_text` 调 `wf_sub_00` 渲染提报单、父/子键一品多品逐品加载、品间可选依赖复用融合组、E41 非法文档中断。
 
 ### 9.2 验收标准（节选）
 
@@ -828,7 +949,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | --- | --- |
 | 接口不稳定/字段变更 | 插件层隔离；出参加必填校验；替换真实实现契约不变 |
 | 实时稽核慢/超时 | 60s 超时重试 1 次；超时转人工并保留请求报文 |
-| 自动测试长时间未完成 | 轮询设 30 分钟上限，超时保留 globalId |
+| 稽核/测试异步长时间未完成 | 轮询采用短窗口（单次 5s×60=5 分钟，窗口耗尽非错误、输出"处理中"引导续查）；连续 5 次失败或整体超时→中断，保留 requestIds/globalId 人工续查 |
 | 大模型解析幻觉 | 知识库增强 + 温度 0.2 + 结构化输出 + 来源标记 + 实时稽核兜底 |
 | 配置落地与方案不一致 | 智能配置直读存储 JSON 原样透传，禁二次加工 |
 | 用户未确认即触发生产写入 | 方案就绪止于确认点；确认语义识别命中才进入执行主干（后端确认门禁已移除） |
@@ -842,7 +963,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ---
 
-## 附：快速实施 Checklist（当前基线 V3.10）
+## 附：快速实施 Checklist（当前基线 V3.11）
 
 ### A. 工作流 JSON 路线（当前基线，已就绪项以 [x] 标注）
 - [x] 知识资产迁至 `knowledge/`：K1~K5、ontology-fields、seed_offer_groups、templates 注册表、存量产品目录_清洗后、K5 存量报文
@@ -852,7 +973,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - [x] 智能体按 3.2 提示词语义识别直调（职责分层：只做语义识别/业务理解/结果表达）
 - [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+推送即结束，审批状态由 wf_sub_08 查询）、监控运维（根因闭环）、审批进度/存量查询/存量合规辅助子流
 - [x] 主链路端点实跑验证（2026-09-19）：result/save、result/query、audit/realtime、product/config/save、billing/rules/verify、test/offer/start、test/offer/result、approval/submit、product/monitor、similar/offer/query live 生效
-- [ ] 14 个既有契约端点 + 8 个适配端点逐一连通（含错误码验证）；仍占位：report/download、script/download（backend_pending=1 回退）、/ops/root-cause、/ops/work-orders、/shelf-compliance、/validate-nested、/explain、/requirement/parse-xlsx 待逐项确认
+- [ ] 14 个既有契约端点 + 8 个适配端点逐一连通（含错误码验证）；仍占位：report/download、script/download（backend_pending=1 回退）、/ops/root-cause、/ops/work-orders、/shelf-compliance、/validate-nested、/explain 待逐项确认
 - [ ] 端到端联调：正向全流程 + 反向用例（未确认不配置、需求审批未确认不发起、跳步审批被拒、逐环节推进止于反馈点、稽核驳回中断引导、续跑不重复写）+ 18 销售品兼容回归
 - [ ] 全流程各子流处理完成后均输出【下一步建议】引导（V3.6）
 - [ ] 按《端到端演示剧本》完成全流程彩排（含反向分支）
@@ -868,15 +989,16 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - [ ] mock 与 real 出参归一结构同构校验（同一 Adapter 接口一致性）
 - [ ] 现场联调：`mode=real` 指向 EOP，9 接口逐一连通（含 B2↔B3 顺序、B4/C3 轮询、异常码 E35~E40）
 
-### A3. 需求文档（Excel）驱动与一品多品（V3.10 新增，详见 6.6）
-- [ ] 后端新增 `/requirement/parse-xlsx` 解析端点（2e 工具，multipart + 解析，与 B1 同模式），返回 `offers[]` + `relations[]` + `source_sheets[]`
-- [ ] `wf_sub_00` 新增 type=6 节点 CODE_PARSE_REQUIREMENT_XLSX（要求文档解析 → 多品结构化需求；失败 E41）
+### A3. 需求文档（Excel）驱动与一品多品（V3.10 新增解析，V3.11 改为智能体 skill 承载，详见 6.6）
+- [x] **后端解析端点 `/requirement/parse-xlsx`（2e 工具）已实现**：multipart 上传 + 解析（`RequirementDocService`，复用零依赖 `ConfigDocumentParser`），返回 `offers[]` + `relations[]` + `source_sheets[]`（与 B1 同模式）
+- [x] **智能体已挂载文档解析 skill**：`场景设计/ah_cti_poc/skills/requirement-doc-parse/`（`SKILL.md` + `references/output-contract.md` + `scripts/parse_requirement_xlsx.py`，内嵌 openpyxl 纯 Python 解析，语义对齐 `RequirementDocService`）——上传 .xlsx → 解析为多品结构化文本（多品清单 + 品间关联关系 + 渲染 `requirement_text`）；退出码 0=成功 / 2=E41，失败按 E41 引导
+- [ ] **智能体提示词补充**：上传 .xlsx 时先经 skill 解析，再将结构化文本作为 `requirement_text` 直调 `wf_sub_00`；**严禁再调用任何"需求文档解析"子流或向工作流传 `requirement_file`**
+- [x] **工作流层不承载文档解析**：已回退试行的 `wf_sub_14` 独立子流与 `wf_sub_00` 双轨改造，恢复 14 子流基线（`wf_sub_00` 单轨：`requirement_text` → LLM 抽取 → CODE_RENDER_REQ）
 - [ ] 父/子键一品多品：父 `req_id` 守 `PLAN\d{17}` 校验（后端零改动）+ 子 `offer_seq`（1..N）；`plan_json`/`config_json` 承载 `offers[]`，代码节点内嵌循环逐品处理
 - [ ] 品间关联关系映射 group_rules 组内依赖（可选依赖↔OPTIONAL_DEPEND，先例 GP900113046）；`wf_sub_01/02` 融合组场景复用 6.1 机制
-- [ ] 24 字段归属三分（映射入 24 字段 / 落模板 schema / 冗余入报告）；Excel 双角色（提报输入 + 稽核清单输入）
+- [ ] 24 字段归属三分（映射入 24 字段 / 落模板 schema / 冗余入报告）；稽核 Excel 由后端按 req_id 独立生成（G6，不复用需求输入文档）
 - [ ] 可选：`seed_offer_groups.json` 补 `GP900117029`~`GP900117032` 四组；`存量产品目录`/K4/K5 补 4 品资料
-- [ ] `gen_workflows_v2.py` 相应改造（入参段 + CODE_RENDER_REQ 父子键 + 融合回显 `offers[]` 循环）后重新生成并全量校验
-- [ ] 端到端回归：上传《新增四档5G畅享融合套餐销售品.xlsx》→ 四档逐品加载 → 副卡可选依赖组核对（E26）→ 上线审批
+- [ ] 端到端回归：上传《新增四档5G畅享融合套餐销售品.xlsx》→ skill 解析 → `wf_sub_00` 渲染提报单 → 四档逐品加载 → 副卡可选依赖组核对（E26）→ 上线审批
 
 ### B. 模拟数据 18 销售品兼容核对（逐品勾选）
 
