@@ -46,7 +46,7 @@ class ApprovalBatchContractTest {
         List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
         Assertions.assertEquals(2, offers.size());
         for (Map<String, Object> o : offers) {
-            Assertions.assertEquals("success", o.get("status"), "元素态应为 success（审批中归一）：" + o);
+            Assertions.assertNotNull(o.get("status"), "元素应含审批单域状态：" + o);
             Assertions.assertFalse(o.containsKey("approval_id"), "元素不应再携带 approval_id：" + o);
         }
     }
@@ -69,6 +69,7 @@ class ApprovalBatchContractTest {
 
         Map<String, Object> body = sim.approvalStatusBatch(Map.of("req_id", reqId));
         Assertions.assertEquals(reqId, body.get("req_id"));
+        Assertions.assertEquals("SUCCESS", body.get("status"), "查询到审批工单时整批应为 SUCCESS：" + body);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
@@ -78,6 +79,7 @@ class ApprovalBatchContractTest {
         Object firstApprovalId = offers.get(0).get("approval_id");
         Assertions.assertNotNull(firstApprovalId, "元素应携带工单级 approval_id：" + offers.get(0));
         for (Map<String, Object> o : offers) {
+            Assertions.assertNotNull(o.get("status"), "元素应含审批单域状态：" + o);
             Assertions.assertEquals(firstApprovalId, o.get("approval_id"),
                     "同一需求下各元素应携带相同 approval_id：" + offers);
         }

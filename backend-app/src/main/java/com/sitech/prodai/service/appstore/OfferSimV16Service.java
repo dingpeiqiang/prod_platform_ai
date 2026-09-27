@@ -2293,16 +2293,14 @@ public class OfferSimV16Service {
     }
 
     /**
-     * 审批推送元素态归一：审批单提交成功后的工单级进度（「审批中」/「通过」）视为 success；
-     * 未确认（NOT_CONFIRMED）或显式失败（FAIL/失败/空）视为 fail。
-     * 与 {@link #offerStatus} 的差异在于「审批中」是成功态（已生成工单），而非失败。
+     * 审批批量的整批态聚合：按「成功数/总数」判定，与 element 的中文域状态解耦。
+     * 全成功=SUCCESS，全失败=FAIL，其余=PARTIAL。
      */
-    private static String approvalElementStatus(Object status) {
-        String s = MapOps.str(status).trim();
-        if (s.isEmpty() || "NOT_CONFIRMED".equals(s) || s.equalsIgnoreCase("FAIL") || s.equals("失败")) {
-            return "fail";
+    private static String batchAggStatus(long okCount, int total) {
+        if (total == 0 || okCount == 0) {
+            return "FAIL";
         }
-        return "success";
+        return okCount == total ? "SUCCESS" : "PARTIAL";
     }
 
     /** 由逐品结果聚合整批态：全 success=SUCCESS，含 fail 且含 success=PARTIAL，全 fail=FAIL。 */
@@ -2424,28 +2422,38 @@ public class OfferSimV16Service {
         }
         List<Map<String, Object>> items = new ArrayList<>();
         String approvalId = "";
+        long okCount = 0;
+        int total = 0;
         for (Map<String, Object> offer : offers) {
             Map<String, Object> one = elementRequest(req, offer);
             Map<String, Object> r = approvalSubmit(one);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
+            // 元素 status = 审批单域状态（审批中/通过/NOT_CONFIRMED），供前端/工作流逐品展示与衔接判断
             String st = MapOps.str(r.get("status"));
-            // 元素态按工单级进度归一：提交成功（含中文「审批中」/「通过」）→ success；未确认/失败 → fail
-            item.put("status", approvalElementStatus(st));
+            item.put("status", st.isEmpty() ? "NOT_CONFIRMED" : st);
             // 多商品口径：approval_id 为工单级单值，只出现在顶层信封，元素不再重复携带
-            // 注意：status 已归一为 success/partial/fail，勿再被 r 的原始工单级 status（审批中）覆盖
             for (String k : List.of("req_id", "approval_type", "approval_matrix", "reason", "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
             }
-            items.add(item);
-            if (approvalId.isEmpty()) {
-                approvalId = MapOps.str(r.get("approval_id"));
+            // 提交成功判据：生成了工单级 approval_id（与 element status 的中文域值解耦）
+            String aid = MapOps.str(r.get("approval_id"));
+            boolean ok = !aid.isEmpty() && !"NOT_CONFIRMED".equals(st);
+            if (ok) {
+                okCount++;
             }
+            total++;
+            if (approvalId.isEmpty()) {
+                approvalId = aid;
+            }
+            items.add(item);
         }
         Map<String, Object> body = batchBody(req, items);
+        // 顶层 status 按提交成功数聚合（成功=已生成审批单），修正原恒 FAIL
+        body.put("status", batchAggStatus(okCount, total));
         // 工单级 approval_id 提升到顶层（单值，覆盖整批商品）
         if (!approvalId.isEmpty()) {
             body.put("approval_id", approvalId);
@@ -2511,6 +2519,8 @@ public class OfferSimV16Service {
             }
         }
         List<Map<String, Object>> items = new ArrayList<>();
+        long okCount = 0;
+        int total = 0;
         for (Map<String, Object> offer : offers) {
             Map<String, Object> one = elementRequest(req, offer);
             if (MapOps.empty(one.get("req_id"))) {
@@ -2520,17 +2530,26 @@ public class OfferSimV16Service {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
-            item.put("status", r.containsKey("approval_id") ? "success" : "fail");
+            // 元素 status = 审批单域状态（审批中/通过/驳回），供前端/工作流逐品展示与衔接判断
+            item.put("status", MapOps.str(r.get("status")));
             // 多商品口径：进度为工单级，各元素冗余携带同一 approval_id
-            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "status",
+            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type",
                     "current_node", "approver", "opinion", "submit_time", "update_time", "approval_matrix",
                     "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
             }
+            // 查询成功判据：命中审批工单（含 approval_id）
+            if (r.containsKey("approval_id")) {
+                okCount++;
+            }
+            total++;
             items.add(item);
         }
-        return batchBody(req, items);
+        Map<String, Object> body = batchBody(req, items);
+        // 顶层 status 按命中审批单数聚合，修正原恒 FAIL（元素中文域值不再参与聚合）
+        body.put("status", batchAggStatus(okCount, total));
+        return body;
     }
 }
