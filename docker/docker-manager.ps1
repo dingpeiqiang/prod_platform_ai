@@ -40,7 +40,7 @@ $Config = @{
     }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
-        ImageTag      = "2.5"  # 构建时自动递增版本号
+        ImageTag      = "2.6"  # 构建时自动递增版本号
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
