@@ -131,6 +131,11 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000806,offer_id",
             "name": "offer_id",
             "type": "string"
@@ -151,7 +156,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\nasync def main(args):\n    offers = [o for o in _load(args.params.get('offers')) if isinstance(o, dict)]\n    first = offers[0] if offers else {}\n    ret: Output = {\n        'offer_id': str(first.get('offer_id') or ''),\n        'approval_id': str(first.get('approval_id') or ''),\n        'approval_type': str(first.get('approval_type') or ''),\n        'offers': json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\nasync def main(args):\n    raw = args.params.get('offers')\n    top_approval_id = ''\n    if isinstance(raw, dict):\n        top_approval_id = str(raw.get('approval_id') or '')\n    offers = [o for o in _load(raw) if isinstance(o, dict)]\n    first = offers[0] if offers else {}\n    req_id = str(args.params.get('req_id') or first.get('req_id') or '')\n    ret: Output = {\n        'req_id': req_id,\n        'offer_id': str(first.get('offer_id') or ''),\n        'approval_id': str(top_approval_id or first.get('approval_id') or ''),\n        'approval_type': str(first.get('approval_type') or ''),\n        'offers': json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -167,6 +172,20 @@
               "a1b2c3d4-0000-4000-8000-000000000802,offers"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000802,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（节点802）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000802",
+              "a1b2c3d4-0000-4000-8000-000000000802,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000802,req_id"
           }
         ],
         "checkErr": false,

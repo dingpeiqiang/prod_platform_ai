@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-资费校准",
-  "flowRemark": "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
+  "flowRemark": "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -405,11 +405,75 @@
         "top_p": 0.5,
         "position": {
           "x": 1455,
-          "y": 300
+          "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000403",
         "dependencyData": [],
         "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,pass",
+            "name": "pass",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,offers",
+            "name": "offers",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,risk_list",
+            "name": "risk_list",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return v.get('offers') if isinstance(v.get('offers'), list) else [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\nasync def main(args):\n    offers = [o for o in _load(args.params.get('offers')) if isinstance(o, dict)]\n    pass_top = args.params.get('pass')\n    if pass_top is None or str(pass_top) == '':\n        vals = [str(o.get('pass') or '') for o in offers]\n        pass_top = '1' if vals and all(v == '1' for v in vals) else ('0' if vals else '')\n    risks = []\n    for o in offers:\n        rl = o.get('risk_list')\n        if isinstance(rl, list):\n            for r in rl:\n                if isinstance(r, dict):\n                    r.setdefault('offer_seq', o.get('offer_seq'))\n                    risks.append(r)\n    ret: Output = {\n        'pass': str(pass_top),\n        'offers': json.dumps(offers, ensure_ascii=False),\n        'risk_list': json.dumps(risks, ensure_ascii=False) if risks else '',\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品校验结果数组（节点402出参 offers）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "pass",
+            "name": "pass",
+            "description": "插件顶层结论（多为空，代码内回退逐品聚合）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "计费结论聚合"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000410",
+        "position": {
+          "x": 1455,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 6
       },
       {
         "outputs": [
@@ -423,32 +487,32 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "pass",
             "name": "pass",
-            "description": "校验结论（节点402）",
+            "description": "校验结论（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,pass"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,pass"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "risk_list",
             "name": "risk_list",
-            "description": "风险清单（节点402，逐品聚合）",
+            "description": "风险清单（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
@@ -697,32 +761,32 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "pass",
             "name": "pass",
-            "description": "校验结论",
+            "description": "校验结论（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,pass"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,pass"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "risk_list",
             "name": "risk_list",
-            "description": "风险清单",
+            "description": "风险清单（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
@@ -805,6 +869,16 @@
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000403",
         "startId": "a1b2c3d4-0000-4000-8000-000000000402"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000410",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000410"
       },
       {
         "sourcePort": null,

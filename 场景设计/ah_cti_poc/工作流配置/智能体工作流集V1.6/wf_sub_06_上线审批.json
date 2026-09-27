@@ -951,7 +951,7 @@
         "outputs": [
           {
             "name": "approval_id",
-            "cname": "首品审批单号",
+            "cname": "工单级审批单号（顶层单值，覆盖整批商品）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -972,7 +972,7 @@
           },
           {
             "name": "offers",
-            "cname": "逐品审批推送结果数组JSON（[{offer_seq,offer_id,approval_id,status,approval_type}]）",
+            "cname": "逐品审批推送结果数组JSON（[{offer_seq,approval_type,status,approval_matrix}]，商品级状态；approval_id 已提升至顶层，元素不再重复携带）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -1056,7 +1056,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9（V3.12 多商品批量）：入参 {req_id, approval_flow, report_url, offers:[{offer_seq, offer_id}]}，逐品自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；聚合返回 {req_id, status, offers:[{offer_seq, offer_id, approval_id, status, approval_type}]}",
+          "description": "工具9（V3.12 多商品批量）：入参 {req_id, approval_flow, report_url, offers:[{offer_seq, offer_id}]}，一个需求单对应一张审批单（工单级 approval_id），工单内含多商品；逐品自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；聚合返回 {approval_id, req_id, status, offers:[{offer_seq, approval_type, status, approval_matrix}]}（approval_id 为工单级单值，仅顶层；商品级状态见 offers[].status）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -1080,7 +1080,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《上线审批建议》已提交审批：\n- 首品审批单号：{approval_id}，整批提交状态：{status}，审批类型：{approval_type}\n逐品审批单号：\n{offers}\n审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"
+          "content": "《上线审批建议》已提交审批：\n- 工单级审批单号：{approval_id}，整批提交状态：{status}，审批类型：{approval_type}\n逐品审批状态：\n{offers}\n审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"
         },
         "settings": {
           "stream": false,
@@ -1093,7 +1093,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
             "relName": "approval_id",
             "name": "approval_id",
-            "description": "首品审批单号",
+            "description": "工单级审批单号（顶层单值）",
             "type": "ref",
             "required": true,
             "content": "",

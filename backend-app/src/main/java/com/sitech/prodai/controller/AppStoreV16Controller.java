@@ -420,7 +420,7 @@ public class AppStoreV16Controller {
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
-    @Operation(summary = "上线审批推送", description = "V3.12 多商品批量：入参 {req_id, approval_flow, offers:[{offer_seq, offer_id, report_url}]}，逐品生成审批单号并四环节门禁校验（同 offer_id 幂等），聚合返回 {req_id, status, offers:[{offer_seq, approval_id, status, ...}]}")
+    @Operation(summary = "上线审批推送", description = "V3.12 多商品批量：入参 {req_id, approval_flow, offers:[{offer_seq, offer_id, report_url}]}，一个需求单对应一张审批单（工单级 approval_id），工单内含多商品；逐品生成审批单号并四环节门禁校验（同 offer_id 幂等），聚合返回 {approval_id, req_id, status, offers:[{offer_seq, approval_type, status, approval_matrix}]}（approval_id 为工单级单值，仅顶层；商品级状态见 offers[].status）")
     @PostMapping("/approval/submit")
     public Map<String, Object> approvalSubmit(@RequestBody Map<String, Object> req) {
         return sim.approvalSubmitBatch(req);
@@ -428,7 +428,7 @@ public class AppStoreV16Controller {
 
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
-    @Operation(summary = "审批工单查询", description = "V3.12 多商品批量：入参 {req_id, chat_id}（或 offers[] 兜底），按 req_id 关联返回该需求全部品审批工单信息，聚合返回 {req_id, status, offers:[{offer_seq, approval_id, offer_id, status, current_node, ...}]}")
+    @Operation(summary = "审批工单查询", description = "V3.12 多商品批量：入参 {req_id, chat_id}（或 offers[] 兜底），按 req_id 关联返回该需求全量商品（一张审批单内含多商品，工单级进度各元素一致）；聚合返回 {req_id, status, offers:[{offer_seq, approval_id, offer_id, status, current_node, ...}]}（各元素冗余携带同一工单级 approval_id）")
     @GetMapping("/approval/status")
     public Map<String, Object> approvalStatus(@RequestParam(required = false) String req_id,
                                               @RequestParam(required = false) String chat_id,

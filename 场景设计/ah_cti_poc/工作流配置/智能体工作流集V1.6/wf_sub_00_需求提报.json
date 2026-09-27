@@ -29,6 +29,15 @@
           {
             "blockID": "",
             "relName": "",
+            "name": "req_id",
+            "description": "需求单号（可选，链路/调试透传；非空时沿用，严禁重新生成）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
             "name": "chat_id",
             "description": "{chatId}",
             "type": "string",
@@ -146,6 +155,20 @@
               "a1b2c3d4-0000-4000-8000-000000000002,offers_json"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000002,offers_json"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（开始节点，非空时沿用不重新生成）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,req_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000001",

@@ -314,7 +314,7 @@
 | 6 get_test_result | POST /api/v1/appstore/test/offer/result | globalId | testScenes[] / orderId / offerInstId | done=true 后查询；受理凭证；现场映射 C4 |
 | 7 save_product_config | POST /api/v1/appstore/product/config/save | req_id, plan_json(原文透传), operator | offer_id / status / save_result / script_url | 不设确认门禁（V2.2 移除）；幂等；script_url 绝对 URL |
 | 8 check_billing_rule | POST /api/v1/appstore/billing/rules/verify | config_json, check_scene(fee/overlay/superposition/all) | pass / risk_list[] / compare_list[]（8 项比对） | pass=0 中断（E9） |
-| 9 submit_release_approval | POST /api/v1/appstore/approval/submit | req_id, offer_id, report_url, approval_flow(standard/urgent) | approval_id / status | **后端四环节硬校验**；双轨（requirement/launch）；幂等 |
+| 9 submit_release_approval | POST /api/v1/appstore/approval/submit | req_id, offer_id, report_url, approval_flow(standard/urgent) | approval_id / status | **后端四环节硬校验**；双轨（requirement/launch）；幂等 | **审批单号 `approval_id` 为工单级单值（顶层），一个工单可含多个商品（`offers[]`）；商品级审批状态见 `offers[].status`**
 | 10 query_product_monitor | GET /api/v1/appstore/product/monitor | offer_id, date_range, metric(order/error/fee/all) | order_count / error_count / fee_error_rate / alarm_list[] | 确定性模拟指标 |
 | 11 send_alert | POST /api/v1/appstore/alert/send | offer_id, alarm_level(high/middle/low), content | alert_id / status | 联动稽核驳回/监控异常 |
 | 13 query_approval_status | GET /api/v1/appstore/approval/status | approval_id / offer_id（至少一个） | approval_id / status / current_node / approver / opinion / submit_time / update_time | 查无审批单（E21） |
@@ -595,9 +595,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 资费校准（环节5/8，成员分组） | `wf_sub_05` | req_id | 自查 config → CODE_EXTRACT_RECORD → check_billing_rule(check_scene=all, member_role 分组) → 风险解读 → save(node=fee) |
 | 自动测试（环节6/8，含受理验证） | `wf_sub_04` | req_id | 自查 config → **C1 `offer_test` 发起（取 globalId）→ C2 `get_test_scenes` 取场景集合** → save(node=**test_pending**：globalId/testScenes) → **秒级返回"测试已发起"+场景清单止于反馈点**（不轮询） |
 | 测试轮询查询（环节6/8，可重复触发） | `wf_sub_13` | req_id | 自查 **test_pending** 取 globalId → **CODE_POLL_PROGRESS**（短窗口轮询 C3 `get_test_progress`，读 done/failed/failIndex）→ 完成则 C4 `get_test_result` → CODE_MAP_FIXED_CASES(节点315：31 条固定用例/九章节报告，受理验证逐场景) → CODE_DOWNLOAD_TEST_REPORT → **test_passed==通过 才 save(node=test)**；未完成输出"处理中"引导续查（不写 test） |
-| 上线审批（环节7/8，双轨+推送即结束） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 报告（node=report）→ submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流），返回 approval_id/status；审批状态由 wf_sub_08 查询 |
+| 上线审批（环节7/8，双轨+推送即结束） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 报告（node=report）→ submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流），返回 approval_id/status；审批状态由 wf_sub_08 查询 | **返回 `approval_id` 为工单级单值（顶层），工单内多商品体现在 `offers[]`**
 | 监控运维（环节8/8，异常分支） | `wf_sub_07` | offer_id / date_range | query_product_monitor → 异常 → send_alert → CODE_OP_ROOT_CAUSE(/ops/root-cause) → CODE_OP_CREATE_WO(/ops/work-orders) |
-| 审批进度查询（辅助，双轨） | `wf_sub_08` | approval_id / offer_id | query_approval_status → LLM 状态摘要 |
+| 审批进度查询（辅助，双轨） | `wf_sub_08` | approval_id / offer_id | query_approval_status → LLM 状态摘要 | **查询按 `req_id` 返回该需求全量商品（一张审批单内含多商品），`offers[]` 各元素冗余携带同一工单级 `approval_id`；进度字段（status/current_node/approver/opinion）为工单级、各元素一致**
 | 存量产品查询（辅助，只读） | `wf_sub_09` | 产品名称/ID | CODE_OP_QUERY_OFFER（内嵌 knowledge/存量产品目录_清洗后.json） |
 | 存量合规扫描（辅助） | `wf_sub_10` | 存量范围 | CODE_OP_SHELF_COMPLIANCE(/shelf-compliance) |
 

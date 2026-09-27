@@ -1661,6 +1661,7 @@ class ChainResult:
         self.error_msg = ""
         self.log_path = ""
         self.outputs = {}
+        self.content = ""       # 结束节点渲染的面向用户正文（业务结论，权威）
 
     def verdict(self) -> str:
         return "PASS" if self.passed else "FAIL"
@@ -1700,6 +1701,11 @@ def _chain_one(name: str, runner_kwargs: dict, log_dir: str,
                 cr.error_msg = f"{first['title']}[{first['status']}]: {first.get('note', '')}"
         # 回收出参：从结束节点 outputs 抽取链路键，回填上下文供下游使用
         cr.outputs = _collect_chain_outputs(ctx)
+        # 结束节点渲染的正文（业务结论）：流内成功/失败分支的权威表达
+        for r in reversed(runner.results):
+            if r.get("type") == 9:
+                cr.content = str((r.get("outputs") or {}).get("content", "") or "").strip()
+                break
         for k in CHAIN_CARRY_KEYS:
             if cr.outputs.get(k) not in (None, ""):
                 carried[k] = cr.outputs[k]
@@ -1975,14 +1981,44 @@ JSON 字段：
     return base + proto
 
 
+# 执行主干固定顺序（用户每回复一次推进一个环节）：环节码 → 中文名。
+TRUNK_ORDER = [
+    ("wf_sub_02", "智能配置"),
+    ("wf_sub_03", "稽核发起"),
+    ("wf_sub_05", "资费校准"),
+    ("wf_sub_04", "自动测试"),
+]
+
+
+def _trunk_progress(done: list):
+    """按执行主干固定顺序推导「下一个尚未执行的环节」与「已完成/剩余」清单。
+
+    不依赖 LLM 对（可能被幻觉污染的）对话历史的解读，只依据真实执行过的环节码。
+    """
+    done_set = set(done or [])
+    first_pending = next((code for code, _ in TRUNK_ORDER if code not in done_set), None)
+    done_txt = "、".join(f"{name}（{code}）" for code, name in TRUNK_ORDER if code in done_set)
+    rest_txt = "、".join(f"{name}（{code}）" for code, name in TRUNK_ORDER if code not in done_set)
+    return first_pending, (done_txt or "（无）"), (rest_txt or "（无）")
+
+
 def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
                                 last_result: dict, done: list) -> str:
     """把对话历史 + 当前上下文 + 已完成环节 + 上一轮执行结果拼成给 LLM 的 user prompt。"""
+    next_code, done_txt, rest_txt = _trunk_progress(done)
     lines = ["【会话上下文（由子工作流产出，仅供你判断，不得改写）】",
              f"req_id={carried.get('req_id', '')}",
              f"offer_id={carried.get('offer_id', '')}",
              f"approval_id={carried.get('approval_id', '')}",
              f"已成功执行环节={('、'.join(done) if done else '（无）')}",
+             "",
+             "【执行主干进度（脚本口径，以此为准，勿被历史回复误导）】",
+             f"已完成主干环节={done_txt}",
+             f"尚未执行主干环节={rest_txt}",
+             f"下一个待推进主干环节={'（无，主干已完成）' if not next_code else next_code}",
+             "铁律：仅当某环节出现在「已完成主干环节」中才可称为已执行；若某环节仍在"
+             "「尚未执行」清单中，严禁在任何回复中声称其已完成。用户回复【下一步/继续】"
+             f"时，必须直调『下一个待推进主干环节』={'（无）' if not next_code else next_code}。",
              "", "【近期对话】"]
     for role, text in history[-8:]:
         who = "用户" if role == "user" else "数字员工"
@@ -1999,6 +2035,9 @@ def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
         outs = last_result.get("outputs") or {}
         if outs:
             lines.append(f"出参={json.dumps(outs, ensure_ascii=False)[:600]}")
+        content = (last_result.get("content") or "").strip()
+        if content:
+            lines.append(f"结束节点正文（业务结论，权威）={content[:500]}")
     lines.append("")
     lines.append(f"【用户本轮消息】{user_msg}")
     lines.append("")
@@ -2007,15 +2046,39 @@ def _build_demo_decision_prompt(history: list, user_msg: str, carried: dict,
 
 
 def _build_demo_reply_prompt(user_msg: str, wf: str, result: dict,
-                             carried: dict, stage_hint: str = ""):
+                             carried: dict, stage_hint: str = "", done: list = None):
     """执行完成后，让 LLM 按「结果表达铁律」据实渲染面向用户的回复。"""
     outs = result.get("outputs") or {}
+    next_code, done_txt, rest_txt = _trunk_progress(done or [])
     lines = [
         "【事实依据（子工作流真实返回，你必须严格据此表达，禁止虚构/凑数）】",
         f"环节工作流={wf}",
         f"执行结论={'成功' if result.get('passed') else '失败'}",
         f"总节点={result.get('total', 0)} OK={result.get('ok', 0)} "
         f"回退={result.get('fallback', 0)} 错误={result.get('error', 0)}",
+    ]
+    if outs:
+        lines.append(f"关键出参={json.dumps(outs, ensure_ascii=False)[:600]}")
+    content = (result.get("content") or "").strip()
+    if content:
+        lines.append("")
+        lines.append("【子工作流结束节点正文（业务结论，权威，必须以其为准，禁止改写其成败口径）】")
+        lines.append(content[:800])
+        failed = ("失败" in content) or ("❌" in content) or ("FAIL" in content)
+        lines.append(f"据正文判定的本环节业务结论={'失败' if failed else '成功'}"
+                     "（若正文显示失败，你必须如实表达失败并给出异常引导，严禁改写为成功）")
+    if result.get("error_msg"):
+        lines.append(f"失败明细={result['error_msg']}")
+    lines += [
+        "",
+        f"【本轮用户消息】{user_msg}",
+        f"【本环节定位】{stage_hint or wf}",
+        "",
+        "【执行主干进度（脚本口径，以此为准）】",
+        f"已完成主干环节={done_txt}",
+        f"尚未执行主干环节={rest_txt}",
+        f"下一个待推进主干环节={'（无，主干已完成）' if not next_code else next_code}",
+        "铁律：严禁声称任何『尚未执行主干环节』中的环节已完成；本回复只汇报本环节真实结果。",
     ]
     if outs:
         lines.append(f"关键出参={json.dumps(outs, ensure_ascii=False)[:600]}")
@@ -2038,9 +2101,16 @@ def _build_demo_reply_prompt(user_msg: str, wf: str, result: dict,
 
 
 def _run_demo_workflow(name: str, runner_kwargs: dict, log_dir: str,
-                       carried: dict) -> ChainResult:
-    """对话编排中的一次子工作流直调：复用链式执行逻辑（复用上下文注入与回收）。"""
-    return _chain_one(name, runner_kwargs, log_dir, carried, overrides=None)
+                       carried: dict, user_msg: str = "") -> ChainResult:
+    """对话编排中的一次子工作流直调：复用链式执行逻辑（复用上下文注入与回收）。
+
+    需求提报（wf_sub_00）等声明 requirement_text 入参的子流，注入当前用户消息作为需求原文。
+    """
+    overrides = None
+    declared = {ip.get("name") for ip in _chain_start_inputs(name)}
+    if user_msg and "requirement_text" in declared:
+        overrides = {name: {"requirement_text": user_msg}}
+    return _chain_one(name, runner_kwargs, log_dir, carried, overrides=overrides)
 
 
 def _demo_check(labels: list, decision: dict, executed: list, carried: dict,
@@ -2079,9 +2149,10 @@ def _demo_check(labels: list, decision: dict, executed: list, carried: dict,
                            f"决策={action}/{wf or '-'}；{detail}" if hit else
                            f"期望直调 {sub}，实际 {action}/{wf or '-'}"))
         elif lb == "intent_req_submit":
-            hit = action == "call_workflow" and wf.startswith("wf_sub_0")
+            hit = action == "call_workflow" and wf == "wf_sub_00"
             ok, detail = exec_ok(wf) if hit else (False, "")
-            checks.append((lb, hit and ok, detail or f"实际 {action}/{wf or '-'}"))
+            checks.append((lb, hit and ok,
+                           detail or f"期望直调 wf_sub_00（需求提报），实际 {action}/{wf or '-'}"))
         elif lb == "gate_refuse_direct_config":
             # 关键反向门禁：不得直调执行主干（02/03/04/05）子流
             main_path = wf in ("wf_sub_02", "wf_sub_03", "wf_sub_04", "wf_sub_05")
@@ -2200,11 +2271,11 @@ def _run_demo(args) -> int:
 
         executed = []
         if action == "call_workflow" and wf and _workflow_exists(wf):
-            cr = _run_demo_workflow(wf, runner_kwargs, log_dir, carried)
+            cr = _run_demo_workflow(wf, runner_kwargs, log_dir, carried, user_msg)
             executed.append({"name": wf, "passed": cr.passed, "total": cr.total,
                              "ok": cr.ok, "fallback": cr.fallback, "error": cr.error,
                              "elapsed_ms": cr.elapsed_ms, "outputs": cr.outputs,
-                             "error_msg": cr.error_msg})
+                             "content": cr.content, "error_msg": cr.error_msg})
             last_result = executed[-1]
             tag = f"{C.GREEN}PASS{C.RESET}" if cr.passed else f"{C.RED}FAIL{C.RESET}"
             print(f"    → {tag} {C.BOLD}{cr.flow_name}{C.RESET} "
@@ -2219,7 +2290,7 @@ def _run_demo(args) -> int:
             # 结果表达二次生成：据真实执行结果渲染面向用户的回复（结果表达铁律）
             stage_hint = labels[0] if labels else ""
             if llm and not is_fb:
-                rp = _build_demo_reply_prompt(user_msg, wf, last_result, carried, stage_hint)
+                rp = _build_demo_reply_prompt(user_msg, wf, last_result, carried, stage_hint, done)
                 rtext, r_fb, r_note = llm.chat(rp, system=system_prompt)
                 if not r_fb and rtext.strip():
                     reply = _reply_text(rtext)

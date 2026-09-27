@@ -242,6 +242,13 @@
       {
         "outputs": [
           {
+            "name": "req_id",
+            "cname": "执行批次号（=入参 req_id，回带）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
             "name": "offer_id",
             "cname": "首品销售品ID",
             "sechema": [],
@@ -377,22 +384,22 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    raw_status = str(p.get('status') or '')\n    # V3.12 多商品：group_json 为批量落地结果 {offers:[{offer_seq,offer_id,status,product_config/group}]}\n    elems = None\n    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n        elems = [c for c in cfg['offers'] if isinstance(c, dict)]\n    lines, failed_all = [], []\n    fusion_status = raw_status.upper()\n    if elems:\n        for i, c in enumerate(elems, start=1):\n            seq = int(c.get('offer_seq') or i)\n            merged = c.get('group') if isinstance(c.get('group'), dict) else None\n            if not merged:\n                continue\n            members = merged.get('members') or []\n            parts = []\n            for m in members:\n                role = str(m.get('role') or '')\n                oid = str(m.get('offer_id') or '')\n                if role:\n                    parts.append('%s（offer_id %s）' % (role, oid))\n                m_status = str(m.get('status') or '').upper()\n                if m_status in ('PARTIAL', 'FAIL'):\n                    failed_all.append('第%d档 %s=%s' % (seq, role or oid, m_status))\n            main_id = str(merged.get('main_offer_id') or c.get('offer_id') or '')\n            line = '第%d档融合成员：' % seq\n            if main_id:\n                line += '主 offer_id %s / ' % main_id\n            line += ' / '.join(parts) if parts else ''\n            lines.append(line)\n        if failed_all and fusion_status == 'SUCCESS':\n            fusion_status = 'PARTIAL'\n        note = ''\n        if fusion_status == 'PARTIAL':\n            note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % '、'.join(failed_all)\n        elif fusion_status == 'FAIL':\n            note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n        ret: Output = {\n            'fusion_echo': '\\n'.join(lines),\n            'fusion_status': fusion_status,\n            'fusion_note': note,\n        }\n        return ret\n    # 兼容旧单品：group_json 即单个落地配置\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    failed = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n        m_status = str(m.get('status') or '').upper()\n        if m_status in ('PARTIAL', 'FAIL'):\n            failed.append('%s=%s' % (role or oid, m_status))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    fusion_status = raw_status.upper()\n    if failed and fusion_status == 'SUCCESS':\n        fusion_status = 'PARTIAL'\n    note = ''\n    if fusion_status == 'PARTIAL':\n        detail = '、'.join(failed) if failed else '详见失败明细'\n        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n    elif fusion_status == 'FAIL':\n        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": fusion_status,\n        \"fusion_note\": note,\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    # 兼容批量落地出参两种形态：裸 offers[] 数组 或 {offers:[...]} 信封；\n    # 均为 {offers:[...]} 便于逐品回显（批量信封顶层不含 product_config）。\n    if isinstance(text, list):\n        return {'offers': text}\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        obj = json.loads(text)\n        if isinstance(obj, list):\n            return {'offers': obj}\n        return obj if isinstance(obj, dict) else {}\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            obj = json.loads(t)\n            if isinstance(obj, list):\n                return {'offers': obj}\n            return obj if isinstance(obj, dict) else {}\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('group_json') or '')\n    raw_status = str(p.get('status') or '')\n    # V3.12 多商品：group_json 为批量落地结果 {offers:[{offer_seq,offer_id,status,product_config/group}]}\n    elems = None\n    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n        elems = [c for c in cfg['offers'] if isinstance(c, dict)]\n    lines, failed_all = [], []\n    fusion_status = raw_status.upper()\n    if elems:\n        for i, c in enumerate(elems, start=1):\n            seq = int(c.get('offer_seq') or i)\n            merged = c.get('group') if isinstance(c.get('group'), dict) else None\n            if not merged:\n                continue\n            members = merged.get('members') or []\n            parts = []\n            for m in members:\n                role = str(m.get('role') or '')\n                oid = str(m.get('offer_id') or '')\n                if role:\n                    parts.append('%s（offer_id %s）' % (role, oid))\n                m_status = str(m.get('status') or '').upper()\n                if m_status in ('PARTIAL', 'FAIL'):\n                    failed_all.append('第%d档 %s=%s' % (seq, role or oid, m_status))\n            main_id = str(merged.get('main_offer_id') or c.get('offer_id') or '')\n            line = '第%d档融合成员：' % seq\n            if main_id:\n                line += '主 offer_id %s / ' % main_id\n            line += ' / '.join(parts) if parts else ''\n            lines.append(line)\n        if failed_all and fusion_status == 'SUCCESS':\n            fusion_status = 'PARTIAL'\n        note = ''\n        if fusion_status == 'PARTIAL':\n            note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % '、'.join(failed_all)\n        elif fusion_status == 'FAIL':\n            note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n        ret: Output = {\n            'fusion_echo': '\\n'.join(lines),\n            'fusion_status': fusion_status,\n            'fusion_note': note,\n        }\n        return ret\n    # 兼容旧单品：group_json 即单个落地配置\n    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n    if not merged:\n        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n        return ret\n    members = merged.get('members') or []\n    parts = []\n    failed = []\n    for m in members:\n        role = str(m.get('role') or '')\n        oid = str(m.get('offer_id') or '')\n        if role:\n            parts.append('%s（offer_id %s）' % (role, oid))\n        m_status = str(m.get('status') or '').upper()\n        if m_status in ('PARTIAL', 'FAIL'):\n            failed.append('%s=%s' % (role or oid, m_status))\n    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n    line = '融合成员：'\n    if main_id:\n        line += '主 offer_id %s / ' % main_id\n    line += ' / '.join(parts) if parts else ''\n    fusion_status = raw_status.upper()\n    if failed and fusion_status == 'SUCCESS':\n        fusion_status = 'PARTIAL'\n    note = ''\n    if fusion_status == 'PARTIAL':\n        detail = '、'.join(failed) if failed else '详见失败明细'\n        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n    elif fusion_status == 'FAIL':\n        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n    ret: Output = {\n        \"fusion_echo\": line if parts else '',\n        \"fusion_status\": fusion_status,\n        \"fusion_note\": note,\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
-            "relName": "product_config",
+            "relName": "offers",
             "name": "group_json",
-            "description": "整批落地结果JSON（节点103出参 product_config，含 offers[]）",
+            "description": "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+              "a1b2c3d4-0000-4000-8000-000000000103,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offers"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
@@ -434,24 +441,43 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000108,offers",
             "name": "offers",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108,config_json",
+            "name": "config_json",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\ndef _cell(v):\n    return str(v) if v not in (None, '') else '—'\n\ndef _summary_of(cfg):\n    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n    print_c = info.get('printContent') if isinstance(info.get('printContent'), dict) else {}\n    gprs = info.get('billGprsCfg') if isinstance(info.get('billGprsCfg'), dict) else {}\n    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n    gift = str(print_c.get('containResource') or '').strip()\n    if not gift:\n        parts = []\n        if str(gprs.get('theshold') or '').strip():\n            parts.append('国内通用流量 %s%s' % (gprs.get('theshold'), gprs.get('unit') or ''))\n        if str(voice.get('theshold') or '').strip():\n            parts.append('国内通话 %s分钟' % voice.get('theshold'))\n        gift = '、'.join(parts)\n    out_price = str(print_c.get('chargeStandard') or '').strip()\n    if not out_price:\n        parts = []\n        if str(gprs.get('outChargeMode') or '').strip():\n            parts.append('套外流量 %s' % gprs.get('outChargeMode'))\n        if str(voice.get('outCharge') or '').strip():\n            parts.append('套外语音 %s元/分钟' % voice.get('outCharge'))\n        out_price = '、'.join(parts)\n    cycle = str(in_fee.get('计费周期') or '').strip()\n    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n    lines = ['【配置销售品要点简介】']\n    lines.append('- 销售品名称：%s' % _cell(offer_name))\n    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n    lines.append('- 套内资源：%s' % _cell(gift))\n    lines.append('- 套外资费：%s' % _cell(out_price))\n    if cycle:\n        lines.append('- 计费周期：%s' % cycle)\n    if carry:\n        lines.append('- 流量结转：可结转至次月')\n    lines.append('- 订购规则：%s' % _cell(cfg.get('order_rule')))\n    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n    return '\\n'.join(lines)\n\nasync def main(args):\n    cfg = _load(args.params.get('product_config') or '')\n    # V3.12 多商品：product_config 为批量落地结果 {offers:[{offer_seq,offer_id,product_config/...}]}\n    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n        blocks, offers_out = [], []\n        for i, c in enumerate(cfg['offers'], start=1):\n            if not isinstance(c, dict):\n                continue\n            seq = int(c.get('offer_seq') or i)\n            inner = c.get('product_config')\n            if isinstance(inner, str):\n                inner = _load(inner) or None\n            elif not isinstance(inner, dict):\n                inner = None\n            if inner is None:\n                inner = c\n            text = _summary_of(inner)\n            blocks.append('第%d档：\\n%s' % (seq, text))\n            offers_out.append({'offer_seq': seq, 'config_summary': text})\n        ret: Output = {\n            'config_summary': '\\n\\n'.join(blocks),\n            'offers': json.dumps(offers_out, ensure_ascii=False),\n        }\n        return ret\n    if not cfg:\n        ret: Output = {'config_summary': '', 'offers': '[]'}\n        return ret\n    ret: Output = {'config_summary': _summary_of(cfg), 'offers': json.dumps([{'offer_seq': 1, 'config_summary': _summary_of(cfg)}], ensure_ascii=False)}\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(text):\n    if isinstance(text, list):\n        return {'offers': text}\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        obj = json.loads(text)\n        if isinstance(obj, list):\n            return {'offers': obj}\n        return obj if isinstance(obj, dict) else {}\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            obj = json.loads(t)\n            if isinstance(obj, list):\n                return {'offers': obj}\n            return obj if isinstance(obj, dict) else {}\n        except Exception:\n            return {}\n\ndef _cell(v):\n    return str(v) if v not in (None, '') else '—'\n\ndef _summary_of(cfg):\n    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n    print_c = info.get('printContent') if isinstance(info.get('printContent'), dict) else {}\n    gprs = info.get('billGprsCfg') if isinstance(info.get('billGprsCfg'), dict) else {}\n    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n    gift = str(print_c.get('containResource') or '').strip()\n    if not gift:\n        parts = []\n        if str(gprs.get('theshold') or '').strip():\n            parts.append('国内通用流量 %s%s' % (gprs.get('theshold'), gprs.get('unit') or ''))\n        if str(voice.get('theshold') or '').strip():\n            parts.append('国内通话 %s分钟' % voice.get('theshold'))\n        gift = '、'.join(parts)\n    out_price = str(print_c.get('chargeStandard') or '').strip()\n    if not out_price:\n        parts = []\n        if str(gprs.get('outChargeMode') or '').strip():\n            parts.append('套外流量 %s' % gprs.get('outChargeMode'))\n        if str(voice.get('outCharge') or '').strip():\n            parts.append('套外语音 %s元/分钟' % voice.get('outCharge'))\n        out_price = '、'.join(parts)\n    cycle = str(in_fee.get('计费周期') or '').strip()\n    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n    lines = ['【配置销售品要点简介】']\n    lines.append('- 销售品名称：%s' % _cell(offer_name))\n    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n    lines.append('- 套内资源：%s' % _cell(gift))\n    lines.append('- 套外资费：%s' % _cell(out_price))\n    if cycle:\n        lines.append('- 计费周期：%s' % cycle)\n    if carry:\n        lines.append('- 流量结转：可结转至次月')\n    lines.append('- 订购规则：%s' % _cell(cfg.get('order_rule')))\n    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n    return '\\n'.join(lines)\n\nasync def main(args):\n    p = args.params\n    cfg = _load(p.get('product_config') or '')\n    req_id = str(p.get('req_id') or '')\n    # V3.12 多商品：product_config 为节点103出参 offers[]（含逐品 product_config）；\n    # 组装 config_json={req_id, offers:[...]} 信封供下游 result_json 落库（下游按 offers[] 键提取）。\n    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n        blocks, offers_out, cfg_offers = [], [], []\n        for i, c in enumerate(cfg['offers'], start=1):\n            if not isinstance(c, dict):\n                continue\n            seq = int(c.get('offer_seq') or i)\n            inner = c.get('product_config')\n            if isinstance(inner, str):\n                inner = _load(inner) or None\n            elif not isinstance(inner, dict):\n                inner = None\n            if inner is None:\n                inner = c\n            text = _summary_of(inner)\n            blocks.append('第%d档：\\n%s' % (seq, text))\n            offers_out.append({'offer_seq': seq, 'config_summary': text})\n            cfg_offers.append(c)\n        config_json = json.dumps({'req_id': req_id, 'offers': cfg_offers}, ensure_ascii=False)\n        ret: Output = {\n            'config_summary': '\\n\\n'.join(blocks),\n            'offers': json.dumps(offers_out, ensure_ascii=False),\n            'config_json': config_json,\n        }\n        return ret\n    if not cfg:\n        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False)}\n        return ret\n    one_sum = _summary_of(cfg)\n    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False)}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
-            "relName": "product_config",
+            "relName": "offers",
             "name": "product_config",
-            "description": "整批落地结果JSON（节点103出参 product_config）",
+            "description": "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]，元素含 product_config）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+              "a1b2c3d4-0000-4000-8000-000000000103,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（节点103出参 req_id，组装 config_json 信封）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,req_id"
           }
         ],
         "checkErr": false,
@@ -506,18 +532,18 @@
             "content": "config"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
-            "relName": "product_config",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "config_json",
             "name": "result_json",
-            "description": "环节结果JSON=整批落地结果JSON（含 req_id+offers[]）",
+            "description": "环节结果JSON=整批落地结果JSON（含 req_id+offers[]，由节点108组装）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,config_json"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,config_json"
           },
           {
             "blockID": "",
@@ -635,18 +661,18 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000111",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "首品销售品ID",
+            "description": "首品销售品ID（节点111生成/透传的逐品编码首品值）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000111",
+              "a1b2c3d4-0000-4000-8000-000000000111,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000111,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",

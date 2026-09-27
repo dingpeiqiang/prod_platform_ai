@@ -2292,6 +2292,19 @@ public class OfferSimV16Service {
         return "fail";
     }
 
+    /**
+     * 审批推送元素态归一：审批单提交成功后的工单级进度（「审批中」/「通过」）视为 success；
+     * 未确认（NOT_CONFIRMED）或显式失败（FAIL/失败/空）视为 fail。
+     * 与 {@link #offerStatus} 的差异在于「审批中」是成功态（已生成工单），而非失败。
+     */
+    private static String approvalElementStatus(Object status) {
+        String s = MapOps.str(status).trim();
+        if (s.isEmpty() || "NOT_CONFIRMED".equals(s) || s.equalsIgnoreCase("FAIL") || s.equals("失败")) {
+            return "fail";
+        }
+        return "success";
+    }
+
     /** 由逐品结果聚合整批态：全 success=SUCCESS，含 fail 且含 success=PARTIAL，全 fail=FAIL。 */
     private static String batchStatus(List<Map<String, Object>> items) {
         if (items.isEmpty()) {
@@ -2410,6 +2423,7 @@ public class OfferSimV16Service {
             offers = List.of(single);
         }
         List<Map<String, Object>> items = new ArrayList<>();
+        String approvalId = "";
         for (Map<String, Object> offer : offers) {
             Map<String, Object> one = elementRequest(req, offer);
             Map<String, Object> r = approvalSubmit(one);
@@ -2417,15 +2431,26 @@ public class OfferSimV16Service {
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
             String st = MapOps.str(r.get("status"));
-            item.put("status", "NOT_CONFIRMED".equals(st) ? "fail" : offerStatus(st));
-            for (String k : List.of("approval_id", "req_id", "approval_type", "status", "approval_matrix", "reason", "resultCode", "resultMsg")) {
+            // 元素态按工单级进度归一：提交成功（含中文「审批中」/「通过」）→ success；未确认/失败 → fail
+            item.put("status", approvalElementStatus(st));
+            // 多商品口径：approval_id 为工单级单值，只出现在顶层信封，元素不再重复携带
+            // 注意：status 已归一为 success/partial/fail，勿再被 r 的原始工单级 status（审批中）覆盖
+            for (String k : List.of("req_id", "approval_type", "approval_matrix", "reason", "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
             }
             items.add(item);
+            if (approvalId.isEmpty()) {
+                approvalId = MapOps.str(r.get("approval_id"));
+            }
         }
-        return batchBody(req, items);
+        Map<String, Object> body = batchBody(req, items);
+        // 工单级 approval_id 提升到顶层（单值，覆盖整批商品）
+        if (!approvalId.isEmpty()) {
+            body.put("approval_id", approvalId);
+        }
+        return body;
     }
 
     /* ---- 监控查询批量（按 req_id 关联全部品；显式 offers[] 时按元素） ---- */
@@ -2477,7 +2502,13 @@ public class OfferSimV16Service {
             if (reqId.isEmpty() && MapOps.empty(req.get("offer_id"))) {
                 return offersMissing();
             }
-            offers = List.of(new LinkedHashMap<>());
+            // 多商品口径：按 req_id 关联解析该需求「全量商品」，逐品渲染工单级进度
+            if (!reqId.isEmpty()) {
+                offers = resolveOffersByReqId(reqId);
+            }
+            if (offers.isEmpty()) {
+                offers = List.of(new LinkedHashMap<>());
+            }
         }
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> offer : offers) {
@@ -2488,8 +2519,9 @@ public class OfferSimV16Service {
             Map<String, Object> r = approvalStatus(one);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("offer_seq", offer.get("offer_seq"));
-            item.put("offer_id", MapOps.str(r.get("offer_id")));
+            item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id")));
             item.put("status", r.containsKey("approval_id") ? "success" : "fail");
+            // 多商品口径：进度为工单级，各元素冗余携带同一 approval_id
             for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "status",
                     "current_node", "approver", "opinion", "submit_time", "update_time", "approval_matrix",
                     "resultCode", "resultMsg")) {
