@@ -1685,7 +1685,13 @@ CODE_CONFIG_SUMMARY = (
     "            if not isinstance(c, dict):\n"
     "                continue\n"
     "            seq = int(c.get('offer_seq') or i)\n"
-    "            inner = c.get('product_config') if isinstance(c.get('product_config'), dict) else c\n"
+    "            inner = c.get('product_config')\n"
+    "            if isinstance(inner, str):\n"
+    "                inner = _load(inner) or None\n"
+    "            elif not isinstance(inner, dict):\n"
+    "                inner = None\n"
+    "            if inner is None:\n"
+    "                inner = c\n"
     "            text = _summary_of(inner)\n"
     "            blocks.append('第%d档：\\n%s' % (seq, text))\n"
     "            offers_out.append({'offer_seq': seq, 'config_summary': text})\n"
@@ -1701,11 +1707,12 @@ CODE_CONFIG_SUMMARY = (
     "    return ret"
 )
 
-# ---------------- CODE_GEN_OFFER_ID：生成商品编码（9位 900 编码，逐品） ----------------
-# 输入：offers（节点106提取的需求商品数组 JSON；每元素含 offer_id/similarOfferId/plan_json 等）
+# ---------------- CODE_GEN_OFFER_ID：生成商品编码 + 组装逐品 plan_json（9位 900 编码，逐品） ----------------
+# 输入：offers（节点106提取的需求商品数组 JSON；每元素含 payload 合并方案/offer_id/similarOfferId 等）
 #       existing_offer_id（旧单品入参兜底）
-# 输出：offers（逐品补齐 offer_id：合法 9 位编码透传，否则生成 "900"+6位随机数字）、
-#       offer_id（首品编码，兼容单项引用）、offers_missing（缺编码品序号串）
+#       req_id（需求单号，注入 plan_json 供后端提取方案key）
+# 输出：offers（逐品元素含 offer_seq/offer_id/plan_json=payload 合并方案并注入 req_id）、
+#       offer_id（首品编码，兼容单项引用）
 CODE_GEN_OFFER_ID = (
     "import json, random\n"
     "from typing import Any, Dict\n"
@@ -1716,8 +1723,28 @@ CODE_GEN_OFFER_ID = (
     "def _gen():\n"
     "    return '900%06d' % random.randint(0, 999999)\n"
     "\n"
+    "def _plan_of(item, req_id):\n"
+    "    # 逐品 plan_json：优先取元素 payload（合并方案 JSON），注入 req_id 供后端提取方案key\n"
+    "    raw = item.get('plan_json') or item.get('payload') or item.get('product_config') or ''\n"
+    "    plan = None\n"
+    "    if isinstance(raw, dict):\n"
+    "        plan = dict(raw)\n"
+    "    elif isinstance(raw, str) and raw.strip():\n"
+    "        try:\n"
+    "            obj = json.loads(raw)\n"
+    "            if isinstance(obj, dict):\n"
+    "                plan = obj\n"
+    "        except Exception:\n"
+    "            plan = None\n"
+    "    if plan is None:\n"
+    "        return ''\n"
+    "    if req_id and not plan.get('req_id'):\n"
+    "        plan['req_id'] = req_id\n"
+    "    return json.dumps(plan, ensure_ascii=False)\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
+    "    req_id = _str(p.get('req_id') or '')\n"
     "    raw = p.get('offers') or ''\n"
     "    items = []\n"
     "    try:\n"
@@ -1741,9 +1768,9 @@ CODE_GEN_OFFER_ID = (
     "            oid = existing\n"
     "        if not (oid.isdigit() and len(oid) == 9):\n"
     "            oid = _gen()\n"
-    "        item['offer_seq'] = int(item.get('offer_seq') or i)\n"
-    "        item['offer_id'] = oid\n"
-    "        out.append(item)\n"
+    "        seq = int(item.get('offer_seq') or i)\n"
+    "        plan_json = _plan_of(item, req_id)\n"
+    "        out.append({'offer_seq': seq, 'offer_id': oid, 'plan_json': plan_json})\n"
     "    ret: Output = {\n"
     "        'offers': json.dumps(out, ensure_ascii=False),\n"
     "        'offer_id': (out[0]['offer_id'] if out else ''),\n"
@@ -1776,7 +1803,8 @@ s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
 # 输出 offers[]（每元素含 offer_id）注入 save_product_config 批量落地
 s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
     [inp("offers", "执行方案需求商品数组（节点106提取）", ref_block=nid(106), ref_rel="offers"),
-     inp("existing_offer_id", "执行方案中既有 offer_id（节点106提取，单品兜底）", ref_block=nid(106), ref_rel="offer_id")],
+     inp("existing_offer_id", "执行方案中既有 offer_id（节点106提取，单品兜底）", ref_block=nid(106), ref_rel="offer_id"),
+     inp("req_id", "需求单号（节点106提取，注入逐品 plan_json）", ref_block=nid(106), ref_rel="req_id")],
     [code_out("offers", 111), code_out("offer_id", 111)],
     pos=(530, 440)))
 s2f.append(plugin_node(103, "配置落地", "save_product_config",
