@@ -998,7 +998,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n\n**资费校准商品列表：**\n{offer_list_text}\n\n{risk_summary}\n\n整批存在不一致，本次未写入 fee，无法推进上线审批。\n【下一步】请按比对上文对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"
+          "content": "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n\n**资费校准商品列表：**\n{offer_list_text}\n\n{risk_summary}\n\n整批存在不一致，本次未写入 fee，无法推进上线审批。\n【下一步】请按上文比对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"
         },
         "settings": {
           "stream": false,

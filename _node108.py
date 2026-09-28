@@ -1,0 +1,720 @@
+﻿import json
+import re
+from typing import Any, Dict
+
+NON_EXTRACTABLE_PATTERNS = (
+    r"(effDate|expDate)$",
+    r"(effRuleId|cancelRuleId)$",
+    r"(prodId|pricingId|prodPrcId|inProdPrcId|outProdPrcId|billPrcId|conditionCode|groupId)$",
+    r"orderNo$",
+    r"groupIdMessage$",
+    r"subBillPrcIds$",
+    r"^optionalInfo\.prcSmsCfg\.",
+    r"acctItem$",
+    r"powerCode$",
+    r"familyCata$",
+    r"splitRate(9|6)$",
+    r"(favValidityVAlue|fixValidityVAlue)$",
+)
+YES_HINT_WORDS = ('允许', '开通', '支持', '可以', '可办')
+PRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')
+PRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')
+CHARGE_DESC_KEYWORDS = ('超套', '套外', '资费', '计费', '收费')
+EMPTY_MARKS = ('', '待补充', '系统待生成')
+SKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')
+SYSTEM_GEN_KEYS = ('orderNo',)
+SAME_PARAMETER_PAIRS = (
+    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),
+)
+
+# 业务默认值：不强制发布地市取值——需求未提及地市时不填、不默认，
+# 由原始需求原文/模板默认决定，避免臆断『全省/非全省/22地市』。
+BUSINESS_DEFAULTS = {}
+
+# 模板取值溯源：区分“原始需求 / 模板默认 / 模板枚举 / 模型推测”
+DEFAULT_MARK_RE = re.compile(r'默认(?:为)?([^，。、；：\s]+)')
+ENUM_SPLIT_RE = re.compile(r'[、，,/\n；;]')
+REQ_TRACE_MIN_LEN = 2
+MODEL_GUESS_SOURCE = '模型推测'
+TEMPLATE_SOURCE = '模板值'
+DEFAULT_SOURCE = '默认值'
+REQ_SOURCE = '原始需求'
+
+def _req_tokens(req_text):
+    return set(re.split(r'[\s,，、。;；:：()（）{}\[\]"\'\\/\n]+', str(req_text or '')))
+
+def _matches_requirement(val, req_text, tokens):
+    s = str(val).strip()
+    if not s:
+        return False
+    if len(s) >= REQ_TRACE_MIN_LEN and s in str(req_text):
+        return True
+    return s in tokens
+
+def _schema_owned_values(prop, path):
+    out = []
+    if path in BUSINESS_DEFAULTS:
+        out.append(('default', str(BUSINESS_DEFAULTS[path])))
+    d = prop.get('default')
+    if d not in (None, ''):
+        out.append(('default', str(d).strip()))
+    for e in prop.get('enum') or []:
+        s = str(e).strip()
+        if s:
+            out.append(('enum', s))
+            out.extend(('enum', t.strip()) for t in ENUM_SPLIT_RE.split(s) if t.strip())
+    for key in ('x-hint', 'description'):
+        txt = str(prop.get(key) or '')
+        m = DEFAULT_MARK_RE.search(txt)
+        if m and m.group(1).strip():
+            out.append(('hint_default', m.group(1).strip()))
+        out.extend(('hint_word', t.strip()) for t in ENUM_SPLIT_RE.split(txt)
+                   if t.strip() and len(t.strip()) >= REQ_TRACE_MIN_LEN)
+    return out
+
+def relabel_source_map(elements_map, leaves, req_text):
+    # 溯源修正：需求原文可追溯→原始需求；命中 schema 显式默认/枚举→默认值/模板值；
+    # 其余为模型推测。仅改来源标注与默认值归一，不改变取值语义。
+    tokens = _req_tokens(req_text)
+    source_map = {}
+    for path, val in list(elements_map.items()):
+        prop = leaves.get(path)
+        if not prop:
+            continue
+        if _matches_requirement(val, req_text, tokens):
+            source_map[path] = REQ_SOURCE
+            continue
+        matched = None
+        for kind, sv in _schema_owned_values(prop, path):
+            if str(val).strip() == sv:
+                matched = (kind, sv)
+                break
+        if matched is None:
+            source_map[path] = MODEL_GUESS_SOURCE
+            continue
+        kind, sv = matched
+        if kind in ('default', 'hint_default'):
+            elements_map[path] = sv
+            source_map[path] = DEFAULT_SOURCE
+        else:
+            source_map[path] = TEMPLATE_SOURCE
+    return source_map
+
+def _is_non_extractable(path):
+    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)
+
+def _collect_leaves(schema):
+    leaves = {}
+    def walk(node, prefix=''):
+        props = node.get('properties') if isinstance(node, dict) else None
+        if not isinstance(props, dict):
+            return
+        for k, v in props.items():
+            p2 = (prefix + '.' + k) if prefix else k
+            if isinstance(v, dict) and v.get('type') == 'object':
+                walk(v, p2)
+            else:
+                leaves[p2] = v or {}
+    walk(schema)
+    return leaves
+
+def _flatten(node, prefix='', out=None):
+    if out is None:
+        out = {}
+    if not isinstance(node, dict):
+        return out
+    for k, v in node.items():
+        path = (prefix + '.' + k) if prefix else k
+        if isinstance(v, dict):
+            _flatten(v, path, out)
+        else:
+            out[path] = v
+    return out
+
+def _to_number(v):
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    s = str(v).strip()
+    if not s:
+        return None
+    try:
+        return float(s) if '.' in s else int(s)
+    except ValueError:
+        m = re.match(r'^(\d+(?:\.\d+)?)\s*元?$', s)
+        return float(m.group(1)) if m else None
+
+def _today_str():
+    import datetime
+    return datetime.date.today().strftime('%Y-%m-%d')
+
+def is_price(label, key):
+    for text in (label, key):
+        t = text or ''
+        if any(m in t for m in PRICE_EXCLUDE_MARKS):
+            continue
+        if any(kw in t for kw in PRICE_KEYWORDS):
+            return True
+    return False
+
+def strip(v):
+    if v is None:
+        return ''
+    if isinstance(v, bool):
+        return '是' if v else '否'
+    if isinstance(v, (int, float)):
+        return v
+    s = str(v).strip()
+    return '' if s in EMPTY_MARKS else s
+
+def _charge_desc_covers(prop, cur, elements_map):
+    if not prop.get('enum'):
+        return False
+    label = str(prop.get('x-label', '') or '') + cur
+    if not [w for w in CHARGE_DESC_KEYWORDS if w in label]:
+        return False
+    for epath, evalue in elements_map.items():
+        if not epath.endswith('chargeStandard'):
+            continue
+        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):
+            return True
+    return False
+
+def flatten_elements(node, prefix='', out=None):
+    if out is None:
+        out = {}
+    if not isinstance(node, dict):
+        return out
+    for k, v in node.items():
+        path = (prefix + '.' + k) if prefix else k
+        if isinstance(v, dict):
+            flatten_elements(v, path, out)
+        else:
+            val = strip(v)
+            if val != '':
+                out[path] = val
+    return out
+
+def flatten_offer(node, prefix='', out=None):
+    if out is None:
+        out = {}
+    if isinstance(node, dict):
+        for k, v in node.items():
+            path = (prefix + '.' + k) if prefix else k
+            flatten_offer(v, path, out)
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            flatten_offer(v, '%s[%d]' % (prefix, i), out)
+    else:
+        val = strip(node)
+        if val != '':
+            out[prefix] = val
+    return out
+
+def _visible(cond_map, out_map, cur):
+    # 依据节点级 x-show-when 判定当前字段是否展示（不展示即不计入待补充）
+    cond = cond_map.get(cur)
+    if not cond:
+        return True
+    parent = cur.rsplit('.', 1)[0] if '.' in cur else ''
+    gkey = (parent + '.groupId') if parent else 'groupId'
+    gval = str(out_map.get(gkey) or '')
+    # 语义：'选择非全省时展示' -> groupId=全省 时隐藏
+    if '非全省' in str(cond):
+        return '全省' not in gval
+    return True
+
+def merge_body(schema, elements_map, offer_map, meta, path='', pending=None, cond_map=None, out_map=None, source_map=None, req_price_map=None):
+    if pending is None:
+        pending = []
+    if cond_map is None:
+        cond_map = {}
+    if out_map is None:
+        out_map = {}
+    if source_map is None:
+        source_map = {}
+    if req_price_map is None:
+        req_price_map = {}
+    out = {}
+    props = schema.get('properties') or {}
+    for key, sub in props.items():
+        cur = (path + '.' + key) if path else key
+        label = sub.get('x-label', key)
+        if sub.get('x-show-when'):
+            cond_map[cur] = sub['x-show-when']
+        if sub.get('type') == 'object':
+            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending, cond_map, out_map, source_map, req_price_map)
+            continue
+        val = elements_map.get(cur)
+        source = source_map.get(cur) or (REQ_SOURCE if val is not None else '')
+        if val is None and not is_price(label, key):
+            oval = offer_map.get(cur)
+            if oval is not None:
+                val, source = oval, 'AI补全'
+        if val is None and req_price_map:
+            rp = _match_req_price(cur, label, req_price_map)
+            if rp is not None:
+                val, source = rp, '原始需求'
+        if val is None and sub.get('default') is not None:
+            val, source = sub['default'], '默认值'
+        if val is None and sub.get('x-default-rule'):
+            rule = sub['x-default-rule']
+            val = _today_str() if rule == 'system_date' else rule
+            source = '默认值'
+        if val is None and cur in BUSINESS_DEFAULTS:
+            val, source = BUSINESS_DEFAULTS[cur], '默认值'
+        if val is None:
+            val, source = '', ''
+        out_map[cur] = val
+        if val == '' and source == '':
+            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS \
+                    and not _is_non_extractable(cur) \
+                    and (is_price(label, key) or '资源' in label or 'resource' in str(label).lower()):
+                if not _charge_desc_covers(sub, cur, elements_map) and _visible(cond_map, out_map, cur):
+                    pending.append(cur)
+        out[key] = val
+        if source:
+            meta[cur] = {'label': label, 'value': val, 'source': source}
+    return out
+
+def _collect_req_prices(record_json):
+    # 从需求字段原文提取价格候选（仅按月费/固定费口径），供 LLM 漏提时确定性兜底
+    rec = _load(record_json)
+    if not isinstance(rec, dict):
+        return {}
+    out = {}
+    for k in ('price', 'month_fee', 'monthFee', 'fee', 'monthly_fee'):
+        v = rec.get(k)
+        if v in (None, ''):
+            continue
+        num = _to_number(v)
+        if num is not None:
+            out[k] = v
+    return out
+
+PRICE_LABEL_HINTS = ('套餐月费', '套餐固定费', '月功能费')
+PRICE_LABEL_EXCLUDE = ('有效期', '周期', '时长', '间隔', '值')
+
+def _match_req_price(path, label, req_price_map):
+    # 仅对“月费/固定费”类价格叶子兜底：标签严格命中月费语义且非有效期类
+    lab = str(label or '')
+    if any(x in lab for x in PRICE_LABEL_EXCLUDE):
+        return None
+    if not any(h in lab for h in PRICE_LABEL_HINTS):
+        return None
+    for _, v in req_price_map.items():
+        return v
+    return None
+
+def _path_get(node, path):
+    for part in path.split('.'):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+def _path_set(node, path, value):
+    parts = path.split('.')
+    cur = node
+    for part in parts[:-1]:
+        if not isinstance(cur, dict):
+            return
+        cur = cur.setdefault(part, {})
+    if isinstance(cur, dict):
+        cur[parts[-1]] = value
+
+def reconcile_same_parameter(merged, meta, pending):
+    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:
+        na, nb = _to_number(_path_get(merged, path_a)), _to_number(_path_get(merged, path_b))
+        src_a = (meta.get(path_a) or {}).get('source', '')
+        src_b = (meta.get(path_b) or {}).get('source', '')
+        def _authority():
+            if na is None and nb is None:
+                return None
+            pri = {'原始需求': 0, '存量提取': 0, 'AI补全': 1, '同源派生': 2, '默认值': 2}
+            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)
+            if na is not None and nb is not None:
+                if na == nb:
+                    return None
+                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)
+            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)
+        auth = _authority()
+        if auth is None:
+            continue
+        value, apath, alabel = auth
+        for path, label in ((path_a, label_a), (path_b, label_b)):
+            if _to_number(_path_get(merged, path)) != value:
+                _path_set(merged, path, value)
+                meta[path] = {'label': label, 'value': value, 'source': '同源派生(%s)' % alabel}
+                if path in pending:
+                    pending.remove(path)
+
+def unwrap_offer(offer):
+    # 归一化：优先取 offerModel（按模板实例化的逻辑模型报文，键=模板字段名），
+    # 其次 offerInfo（同构字段）；兼容两种包裹层级——
+    # ① {similarOffer:{offerModel/offerInfo:...}}（工具外层再包一层）
+    # ② {similarOfferId,...,offerModel/offerInfo:...}（相似检索直接返回的扁平静态）
+    # 后端已保证 offerModel/offerInfo 恒有值（命中品缺失时按产品类型从存量同类型产品衍生）；
+    # 仍保留回退 offer 本体，兼容工具未透出上述字段的历史/异常情形。
+    def _pick(d):
+        if not isinstance(d, dict):
+            return None
+        if isinstance(d.get('offerModel'), dict):
+            return d['offerModel']
+        if isinstance(d.get('offerInfo'), dict):
+            return d['offerInfo']
+        return None
+    if isinstance(offer, dict):
+        picked = _pick(offer)
+        if picked is not None:
+            return picked
+        inner = offer.get('similarOffer')
+        picked = _pick(inner)
+        if picked is not None:
+            return picked
+    return offer
+
+def _as_group(obj):
+    # 归一融合组对象：兼容两种入参形态——① 裸组对象（含 members/main_offer_id）；
+    # ② 包裹对象（{offer_group:{...}} 或 {similarOffer:{offer_group:{...}}}）。无组返回 None。
+    if not isinstance(obj, dict):
+        return None
+    if isinstance(obj.get('members'), list) or obj.get('main_offer_id') or obj.get('group_id'):
+        return obj
+    if isinstance(obj.get('offer_group'), dict):
+        return obj.get('offer_group')
+    inner = obj.get('similarOffer')
+    if isinstance(inner, dict) and isinstance(inner.get('offer_group'), dict):
+        return inner.get('offer_group')
+    return None
+
+def extract_offer_group(raw_offer_json, raw_group=None):
+    # 融合组抽取：优先取节点105 显式出参 offer_group（后端顶层内嵌），回退从相似检索
+    # 出参（similar_offer）中取顶层 offer_group（组定义下发），
+    # 归一为 plan_json 组结构字段：{offer_type:"融合", main_offer:{role,offer_id,name},
+    # member_offers:[{role,offer_id,required,dependency?,preset?}], group_rules:{...}}。
+    # 未命中融合组（单品）返回 None——单商品链路行为零变化。
+    grp = _as_group(_load(raw_group or ''))
+    if grp is None:
+        grp = _as_group(_load(raw_offer_json or ''))
+    if not isinstance(grp, dict) or not grp:
+        return None
+    members = grp.get('members') if isinstance(grp.get('members'), list) else []
+    main_offer_id = str(grp.get('main_offer_id') or '')
+    main_offer_name = str(grp.get('main_offer_name') or '')
+    member_offers = []
+    for m in members:
+        if not isinstance(m, dict):
+            continue
+        item = {'role': str(m.get('role') or ''),
+                'offer_id': str(m.get('offer_id') or ''),
+                'required': bool(m.get('required'))}
+        if m.get('dependency'):
+            item['dependency'] = str(m.get('dependency'))
+        if isinstance(m.get('preset'), dict):
+            item['preset'] = m.get('preset')
+        member_offers.append(item)
+    return {
+        'offer_type': '融合',
+        'main_offer': {'role': '主卡套餐', 'offer_id': main_offer_id, 'name': main_offer_name},
+        'member_offers': member_offers,
+        'group_rules': grp.get('group_rules') if isinstance(grp.get('group_rules'), dict) else {},
+    }
+
+def _load(text):
+    # 兼容上游直接透传 dict/list（节点出参未序列化时的常见情形）
+    if isinstance(text, (dict, list)):
+        return text
+    if not isinstance(text, str) or not text.strip():
+        return {}
+    t = text.strip()
+    # 剥离标签行前缀，如 "elements_json: {...}"
+    if ':' in t and not t.lstrip().startswith('{') and not t.lstrip().startswith('['):
+        t = t.split(':', 1)[1].strip()
+    # 去除 Markdown 代码块围栏
+    t = re.sub(r'^```[a-zA-Z]*\s*', '', t)
+    t = re.sub(r'\s*```$', '', t)
+    try:
+        return json.loads(t)
+    except Exception:
+        pass
+    # 回退①：截取首个 { 到末个 } 的子串
+    s, e = t.find('{'), t.rfind('}')
+    if s != -1 and e > s:
+        try:
+            return json.loads(t[s:e + 1])
+        except Exception:
+            pass
+    # 回退②：截断 JSON 抢救——补齐未闭合的字符串/容器
+    s = t.find('{')
+    if s != -1:
+        salvaged = _salvage_json(t[s:])
+        if salvaged is not None:
+            return salvaged
+    return {}
+
+def _salvage_json(text):
+    # 逐字符扫描，遇未闭合字符串/括号则补齐，再尝试解析（抢救被 max_tokens 截断的 JSON）
+    stack, in_str, esc = [], False, False
+    for ch in text:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == '\\':
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in '{[':
+            stack.append(ch)
+        elif ch in '}]':
+            if stack:
+                stack.pop()
+    # 从末尾向前回溯，寻找可解析的最长前缀
+    for cut in range(len(text), 0, -1):
+        frag = text[:cut].rstrip()
+        frag = re.sub(r',\s*$', '', frag)
+        # 去掉尾部不完整的键（形如 ,"key" 或 ,"key": 或 ,{"key"）
+        frag = re.sub(r',\s*"[^"]*"\s*:?\s*$', '', frag)
+        frag = re.sub(r',\s*\{[^}]*$', '', frag)
+        frag = frag.rstrip().rstrip(',')
+        st, ins, es = [], False, False
+        for ch in frag:
+            if ins:
+                if es:
+                    es = False
+                elif ch == '\\':
+                    es = True
+                elif ch == '"':
+                    ins = False
+                continue
+            if ch == '"':
+                ins = True
+            elif ch in '{[':
+                st.append(ch)
+            elif ch in '}]':
+                if st:
+                    st.pop()
+        if ins:
+            frag += '"'
+        frag += ''.join('}' if c == '{' else ']' for c in reversed(st))
+        try:
+            obj = json.loads(frag)
+            if isinstance(obj, dict) and obj:
+                return obj
+        except Exception:
+            continue
+    return None
+
+def _salvage_offer_list(text):
+    # LLM 输出的逐品数组若整体非法（如多余括号/未闭合），按 "offer_seq" 边界切片，逐品抢救，
+    # 保证单个商品格式瑕疵不吞掉其余商品。返回 [dict, ...]（可能少于实际，但尽量多保留）。
+    if not isinstance(text, str):
+        return []
+    s = text.find('[')
+    if s != -1:
+        text = text[s + 1:]
+    # 以 ,{ 或 {"offer_seq" 作为切分点，按平衡括号提取每个对象
+    items, i, n = [], 0, len(text)
+    while i < n:
+        if text[i] != '{':
+            i += 1
+            continue
+        depth, ins, esc, j = 0, False, False, i
+        while j < n:
+            ch = text[j]
+            if ins:
+                if esc:
+                    esc = False
+                elif ch == '\\':
+                    esc = True
+                elif ch == '"':
+                    ins = False
+            elif ch == '"':
+                ins = True
+            elif ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    frag = text[i:j + 1]
+                    try:
+                        obj = json.loads(frag)
+                    except Exception:
+                        obj = _salvage_json(frag)
+                    if isinstance(obj, dict) and obj:
+                        items.append(obj)
+                    break
+            j += 1
+        i = j + 1 if j < n else n
+    return items
+
+def _load_offers(raw):
+    # 逐品要素数组解析：优先整体 JSON；失败则按品切片抢救。返回 [dict, ...]。
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        if isinstance(raw.get('offers'), list):
+            return raw['offers']
+        return [raw]
+    if isinstance(raw, str):
+        obj = _load(raw)
+        if isinstance(obj, list):
+            return obj
+        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):
+            return obj['offers']
+        salvaged = _salvage_offer_list(raw)
+        if salvaged:
+            return salvaged
+        if isinstance(obj, dict) and obj:
+            return [obj]
+    return []
+
+async def _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw=None):
+    elements = elems
+    # V3.12.1 多商品：LLM 逐品输出 {offer_seq, template_id, elements:{...schema 键...}}，
+    # 需先解包内层要素对象再拍平，否则拍平路径成 'elements.baseInfo.x' 与 schema 键不匹配，
+    # 导致 elements_map 全程未命中、回退相似品（offer_json）串值。
+    for _wrap in ('elements', 'elements_json', 'payload', 'fields'):
+        if isinstance(elements, dict) and _wrap in elements:
+            inner = elements[_wrap]
+            if isinstance(inner, str):
+                inner = _load(inner)
+            if isinstance(inner, dict) and inner:
+                elements = inner
+                break
+    if not isinstance(elements, dict):
+        elements = {}
+    # ① 质量校验（validate_elements 六项校验 + E31 命中率门禁）
+    leaves = _collect_leaves(schema)
+    flat = _flatten(elements)
+    removed, yes_norm_hints, price_cross = [], [], []
+    valid_paths = {}
+    for path, val in flat.items():
+        prop = leaves.get(path)
+        if prop is None:
+            removed.append({'path': path, 'value': val, 'reason': 'invalid_path'})
+            continue
+        if prop.get('type') == 'number' and _to_number(val) is None:
+            removed.append({'path': path, 'value': val, 'reason': 'invalid_number'})
+            continue
+        valid_paths[path] = (val, prop)
+    for path, (val, prop) in valid_paths.items():
+        label = prop.get('x-label') or ''
+        enum = prop.get('enum') or []
+        is_yes_no = ('是否' in label) or any(e in ('是、否', '是、否、默认') or str(e) in ('是', '否') for e in enum)
+        if is_yes_no and isinstance(val, str) and any(w in val for w in YES_HINT_WORDS):
+            yes_norm_hints.append({'path': path, 'value': val, 'suggest': '是'})
+    extractable_required = [p for p, prop in leaves.items()
+                            if prop.get('x-required') and not _is_non_extractable(p)]
+    hit = [p for p in extractable_required if p in valid_paths]
+    rate = (len(hit) / len(extractable_required)) if extractable_required else 1.0
+    gate = '通过' if rate >= threshold else '不通过'
+    pmf = _to_number(valid_paths.get('optionalInfo.printContent.prcMonthFee', (None,))[0]) \
+        if 'optionalInfo.printContent.prcMonthFee' in valid_paths else None
+    ff = _to_number(valid_paths.get('optionalInfo.acctMonth.fixFee', (None,))[0]) \
+        if 'optionalInfo.acctMonth.fixFee' in valid_paths else None
+    if pmf is not None and ff is not None and pmf != ff:
+        price_cross.append({'paths': ['optionalInfo.printContent.prcMonthFee',
+                                      'optionalInfo.acctMonth.fixFee'],
+                            'values': [pmf, ff],
+                            'note': '套餐月费与固定费不一致，请人工确认（不阻断）'})
+    ve_result = '不通过' if gate == '不通过' else ('通过（含提示）' if removed else '通过')
+    ve_stats = '提取字段总数 %d，有效 %d，无效剔除 %d；必填字段 %d（可提取 %d，命中 %d，可提取命中率 %.1f%%）；门禁阈值 %.2f' % (
+        len(flat), len(valid_paths), len(removed),
+        sum(1 for x in leaves.values() if x.get('x-required')),
+        len(extractable_required), len(hit), rate * 100.0, threshold)
+    # ② 报文合并（merge_nested：schema 骨架 + 需求要素优先 + 相似品补全 + 同源派生）
+    offer = unwrap_offer(_load(offer_json or ''))
+    template_id = schema.get('x-template', '')
+    if isinstance(offer, dict) and template_id in offer:
+        offer = offer[template_id]
+    elements_map = flatten_elements(elements)
+    source_map = relabel_source_map(elements_map, leaves, record_json or '')
+    offer_map = flatten_offer(offer)
+    req_price_map = _collect_req_prices(record_json or '')
+    meta, pending = {}, []
+    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending, source_map=source_map, req_price_map=req_price_map)
+    reconcile_same_parameter(merged, meta, pending)
+    # ③ 融合组注入（V3.13）：相似检索命中融合组（similar_offer 出参顶层 offer_group）时，
+    # 把组结构写入 plan_json（offer_type/main_offer/member_offers/group_rules）——members 以组种子为准，
+    # 供 wf_sub_02 save_product_config 生成 group 出参、CODE_FUSION_GROUP_ECHO 回显；单品无 offer_group 不注入。
+    offer_group = extract_offer_group(offer_json, offer_group_raw)
+    if offer_group:
+        merged['offer_type'] = offer_group['offer_type']
+        merged['main_offer'] = offer_group['main_offer']
+        merged['member_offers'] = offer_group['member_offers']
+        merged['group_rules'] = offer_group['group_rules']
+    return {'payload': json.dumps(merged, ensure_ascii=False),
+            'meta': json.dumps(meta, ensure_ascii=False),
+            'pending_required': ','.join(pending),
+            'template': template_id,
+            'quality_gate': gate,
+            've_result': ve_result,
+            've_stats': ve_stats,
+            'status': 'pend' if pending else 'ok'}
+
+async def main(args):
+    p = args.params
+    schema = _load(p.get('schema_json') or '')
+    threshold = float(p.get('threshold') or 0.30)
+    record_json = p.get('record_json') or ''
+    offer_json = p.get('offer_json') or ''
+    offer_group_raw = p.get('offer_group') or ''
+    raw_elems = p.get('elements_json') or ''
+    template_id = schema.get('x-template', '')
+    # V3.12 多商品：elements_json 为 [{offer_seq,...}] 数组时逐品合并；单品对象包装为 1 品
+    # 解析容错：整体非法时按 "offer_seq" 边界逐品抢救，避免单品格瑕疵吞掉其余商品
+    elems_list = _load_offers(raw_elems)
+    offers_out, payloads, metas = [], [], []
+    all_pending, gates, ve_results, ve_stats_list, statuses = [], [], [], [], []
+    for i, elems in enumerate(elems_list, start=1):
+        if isinstance(elems, dict) and 'elements_json' in elems and len(elems) == 1:
+            elems = elems.get('elements_json')
+        one = await _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw)
+        payloads.append(one['payload'])
+        metas.append(one['meta'])
+        gates.append(one['quality_gate'])
+        ve_results.append(one['ve_result'])
+        ve_stats_list.append(one['ve_stats'])
+        statuses.append(one['status'])
+        all_pending.append({'offer_seq': i, 'pending_required': one['pending_required']})
+        offers_out.append({'offer_seq': i,
+                           'template': one['template'],
+                           'payload': one['payload'],
+                           'meta': one['meta'],
+                           'pending_required': one['pending_required'],
+                           'quality_gate': one['quality_gate'],
+                           've_result': one['ve_result'],
+                           've_stats': one['ve_stats'],
+                           'status': one['status']})
+    if not offers_out:
+        one = await _merge_one({}, schema, threshold, record_json, offer_json, offer_group_raw)
+        payloads = [one['payload']]
+        metas = [one['meta']]
+        gates = [one['quality_gate']]
+        ve_results = [one['ve_result']]
+        ve_stats_list = [one['ve_stats']]
+        statuses = [one['status']]
+        offers_out = [{'offer_seq': 1, 'template': one['template'],
+                       'payload': one['payload'], 'meta': one['meta'],
+                       'pending_required': one['pending_required'],
+                       'quality_gate': one['quality_gate'], 've_result': one['ve_result'],
+                       've_stats': one['ve_stats'], 'status': one['status']}]
+    all_pending_flat = [(str(x.get('offer_seq')), x.get('pending_required') or '') for x in all_pending]
+    pending_joined = '；'.join('第%s档：%s' % (s, r) for s, r in all_pending_flat if r)
+    ret: Output = {
+        'payload': payloads[0],
+        'meta': metas[0],
+        'pending_required': pending_joined,
+        'template': template_id,
+        'quality_gate': ('通过' if all(g == '通过' for g in gates) else '不通过'),
+        've_result': ('通过' if all('通过' in v for v in ve_results) else '不通过'),
+        've_stats': '\n'.join('第%d档：%s' % (i, s) for i, s in enumerate(ve_stats_list, start=1)),
+        'status': ('ok' if all(s == 'ok' for s in statuses) else 'pend'),
+        'offers': json.dumps(offers_out, ensure_ascii=False),
+    }
+    return ret

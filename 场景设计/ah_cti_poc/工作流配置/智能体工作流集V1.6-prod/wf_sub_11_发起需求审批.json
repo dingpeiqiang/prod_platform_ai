@@ -57,7 +57,7 @@
             "required": false
           }
         ],
-        "submit_way": "post",
+        "submit_way": "get",
         "flowJson": null,
         "authentic_info": "",
         "inputs": [

@@ -1,0 +1,66 @@
+============================== 068336f ==============================
+id=...101 type=0 title=开始节点
+id=...102 type=3 title=读取需求工单
+id=...103 type=6 title=提取需求字段原文
+id=...104 type=1 title=产品识别与模板选择
+id=...105 type=3 title=相似产品检索
+id=...106 type=6 title=获取配置模板
+id=...107 type=1 title=配置要素提取
+id=...108 type=6 title=要素校验与方案合并
+id=...109 type=6 title=方案表格渲染
+id=...114 type=6 title=方案聚合
+id=...110 type=3 title=保存执行方案
+id=...112 type=6 title=构建页面地址面板
+id=...111 type=9 title=结束(方案已生成)
+EDGES:
+  101(None) -> 102
+  102(None) -> 103
+  103(None) -> 104
+  104(None) -> 105
+  105(None) -> 106
+  106(None) -> 107
+  103(None) -> 108
+  107(None) -> 108
+  108(None) -> 109
+  108(None) -> 114
+  109(None) -> 110
+  114(None) -> 110
+  110(None) -> 112
+  112(None) -> 111
+============================== HEAD ==============================
+id=...101 type=0 title=开始节点
+id=...102 type=3 title=读取需求工单
+id=...103 type=6 title=提取需求字段原文
+id=...115 type=2 title=需求工单有效性判定
+id=...116 type=9 title=结束(需求工单缺失-失败)
+id=...104 type=1 title=产品识别
+id=...119 type=6 title=模板路由（类型→模板）
+id=...105 type=3 title=相似产品检索
+id=...106 type=6 title=获取配置模板
+id=...107 type=1 title=配置要素提取
+id=...108 type=6 title=要素校验与方案合并
+id=...109 type=6 title=方案表格渲染
+id=...114 type=6 title=方案聚合
+id=...110 type=3 title=保存执行方案
+id=...112 type=6 title=构建页面地址面板
+id=...117 type=2 title=方案质量门禁
+id=...118 type=9 title=结束(方案质量未通过)
+id=...111 type=9 title=结束(方案已生成)
+EDGES:
+  101(None) -> 102
+  102(None) -> 103
+  103(None) -> 115
+  115(0) -> 104
+  115(-1) -> 116
+  104(None) -> 119
+  119(None) -> 105
+  105(None) -> 106
+  106(None) -> 107
+  107(None) -> 108
+  108(None) -> 109
+  109(None) -> 114
+  114(None) -> 110
+  110(None) -> 117
+  117(-1) -> 112
+  112(None) -> 111
+  117(0) -> 118
