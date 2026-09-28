@@ -2204,6 +2204,11 @@ public class OfferSimV16Service {
                 }
                 String offerId = MapOps.str(MapOps.firstNonEmpty(o.get("offer_id"), o.get("offerId"))).trim();
                 if (offerId.isEmpty()) {
+                    // 兼容早期封包：test_pending.offers[] 未带 offer_id，按 req_id 关联 config 环节
+                    // 的 offers[] 顺序（与发起一致）按 offer_seq 对齐反查
+                    offerId = resolveOfferIdFromConfig(json, MapOps.str(rec.get("req_id")), o);
+                }
+                if (offerId.isEmpty()) {
                     continue;
                 }
                 Map<String, Object> offer = resolveOffer(offerId);
@@ -2236,6 +2241,49 @@ public class OfferSimV16Service {
         } catch (Exception e) {
             return System.currentTimeMillis();
         }
+    }
+
+    /**
+     * 兼容早期 test_pending 封包（offers[] 仅含 offer_seq/globalId/testScenes，未带 offer_id）：
+     * 优先从 testScenes 描述中提取商品 ID；否则按 req_id 关联 config 环节 offers[]，以 offer_seq 对齐反查。
+     */
+    private String resolveOfferIdFromConfig(Map<String, Object> pendingJson, String reqId, Map<String, Object> pendingOffer) {
+        // 1) 从 testScenes[].testSceneDesc 中的 9 位数字提取（发起时 C2 场景描述内已嵌入商品 ID）
+        for (Map<String, Object> s : MapOps.castListOfMaps(pendingOffer.get("testScenes"))) {
+            String desc = MapOps.str(s.get("testSceneDesc"));
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\b(9\\d{8})\\b").matcher(desc);
+            if (m.find()) {
+                return m.group(1);
+            }
+        }
+        // 2) 回退：按 req_id 找 config 环节 offers[]，用 offer_seq 对齐
+        String rid = MapOps.str(MapOps.firstNonEmpty(reqId, pendingJson.get("req_id"))).trim();
+        if (rid.isEmpty()) {
+            return "";
+        }
+        Map<String, Object> cfg = nodeResult.latestRecord(rid, "config");
+        if (cfg == null) {
+            return "";
+        }
+        Map<String, Object> cfgJson = parseConfig(MapOps.str(cfg.get("result_json")));
+        if (cfgJson == null || cfgJson.isEmpty()) {
+            return "";
+        }
+        String wantSeq = MapOps.str(pendingOffer.get("offer_seq")).trim();
+        int fallbackIdx = -1;
+        List<Map<String, Object>> cfgOffers = MapOps.castListOfMaps(cfgJson.get("offers"));
+        for (int i = 0; i < cfgOffers.size(); i++) {
+            Map<String, Object> co = cfgOffers.get(i);
+            String coSeq = MapOps.str(co.get("offer_seq")).trim();
+            if (!wantSeq.isEmpty() && wantSeq.equals(coSeq)) {
+                return MapOps.str(MapOps.firstNonEmpty(co.get("offer_id"), co.get("offerId"))).trim();
+            }
+            if (wantSeq.isEmpty() && fallbackIdx < 0) {
+                fallbackIdx = i;
+                return MapOps.str(MapOps.firstNonEmpty(co.get("offer_id"), co.get("offerId"))).trim();
+            }
+        }
+        return "";
     }
 
     private Map<String, Object> resolveOffer(String offerId) {
