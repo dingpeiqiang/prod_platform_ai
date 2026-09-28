@@ -98,6 +98,21 @@
       "category": "normal"
     },
     {
+      "offeringId": "900102306",
+      "offeringName": "5G-A融合套餐199元",
+      "state": "上架",
+      "monthlyFee": 199,
+      "oneTimeFee": 0,
+      "mutexGroup": "MAIN_PKG",
+      "offeringType": "main_pkg",
+      "shelfDays": 96,
+      "salesCnt30d": 289,
+      "revenue30d": 57511,
+      "hasContract": true,
+      "strategicTag": true,
+      "category": "normal"
+    },
+    {
       "offeringId": "OF-RISK-001",
       "offeringName": "校园体验流量包0元",
       "state": "上架",
@@ -455,6 +470,80 @@
         "scopeId": "MK-HF-LOCAL",
         "name": "本地家庭融合",
         "penetration": 0.78
+      }
+    },
+    "900102306": {
+      "metrics": [
+        {
+          "metricCode": "累计收入",
+          "metricValue": 57301,
+          "metricDelta": -0.14,
+          "anomaly": true
+        },
+        {
+          "metricCode": "留存率",
+          "metricValue": 0.83,
+          "metricDeltaPp": -2.6,
+          "anomaly": true
+        },
+        {
+          "metricCode": "计费差错率",
+          "metricValue": 0.0120,
+          "metricDeltaPp": 0.6,
+          "anomaly": true
+        }
+      ],
+      "channels": [
+        {
+          "channelId": "CH-HALL",
+          "name": "营业厅",
+          "orderDelta": -0.31,
+          "contribRatio": 0.40,
+          "weightHint": 0.40
+        },
+        {
+          "channelId": "CH-ONLINE",
+          "name": "电渠",
+          "orderDelta": -0.06,
+          "contribRatio": 0.36,
+          "weightHint": 0.06
+        }
+      ],
+      "promotions": [
+        {
+          "promoId": "PR-5GA-GIFT",
+          "name": "5G-A融合加装礼",
+          "daysToExpire": 4,
+          "drivenOrderRatio": 0.29,
+          "weightHint": 0.29
+        }
+      ],
+      "behaviors": [
+        {
+          "behaviorId": "UB-CHURN",
+          "name": "融合成员退订率上升",
+          "weightHint": 0.10
+        },
+        {
+          "behaviorId": "UB-COMPLAINT",
+          "name": "计费投诉量上升",
+          "weightHint": 0.09
+        }
+      ],
+      "competitors": [
+        {
+          "competitorId": "CP-5GA-189",
+          "name": "友商5G-A融合189",
+          "priceGap": 10,
+          "priceGapRatio": 0.053,
+          "penetrationDeltaPp": 1.4,
+          "weightHint": 0.12
+        }
+      ],
+      "market": {
+        "scopeId": "MK-5GA-LOCAL",
+        "name": "本地5G-A融合",
+        "penetration": 0.71
       }
     }
   },

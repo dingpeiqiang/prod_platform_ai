@@ -77,18 +77,23 @@ class InterfaceAdapterTest {
     }
 
     @Test
-    @DisplayName("B4 SQL 查询：execute_sql_resp[] 含 isAllFinished/totalCount，条数按 params 计")
+    @DisplayName("B4 SQL 查询：execute_sql_resp[] 含 isAllFinished/totalCount，条数按 params 计；查完成态 sqlId 两阶段轮询 N→N→Y")
     void b4SqlQuery() {
-        Map<String, Object> body = interfaceFacade.auditSqlQuery(Map.of(
-                "sql_id", "20260626001",
-                "params", "requestIds:r1,r2,r3"));
-        Assertions.assertEquals("0", body.get("resultCode"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("execute_sql_resp");
-        Assertions.assertNotNull(rows);
-        Assertions.assertEquals(1, rows.size());
-        Assertions.assertEquals("3", rows.get(0).get("totalCount"));
-        Assertions.assertEquals("Y", rows.get(0).get("isAllFinished"));
+        // sqlId=20260626001 为「查完成状态」：mock 按查询次数模拟 处理中→完成（两阶段轮询，N→N→Y）
+        String[] expectedFinished = {"N", "N", "Y"};
+        for (int i = 0; i < expectedFinished.length; i++) {
+            Map<String, Object> body = interfaceFacade.auditSqlQuery(Map.of(
+                    "sql_id", "20260626001",
+                    "params", "requestIds:pollr1,pollr2,pollr3"));
+            Assertions.assertEquals("0", body.get("resultCode"));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("execute_sql_resp");
+            Assertions.assertNotNull(rows);
+            Assertions.assertEquals(1, rows.size());
+            Assertions.assertEquals("3", rows.get(0).get("totalCount"));
+            Assertions.assertEquals(expectedFinished[i], rows.get(0).get("isAllFinished"),
+                    "第 " + (i + 1) + " 次查询的完成态不符：" + rows.get(0));
+        }
     }
 
     @Test

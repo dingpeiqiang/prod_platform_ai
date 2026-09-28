@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-资费校准",
-  "flowRemark": "子工作流5（融合组扩展）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取原文→check_billing_rule（check_scene=all）→风险解读（V4.0 融合组：比对表按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（V2.5：compare_list/risk_list+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
+  "flowRemark": "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -119,12 +119,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000407,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000407,offer_id",
             "name": "offer_id",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000407,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -160,18 +170,25 @@
         "outputs": [
           {
             "name": "pass",
-            "cname": "1通过/0不通过",
+            "cname": "整批结论 1通过/0不通过",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "整批状态 SUCCESS/PARTIAL/FAIL",
             "sechema": [],
             "type": "string",
             "required": false
           },
           {
             "name": "risk_list",
-            "cname": "风险清单",
+            "cname": "整批风险清单（逐品聚合）",
             "sechema": [
               {
                 "name": "item",
-                "cname": "风险清单",
+                "cname": "整批风险清单（逐品聚合）",
                 "sechema": [
                   {
                     "name": "risk_type",
@@ -204,11 +221,11 @@
           },
           {
             "name": "compare_list",
-            "cname": "资费比对明细（8项，融合组行含member_role）",
+            "cname": "整批资费比对明细（逐品聚合，融合组行含 member_role）",
             "sechema": [
               {
                 "name": "item",
-                "cname": "资费比对明细（8项，融合组行含member_role）",
+                "cname": "整批资费比对明细（逐品聚合，融合组行含 member_role）",
                 "sechema": [
                   {
                     "name": "project_name",
@@ -252,6 +269,13 @@
             ],
             "type": "array",
             "required": false
+          },
+          {
+            "name": "offers",
+            "cname": "逐品校验结果数组JSON（[{offer_seq,pass,risk_list,compare_list}]）",
+            "sechema": [],
+            "type": "string",
+            "required": false
           }
         ],
         "submit_way": "post",
@@ -259,18 +283,32 @@
         "authentic_info": "",
         "inputs": [
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
-            "relName": "record_json",
-            "name": "config_json",
-            "description": "落地配置JSON（节点407提取的环节结果原文）",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品配置数组=config 环节结果 offers[]（节点407提取，每元素含 offer_seq/offer_id/plan_json）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000407",
-              "a1b2c3d4-0000-4000-8000-000000000407,record_json"
+              "a1b2c3d4-0000-4000-8000-000000000407,offers"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,record_json"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,offers"
           },
           {
             "blockID": "",
@@ -286,7 +324,7 @@
         "nodeMeta": {
           "title": "计费校验",
           "code": "check_billing_rule",
-          "description": "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则）；config_json 取自 config 环节结果；融合组 compare_list 行可含 member_role 键",
+          "description": "工具8（V3.12 多商品批量）：入参 {req_id, check_scene, offers:[{offer_seq, config_json}]}，逐品自研模拟计费规则校验（内置叠加/互斥/负资费规则），聚合返回 {req_id, status, offers:[{offer_seq, pass, risk_list, compare_list}]}；后端对每品取该品配置原文，融合组 compare_list 行含 member_role 键",
           "version": "1"
         },
         "authentic_info_new": {
@@ -310,7 +348,7 @@
         "outputs": [
           {
             "name": "risk_summary",
-            "description": "风险解读（融合组按 member_role 分组）",
+            "description": "风险解读（多商品按 offer_seq 分组）",
             "type": "string",
             "content": ""
           }
@@ -322,7 +360,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读：\n1）比对信息（compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言，说明每条风险的影响与处置建议；risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，直接输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，融合组时按成员分组），不输出其他多余文字。"
+              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出：\n0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}」；单商品（无 offer_seq 键）不输出小节标题。\n1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，直接输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -330,7 +368,7 @@
               "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
               "relName": "risk_list",
               "name": "risk_list",
-              "description": "引用节点402风险清单",
+              "description": "引用节点402风险清单（逐品聚合）",
               "type": "ref",
               "required": true,
               "content": "",
@@ -344,7 +382,7 @@
               "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
               "relName": "compare_list",
               "name": "compare_list",
-              "description": "引用节点402资费比对明细（8项，融合组行含member_role）",
+              "description": "引用节点402资费比对明细（逐品聚合，融合组行含member_role）",
               "type": "ref",
               "required": true,
               "content": "",
@@ -376,19 +414,43 @@
       {
         "outputs": [
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000408,record_json",
-            "name": "record_json",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,pass",
+            "name": "pass",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,offers",
+            "name": "offers",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000410,risk_list",
+            "name": "risk_list",
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return v.get('offers') if isinstance(v.get('offers'), list) else [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\nasync def main(args):\n    offers = [o for o in _load(args.params.get('offers')) if isinstance(o, dict)]\n    pass_top = args.params.get('pass')\n    if pass_top is None or str(pass_top) == '':\n        vals = [str(o.get('pass') or '') for o in offers]\n        pass_top = '1' if vals and all(v == '1' for v in vals) else ('0' if vals else '')\n    risks = []\n    for o in offers:\n        rl = o.get('risk_list')\n        if isinstance(rl, list):\n            for r in rl:\n                if isinstance(r, dict):\n                    r.setdefault('offer_seq', o.get('offer_seq'))\n                    risks.append(r)\n    ret: Output = {\n        'pass': str(pass_top),\n        'offers': json.dumps(offers, ensure_ascii=False),\n        'risk_list': json.dumps(risks, ensure_ascii=False) if risks else '',\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品校验结果数组（节点402出参 offers）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
             "relName": "pass",
             "name": "pass",
-            "description": "校验结论（节点402）",
+            "description": "插件顶层结论（多为空，代码内回退逐品聚合）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -397,26 +459,66 @@
               "a1b2c3d4-0000-4000-8000-000000000402,pass"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
-          },
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "计费结论聚合"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000410",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
-            "relName": "risk_list",
-            "name": "risk_list",
-            "description": "风险清单（节点402）",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000408,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n                'offers', 'req_id', 'plan_json')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
+            "relName": "pass",
+            "name": "pass",
+            "description": "校验结论（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,pass"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
+            "relName": "risk_list",
+            "name": "risk_list",
+            "description": "风险清单（节点410聚合）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
             "relName": "compare_list",
             "name": "compare_list",
-            "description": "资费比对明细（节点402）",
+            "description": "资费比对明细（节点402，逐品聚合）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -425,6 +527,34 @@
               "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品校验结果数组（节点402出参 offers）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
@@ -458,7 +588,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000408",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -505,7 +635,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000408",
             "relName": "record_json",
             "name": "result_json",
-            "description": "环节结果JSON=结构化封包（compare_list+risk_summary）",
+            "description": "环节结果JSON=结构化封包（req_id+offers[]+compare_list+risk_summary）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -529,7 +659,7 @@
         "nodeMeta": {
           "title": "环节结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 req_id+offers[] + 逐品聚合的 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
           "version": "1"
         },
         "authentic_info_new": {
@@ -542,7 +672,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000405",
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "dependencyData": [],
@@ -611,7 +741,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000409",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 300
         },
         "dependencyData": [],
@@ -631,38 +761,38 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "pass",
             "name": "pass",
-            "description": "校验结论",
+            "description": "校验结论（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,pass"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,pass"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000410",
             "relName": "risk_list",
             "name": "risk_list",
-            "description": "风险清单",
+            "description": "风险清单（节点410聚合）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000402",
-              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              "a1b2c3d4-0000-4000-8000-000000000410",
+              "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000410,risk_list"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
             "relName": "risk_summary",
             "name": "risk_summary",
-            "description": "风险解读（融合组按成员分组）",
+            "description": "风险解读（多商品按 offer_seq 分组）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -676,7 +806,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID（节点407提取，供查看面板）",
+            "description": "首品销售品ID（节点407提取，供查看面板）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -712,7 +842,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000404",
@@ -742,8 +872,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000410",
         "startId": "a1b2c3d4-0000-4000-8000-000000000403"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000408",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000410"
       },
       {
         "sourcePort": null,

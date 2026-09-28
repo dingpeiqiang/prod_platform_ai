@@ -117,7 +117,7 @@ CODE_RENDER_REQ = (
     "from typing import Any, Dict\n"
     "\n"
     "EMPTY_MARKS = ('', '待补充', '系统待生成', '无', '暂无')\n"
-    "FUSION_PRODUCT_TYPES = ('家庭基础套餐',)\n"
+    "FUSION_PRODUCT_TYPES = ('家庭基础套餐', '融合套餐')\n"
     "BASE_FIELDS = (\n"
     "    ('name', '销售品名称'), ('product_type', '产品类型'), ('series', '所属系列'),\n"
     "    ('price', '套餐档位（月费）'), ('resources', '套内资源'), ('out_price', '套外资费'),\n"
@@ -168,7 +168,9 @@ CODE_RENDER_REQ = (
     "        return {}\n"
     "\n"
     "def fields_for(product_type):\n"
-    "    if _norm(product_type) in FUSION_PRODUCT_TYPES:\n"
+    "    pt = _norm(product_type)\n"
+    "    # 融合判定：枚举命中 或 产品类型文本含“融合”二字（兼容 LLM 输出“融合套餐/5G-A融合”等变体）\n"
+    "    if pt in FUSION_PRODUCT_TYPES or '融合' in str(pt):\n"
     "        return BASE_FIELDS + FUSION_EXTRA_FIELDS\n"
     "    return BASE_FIELDS\n"
     "\n"
@@ -352,6 +354,87 @@ CODE_GET_TEMPLATE = (
     "    return ret"
 )
 CODE_GET_TEMPLATE = CODE_GET_TEMPLATE.replace("BASE_URL", BASE_URL)
+
+# ---------------- CODE_ROUTE_TEMPLATE：产品类型→模板标识确定性路由 ----------------
+# 设计依据：统一方案 §6.2「LLM 只输出 product_type，路由代码定 templateId，防模板名幻觉」。
+# 输入：offers_json（节点104 LLM 出参，[{offer_seq,product_type,need_summary}] 的 JSON 字符串或数组）
+# 输出：offers_tpl（[{offer_seq,template_id,need_summary}] JSON 字符串，逐品绑定模板）、
+#       template_id（首品模板标识，供节点106取模板）、template_ids（逗号串，供结束节点展示）、
+#       fusion_flag（'1'=任一品命中融合，'0' 否则）。
+CODE_ROUTE_TEMPLATE = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "# 产品类型关键词 → 模板标识（顺序即优先级；命中即锁定，全部不命中默认 personMainPrc）\n"
+    "TYPE_RULES = (\n"
+    "    ('家庭基础套餐', 'familyBasePrc'), ('融合套餐', 'familyBasePrc'),\n"
+    "    ('融合', 'familyBasePrc'), ('家庭', 'familyBasePrc'),\n"
+    "    ('宽带加速包', 'broadBandOptSpeedPrc'), ('宽带附加资费', 'broadBandOptSpeedPrc'),\n"
+    "    ('宽带主套餐', 'broadBandMainPrc'), ('宽带主资费', 'broadBandMainPrc'),\n"
+    "    ('家庭附加资费', 'familyAddPrc'), ('家庭附加业务', 'familyAddPrc'),\n"
+    "    ('个人附加资费', 'personAddPrc'), ('个人附加', 'personAddPrc'),\n"
+    "    ('个人主套餐', 'personMainPrc'), ('个人主资费', 'personMainPrc'),\n"
+    ")\n"
+    "VALID = ('personMainPrc', 'broadBandMainPrc', 'personAddPrc',\n"
+    "         'broadBandOptSpeedPrc', 'familyBasePrc', 'familyAddPrc')\n"
+    "\n"
+    "def _load(raw):\n"
+    "    if isinstance(raw, (list, dict)):\n"
+    "        return raw\n"
+    "    if not isinstance(raw, str) or not raw.strip():\n"
+    "        return []\n"
+    "    t = raw.strip()\n"
+    "    if ':' in t and not t.lstrip().startswith('{') and not t.lstrip().startswith('['):\n"
+    "        t = t.split(':', 1)[1].strip()\n"
+    "    s, e = t.find('['), t.rfind(']')\n"
+    "    if s != -1 and e > s:\n"
+    "        t = t[s:e + 1]\n"
+    "    try:\n"
+    "        return json.loads(t)\n"
+    "    except Exception:\n"
+    "        return []\n"
+    "\n"
+    "def _route(offer):\n"
+    "    tid = str(offer.get('template_id') or '').strip()\n"
+    "    if tid in VALID:\n"
+    "        return tid\n"
+    "    pt = str(offer.get('product_type') or '')\n"
+    "    names = pt + ' ' + str(offer.get('name') or '') + ' ' + str(offer.get('series') or '')\n"
+    "    for kw, mapped in TYPE_RULES:\n"
+    "        if kw in names:\n"
+    "            return mapped\n"
+    "    return 'personMainPrc'\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    data = _load(p.get('offers_json') or '')\n"
+    "    if isinstance(data, dict):\n"
+    "        data = data.get('offers') or data.get('offers_json') or [data]\n"
+    "    if not isinstance(data, list):\n"
+    "        data = []\n"
+    "    out, first, fusion = [], '', '0'\n"
+    "    for i, offer in enumerate(data, start=1):\n"
+    "        if not isinstance(offer, dict):\n"
+    "            continue\n"
+    "        tid = _route(offer)\n"
+    "        out.append({'offer_seq': offer.get('offer_seq') or i,\n"
+    "                    'template_id': tid,\n"
+    "                    'need_summary': str(offer.get('need_summary') or '')})\n"
+    "        if not first:\n"
+    "            first = tid\n"
+    "        if tid == 'familyBasePrc':\n"
+    "            fusion = '1'\n"
+    "    if not out:\n"
+    "        out = [{'offer_seq': 1, 'template_id': 'personMainPrc', 'need_summary': ''}]\n"
+    "        first = 'personMainPrc'\n"
+    "    ret: Output = {\n"
+    "        'offers_tpl': json.dumps(out, ensure_ascii=False),\n"
+    "        'template_id': first,\n"
+    "        'template_ids': ','.join(str(o['template_id']) for o in out),\n"
+    "        'fusion_flag': fusion,\n"
+    "    }\n"
+    "    return ret"
+)
 
 # ---------------- CODE_RENDER_TABLE：逻辑模型报文→业务分节表格 ----------------
 # 来源 scripts/render_table.py（V3.0，去 argparse）
@@ -645,8 +728,9 @@ s00.append(llm_node(2, "需求字段抽取",
     "输出一个 offers 数组：用户原文中每提及一个销售品，就输出一个数组元素；元素按原文出现顺序编号 offer_seq 从 1 开始递增；仅提及一个销售品时数组长度为 1。\n"
     "每个元素字段口径（snake_case，逐字引用用户描述，未提及字段填空字符串）：\n"
     "- offer_seq：商品序号（整数，从 1 开始）\n"
-    "- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费）；series：所属系列\n"
-    "- members：融合成员（仅融合品如家庭基础套餐，逗号/顿号分隔；非融合品不填）\n"
+    "- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费/融合套餐）；series：所属系列\n"
+    "  · 产品类型判定优先看需求原文关键词：含“融合”二字（如“5G-A 融合套餐”“5G畅享融合79元套餐”）一律判为**融合套餐**；家庭类（家庭成员/家庭共享）判为家庭基础套餐；仅个人/宽带/附加资费按其余枚举对应。\n"
+    "- members：融合成员（仅融合品——product_type 为融合套餐或家庭基础套餐时填写，逗号/顿号分隔，逐字引用原文成员如“主卡、宽带、天翼高清、副卡功能费”；非融合品不填）\n"
     "- price：套餐档位（月费，元/月）；resources：套内资源（流量/语音/短信/副卡等）；out_price：套外资费\n"
     "- billing_cycle：计费周期；effective_way：生效方式；validity：套餐有效期\n"
     "- change_rule：变更规则；cancel_rule：退订/拆机规则\n"
@@ -1085,6 +1169,53 @@ CODE_EXTRACT_MERGE = (
     "            return picked\n"
     "    return offer\n"
     "\n"
+    "def _as_group(obj):\n"
+    "    # 归一融合组对象：兼容两种入参形态——① 裸组对象（含 members/main_offer_id）；\n"
+    "    # ② 包裹对象（{offer_group:{...}} 或 {similarOffer:{offer_group:{...}}}）。无组返回 None。\n"
+    "    if not isinstance(obj, dict):\n"
+    "        return None\n"
+    "    if isinstance(obj.get('members'), list) or obj.get('main_offer_id') or obj.get('group_id'):\n"
+    "        return obj\n"
+    "    if isinstance(obj.get('offer_group'), dict):\n"
+    "        return obj.get('offer_group')\n"
+    "    inner = obj.get('similarOffer')\n"
+    "    if isinstance(inner, dict) and isinstance(inner.get('offer_group'), dict):\n"
+    "        return inner.get('offer_group')\n"
+    "    return None\n"
+    "\n"
+    "def extract_offer_group(raw_offer_json, raw_group=None):\n"
+    "    # 融合组抽取：优先取节点105 显式出参 offer_group（后端顶层内嵌），回退从相似检索\n"
+    "    # 出参（similar_offer）中取顶层 offer_group（组定义下发），\n"
+    "    # 归一为 plan_json 组结构字段：{offer_type:\"融合\", main_offer:{role,offer_id,name},\n"
+    "    # member_offers:[{role,offer_id,required,dependency?,preset?}], group_rules:{...}}。\n"
+    "    # 未命中融合组（单品）返回 None——单商品链路行为零变化。\n"
+    "    grp = _as_group(_load(raw_group or ''))\n"
+    "    if grp is None:\n"
+    "        grp = _as_group(_load(raw_offer_json or ''))\n"
+    "    if not isinstance(grp, dict) or not grp:\n"
+    "        return None\n"
+    "    members = grp.get('members') if isinstance(grp.get('members'), list) else []\n"
+    "    main_offer_id = str(grp.get('main_offer_id') or '')\n"
+    "    main_offer_name = str(grp.get('main_offer_name') or '')\n"
+    "    member_offers = []\n"
+    "    for m in members:\n"
+    "        if not isinstance(m, dict):\n"
+    "            continue\n"
+    "        item = {'role': str(m.get('role') or ''),\n"
+    "                'offer_id': str(m.get('offer_id') or ''),\n"
+    "                'required': bool(m.get('required'))}\n"
+    "        if m.get('dependency'):\n"
+    "            item['dependency'] = str(m.get('dependency'))\n"
+    "        if isinstance(m.get('preset'), dict):\n"
+    "            item['preset'] = m.get('preset')\n"
+    "        member_offers.append(item)\n"
+    "    return {\n"
+    "        'offer_type': '融合',\n"
+    "        'main_offer': {'role': '主卡套餐', 'offer_id': main_offer_id, 'name': main_offer_name},\n"
+    "        'member_offers': member_offers,\n"
+    "        'group_rules': grp.get('group_rules') if isinstance(grp.get('group_rules'), dict) else {},\n"
+    "    }\n"
+    "\n"
     "def _load(text):\n"
     "    # 兼容上游直接透传 dict/list（节点出参未序列化时的常见情形）\n"
     "    if isinstance(text, (dict, list)):\n"
@@ -1236,7 +1367,7 @@ CODE_EXTRACT_MERGE = (
     "            return [obj]\n"
     "    return []\n"
     "\n"
-    "async def _merge_one(elems, schema, threshold, record_json, offer_json):\n"
+    "async def _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw=None):\n"
     "    elements = elems\n"
     "    # V3.12.1 多商品：LLM 逐品输出 {offer_seq, template_id, elements:{...schema 键...}}，\n"
     "    # 需先解包内层要素对象再拍平，否则拍平路径成 'elements.baseInfo.x' 与 schema 键不匹配，\n"
@@ -1302,6 +1433,15 @@ CODE_EXTRACT_MERGE = (
     "    meta, pending = {}, []\n"
     "    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending, source_map=source_map, req_price_map=req_price_map)\n"
     "    reconcile_same_parameter(merged, meta, pending)\n"
+    "    # ③ 融合组注入（V3.13）：相似检索命中融合组（similar_offer 出参顶层 offer_group）时，\n"
+    "    # 把组结构写入 plan_json（offer_type/main_offer/member_offers/group_rules）——members 以组种子为准，\n"
+    "    # 供 wf_sub_02 save_product_config 生成 group 出参、CODE_FUSION_GROUP_ECHO 回显；单品无 offer_group 不注入。\n"
+    "    offer_group = extract_offer_group(offer_json, offer_group_raw)\n"
+    "    if offer_group:\n"
+    "        merged['offer_type'] = offer_group['offer_type']\n"
+    "        merged['main_offer'] = offer_group['main_offer']\n"
+    "        merged['member_offers'] = offer_group['member_offers']\n"
+    "        merged['group_rules'] = offer_group['group_rules']\n"
     "    return {'payload': json.dumps(merged, ensure_ascii=False),\n"
     "            'meta': json.dumps(meta, ensure_ascii=False),\n"
     "            'pending_required': ','.join(pending),\n"
@@ -1317,6 +1457,7 @@ CODE_EXTRACT_MERGE = (
     "    threshold = float(p.get('threshold') or 0.30)\n"
     "    record_json = p.get('record_json') or ''\n"
     "    offer_json = p.get('offer_json') or ''\n"
+    "    offer_group_raw = p.get('offer_group') or ''\n"
     "    raw_elems = p.get('elements_json') or ''\n"
     "    template_id = schema.get('x-template', '')\n"
     "    # V3.12 多商品：elements_json 为 [{offer_seq,...}] 数组时逐品合并；单品对象包装为 1 品\n"
@@ -1327,7 +1468,7 @@ CODE_EXTRACT_MERGE = (
     "    for i, elems in enumerate(elems_list, start=1):\n"
     "        if isinstance(elems, dict) and 'elements_json' in elems and len(elems) == 1:\n"
     "            elems = elems.get('elements_json')\n"
-    "        one = await _merge_one(elems, schema, threshold, record_json, offer_json)\n"
+    "        one = await _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw)\n"
     "        payloads.append(one['payload'])\n"
     "        metas.append(one['meta'])\n"
     "        gates.append(one['quality_gate'])\n"
@@ -1345,7 +1486,7 @@ CODE_EXTRACT_MERGE = (
     "                           've_stats': one['ve_stats'],\n"
     "                           'status': one['status']})\n"
     "    if not offers_out:\n"
-    "        one = await _merge_one({}, schema, threshold, record_json, offer_json)\n"
+    "        one = await _merge_one({}, schema, threshold, record_json, offer_json, offer_group_raw)\n"
     "        payloads = [one['payload']]\n"
     "        metas = [one['meta']]\n"
     "        gates = [one['quality_gate']]\n"
@@ -1401,35 +1542,47 @@ s01.append(selector_node2(115, "需求工单有效性判定",
 s01.append(end_node(116, "结束(需求工单缺失-失败)",
     [inp("req_id", "需求单号", ref_block=nid(101), ref_rel="req_id")],
     "❌ 未找到该需求单号（{req_id}）的需求提报记录，无法进行需求分析。\n请先完成【需求提报】（环节1/8），生成《销售品需求提报单》后再回复【确认执行】进入需求分析。"))
-# 产品识别（LLM）：逐品识别产品类型 → 选模板 + 生成要素提取所需上下文
-s01.append(llm_node(104, "产品识别与模板选择",
-    "你是产销品需求分析助手（环节2 产品识别）。基于需求商品数组（{offers}）为每个商品识别产品类型并从 6 套配置模板中各选定 1 套：\n"
-    "模板注册表：\n"
-    "- personMainPrc：个人主资费（产品类型=个人主套餐，来源5.3.1）\n"
-    "- broadBandMainPrc：宽带主资费（产品类型=宽带主套餐，来源5.3.2）\n"
-    "- personAddPrc：个人附加资费（产品类型=个人附加资费，来源5.3.3）\n"
-    "- broadBandOptSpeedPrc：宽带加速包（产品类型=宽带附加资费，来源5.3.4.1）\n"
-    "- familyBasePrc：家庭基础套餐（产品类型=家庭基础套餐，来源5.3.5.1，含融合成员）\n"
-    "- familyAddPrc：家庭附加业务（产品类型=家庭附加资费，来源5.3.5.2）\n"
-    "判定规则（逐商品独立判定）：商品 product_type 直接匹配模板 product_type → 锁定唯一模板；product_type 缺失时按 name/系列/内容关键词推断；无法判定默认 personMainPrc。\n"
+# 产品识别（LLM）：逐品识别产品类型 → 生成要素提取所需上下文
+# 设计依据：统一方案 §6.2「LLM 只输出 product_type，路由代码定 templateId，防模板名幻觉」；
+# 模板标识由下游 CODE_ROUTE_TEMPLATE（节点119）确定性映射，LLM 不再直接产出 template_id。
+s01.append(llm_node(104, "产品识别",
+    "你是产销品需求分析助手（环节2 产品识别）。基于需求商品数组（{offers}）为每个商品识别其产品类型（product_type）：\n"
+    "产品类型枚举（六选一，逐商品判定）：\n"
+    "- 个人主套餐：面向个人/手机单卡的主套餐（含纯流量/语音主套餐）\n"
+    "- 宽带主套餐：以宽带为主体、不含融合成员的主套餐\n"
+    "- 个人附加资费：挂在个人主套餐之外的附加资费/可选包\n"
+    "- 宽带附加资费：宽带提速/加速等附加包\n"
+    "- 家庭基础套餐：含家庭/融合成员的套餐（如“5G-A 融合套餐”“家庭套餐”，成员含主卡+宽带+高清+副卡等）\n"
+    "- 家庭附加资费：家庭/融合场景下的附加业务\n"
+    "判定规则（逐商品独立判定）：\n"
+    "1. 商品已有 product_type 字段且属上述枚举 → 直接采用该值（逐字）；\n"
+    "2. product_type 缺失或不属于枚举 → 按 name/所属系列/资源内容关键词推断；\n"
+    "3. **关键约束**：凡商品名称或内容中出现“融合”“家庭”或含多类成员（宽带/天翼高清/副卡等与主卡并存）时，**必须**判定为“家庭基础套餐”，严禁判定为“个人主套餐”；\n"
+    "4. 仍无法判定默认“个人主套餐”。\n"
     "每个商品保持输入 offer_seq 原值，输出顺序与输入一致。\n"
     "输出要求：只输出一个 JSON 对象，对象仅含两个键——\n"
-    "1. offers_json：一个数组的字符串，数组每个元素对应一个商品，字段为 {\"offer_seq\": 输入序号, \"template_id\": 六选一模板标识, \"need_summary\": 该商品需求要素摘要（≤2000字符）}；\n"
-    "2. need_summary：全部商品的合并摘要（产品类型+模板+资费+资源要点，供相似检索检索词，≤2000字符，字符串）。\n"
+    "1. offers_json：一个数组的字符串，数组每个元素对应一个商品，字段为 {\"offer_seq\": 输入序号, \"product_type\": 六选一中文产品类型（逐字取上述枚举值）, \"need_summary\": 该商品需求要素摘要（≤2000字符）}；\n"
+    "2. need_summary：全部商品的合并摘要（产品类型+资费+资源要点，供相似检索检索词，≤2000字符，字符串）。\n"
     "严禁输出其他文字、编号列表、标签前缀、解释或 Markdown 代码块围栏。",
     [inp("offers", "引用节点103需求商品数组", ref_block=nid(103), ref_rel="offers")],
-    [out("offers_json", "逐商品模板标识数组JSON字符串（[{offer_seq,template_id,need_summary}]）"), out("need_summary", "全部商品合并摘要（相似检索检索词）")]))
+    [out("offers_json", "逐商品产品类型数组JSON字符串（[{offer_seq,product_type,need_summary}]）"), out("need_summary", "全部商品合并摘要（相似检索检索词）")]))
+# 产品类型→模板标识确定性路由（LLM 只判类型，路由由代码锁定，防模板名幻觉/融合误判）
+s01.append(code_node(119, "模板路由（类型→模板）", CODE_ROUTE_TEMPLATE,
+    [inp("offers_json", "逐商品产品识别结果（节点104 offers_json）", ref_block=nid(104), ref_rel="offers_json")],
+    [code_out("offers_tpl", 119), code_out("template_id", 119), code_out("template_ids", 119), code_out("fusion_flag", 119)],
+    pos=(530, 135)))
 # 相似产品检索：以需求摘要+模板检索最相似存量产品，返回同构逻辑模型报文供合并补全
 s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
     "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；供要素合并节点按 JSONPath 对位补全",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
     [inp("businessDesc", "业务需求描述（=节点104合并摘要）", ref_block=nid(104), ref_rel="need_summary"),
-     inp("templateId", "模板标识（多商品默认 personMainPrc；仅作相似检索模板提示）", content="personMainPrc")],
+     inp("templateId", "模板标识（节点119首品模板；相似检索模板提示）", ref_block=nid(119), ref_rel="template_id")],
     [
-     ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文）", "object")]))
+     ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文）", "object"),
+     ("offer_group", "融合组下发（命中融合品时后端顶层内嵌 offer_group：group_id/main_offer_id/members/group_rules；单品为空）", "object")]))
 # 获取配置模板：读已迁移模板 schema，供要素提取与合并共用
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
-    [inp("template_id", "模板标识（节点104首品选定）", content="personMainPrc"),
+    [inp("template_id", "模板标识（节点119首品模板）", ref_block=nid(119), ref_rel="template_id"),
      inp("template_base", "模板目录（方案/templates，随包迁移）", content=r"D:\工作\sitech\项目\研发\git_workspace\AI\prod_platform_ai\场景设计\ah_cti_poc\方案\templates")],
     [code_out("template_id", 106), code_out("schema_json", 106), code_out("missing", 106),
      code_out("template_name_cn", 106), code_out("template_product_type", 106),
@@ -1447,13 +1600,14 @@ s01.append(llm_node(107, "配置要素提取",
     "重点叶子：optionalInfo.printContent.prcMonthFee、optionalInfo.acctMonth.fixFee、optionalInfo.printContent.containResource、optionalInfo.billGprsCfg.theshold、optionalInfo.billGprsCfg.unit、optionalInfo.billGprsCfg.outChargeMode、optionalInfo.billGprsCfg.carryFlag、optionalInfo.billVoiceCfg.theshold。\n"
     "输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素数组 JSON 的**字符串**（形如 {\"elements_json\":\"[{\\\"offer_seq\\\":1,\\\"template_id\\\":\\\"personMainPrc\\\",\\\"elements\\\":{...}}]\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。",
     [inp("offers", "引用节点103需求商品数组", ref_block=nid(103), ref_rel="offers"),
-     inp("offers_tpl", "逐商品模板识别（节点104 offers_json）", ref_block=nid(104), ref_rel="offers_json")],
+     inp("offers_tpl", "逐商品模板识别（节点119 offers_tpl）", ref_block=nid(119), ref_rel="offers_tpl")],
     [out("elements_json", "逐品配置要素数组JSON字符串（[{offer_seq,template_id,elements}]）")], max_tokens=8192))
 # 要素质量校验 + 报文合并（合一代码节点：逐品 validate_elements 六项校验 + merge_nested 递归合并）
 s01.append(code_node(108, "要素校验与方案合并", CODE_EXTRACT_MERGE,
     [inp("schema_json", "模板 schema（节点106；按首品模板）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素数组（节点107提取；代码内逐品合并）", ref_block=nid(107), ref_rel="elements_json"),
      inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer"),
+     inp("offer_group", "融合组下发（节点105 offer_group；命中融合品时写入 plan_json 组结构）", ref_block=nid(105), ref_rel="offer_group"),
      inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30"),
      inp("record_json", "需求字段原文（节点103；供价格类叶子确定性兜底）", ref_block=nid(103), ref_rel="record_json")],
     [code_out("payload", 108), code_out("meta", 108), code_out("pending_required", 108), code_out("quality_gate", 108), code_out("ve_stats", 108), code_out("status", 108),
@@ -1502,12 +1656,12 @@ s01.append(end_node(111, "结束(方案已生成)",
     "- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。\n\n{panel}"))
 e01 = [edge(101, 102), edge(102, 103), edge(103, 115),
        edge(115, 104, 0), edge(115, 116, -1),
-       edge(104, 105), edge(105, 106), edge(106, 107),
-       edge(103, 108), edge(107, 108),
-       edge(108, 109), edge(108, 114), edge(109, 110), edge(114, 110),
+       edge(104, 119), edge(119, 105), edge(105, 106), edge(106, 107),
+       edge(107, 108),
+       edge(108, 109), edge(109, 114), edge(114, 110),
        edge(110, 112), edge(112, 111)]
 files01 = workflow(
-    "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品选模板)→相似产品检索(query_similar_offer)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
+    "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品判产品类型)→模板路由代码(类型→模板，防幻觉)→相似产品检索(query_similar_offer，含融合 offer_group 下发)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested+融合组注入)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
     "wf_sub_01", s01, e01)
 
 
@@ -2225,8 +2379,8 @@ s5f.append(end_node(404, "结束(资费校准完成)",
     "{panel}"))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
-    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(402,410),
-     edge(410,408), edge(403,408), edge(408,405), edge(405,409), edge(409,404)])
+    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,410),
+     edge(410,408), edge(408,405), edge(405,409), edge(409,404)])
 
 
 # ============================================================
@@ -2974,29 +3128,53 @@ CODE_OP_QUERY_OFFER = (
     "    ('900117027', '29.9元权益随心选娱乐版', '权益包', '权益随心选', '29.9元', 'personAddPrc', '', 'active', ''),\n"
     "]\n"
     "\n"
+    "def _norm(s):\n"
+    "    # 归一化：去除空白与常见分隔符（空格/全角空格/连字符/下划线/中点），大小写统一\n"
+    "    import re\n"
+    "    return re.sub(r'[\\s\\u3000\\-_·]+', '', str(s or '')).lower()\n"
+    "\n"
+    "def _tokens(s):\n"
+    "    # 切分为有意义的检索片段：按空白/斜杠/箭头等分隔，去空、去单字噪声\n"
+    "    import re\n"
+    "    parts = re.split(r'[\\s\\u3000/,，、；;]+', str(s or ''))\n"
+    "    return [p for p in (x.strip() for x in parts) if len(p) >= 2]\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
     "    offer_id = str(p.get('offer_id') or '').strip()\n"
     "    name = str(p.get('name') or '').strip()\n"
     "    keyword = str(p.get('keyword') or '').strip()\n"
-    "    matched = []\n"
-    "    for rec in CATALOG:\n"
+    "    n_name = _norm(name)\n"
+    "    n_kw = _norm(keyword)\n"
+    "    kws = _tokens(keyword)\n"
+    "\n"
+    "    def _mk(rec):\n"
     "        oid, nm, ptype, series, tier, tmpl, members, status, dup = rec\n"
     "        target = dup if (status == 'dup' and dup) else oid\n"
-    "        if offer_id and offer_id == target:\n"
-    "            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n"
-    "                            'biz_series': series, 'tier': tier, 'template': tmpl,\n"
-    "                            'members': members, 'status': status})\n"
-    "            continue\n"
-    "        if name and (name in nm or nm in name):\n"
-    "            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n"
-    "                            'biz_series': series, 'tier': tier, 'template': tmpl,\n"
-    "                            'members': members, 'status': status})\n"
-    "            continue\n"
-    "        if keyword and keyword in nm:\n"
-    "            matched.append({'offer_id': target, 'name': nm, 'product_type': ptype,\n"
-    "                            'biz_series': series, 'tier': tier, 'template': tmpl,\n"
-    "                            'members': members, 'status': status})\n"
+    "        return {'offer_id': target, 'name': nm, 'product_type': ptype,\n"
+    "                'biz_series': series, 'tier': tier, 'template': tmpl,\n"
+    "                'members': members, 'status': status}\n"
+    "\n"
+    "    matched = []\n"
+    "    # 第一遍：ID 精确 / 名称与关键词的归一化子串匹配（去空白/分隔符，主判据）\n"
+    "    for rec in CATALOG:\n"
+    "        oid, nm, ptype, series, tier, tmpl, members, status, dup = rec\n"
+    "        n_nm = _norm(nm)\n"
+    "        hit = False\n"
+    "        if offer_id and offer_id in (oid, dup or ''):\n"
+    "            hit = True\n"
+    "        elif name and (n_name in n_nm or n_nm in n_name):\n"
+    "            hit = True\n"
+    "        elif n_kw and (n_kw in n_nm or n_nm in n_kw):\n"
+    "            hit = True\n"
+    "        if hit:\n"
+    "            matched.append(_mk(rec))\n"
+    "    # 第二遍（仅当第一遍零命中）：分词全含兜底（容忍词序/冗余修饰，如 '5G-A 套餐199元' 分词）\n"
+    "    if not matched and kws:\n"
+    "        for rec in CATALOG:\n"
+    "            n_nm = _norm(rec[1])\n"
+    "            if all(_norm(t) in n_nm for t in kws):\n"
+    "                matched.append(_mk(rec))\n"
     "    # 去重（同名 dup→active 透传后合并为一条）\n"
     "    seen = {}\n"
     "    for m in matched:\n"
@@ -3213,6 +3391,37 @@ CODE_OP_MONITOR_AGG = (
     "    f = first or {}\n"
     "    def _j(v):\n"
     "        return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)\n"
+    "    def _pct(v):\n"
+    "        # 计费差错率小数（如 0.0020）转百分比文本，供自然语言简报展示\n"
+    "        try:\n"
+    "            return '%.2f%%' % (_num(v) * 100)\n"
+    "        except Exception:\n"
+    "            return ''\n"
+    "    def _alarms(v):\n"
+    "        if isinstance(v, str):\n"
+    "            try:\n"
+    "                v = json.loads(v)\n"
+    "            except Exception:\n"
+    "                v = [v] if v.strip() else []\n"
+    "        if isinstance(v, list) and v:\n"
+    "            texts = []\n"
+    "            for x in v:\n"
+    "                if isinstance(x, dict):\n"
+    "                    t = x.get('content') or x.get('alarm_content') or x.get('message') or ''\n"
+    "                    lv = x.get('alarm_level') or ''\n"
+    "                    texts.append(('%s（%s）' % (t, lv)) if (t and lv) else (str(t) if t else str(x)))\n"
+    "                else:\n"
+    "                    texts.append(str(x))\n"
+    "            return '、'.join(texts)\n"
+    "        return '无'\n"
+    "    lines = []\n"
+    "    for o in norm:\n"
+    "        nm = str(o.get('offer_name') or '') or '未登记'\n"
+    "        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s（%s），告警：%s'\n"
+    "                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n"
+    "                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n"
+    "                        _pct(o.get('fee_error_rate')), str(o.get('fee_trend') or ''),\n"
+    "                        _alarms(o.get('alarm_list'))))\n"
     "    ret: Output = {\n"
     "        'error_count': ('%g' % err_total) if err_total else '0',\n"
     "        'any_abnormal': 'true' if any_abnormal else 'false',\n"
@@ -3225,7 +3434,8 @@ CODE_OP_MONITOR_AGG = (
     "        'first_fee_error_rate': str(f.get('fee_error_rate') or ''),\n"
     "        'first_fee_trend': str(f.get('fee_trend') or ''),\n"
     "        'first_alarm_list': _j(f.get('alarm_list') or []),\n"
-    "        'offers': json.dumps(norm, ensure_ascii=False)\n"
+    "        'offers': json.dumps(norm, ensure_ascii=False),\n"
+    "        'monitor_lines': '\\n'.join(lines)\n"
     "    }\n"
     "    return ret"
 )
@@ -3416,7 +3626,8 @@ s7f.append(code_node(714, "监控聚合", CODE_OP_MONITOR_AGG,
      code_out("first_order_count", 714), code_out("first_order_trend", 714),
      code_out("first_error_count", 714), code_out("first_error_trend", 714),
      code_out("first_fee_error_rate", 714), code_out("first_fee_trend", 714),
-     code_out("first_alarm_list", 714), code_out("offers", 714)]))
+     code_out("first_alarm_list", 714), code_out("offers", 714),
+     code_out("monitor_lines", 714)]))
 s7f.append(selector_node2(703, "异常判定",
     [dep_node(714, "监控聚合", ["error_count", "any_abnormal"])],
     [(-1, [cond_item(cond_ref(714, "any_abnormal", "监控聚合"), 1, cond_str("true"))])]))
@@ -3445,6 +3656,7 @@ s7f.append(llm_node(707, "根因推理链+优化方案",
     "**异动根因推理链路（{reason_engine，占位时省略}）**\n- 异动确认：{anomalies 摘要：指标 code、delta、message，逐字引用}\n- 归因路径（按 paths 排名）：| 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |\n（逐行展开 topN；paths 为空 → 照实引用出参 message\"已确认异动但未命中归因规则\"，禁止编造根因）\n- 命中规则：{swrl_fired / applied_rules，逗号分隔，空则照实省略}\n- 证据三元组：{evidence_triples 逐字摘要}\n\n"
     "**优化方案（规则驱动）**\n{action_list 逐条引用；无则引用出参 message，禁止编造}\n"
     "约束：本服务当前 backend_pending={backend_pending}（根因本体推理 ops_root_cause 待后端接入，阶段1.1），此时 output 归因段落须以占位说明（{note}）呈现，禁止自行编造根因/证据/优化方案。\n"
+    "**输出纪律**：所有字段引用必须替换为实际数据；字段为空时该行省略或写「无」，**严禁原样输出 `{...}` 形式的模板占位符**，**严禁输出「逐字引用/逐条引用」等提示词指令文字**。\n"
     "输出要求：仅输出根因推理链+优化方案正文（对应出参 root_cause_report），不输出其他多余文字。",
     [inp("backend_pending", "根因插件占位标记（节点706）", ref_block=nid(706), ref_rel="backend_pending"),
      inp("reason_engine", "推理引擎（节点706）", ref_block=nid(706), ref_rel="reason_engine"),
@@ -3473,6 +3685,7 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
      inp("fee_error_rate", "计费差错率（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_fee_error_rate"),
      inp("fee_trend", "计费差错率趋势（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_fee_trend"),
      inp("alarm_list", "告警列表（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_alarm_list"),
+     inp("monitor_lines", "逐品监控自然语言明细（节点714）", ref_block=nid(714), ref_rel="monitor_lines"),
      inp("offers", "逐品监控明细（节点714）", ref_block=nid(714), ref_rel="offers"),
      inp("alert_id", "告警单号", ref_block=nid(705), ref_rel="alert_id"),
      inp("root_cause_report", "根因推理链+优化方案", ref_block=nid(707), ref_rel="root_cause_report"),
@@ -3481,19 +3694,22 @@ s7f.append(end_node(709, "结束(异常-已告警并闭环)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(712), ref_rel="panel")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "【销售品运行监控】{offer_id}（{date_range}）\n"
-    "- 产品名称：{offer_name}（为空显示\"未登记\"）\n"
+    "- 产品名称：{offer_name}\n"
     "- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n"
-    "- 告警列表：{alarm_list}（为空显示\"无\"）\n"
     "已推送告警，告警单号 {alert_id}\n\n"
-    "<以下为逐品运行监控明细（多商品）>\n触发告警的商品见上方（首个异常商品）；全部商品指标：{offers}\n\n"
+    "【逐品运行监控明细】\n{monitor_lines}\n\n"
      "{root_cause_report}\n"
      "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
      "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}\n\n"
      "{panel}"))
 # ---- 正常分支 ----
 s7f.append(llm_node(710, "运营摘要生成(正常分支)",
-    "你是产销品监控运维智能体。基于正常监控数据输出运营摘要（产品名称/订单量/异常量/计费差错率/告警列表），整体正常时给出简洁说明，无需强行生成建议。输入：offers={offers}，offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
-    "多商品（offers 含多个元素）时逐品列出指标；单元素时可仅输出一行摘要。\n"
+    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：offers={offers}，offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
+    "格式要求：\n"
+    "1. 逐品各一行，每行形如「产品名称：订单量 X（趋势），异常量 Y（趋势），计费差错率 Z（趋势），无告警」；计费差错率以百分比呈现（如 0.0020 → 0.20%）。\n"
+    "2. alarm_list 为空或 [] 时写「无告警」，非空时列出告警内容。\n"
+    "3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
+    "4. 禁止将入参按其出现顺序斜杠/逗号原样拼接成值串（如「产品名/287/0/0.0020/[]」）；禁止内嵌原始 JSON；禁止残留任何 { 占位符或「为空显示…」一类括注指令。\n"
     "输出要求：仅输出运营摘要正文（对应出参 ops_summary），不输出其他多余文字。",
     [inp("offers", "逐品监控明细（节点714）", ref_block=nid(714), ref_rel="offers"),
      inp("offer_name", "产品名称（首个商品，节点714）", ref_block=nid(714), ref_rel="first_offer_name"),
@@ -3603,7 +3819,7 @@ s8f.append(end_node(804, "结束(查询完成)",
     "{approval_summary}\n\n{panel}"))
 files8f = workflow(
     "产销品-审批工单查询", "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→LLM 工单摘要归纳：固定格式（审批单号/需求单号/销售品/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。", "wf_sub_08", s8f,
-    [edge(801,802), edge(802,803), edge(802,806), edge(806,805), edge(803,805), edge(805,804)])
+    [edge(801,802), edge(802,803), edge(803,806), edge(806,805), edge(805,804)])
 
 # ============================================================
 # wf_sub_09 存量产品查询（阶段5 新增：D-4 只读，query_offer 内嵌代码节点 + 多命中收敛/唯一回显/未命中追问）

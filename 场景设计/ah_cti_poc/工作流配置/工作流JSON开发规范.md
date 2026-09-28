@@ -1,7 +1,7 @@
 # 工作流 JSON 开发规范
 
-> 适用范围：`场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下的 12 个子工作流 JSON
-> （`wf_sub_00`~`wf_sub_11`，无 `wf_main_intent` 意图调度主流程；智能体按方案 3.2 提示词
+> 适用范围：`场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下的 14 个子工作流 JSON
+> （`wf_sub_00`~`wf_sub_13`，无 `wf_main_intent` 意图调度主流程；智能体按方案 3.2 提示词
 > 【意图→工作流映射表】语义识别直调）。
 > 本规范以生成器 `gen_workflows.py`（基础生成器）与 `gen_workflows_v2.py`（V2.0）为准，
 > 所有 JSON 均为生成器产物，**禁止手工改 JSON**，一律改生成器后重新生成。
@@ -12,7 +12,7 @@
 
 1. **源码驱动**：工作流 JSON 由 `gen_workflows_v2.py`（导入 `gen_workflows.py`）生成，输出到本目录同名 `.json`。
    改工作流 = 改生成器 → 运行生成 → 校验 ALL_OK，绝不应直接编辑 JSON。
-2. **12 个子工作流 JSON**：`wf_sub_00`~`wf_sub_11`（12 个；`wf_main_intent`/`wf_merged_exec` 为 V2.0 早期意图调度/执行主干设计，已废弃不再生成，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调各子流）。
+2. **14 个子工作流 JSON**：`wf_sub_00`~`wf_sub_13`（14 个；`wf_main_intent`/`wf_merged_exec` 为 V2.0 早期意图调度/执行主干设计，已废弃不再生成，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调各子流）。其中 `wf_sub_12`（规格稽核轮询）/`wf_sub_13`（测试轮询查询）为 V3.10 两阶段拆分新增。
 3. **出参契约为 snake_case**：工作流所有节点出参、插件契约字段统一 snake_case（见 AGENTS.md「JSON 数据传输统一使用 snake_case」）。
 4. **插件端点走网关**：所有 HTTP 插件节点 `url` 为 `BASE_URL`（`http://10.86.13.201:31281`）+ `/api/v1/appstore/*` 路径。
 5. **优雅回退**：后端/网关不可达时，代码节点 HTTP 调用须回退 `backend_pending=1`，保证离线 Demo/诚实占位口径。
@@ -26,7 +26,7 @@
 |---|---|
 | 目录 | `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` |
 | 生成器 | `gen_workflows_v2.py`（V2.0，被 import 的 `gen_workflows.py` 为 V1.7 基线） |
-| 输出文件 | `wf_sub_00_需求提报.json`、`wf_sub_01_需求分析.json` … `wf_sub_11_发起需求审批.json`（12 个） |
+| 输出文件 | `wf_sub_00_需求提报.json`、`wf_sub_01_需求分析.json` … `wf_sub_13_测试查询结果.json`（14 个） |
 | 文件命名 | `wf_{类型}_{中文名}.json`；子流 `wf_sub_{两位序号}_{中文名}`（无 `wf_main_intent` 意图调度主流程） |
 | 生成命令 | 在含 `gen_workflows_v2.py` 的目录运行 `python gen_workflows_v2.py`（需与 `gen_workflows.py` 同目录） |
 
@@ -199,7 +199,7 @@ selector_node2(4, "待补充判定",
 - 同一子流内 seq 唯一；普通边分支等都用 `nid(seq)` 引用，保证全局唯一。
 - 建议 seq 分段：`wf_sub_00` 用 1~99；`wf_sub_01` 用 101 起；`wf_sub_03` 用 201 起；
   `wf_sub_05` 用 401 起；`wf_sub_04` 用 301 起；`wf_sub_07` 用 701 起；
-  `wf_sub_09` 用 901 起；`wf_sub_10` 用 1001 起；`wf_sub_11` 用 1101 起 …（每个子流独立分段，避免冲突）。
+  `wf_sub_09` 用 901 起；`wf_sub_10` 用 1001 起；`wf_sub_11` 用 1101 起；`wf_sub_12` 用 1201 起；`wf_sub_13` 用 1301 起 …（每个子流独立分段，避免冲突）。
 
 ---
 
@@ -328,7 +328,7 @@ end_node(seq, title, inputs, out_content)
 ## 十二、子流程节点（type=13）
 
 > @deprecated：V2.0 早期曾以 `wf_main_intent` 主调度通过 `subflow_node` 路由到各 `wf_sub_*`，
-> 已废弃（不生成 `wf_main_intent`）。当前 12 个子工作流由智能体按方案 3.2 提示词
+> 已废弃（不生成 `wf_main_intent`）。当前 14 个子工作流由智能体按方案 3.2 提示词
 > 【意图→工作流映射表】语义识别直调，**不使用 type=13 子流程节点**，本节仅作历史参考保留。
 
 ```python
@@ -351,7 +351,7 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 
 1. 修改 `gen_workflows_v2.py`（新增/改节点、边、常量）。
 2. 运行 `python gen_workflows_v2.py`，逐一打印 `written: <文件名>`。
-3. 校验（重建后需 **12 个子工作流全量 ALL_OK**）：
+3. 校验（重建后需 **14 个子工作流全量 ALL_OK**）：
    - 每个 `.json` 可被 `json.load`（`ensure_ascii=False, indent=2` 写出）。
    - 所有 `edges` 的 `startId/endId` 均存在于 `nodes` 的 `id`。
    - **fan-out 校验（节点出边单线约束）**：统计各 `startId` 出度，任一节点出度>1 且其 `type≠2`（非条件分支）即 FAIL（对齐 6.4）。允许的 fan-out 仅限 type=2 分支节点。
@@ -377,10 +377,11 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 
 ---
 
-**最后更新**：2026-09-20
-**版本**：v1.9
+**最后更新**：2026-09-28
+**版本**：v1.10
 
 ### 变更记录
+- v1.10（2026-09-28）：**① 数量口径修正为 14 个子工作流 + 存量 fan-out 清理**：适用范围/总原则/文件组织/七节 seq 分段/十二节/十四节校验条数由"12 个（wf_sub_00~11）"更新为 **14 个（wf_sub_00~13，含 V3.10 两阶段拆分新增 wf_sub_12 规格稽核轮询 / wf_sub_13 测试轮询查询）**；② 按 6.4 修正 3 处存量 fan-out（wf_sub_01 节点 103/108、wf_sub_05 节点 402、wf_sub_08 节点 802 串联化），14 个 JSON 重生成并全量校验 ALL_OK，同步 `-prod`；③ 删除临时残留 `_test00.json`（v1.6 早期 8 节点旧版）。
 - v1.9（2026-09-20）：**补充节点出边单线约束（6.4）**：明确平台不允许一个节点连接两条及以上出边（fan-out），非条件分支（type≠2）节点至多一条出边，仅 type=2 分支节点允许 fan-out（按 sourcePort 路由）；给出修正原则（消除冗余边/串行化并行分支/必要时用 type=2 路由）并说明执行器用全局 ctx 解析引用、不依赖直接边故数据流不变；§十四校验流程同步新增 fan-out 校验项（任一节点出度>1 且 type≠2 即 FAIL）。依据本轮 wf_sub_03(节点202)/wf_sub_05(节点402)冗余边删除与 wf_sub_04 开始节点301三分支串行化修复沉淀。
 - v1.8（2026-09-20）：**wf_sub_11 纳入生成器 + 数量口径统一为 12 个子工作流 JSON**：① `gen_workflows_v2.py` 新增 `wf_sub_11_发起需求审批` 生成段（对齐 V3.3 契约手写版行为：自查 requirement_report → 提取原文 → submit_release_approval(approval-type=requirement) → 回执渲染），并修复手写版引用未定义常量 `PANEL_00_TPL` 的缺陷，生成并写出 **12 个子工作流 JSON（`wf_sub_00`~`wf_sub_11`）**；② `wf_sub_00` 移除审批节点、结束节点改为止于确认点（对齐 V3.3"未确认不发起审批"契约）；③ 适用范围/文件组织/总原则/七节 seq 分段/十四节校验条数由"11/12/13 个"历史口径统一为 **12 个子工作流 JSON（无 `wf_main_intent` 意图调度主流程，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调）**；④ 十二节子流程节点（type=13）标注 @deprecated（`wf_main_intent` 主调度已废弃）。12 个 JSON 已重生成并全量校验 OK。
 - v1.7（2026-09-20）：**offer_id 仅智能配置落地后传真实值**：00/01 落地前不再把 `req_id` 误绑到 `offer_id` 参数（`off_seq/off_rel="req_id"` 走法废弃），面板 offer_id 传空、页面以 `req_id` 定位；02~06 保持取自落地 config 结果（`save_product_config` 出参 / config 记录解析），07~09 保持会话开始节点传入。12 个 JSON（15 个 panel 代码节点，含 wf_sub_11）已重生成，panel 执行校验 15/15 OK。

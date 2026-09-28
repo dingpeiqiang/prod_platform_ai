@@ -91,8 +91,10 @@ prodai:
     abox-jdbc-driver: ${ABOX_JDBC_DRIVER:com.mysql.cj.jdbc.Driver}
     # 单次同步最大行数护栏（防全表拖垮内存）
     abox-max-rows: ${ABOX_MAX_ROWS:10000}
-    graph-path: ${ONTOLOGY_GRAPH_PATH:}
-    ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:}
+    # 防御默认：未显式设置 ONTOLOGY_GRAPH_PATH 时回退生产导出图，
+    # 避免部署漏配 graph-path 导致事实图为空（root-cause / shelf-compliance 全程 backend_pending）。
+    graph-path: ${ONTOLOGY_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
+    ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
     product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}
     product-center-timeout-ms: ${PRODUCT_CENTER_TIMEOUT_MS:5000}
     llm-extract-enabled: ${ONTOLOGY_LLM_EXTRACT:true}
