@@ -64,18 +64,24 @@ public class OfferSimV16Service {
     private final Map<String, String> approvalByReq = new ConcurrentHashMap<>();
     /** 模拟审批自动流转时长（毫秒）：提交后 10s 自动"通过"并上架，避免演示中审批一直停在"审批中" */
     private static final long APPROVAL_AUTO_PASS_MS = 10_000L;
-    /** 审批矩阵节点定义（节点名 -> 审批角色），四节点矩阵：产品经理→资费主管→运营审核→IT支撑（上线审批） */
+    /** 审批矩阵节点定义（节点名 -> 审批角色 -> 所属阶段 requirement/launch），
+     *  首节点「需求审核」属需求提报阶段，其余四节点属上线审批阶段，全流程闭环共用一张矩阵 */
     private static final String[][] APPROVAL_MATRIX_NODES = {
-        {"产品经理审核", "产品经理"},
-        {"资费主管审核", "资费主管"},
-        {"运营审核", "运营专员"},
-        {"上线审批", "IT支撑"}
+        {"需求审核", "需求审核", "requirement"},
+        {"产品经理审核", "产品经理", "launch"},
+        {"资费主管审核", "资费主管", "launch"},
+        {"运营审核", "运营专员", "launch"},
+        {"上线审批", "IT支撑", "launch"}
     };
-    /** 预置模拟"已通过"审批（演示 wf_sub_08 审批通过场景，免等待）：{approval_id, offer_id, req_id, approval_type, status, current_node, approver, opinion}
-     *  需求轨（requirement）+ 上线轨（launch）各一条，启动即置为 status=通过，查询即可演示审批通过衔接。 */
+    /** 需求提报阶段审批通过前的首节点下标（需求审核） */
+    private static final int REQUIREMENT_NODE_IDX = 0;
+    /** 预置模拟审批（演示 wf_sub_08 审批闭环，免等待）：{approval_id, offer_id, req_id, approval_type, status, current_node, approver, opinion, matrix_end}
+     *  闭环口径：一个需求单一张审批单、一张矩阵贯穿「需求审核→上线审批」。
+     *  requirement 轨种子=需求阶段通过（仅首节点点亮，状态仍为审批中，待上线审批）；
+     *  launch 轨种子=全流程通过（全节点点亮，终态上架）。 */
     private static final String[][] SEED_PASSED_APPROVALS = {
-        {"AP2026091900000001", "900117022", "PLAN20260919000000001", "requirement", "通过", "流程结束（需求已通过）", "需求审核", "需求审核通过，同意进入需求分析"},
-        {"AP2026091900000002", "900102308", "PLAN20260919000000002", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架"}
+        {"AP2026091900000001", "900117022", "PLAN20260919000000001", "requirement", "审批中", "需求审核已通过，待上线审批", "需求审核", "需求审核通过，同意进入需求分析", "req"},
+        {"AP2026091900000002", "900102308", "PLAN20260919000000002", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架", "launch"}
     };
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
@@ -97,7 +103,7 @@ public class OfferSimV16Service {
         seedApprovals();
     }
 
-    /** 预置模拟"已通过"审批数据（需求轨 + 上线轨），使 wf_sub_08 查询即演示 status=通过，避免依赖提交后等待自动流转。 */
+    /** 预置模拟审批数据（需求阶段通过 + 全流程通过各一条），使 wf_sub_08 查询即演示闭环进度，避免依赖提交后等待自动流转。 */
     private void seedApprovals() {
         String now = LocalDateTime.now().format(TS);
         for (String[] row : SEED_PASSED_APPROVALS) {
@@ -106,6 +112,9 @@ public class OfferSimV16Service {
             approval.put("offer_id", row[1]);
             approval.put("req_id", row[2]);
             approval.put("approval_type", row[3]);
+            boolean fullPass = "launch".equals(row[8]);
+            approval.put("stage", fullPass ? "launch" : "requirement");
+            approval.put("requirement_passed", true);
             approval.put("report_url", "");
             approval.put("approval_flow", "standard");
             approval.put("status", row[4]);
@@ -114,20 +123,23 @@ public class OfferSimV16Service {
             approval.put("opinion", row[7]);
             approval.put("submit_time", now);
             approval.put("update_time", now);
-            // 已通过终态，created_at 置为远早于自动流转阈值，advanceApproval 不改变状态
+            // 已流转终态/阶段态，created_at 置为远早于自动流转阈值，advanceApproval 不再改变
             approval.put("created_at", System.currentTimeMillis() - APPROVAL_AUTO_PASS_MS - 1000L);
+            // 全节点矩阵；"launch" 种子全节点点亮，"req" 种子仅需求审核节点点亮
             List<Map<String, Object>> matrix = buildApprovalMatrix();
-            for (Map<String, Object> node : matrix) {
-                node.put("status", "已通过");
-                node.put("opinion", "审核通过");
-                node.put("update_time", now);
+            for (int i = 0; i < matrix.size(); i++) {
+                if (fullPass || i == REQUIREMENT_NODE_IDX) {
+                    matrix.get(i).put("status", "已通过");
+                    matrix.get(i).put("opinion", fullPass ? "审核通过，同意上架" : "需求审核通过，同意进入需求分析");
+                    matrix.get(i).put("update_time", now);
+                }
             }
             approval.put("approval_matrix", matrix);
             approvals.put(row[0], approval);
             approvalByOffer.put(row[1], row[0]);
             approvalByReq.put(row[2], row[0]);
         }
-        log.info("[OfferSimV16] 预置模拟已通过审批 {} 条", approvals.size());
+        log.info("[OfferSimV16] 预置模拟审批 {} 条", approvals.size());
     }
 
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
@@ -1311,7 +1323,8 @@ public class OfferSimV16Service {
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
-    /** 构建四节点审批矩阵初始态：全部"待审核"，首个节点"进行中" */
+    /** 构建全流程五节点审批矩阵初始态：全部"待审核"，首节点（需求审核）"进行中"。
+     *  节点含 stage 字段（requirement/launch），同一张矩阵先点亮需求节点、再点亮上线节点，实现闭环。 */
     private List<Map<String, Object>> buildApprovalMatrix() {
         List<Map<String, Object>> matrix = new ArrayList<>();
         for (int i = 0; i < APPROVAL_MATRIX_NODES.length; i++) {
@@ -1319,6 +1332,7 @@ public class OfferSimV16Service {
             node.put("node_seq", i + 1);
             node.put("node_name", APPROVAL_MATRIX_NODES[i][0]);
             node.put("approver", APPROVAL_MATRIX_NODES[i][1]);
+            node.put("stage", APPROVAL_MATRIX_NODES[i][2]);
             node.put("status", i == 0 ? "进行中" : "待审核");
             node.put("opinion", "");
             node.put("update_time", "");
@@ -1327,18 +1341,55 @@ public class OfferSimV16Service {
         return matrix;
     }
 
-    /** 按审批单当前状态刷新审批矩阵（终态"通过"时全部节点置"已通过"并填意见） */
+    /** 将矩阵推进到指定阶段起点：需求阶段若已通过则保留首节点结果，其余节点待审核；
+     *  stage=launch 时把需求节点固化"已通过"，并把首个上线节点置"进行中"。 */
+    private void resetMatrixToStage(Map<String, Object> approval, String stage) {
+        List<Map<String, Object>> matrix = approvalMatrixOf(approval);
+        if (matrix.isEmpty()) {
+            return;
+        }
+        boolean launch = "launch".equals(stage);
+        for (int i = 0; i < matrix.size(); i++) {
+            Map<String, Object> node = matrix.get(i);
+            boolean requirementNode = i == REQUIREMENT_NODE_IDX;
+            if (requirementNode) {
+                // 需求节点在进入上线阶段时应已通过（闭环前提）
+                if (launch && !"已通过".equals(MapOps.str(node.get("status")))) {
+                    node.put("status", "已通过");
+                    node.put("opinion", "需求审核通过，同意进入需求分析");
+                    node.put("update_time", MapOps.str(approval.get("update_time")));
+                }
+            } else {
+                node.put("status", i == REQUIREMENT_NODE_IDX + 1 && launch ? "进行中" : "待审核");
+                node.put("opinion", "");
+                node.put("update_time", "");
+            }
+        }
+    }
+
+    /** 按审批单当前状态与阶段刷新审批矩阵：
+     *  阶段 requirement 通过 → 仅点亮需求节点，上线节点保持待审核（待上线审批）；
+     *  终态"通过"（上线阶段）→ 全部节点置"已通过"并填意见，闭环收口。 */
     private void refreshApprovalMatrix(Map<String, Object> approval) {
         List<Map<String, Object>> matrix = (List<Map<String, Object>>) approval.get("approval_matrix");
         if (matrix == null || matrix.isEmpty()) {
             return;
         }
-        boolean passed = "通过".equals(MapOps.str(approval.get("status")));
-        for (Map<String, Object> node : matrix) {
-            if (passed) {
+        String status = MapOps.str(approval.get("status"));
+        String updateTime = MapOps.str(approval.get("update_time"));
+        boolean fullPass = "通过".equals(status);
+        boolean requirementPassed = MapOps.truthy(approval.get("requirement_passed"));
+        for (int i = 0; i < matrix.size(); i++) {
+            Map<String, Object> node = matrix.get(i);
+            boolean requirementNode = i == REQUIREMENT_NODE_IDX;
+            if (fullPass) {
                 node.put("status", "已通过");
-                node.put("opinion", "审核通过，同意上架");
-                node.put("update_time", MapOps.str(approval.get("update_time")));
+                node.put("opinion", requirementNode ? "需求审核通过，同意进入需求分析" : "审核通过，同意上架");
+                node.put("update_time", updateTime);
+            } else if (requirementNode && requirementPassed) {
+                node.put("status", "已通过");
+                node.put("opinion", "需求审核通过，同意进入需求分析");
+                node.put("update_time", updateTime);
             }
         }
     }
@@ -1384,9 +1435,31 @@ public class OfferSimV16Service {
             }
         }
         String offerId = MapOps.str(req.get("offer_id")).trim();
-        String existed = approvalByOffer.get(offerId);
+        // 闭环口径：一个需求单一张审批单（req_id 关联主键），需求审核与上线审批先后落在同一张单/同一矩阵。
+        String existed = approvalByReq.get(reqId);
         if (existed != null) {
             Map<String, Object> existedApproval = approvals.get(existed);
+            boolean requirementTrack = "requirement".equals(approvalType);
+            if (requirementTrack && !MapOps.truthy(existedApproval.get("requirement_passed"))) {
+                // 需求轨重复提交：幂等
+                Map<String, Object> body = camelOk();
+                body.put("approval_id", existed);
+                body.put("approval_type", MapOps.str(existedApproval.get("approval_type")));
+                body.put("status", MapOps.str(existedApproval.get("status")));
+                body.put("idempotent", "true");
+                return body;
+            }
+            if (!requirementTrack && !"launch".equals(MapOps.str(existedApproval.get("stage")))) {
+                // 上线轨：把同一张审批单推进到上线阶段（保留需求节点，重置上线节点为待审核）
+                promoteApprovalToLaunch(existedApproval, offerId, req.get("report_url"));
+                Map<String, Object> body = camelOk();
+                body.put("approval_id", existed);
+                body.put("approval_type", "launch");
+                body.put("status", "审批中");
+                body.put("approval_matrix", approvalMatrixOf(existedApproval));
+                return body;
+            }
+            // 同轨重复提交：幂等
             advanceApproval(existedApproval);
             Map<String, Object> body = camelOk();
             body.put("approval_id", existed);
@@ -1397,22 +1470,29 @@ public class OfferSimV16Service {
         }
         String approvalId = "AP" + LocalDateTime.now().format(STAMP)
                 + String.format("%04d", approvals.size() + 1);
+        boolean requirementTrack = "requirement".equals(approvalType);
         Map<String, Object> approval = new LinkedHashMap<>();
         approval.put("approval_id", approvalId);
         approval.put("offer_id", offerId);
         approval.put("req_id", reqId);
         approval.put("approval_type", approvalType.isBlank() ? "launch" : approvalType);
+        approval.put("stage", requirementTrack ? "requirement" : "launch");
+        approval.put("requirement_passed", !requirementTrack);
         approval.put("report_url", MapOps.str(req.get("report_url")));
         String flow = MapOps.str(req.get("approval_flow"));
         approval.put("approval_flow", flow.isBlank() ? "standard" : flow);
         approval.put("status", "审批中");
-        approval.put("current_node", "产品经理审核");
-        approval.put("approver", "产品经理");
+        approval.put("current_node", requirementTrack ? "需求审核" : "产品经理审核");
+        approval.put("approver", requirementTrack ? "需求审核" : "产品经理");
         approval.put("opinion", "");
         approval.put("submit_time", LocalDateTime.now().format(TS));
         approval.put("update_time", LocalDateTime.now().format(TS));
         approval.put("created_at", System.currentTimeMillis());
         approval.put("approval_matrix", buildApprovalMatrix());
+        if (!requirementTrack) {
+            // 上线轨首提（无需求轨前置）：需求节点视作已通过，矩阵重置到上线阶段
+            resetMatrixToStage(approval, "launch");
+        }
         approvals.put(approvalId, approval);
         approvalByOffer.put(offerId, approvalId);
         approvalByReq.put(reqId, approvalId);
@@ -1428,14 +1508,52 @@ public class OfferSimV16Service {
         return body;
     }
 
+    /** 把已存在的需求轨审批单推进到上线阶段：保留需求节点结果，上线节点重置为待审核，更新为上线轨。 */
+    private void promoteApprovalToLaunch(Map<String, Object> approval, String offerId, Object reportUrl) {
+        approval.put("stage", "launch");
+        approval.put("approval_type", "launch");
+        approval.put("requirement_passed", true);
+        if (!MapOps.empty(offerId)) {
+            approval.put("offer_id", offerId);
+        }
+        if (!MapOps.empty(reportUrl)) {
+            approval.put("report_url", MapOps.str(reportUrl));
+        }
+        approval.put("status", "审批中");
+        approval.put("current_node", "产品经理审核");
+        approval.put("approver", "产品经理");
+        approval.put("opinion", "");
+        approval.put("update_time", LocalDateTime.now().format(TS));
+        approval.put("created_at", System.currentTimeMillis());
+        resetMatrixToStage(approval, "launch");
+    }
+
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
     /**
-     * 查询前先推进模拟审批状态：提交超过 10s 的"审批中"审批单自动流转为"通过（上架完成）"。
-     * 惰性推进（查询/幂等读取时触发），无需后台定时器；演示中最多查询 2 次即可看到终态。
+     * 查询前先按阶段惰性推进模拟审批：提交超过 10s 自动流转。
+     * 需求阶段：仅点亮需求节点并把工单置为「需求审核已通过，待上线审批」（状态仍为审批中）；
+     * 上线阶段：全节点点亮，终态「通过（上架完成）」。无需后台定时器，查询/幂等读取时触发。
      */
     private void advanceApproval(Map<String, Object> approval) {
         if (!"审批中".equals(MapOps.str(approval.get("status")))) {
+            return;
+        }
+        String stage = MapOps.str(approval.get("stage"));
+        if ("requirement".equals(stage)) {
+            if (MapOps.truthy(approval.get("requirement_passed"))) {
+                return;
+            }
+            long elapsed = System.currentTimeMillis() - MapOps.toLong(approval.get("created_at"));
+            if (elapsed >= APPROVAL_AUTO_PASS_MS) {
+                approval.put("requirement_passed", true);
+                approval.put("current_node", "需求审核已通过，待上线审批");
+                approval.put("approver", "需求审核");
+                approval.put("opinion", "需求审核通过，同意进入需求分析");
+                approval.put("update_time", LocalDateTime.now().format(TS));
+                refreshApprovalMatrix(approval);
+                log.info("[OfferSimV16] 需求审核自动流转为通过 approval_id={}", approval.get("approval_id"));
+            }
             return;
         }
         long elapsed = System.currentTimeMillis() - MapOps.toLong(approval.get("created_at"));
@@ -1446,7 +1564,7 @@ public class OfferSimV16Service {
             approval.put("opinion", "审核通过，同意上架");
             approval.put("update_time", LocalDateTime.now().format(TS));
             refreshApprovalMatrix(approval);
-            log.info("[OfferSimV16] 审批自动流转为通过 approval_id={}", approval.get("approval_id"));
+            log.info("[OfferSimV16] 上线审批自动流转为通过 approval_id={}", approval.get("approval_id"));
         }
     }
 
@@ -1483,6 +1601,7 @@ public class OfferSimV16Service {
         body.put("offer_id", MapOps.str(approval.get("offer_id")));
         body.put("chat_id", chatId);
         body.put("approval_type", MapOps.str(approval.get("approval_type")));
+        body.put("stage", MapOps.str(approval.get("stage")));
         body.put("status", MapOps.str(approval.get("status")));
         body.put("current_node", MapOps.str(approval.get("current_node")));
         body.put("approver", MapOps.str(approval.get("approver")));
@@ -2533,7 +2652,7 @@ public class OfferSimV16Service {
             // 元素 status = 审批单域状态（审批中/通过/驳回），供前端/工作流逐品展示与衔接判断
             item.put("status", MapOps.str(r.get("status")));
             // 多商品口径：进度为工单级，各元素冗余携带同一 approval_id
-            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type",
+            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "stage",
                     "current_node", "approver", "opinion", "submit_time", "update_time", "approval_matrix",
                     "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {

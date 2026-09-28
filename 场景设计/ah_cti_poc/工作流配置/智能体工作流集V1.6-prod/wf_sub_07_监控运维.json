@@ -39,10 +39,10 @@
             "blockID": "",
             "relName": "",
             "name": "date_range",
-            "description": "统计周期（非必填；缺省后端按默认周期处理）",
+            "description": "统计周期（非必填；缺省默认最近七天）",
             "type": "string",
             "required": false,
-            "content": ""
+            "content": "最近七天"
           }
         ],
         "checkErr": false,

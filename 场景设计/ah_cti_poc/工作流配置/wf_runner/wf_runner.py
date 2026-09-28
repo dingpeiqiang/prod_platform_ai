@@ -1089,6 +1089,10 @@ class WorkflowRunner:
 
     @staticmethod
     def _default_input(nm, ip):
+        # 开始节点入参若声明了默认值（content），优先采用（如 date_range 默认"最近七天"）
+        content = (ip or {}).get("content")
+        if content not in (None, ""):
+            return content
         if nm == "req_id":
             return "PLAN" + _dt.datetime.now().strftime("%Y%m%d%H%M%S") + \
                    "".join(random.choices(string.digits, k=3))

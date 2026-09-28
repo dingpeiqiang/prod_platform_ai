@@ -2592,7 +2592,7 @@ s7f.append(start_node(701, [
     inp("req_id", "需求单号（必填，PLAN+yyyyMMddHHmmss+3位随机数；用于关联解析销售品ID与页面定位）", required=True),
     inp("chat_id", "{chatId}", required=True),
     inp("offer_id", "销售品ID（非必填；9位存量编码或配置落地返回的新销售品ID，缺省时后端按 req_id 关联解析）", required=False),
-    inp("date_range", "统计周期（非必填；缺省后端按默认周期处理）", required=False),
+    inp("date_range", "统计周期（非必填；缺省默认最近七天）", required=False, content="最近七天"),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析",
@@ -2732,10 +2732,10 @@ s8f.append(llm_node(803, "状态摘要归纳",
     "**审批矩阵（逐字引用出参 approval_matrix[]，禁止编造）：**\n"
     "| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
     "| :---: | :--- | :--- | :--- | :--- | :--- |\n"
-    "（逐行展开 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n"
-    "审批类型衔接（status=通过 时按下述区分；否则只给摘要）：\n"
-    "- approval_type=requirement（需求工单审批通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n"
-    "- approval_type=launch（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\n"
+    "（逐行展开 approval_matrix 全部节点；同一张矩阵贯穿「需求审核→上线审批」全流程，需求审核通过后仅点亮需求节点，上线审批通过后点亮其余节点；出参无 approval_matrix 时省略本表，不得补造）\n\n"
+    "审批类型衔接（按下述区分；否则只给摘要）：\n"
+    "- 当前环节含「待上线审批」或 approval_type=requirement 且 status=审批中（需求审核已通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n"
+    "- approval_type=launch 且 status=通过（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\n"
     "status=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
     "输出要求：仅输出审批工单摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。",
     [inp("approval_id", "审批单号", ref_block=nid(802), ref_rel="approval_id"),
