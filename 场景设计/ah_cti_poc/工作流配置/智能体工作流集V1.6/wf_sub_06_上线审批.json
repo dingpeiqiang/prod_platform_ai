@@ -802,7 +802,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品上线审批智能体。基于结构化汇总（summary_json={summary_json}），按 flow-C 模板生成《{{套餐名称}}上线审批建议》，其中套餐名称取 summary_json 的 offer_name（可从产品信息确认）。\n输出结构（对应出参 approval_suggest，标题头为强制）：\n【环节8/9·上线审批】✅ 执行成功\n\n已自动汇总前序环节结果，生成《{offer_name}上线审批建议》。\n\n**上线校验看板：**\n\n| 检查项 | 结果 |\n| :--- | :--- |\n| 需求完整性 | ✅/❌ |\n| 配置规格稽核 | ✅/❌ |\n| 资费校准 | ✅/❌ |\n| 自动测试（三大验证：受理/计费/客服{fusion_verification}） | ✅/❌ |\n\n**风险检查：** {{逐字引用配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}\n\n**整体上线结论：** {{逐字引用正式版报告第三/八章三选一结论：✅建议上线/⚠️评估风险后上线/❌禁止上线}}\n\n**AI审批建议：{{全部通过→'建议上线'；任一环节未通过→'暂缓上线'}}。**\n约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n输出要求：仅输出审批建议正文（对应出参 approval_suggest），不输出其他多余文字。"
+              "content": "你是产销品上线审批智能体。基于结构化汇总（summary_json={summary_json}），按 flow-C 模板生成《{offer_name}上线审批建议》，其中套餐名称取 summary_json 的 offer_name（可从产品信息确认）。\n输出须为结构化 Markdown（对应出参 approval_suggest，一级标题头为强制），严格按以下骨架逐节填充：\n\n## 【环节8/9·上线审批】✅ 执行成功\n\n已自动汇总前序环节结果，生成《{offer_name}上线审批建议》。\n\n### 一、上线校验看板\n\n| 检查项 | 结果 | 说明 |\n| :--- | :--- | :--- |\n| 需求完整性 | ✅/❌ | 需求存在且无待补充则 ✅ |\n| 配置规格稽核 | ✅/❌ | spec pass 则 ✅ |\n| 资费校准 | ✅/❌ | fee pass 则 ✅ |\n| 自动测试（三大验证：受理/计费/客服{fusion_verification}） | ✅/❌ | test 通过且受理子集通过则 ✅ |\n\n### 二、风险检查\n\n{{逐字引用配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}\n\n### 三、整体上线结论\n\n{{逐字引用正式版报告第三/八章三选一结论：✅建议上线/⚠️评估风险后上线/❌禁止上线}}\n\n### 四、AI审批建议\n\n**{{全部通过→'建议上线'；任一环节未通过→'暂缓上线'}}。**\n\n约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并在“说明”列附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n输出要求：仅输出上述 Markdown 审批建议正文（保持小节标题与表格结构），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -1193,10 +1193,69 @@
         "url": "http://10.86.13.201:31281/api/v1/appstore/approval/submit"
       },
       {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000618,approval_matrix",
+            "name": "approval_matrix",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000618,approval_type",
+            "name": "approval_type",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom datetime import datetime, timedelta\n\nMATRIX_HEADER = ['| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |',\n                 '| :---: | :--- | :--- | :--- | :--- | :--- |']\n\nMOCK_FLOW = [\n    ('待业务审核', '商务经理', '已通过', '同意，销售品配置与资费符合上线要求'),\n    ('待技术复核', '技术负责人', '已通过', '技术方案与测试验证通过，准予上线'),\n    ('待上线审批', '运营总监', '审批中', '待确认上线窗口，其余无异议'),\n]\n\n\ndef _load(raw):\n    if isinstance(raw, (list, dict)):\n        return raw\n    if not isinstance(raw, str) or not raw.strip():\n        return []\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\n\ndef _matrix_of(o):\n    if not isinstance(o, dict):\n        return []\n    m = o.get('approval_matrix') or o.get('approvalMatrix') or o.get('matrix')\n    if not m:\n        for k, v in o.items():\n            if isinstance(v, list) and v and isinstance(v[0], dict):\n                m = v\n                break\n    return m if isinstance(m, list) else []\n\n\ndef _row(seq, node):\n    if not isinstance(node, dict):\n        node = {}\n    cur = (node.get('current_node') or node.get('node_name')\n           or node.get('node') or node.get('step') or '-')\n    role = (node.get('approver') or node.get('role')\n            or node.get('approver_role') or '-')\n    st = node.get('status') or node.get('state') or '-'\n    op = node.get('opinion') or node.get('comment') or '-'\n    tm = (node.get('update_time') or node.get('time')\n          or node.get('op_time') or '-')\n    return '| %s | %s | %s | %s | %s | %s |' % (seq, cur, role, st, op, tm)\n\n\ndef _mock_matrix():\n    base = datetime.now()\n    rows = []\n    for i, (cur, role, st, op) in enumerate(MOCK_FLOW):\n        tm = (base + timedelta(minutes=5 * i)).strftime('%Y-%m-%d %H:%M:%S')\n        rows.append({'current_node': cur, 'approver': role,\n                     'status': st, 'opinion': op, 'update_time': tm})\n    return rows\n\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('offers'))\n    if isinstance(offers, dict):\n        offers = [offers]\n    if not isinstance(offers, list):\n        offers = []\n    matrix = []\n    for o in offers:\n        matrix = _matrix_of(o)\n        if matrix:\n            break\n    if not matrix:\n        matrix = _mock_matrix()\n    lines = list(MATRIX_HEADER)\n    for seq, node in enumerate(matrix, start=1):\n        lines.append(_row(seq, node))\n    approval_matrix = '\\n'.join(lines)\n    approval_type = str(p.get('approval_type') or '').strip() or 'launch'\n    ret: Output = {\n        'approval_matrix': approval_matrix,\n        'approval_type': approval_type,\n    }\n    return ret\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品审批推送结果数组（节点615出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000615",
+              "a1b2c3d4-0000-4000-8000-000000000615,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000615,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
+            "relName": "approval_type",
+            "name": "approval_type",
+            "description": "审批类型（节点615出参，兜底 launch）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000615",
+              "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "格式化审批结果"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000618",
+        "position": {
+          "x": 5595,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《上线审批建议》已提交审批：\n- 工单级审批单号：{approval_id}，整批提交状态：{status}，审批类型：{approval_type}\n逐品审批状态：\n{offers}\n审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"
+          "content": "### 上线审批已提交\n\n| 项 | 值 |\n| :--- | :--- |\n| 工单级审批单号 | {approval_id} |\n| 整批提交状态 | {status} |\n| 审批类型 | {approval_type} |\n\n**审批矩阵**\n\n{approval_matrix}\n\n> 审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n>\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。\n"
         },
         "settings": {
           "stream": false,
@@ -1234,32 +1293,32 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000615,status"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000618",
             "relName": "approval_type",
             "name": "approval_type",
-            "description": "审批类型（launch=上线审批）",
+            "description": "审批类型（launch=上线审批，节点618兜底）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000615",
-              "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
+              "a1b2c3d4-0000-4000-8000-000000000618",
+              "a1b2c3d4-0000-4000-8000-000000000618,approval_type"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000618,approval_type"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
-            "relName": "offers",
-            "name": "offers",
-            "description": "逐品审批推送结果数组（节点615出参）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000618",
+            "relName": "approval_matrix",
+            "name": "approval_matrix",
+            "description": "审批矩阵 Markdown 表格（节点618）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000615",
-              "a1b2c3d4-0000-4000-8000-000000000615,offers"
+              "a1b2c3d4-0000-4000-8000-000000000618",
+              "a1b2c3d4-0000-4000-8000-000000000618,approval_matrix"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000615,offers"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000618,approval_matrix"
           }
         ],
         "checkErr": false,
@@ -1363,8 +1422,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000616",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000618",
         "startId": "a1b2c3d4-0000-4000-8000-000000000615"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000616",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000618"
       }
     ],
     "flowId": "wf_sub_06",
