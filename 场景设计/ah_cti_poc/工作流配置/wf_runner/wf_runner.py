@@ -1535,8 +1535,10 @@ CHAIN_ORDER = [
 ]
 
 # 需要跨工作流传递的上下文键（前一环节的输出 → 后一环节的入参）。
-# req_id 贯穿全链；offer_id/approval_id/globalId 在对应环节产出后被后续环节复用。
-CHAIN_CARRY_KEYS = ("req_id", "offer_id", "approval_id", "globalId")
+# req_id 贯穿全链（多商品靠 req_id 传递，offers[] 以 JSON 串内嵌于各环节结果，无需逐字段透传）；
+# offer_id 仅 wf_sub_07 监控（start 声明，非必填）使用，作为单品回显兜底。
+# 已删除废弃单品标量：approval_id/globalId（全链无任何 start 节点声明，属死键）。
+CHAIN_CARRY_KEYS = ("req_id", "offer_id")
 
 
 def _chain_seed(name: str, carried: dict, start_inputs: list,

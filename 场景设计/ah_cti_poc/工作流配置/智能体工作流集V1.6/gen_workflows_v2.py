@@ -48,7 +48,8 @@ def gen_panel_code(stage, biz_title=None):
     对齐参考示例：**单面板**（一个 url + 一个 title），url 用环节业务页
     config-workbench.html?stage=<N>&view=stage，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
     输出 panel 为 `\n\n```xsbot-panel {compact_json} ``` ` 片段（无文字前缀、JSON 紧凑无空格，逐字对齐参考示例），
-    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id，运行期完成实值替换。
+    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id，运行期完成实值替换；
+    offer_id/offer_name 为空时不在 url 拼接（避免出现 offer_id=&name= 空参），多品时以 req_id 定位。
     """
     page = CONFIG_WB_PAGE
     title = biz_title or "环节业务页"
@@ -61,8 +62,11 @@ def gen_panel_code(stage, biz_title=None):
         "    offer_id = str(p.get('offer_id') or '')",
         "    offer_name = str(p.get('offer_name') or '')",
         "    req_id = str(p.get('req_id') or '')",
-        "    biz_url = ('%s?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
-        "+ '&req_id=' + req_id + '&stage=%s&view=stage')" % (page, stage),
+        "    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=%s&view=stage')" % stage,
+        "    if offer_id:",
+        "        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
+        "+ '&req_id=' + req_id + '&stage=%s&view=stage')" % stage,
+        "    biz_url = '%s' + qs" % page,
     ]
     # 紧凑 JSON（无空格，逐字对齐参考示例），title 在生成期烘焙为字面量
     body += [
@@ -1640,7 +1644,27 @@ s01.append(plugin_node(110, "保存执行方案", "save_node_result",
     pos=(1080, 135)))
 # xsbot-panel 独立代码节点（智能配置落地前无 offer_id，传空，页面以 req_id 定位）
 s01.append(panel_code_node(112, "构建页面地址面板", "01",
-    panel_inputs(101, req_seq=101), biz_title="配置方案"))
+    panel_inputs(101, off_seq=103, off_rel="offer_id", req_seq=101), biz_title="配置方案"))
+# 质量门禁（P2-1，软门禁）：保存后按 quality_gate 分流引导——通过才引导【确认执行】；
+# 不通过（可提取命中率低于阈值）时仍保留 requirement 落库，但阻断引导，要求先补充/整改。
+s01.append(selector_node2(117, "方案质量门禁",
+    [dep_node(108, "要素校验与方案合并", ["quality_gate"])],
+    [(-1, [cond_item(cond_ref(108, "quality_gate", "要素校验与方案合并"), 1, cond_str("通过"))])],
+    pos=(1120, 300)))
+s01.append(end_node(118, "结束(方案质量未通过)",
+    [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
+     inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
+     inp("pending_required", "必填待补充", ref_block=nid(108), ref_rel="pending_required"),
+     inp("template_id", "模板", ref_block=nid(106), ref_rel="template_id"),
+     inp("quality_gate", "要素提取质量门禁（节点108）", ref_block=nid(108), ref_rel="quality_gate"),
+     inp("ve_stats", "要素校验统计（节点108）", ref_block=nid(108), ref_rel="ve_stats"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(112), ref_rel="panel")],
+    "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n"
+    "【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n"
+    "【待补充必填】{pending_required}\n"
+    "⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n"
+    "【下一步】请补充/修正上述待补充或命中不足字段后重新分析（回复【重新分析】），"
+    "或直接说明修改意见；质量达标后方可回复【确认执行】。\n\n{panel}"))
 s01.append(end_node(111, "结束(方案已生成)",
     [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
      inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
@@ -1659,7 +1683,7 @@ e01 = [edge(101, 102), edge(102, 103), edge(103, 115),
        edge(104, 119), edge(119, 105), edge(105, 106), edge(106, 107),
        edge(107, 108),
        edge(108, 109), edge(109, 114), edge(114, 110),
-       edge(110, 112), edge(112, 111)]
+       edge(110, 117), edge(117, 112, -1), edge(112, 111), edge(117, 118, 0)]
 files01 = workflow(
     "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品判产品类型)→模板路由代码(类型→模板，防幻觉)→相似产品检索(query_similar_offer，含融合 offer_group 下发)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested+融合组注入)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
     "wf_sub_01", s01, e01)
@@ -2032,8 +2056,14 @@ s2f.append(code_node(108, "配置要点简介", CODE_CONFIG_SUMMARY,
      inp("req_id", "执行批次号（节点103出参 req_id，组装 config_json 信封）", ref_block=nid(103), ref_rel="req_id")],
     [code_out("config_summary", 108), code_out("offers", 108), code_out("config_json", 108)],
     pos=(860, 420)))
+# 写入门禁：契约§4——config 仅当整批落地 status==SUCCESS（全品通过）才写入；
+# status!=SUCCESS（PARTIAL/FAIL）跳过硬写，走未写库结束分支，避免脏写 config 蒙混下游。
+s2f.append(selector_node2(112, "配置写入门禁",
+    [dep_node(103, "配置落地", ["status"])],
+    [(-1, [cond_item(cond_ref(103, "status", "配置落地"), 1, cond_str("SUCCESS"))])],
+    pos=(980, 300)))
 s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=整批落地结果JSON（含 req_id+offers[]，每元素含 offer_id 及可选 group）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=整批落地结果JSON（含 req_id+offers[]，每元素含 offer_id 及可选 group）；仅整批 status==SUCCESS 时写入（门禁：全品落地通过，由节点112判定）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=config（智能配置）", content="config"),
@@ -2043,6 +2073,18 @@ s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
 # xsbot-panel 独立代码节点
 s2f.append(panel_code_node(109, "构建页面地址面板", "02",
     panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板"))
+# 未通过分支面板 + 结束（未写 config）
+s2f.append(panel_code_node(113, "构建页面地址面板(未写库)", "02",
+    panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板"))
+s2f.append(end_node(114, "结束(配置未通过-未写config)",
+    [inp("status", "整批落地状态（节点103）", ref_block=nid(103), ref_rel="status"),
+     inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
+     inp("offer_id", "首品销售品ID（节点111）", ref_block=nid(111), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(113), ref_rel="panel")],
+    "【环节3/8·智能配置】配置未全部通过：status={status}\n写入结果：{save_result}\n\n"
+    "整批存在 PARTIAL/FAIL，本次未写入 config（config 仍为空），无法推进稽核/测试/审批。\n"
+    "【下一步】请按落地失败明细修正后重新回复\"下一步\"发起配置（环节3）。\n\n"
+    "{panel}"))
 s2f.append(end_node(104, "结束(配置落地完成)",
     [inp("offer_id", "首品销售品ID（节点111生成/透传的逐品编码首品值）", ref_block=nid(111), ref_rel="offer_id"),
      inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
@@ -2057,7 +2099,7 @@ s2f.append(end_node(104, "结束(配置落地完成)",
     "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}"))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（V3.12 多商品）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取需求商品数组 offers[]→生成商品编码（逐品：新增品生成9位900编码/存量重配透传既有编码）→save_product_config 批量落地（后端逐品聚合返回 offers[]）→融合成员回显（逐品 group 回显）→配置要点简介（逐品）→存储 node_name=config（result_json 含 req_id+offers[]）。", "wf_sub_02", s2f,
-    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,107), edge(107,108), edge(108,105), edge(105,109), edge(109,104)])
+    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,107), edge(107,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（融合组扩展）：组维度稽核——LLM 提示词增加组维度回显与
@@ -2106,8 +2148,14 @@ s3f.append(code_node(208, "稽核发起结果封包", CODE_PACK_RECORD,
      inp("md", "稽核发起回执文案", content="稽核已发起"),
      inp("md_key", "md 落库字段名", content="launch_note")],
     [code_out("record_json", 208)], pos=(780, 135)))
+# 发起门禁：仅当逐品发起均产出 requestIds（非空）才写 audit_pending 临时态，供 4b 轮询读取；
+# requestIds 为空说明 B1/B2 发起失败，跳过写入走告警分支。
+s3f.append(selector_node2(211, "稽核发起门禁",
+    [dep_node(203, "异步报告生成并通知", ["requestIds"])],
+    [(-1, [cond_item(cond_ref(203, "requestIds", "异步报告生成并通知"), 10)])],
+    pos=(860, 300)))
 s3f.append(plugin_node(205, "稽核发起临时态存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；4b 轮询自查读取",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；仅 requestIds 非空时写入（门禁：逐品发起成功，由节点211判定）；4b 轮询自查读取",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=audit_pending（稽核发起临时态）", content="audit_pending"),
@@ -2117,6 +2165,17 @@ s3f.append(plugin_node(205, "稽核发起临时态存储", "save_node_result",
 # xsbot-panel 独立代码节点
 s3f.append(panel_code_node(209, "构建页面地址面板", "03",
     panel_inputs(201, off_seq=207, off_rel="offer_id", req_seq=201), biz_title="规格稽核"))
+# 发起失败分支面板 + 结束（未写 audit_pending）
+s3f.append(panel_code_node(212, "构建页面地址面板(发起失败)", "03",
+    panel_inputs(201, off_seq=207, off_rel="offer_id", req_seq=201), biz_title="规格稽核"))
+s3f.append(end_node(213, "结束(稽核发起失败-未写audit_pending)",
+    [inp("requestIds", "全部 requestId 集合（节点203，空表示发起失败）", ref_block=nid(203), ref_rel="requestIds"),
+     inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
+     inp("offer_id", "销售品ID（节点207）", ref_block=nid(207), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(212), ref_rel="panel")],
+    "【环节4/8·规格稽核】稽核发起失败：requestIds 为空（file_id={file_id}）\n\n"
+    "发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n"
+    "【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"))
 s3f.append(end_node(210, "结束(稽核已发起)",
     [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),
      inp("file_id", "上传文件ID（节点202）", ref_block=nid(202), ref_rel="file_id"),
@@ -2128,7 +2187,7 @@ s3f.append(end_node(210, "结束(稽核已发起)",
 files3f = workflow(
     "产销品-规格稽核", "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。", "wf_sub_03", s3f,
     [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,204),
-     edge(204,208), edge(208,205), edge(205,209), edge(209,210)])
+     edge(204,208), edge(208,211), edge(211,205,-1), edge(211,212,0), edge(212,213), edge(205,209), edge(209,210)])
 
 # ============================================================
 # wf_sub_12 规格稽核轮询（环节4b，两阶段拆分后半；可重复触发）
@@ -2358,8 +2417,13 @@ s5f.append(code_node(408, "资费结果结构化封包", CODE_PACK_RECORD,
      inp("md", "风险解读 markdown（节点403）", ref_block=nid(403), ref_rel="risk_summary"),
      inp("md_key", "md 落库字段名", content="risk_summary")],
     [code_out("record_json", 408)], pos=(780, 135)))
+# 写入门禁：契约§4——fee 仅当整批校验 pass==1（全品通过）才写入；pass!=1 跳过写入走未写库分支。
+s5f.append(selector_node2(411, "资费写入门禁",
+    [dep_node(410, "计费结论聚合", ["pass"])],
+    [(-1, [cond_item(cond_ref(410, "pass", "计费结论聚合"), 1, cond_str("1"))])],
+    pos=(860, 300)))
 s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 req_id+offers[] + 逐品聚合的 compare_list/risk_list + risk_summary 解读）；主流程删除后存储下沉子工作流",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=结构化封包（含 req_id+offers[] + 逐品聚合的 compare_list/risk_list + risk_summary 解读）；仅整批 pass==1 时写入（门禁：全品通过，由节点411判定）；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
      inp("node_name", "环节名=fee（资费校准）", content="fee"),
@@ -2369,6 +2433,18 @@ s5f.append(plugin_node(405, "环节结果存储", "save_node_result",
 # xsbot-panel 独立代码节点
 s5f.append(panel_code_node(409, "构建页面地址面板", "05",
     panel_inputs(401, off_seq=407, off_rel="offer_id", req_seq=401), biz_title="资费校准"))
+# 未通过分支面板 + 结束（未写 fee）
+s5f.append(panel_code_node(412, "构建页面地址面板(未通过)", "05",
+    panel_inputs(401, off_seq=407, off_rel="offer_id", req_seq=401), biz_title="资费校准"))
+s5f.append(end_node(413, "结束(资费未通过-未写fee)",
+    [inp("pass", "校验结论（节点410聚合）", ref_block=nid(410), ref_rel="pass"),
+     inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
+     inp("risk_summary", "风险解读（节点403）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("offer_id", "首品销售品ID（节点407）", ref_block=nid(407), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(412), ref_rel="panel")],
+    "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n{risk_summary}\n\n"
+    "整批存在不一致，本次未写入 fee，无法推进上线审批。\n"
+    "【下一步】请按比对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"))
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论（节点410聚合）", ref_block=nid(410), ref_rel="pass"),
      inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
@@ -2380,7 +2456,7 @@ s5f.append(end_node(404, "结束(资费校准完成)",
 files5f = workflow(
     "产销品-资费校准", "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
     [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,410),
-     edge(410,408), edge(408,405), edge(405,409), edge(409,404)])
+     edge(410,408), edge(408,411), edge(411,405,-1), edge(411,412,0), edge(412,413), edge(405,409), edge(409,404)])
 
 
 # ============================================================
@@ -2893,8 +2969,13 @@ s4f.append(code_node(308, "测试发起结果封包", CODE_PACK_RECORD,
      inp("md", "测试发起回执文案", content="测试已发起"),
      inp("md_key", "md 落库字段名", content="launch_note")],
     [code_out("record_json", 308)], pos=(780, 135)))
+# 发起门禁：仅当整批发起（C1/C2）status==SUCCESS（全品发起成功）才写 test_pending 临时态，供 6b 轮询读取。
+s4f.append(selector_node2(322, "测试发起门禁",
+    [dep_node(303, "查询测试场景", ["status"])],
+    [(-1, [cond_item(cond_ref(303, "status", "查询测试场景"), 1, cond_str("SUCCESS"))])],
+    pos=(860, 300)))
 s4f.append(plugin_node(305, "测试发起临时态存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=test_pending（测试发起临时态，非最终 test）；result_json=发起结果封包（req_id+offers[]，每元素含 offer_seq/globalId/testScenes）；6b 轮询自查读取",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test_pending（测试发起临时态，非最终 test）；result_json=发起结果封包（req_id+offers[]，每元素含 offer_seq/globalId/testScenes）；仅整批 status==SUCCESS 时写入（门禁：全品发起成功，由节点322判定）；6b 轮询自查读取",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
      inp("node_name", "环节名=test_pending（测试发起临时态）", content="test_pending"),
@@ -2904,6 +2985,17 @@ s4f.append(plugin_node(305, "测试发起临时态存储", "save_node_result",
 # xsbot-panel 独立代码节点
 s4f.append(panel_code_node(321, "构建页面地址面板", "06",
     panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="自动测试"))
+# 发起失败分支面板 + 结束（未写 test_pending）
+s4f.append(panel_code_node(323, "构建页面地址面板(发起失败)", "06",
+    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="自动测试"))
+s4f.append(end_node(324, "结束(测试发起失败-未写test_pending)",
+    [inp("status", "整批状态（节点303出参 status）", ref_block=nid(303), ref_rel="status"),
+     inp("offers", "逐品测试发起结果数组（节点303出参 offers）", ref_block=nid(303), ref_rel="offers"),
+     inp("offer_id", "首品销售品ID（节点310）", ref_block=nid(310), ref_rel="offer_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(323), ref_rel="panel")],
+    "【环节6/8·自动测试】测试发起未全部成功：整批状态={status}\n{offers}\n\n"
+    "整批存在 PARTIAL/FAIL，本次未写入 test_pending，无法轮询结论。\n"
+    "【下一步】请修正后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"))
 s4f.append(end_node(307, "结束(测试已发起)",
     [inp("offers", "逐品测试发起结果数组（节点303出参 offers）", ref_block=nid(303), ref_rel="offers"),
      inp("status", "整批状态（节点303出参 status）", ref_block=nid(303), ref_rel="status"),
@@ -2915,7 +3007,7 @@ s4f.append(end_node(307, "结束(测试已发起)",
 files4f = workflow(
     "产销品-自动测试", "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，全品通过才写 test）。", "wf_sub_04", s4f,
     [edge(301,309), edge(309,310), edge(310,302), edge(302,303),
-     edge(303,308), edge(308,305), edge(305,321), edge(321,307)])
+     edge(303,308), edge(308,322), edge(322,305,-1), edge(322,323,0), edge(323,324), edge(305,321), edge(321,307)])
 
 # ============================================================
 # wf_sub_13 自动测试·测试轮询查询（环节6b，两阶段拆分后半；可重复触发）
@@ -3519,7 +3611,7 @@ s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
      inp("fee_result", "资费环节原文（节点607提取）", ref_block=nid(607), ref_rel="record_json"),
      inp("test_result", "测试环节原文（节点609提取）", ref_block=nid(609), ref_rel="record_json"),
      inp("requirement_result", "执行方案原文（节点611提取）", ref_block=nid(611), ref_rel="record_json")],
-    [code_out("summary_json", 612), code_out("offer_id", 612), code_out("fusion_verification", 612), code_out("offers", 612)],
+     [code_out("summary_json", 612), code_out("offer_id", 612), code_out("all_pass", 612), code_out("fusion_verification", 612), code_out("offers", 612)],
     pos=(540, 385)))
 # 613 LLM：按 flow-C 模板生成《上线审批建议》（环节8 标题头 + 校验看板 + 风险 + 整体结论）
 s6f.append(llm_node(613, "上线审批建议生成",
@@ -3543,9 +3635,15 @@ s6f.append(llm_node(613, "上线审批建议生成",
      inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
      inp("fusion_verification", "融合成员组合验证标记（节点612）", ref_block=nid(612), ref_rel="fusion_verification")],
     [out("approval_suggest", "《上线审批建议》正文（环节8标题头）")], pos=(690, 385)))
+# 写入门禁：契约§4——report 仅当全环节 all_pass（spec&fee&test 全品通过）才写入；
+# all_pass!=1 时跳过 report 写入，审批推送仍执行（后端另有四环节硬门禁）但提示待补齐。
+s6f.append(selector_node2(617, "报告写入门禁",
+    [dep_node(612, "合成结构化汇总", ["all_pass"])],
+    [(-1, [cond_item(cond_ref(612, "all_pass", "合成结构化汇总"), 1, cond_str("1"))])],
+    pos=(770, 560)))
 # 614 报告存储 node=report
 s6f.append(plugin_node(614, "报告存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；仅 all_pass==1（spec/fee/test 全品通过）时写入（门禁：由节点617判定）；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=report（上线审批建议）", content="report"),
@@ -3580,7 +3678,7 @@ files6f = workflow(
     "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
-     edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,616)])
+     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,616)])
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
@@ -3793,9 +3891,9 @@ s8f.append(code_node(806, "审批首品提取", (
     [code_out("req_id", 806), code_out("offer_id", 806), code_out("approval_id", 806),
      code_out("approval_type", 806), code_out("offers", 806)]))
 s8f.append(llm_node(803, "状态摘要归纳",
-    "你是产销品审批工单查询智能体。基于查询出参（per_offer={per_offer}，req_id={req_id}，status={status}），按 flow-D D-1 固定格式归纳输出（多商品时逐品输出一段）：\n"
-    "逐品解析 per_offer（[{approval_id,req_id,offer_id,status,approval_type,current_node,approver,opinion,update_time,approval_matrix}]），对每个商品输出：\n"
-    "审批单号 {approval_id}｜需求单号 {req_id}｜销售品 {offer_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}\n\n"
+    "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态，≠单个商品状态）。按 flow-D D-1 固定格式归纳输出（多商品时逐品输出一段）：\n"
+    "对 per_offer 的每一项，输出下面这一固定行；行内「」中的字段逐字取自该商品对应键，禁止保留花括号、禁止给值加 key 前缀（如不得写成 approval_id: X）、禁止把整批 status 当作单品状态：\n"
+    "审批单号「approval_id」｜需求单号 {req_id}｜销售品「offer_id」｜状态：「status（该项的单品状态）」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n\n"
     "**审批矩阵（逐字引用该品 approval_matrix[]，禁止编造）：**\n"
     "| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
     "| :---: | :--- | :--- | :--- | :--- | :--- |\n"

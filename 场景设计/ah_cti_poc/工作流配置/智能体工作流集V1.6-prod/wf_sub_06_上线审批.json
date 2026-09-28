@@ -683,6 +683,11 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+            "name": "all_pass",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000612,fusion_verification",
             "name": "fusion_verification",
             "type": "string"
@@ -693,7 +698,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\n\ndef _req_summary(req, cfg):\n    # requirement_summary：优先需求原文；否则从执行方案提取可读摘要（避免 JSON 大对象导致空串）\n    req_plan = cfg.get('plan_json')\n    if isinstance(req_plan, str):\n        try:\n            req_plan = json.loads(req_plan)\n        except Exception:\n            req_plan = None\n    raw = req.get('raw') if isinstance(req, dict) else ''\n    if isinstance(raw, str) and raw.strip():\n        return raw[:500]\n    parts = []\n    if isinstance(req_plan, dict):\n        base = req_plan.get('baseInfo') or {}\n        prc = (req_plan.get('optionalInfo') or {}).get('printContent') or {}\n        if base.get('prodPrcName'):\n            parts.append(str(base['prodPrcName']))\n        if prc.get('prcMonthFee'):\n            parts.append('月费%s' % prc['prcMonthFee'])\n        if prc.get('containResource'):\n            parts.append('含%s' % prc['containResource'])\n    if parts:\n        return '；'.join(parts)[:500]\n    return json.dumps(req_plan if isinstance(req_plan, dict) else req, ensure_ascii=False)[:500]\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # 融合成员组合验证标记：plan 含 group/member_offers 时附加（审批看板动态渲染，避免脏占位符）\n    plan_grp = cfg.get('plan_json')\n    if isinstance(plan_grp, str):\n        try:\n            plan_grp = json.loads(plan_grp)\n        except Exception:\n            plan_grp = None\n    has_members = bool(isinstance(plan_grp, dict) and (\n        (isinstance(plan_grp.get('group'), dict) and plan_grp['group'].get('members'))\n        or plan_grp.get('member_offers')))\n    fusion_verification = '＋融合成员组合验证' if has_members else ''\n    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：V2.5 起存储结构化 envelope（pass/error_list/audit_summary/audit_suggest），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    audit_summary = str(spec.get('audit_suggest') or spec.get('raw') or spec.get('audit_summary') or '')\n    if str(spec.get('pass') or '') in ('0', '1'):\n        spec_pass = str(spec.get('pass'))\n    else:\n        spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：V2.5 起存储结构化 envelope（pass/risk_list/compare_list/risk_summary），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    risk_summary = str(fee.get('risk_summary') or fee.get('raw') or '')\n    if str(fee.get('pass') or '') in ('0', '1'):\n        fee_pass = str(fee.get('pass'))\n    else:\n        fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'fusion_verification': fusion_verification,\n        'requirement_summary': _req_summary(req, cfg),\n        'config': {'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    # V3.12 多商品：从 config 落地报文的 offers[] 逐品展开审批看板元素\n    offers_out = []\n    cfg_offers = cfg.get('offers') if isinstance(cfg, dict) else None\n    if isinstance(cfg_offers, list) and cfg_offers:\n        for i, c in enumerate(cfg_offers, start=1):\n            if not isinstance(c, dict):\n                continue\n            o_id = str(c.get('offer_id') or c.get('offerId') or '')\n            offers_out.append({\n                'offer_seq': int(c.get('offer_seq') or i),\n                'offer_id': o_id,\n                'offer_name': str(c.get('offer_name') or ''),\n                'config_status': str(c.get('status') or ''),\n                'plan_json': c.get('plan_json'),\n                'spec': dict(summary['spec']),\n                'fee': dict(summary['fee']),\n                'test': dict(summary['test']),\n                'all_pass': summary['all_pass'],\n            })\n    summary['offers'] = offers_out\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"offer_id\": offer_id,\n        \"fusion_verification\": fusion_verification,\n        \"offers\": json.dumps(offers_out, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\n\ndef _req_summary(req, cfg):\n    # requirement_summary：优先需求原文；否则从执行方案提取可读摘要（避免 JSON 大对象导致空串）\n    req_plan = cfg.get('plan_json')\n    if isinstance(req_plan, str):\n        try:\n            req_plan = json.loads(req_plan)\n        except Exception:\n            req_plan = None\n    raw = req.get('raw') if isinstance(req, dict) else ''\n    if isinstance(raw, str) and raw.strip():\n        return raw[:500]\n    parts = []\n    if isinstance(req_plan, dict):\n        base = req_plan.get('baseInfo') or {}\n        prc = (req_plan.get('optionalInfo') or {}).get('printContent') or {}\n        if base.get('prodPrcName'):\n            parts.append(str(base['prodPrcName']))\n        if prc.get('prcMonthFee'):\n            parts.append('月费%s' % prc['prcMonthFee'])\n        if prc.get('containResource'):\n            parts.append('含%s' % prc['containResource'])\n    if parts:\n        return '；'.join(parts)[:500]\n    return json.dumps(req_plan if isinstance(req_plan, dict) else req, ensure_ascii=False)[:500]\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # 融合成员组合验证标记：plan 含 group/member_offers 时附加（审批看板动态渲染，避免脏占位符）\n    plan_grp = cfg.get('plan_json')\n    if isinstance(plan_grp, str):\n        try:\n            plan_grp = json.loads(plan_grp)\n        except Exception:\n            plan_grp = None\n    has_members = bool(isinstance(plan_grp, dict) and (\n        (isinstance(plan_grp.get('group'), dict) and plan_grp['group'].get('members'))\n        or plan_grp.get('member_offers')))\n    fusion_verification = '＋融合成员组合验证' if has_members else ''\n    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：V2.5 起存储结构化 envelope（pass/error_list/audit_summary/audit_suggest），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    audit_summary = str(spec.get('audit_suggest') or spec.get('raw') or spec.get('audit_summary') or '')\n    if str(spec.get('pass') or '') in ('0', '1'):\n        spec_pass = str(spec.get('pass'))\n    else:\n        spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：V2.5 起存储结构化 envelope（pass/risk_list/compare_list/risk_summary），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    risk_summary = str(fee.get('risk_summary') or fee.get('raw') or '')\n    if str(fee.get('pass') or '') in ('0', '1'):\n        fee_pass = str(fee.get('pass'))\n    else:\n        fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'fusion_verification': fusion_verification,\n        'requirement_summary': _req_summary(req, cfg),\n        'config': {'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    # V3.12 多商品：从 config 落地报文的 offers[] 逐品展开审批看板元素\n    offers_out = []\n    cfg_offers = cfg.get('offers') if isinstance(cfg, dict) else None\n    if isinstance(cfg_offers, list) and cfg_offers:\n        for i, c in enumerate(cfg_offers, start=1):\n            if not isinstance(c, dict):\n                continue\n            o_id = str(c.get('offer_id') or c.get('offerId') or '')\n            offers_out.append({\n                'offer_seq': int(c.get('offer_seq') or i),\n                'offer_id': o_id,\n                'offer_name': str(c.get('offer_name') or ''),\n                'config_status': str(c.get('status') or ''),\n                'plan_json': c.get('plan_json'),\n                'spec': dict(summary['spec']),\n                'fee': dict(summary['fee']),\n                'test': dict(summary['test']),\n                'all_pass': summary['all_pass'],\n            })\n    summary['offers'] = offers_out\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"offer_id\": offer_id,\n        \"all_pass\": '1' if summary['all_pass'] else '0',\n        \"fusion_verification\": fusion_verification,\n        \"offers\": json.dumps(offers_out, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -863,6 +868,117 @@
         "type": 1
       },
       {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
+                    "relName": "all_pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000612",
+                      "a1b2c3d4-0000-4000-8000-000000000612,all_pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "报告写入门禁"
+        },
+        "position": {
+          "x": 4695,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000617",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612",
+            "name": "合成结构化汇总",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+                "name": "all_pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
         "outputs": [
           {
             "name": "record_id",
@@ -927,7 +1043,7 @@
         "nodeMeta": {
           "title": "报告存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；仅 all_pass==1（spec/fee/test 全品通过）时写入（门禁：由节点617判定）；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
           "version": "1"
         },
         "authentic_info_new": {
@@ -940,7 +1056,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000614",
         "position": {
-          "x": 4695,
+          "x": 5055,
           "y": 300
         },
         "dependencyData": [],
@@ -1069,7 +1185,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000615",
         "position": {
-          "x": 5055,
+          "x": 5415,
           "y": 300
         },
         "dependencyData": [],
@@ -1157,7 +1273,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5415,
+          "x": 5775,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000616",
@@ -1227,13 +1343,23 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000614",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000617",
         "startId": "a1b2c3d4-0000-4000-8000-000000000613"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000614",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000617"
       },
       {
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000615",
         "startId": "a1b2c3d4-0000-4000-8000-000000000614"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000615",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000617"
       },
       {
         "sourcePort": null,

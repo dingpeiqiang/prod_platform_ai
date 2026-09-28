@@ -1049,7 +1049,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://10.86.13.201:31280/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -1079,6 +1079,20 @@
               "a1b2c3d4-0000-4000-8000-000000000101,req_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
           }
         ],
         "checkErr": false,
@@ -1089,11 +1103,251 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000112",
         "position": {
-          "x": 4695,
-          "y": 300
+          "x": 5055,
+          "y": 430
         },
         "dependencyData": [],
         "type": 6
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+                    "relName": "quality_gate",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000108",
+                      "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "通过"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "方案质量门禁"
+        },
+        "position": {
+          "x": 4695,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000117",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000108",
+            "name": "要素校验与方案合并",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+                "name": "quality_gate",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n【下一步】请补充/修正上述待补充或命中不足字段后重新分析（回复【重新分析】），或直接说明修改意见；质量达标后方可回复【确认执行】。\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000109",
+            "relName": "table_text",
+            "name": "table_text",
+            "description": "配置方案表格",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000109",
+              "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "pending_required",
+            "name": "pending_required",
+            "description": "必填待补充",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+            "relName": "template_id",
+            "name": "template_id",
+            "description": "模板",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000106",
+              "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "quality_gate",
+            "name": "quality_gate",
+            "description": "要素提取质量门禁（节点108）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+            "relName": "ve_stats",
+            "name": "ve_stats",
+            "description": "要素校验统计（节点108）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000108",
+              "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000112",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000112",
+              "a1b2c3d4-0000-4000-8000-000000000112,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000112,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(方案质量未通过)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 5055,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000118",
+        "dependencyData": []
       },
       {
         "outputs": {
@@ -1218,7 +1472,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5055,
+          "x": 5415,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000111",
@@ -1293,13 +1547,23 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000112",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000117",
         "startId": "a1b2c3d4-0000-4000-8000-000000000110"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000112",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000117"
       },
       {
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000111",
         "startId": "a1b2c3d4-0000-4000-8000-000000000112"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000118",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000117"
       }
     ],
     "flowId": "wf_sub_01",

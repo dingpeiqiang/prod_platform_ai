@@ -1134,6 +1134,7 @@ CODE_SUMMARY_APPROVAL = (
     "    ret: Output = {\n"
     "        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n"
     "        \"offer_id\": offer_id,\n"
+    "        \"all_pass\": '1' if summary['all_pass'] else '0',\n"
     "        \"fusion_verification\": fusion_verification,\n"
     "        \"offers\": json.dumps(offers_out, ensure_ascii=False)\n"
     "    }\n"
