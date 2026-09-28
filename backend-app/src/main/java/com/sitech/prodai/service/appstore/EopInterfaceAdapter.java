@@ -63,10 +63,16 @@ public class EopInterfaceAdapter implements InterfaceFacade {
     private final AppStoreInterfaceProperties props;
     private final ObjectMapper objectMapper;
     private final RestClient client;
+    /** 存量种子里程碑：real 出参缺 offerInfo/offerModel/offer_group 时按模板/类型衍生补全（全量配置 JSON 兜底）。 */
+    private final OfferSeedService seed;
+    private final OfferGroupSeedService groupSeed;
 
-    public EopInterfaceAdapter(AppStoreInterfaceProperties props, ObjectMapper objectMapper) {
+    public EopInterfaceAdapter(AppStoreInterfaceProperties props, ObjectMapper objectMapper,
+                               OfferSeedService seed, OfferGroupSeedService groupSeed) {
         this.props = props;
         this.objectMapper = objectMapper;
+        this.seed = seed;
+        this.groupSeed = groupSeed;
         int timeout = Math.max(1000, props.getEop().getTimeoutMs());
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(timeout);
@@ -94,6 +100,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         if (desc.isBlank()) {
             return fail("PARAM_MISSING", "businessDesc 必填");
         }
+        String templateId = firstNonBlank(MapOps.str(req.get("templateId")), MapOps.str(req.get("template_id")));
         String url = businessUrl("similar");
         long begin = System.currentTimeMillis();
         logRealBegin("similar", "POST", url);
@@ -102,12 +109,19 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             requestObject.put("businessDesc", desc);
             Map<String, Object> body = postJson("similar", url, envelopeRequest(requestObject));
             Map<String, Object> resultObject = envelopeResultObject("similar", body);
-            List<Map<String, Object>> list = normalizeSimilarList(resultObject);
+            List<Map<String, Object>> list = normalizeSimilarList(resultObject, templateId);
             Map<String, Object> out = ok();
             out.put("resultMsg", list.isEmpty() ? "未命中相似销售品"
                     : "命中相似销售品 " + list.size() + " 个，主推荐：" + MapOps.str(list.get(0).get("similarOfferName")));
             out.put("similarOffer", list.isEmpty() ? Map.of() : list.get(0));
             out.put("similarOfferList", list);
+            // 融合组下发：real 出参不含 offer_group，按主推荐 offer_id 命中存量融合组时补全，保证组链路与 mock 同构
+            if (!list.isEmpty()) {
+                Map<String, Object> offerGroup = offerGroupOf(list);
+                if (offerGroup != null) {
+                    out.put("offer_group", offerGroup);
+                }
+            }
             logRealDone("similar", System.currentTimeMillis() - begin, out);
             return out;
         } catch (Exception e) {
@@ -115,18 +129,44 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
     }
 
-    /** A1 real 出参仅 4 字段（similarOfferId/Name/Score/Desc），归一保留 camelCase（§4.5.5 第 3/6 点）。 */
-    private List<Map<String, Object>> normalizeSimilarList(Map<String, Object> resultObject) {
+    /**
+     * A1 real 出参归一：保留 camelCase 四字段（similarOfferId/Name/Score/Desc），
+     * 并按 templateId 从存量同类型产品衍生补全 offerInfo/offerModel（全量配置 JSON）——
+     * real 网关不返回这两项，缺失会导致需求分析模板轨 merge_nested 无值可补，故此处兜底衍生。
+     */
+    private List<Map<String, Object>> normalizeSimilarList(Map<String, Object> resultObject, String templateId) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> item : MapOps.castListOfMaps(resultObject.get("similarOfferList"))) {
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("similarOfferId", MapOps.str(item.get("similarOfferId")));
+            String offerId = MapOps.str(item.get("similarOfferId"));
+            row.put("similarOfferId", offerId);
             row.put("similarOfferName", MapOps.str(item.get("similarOfferName")));
             row.put("similarityScore", MapOps.str(item.get("similarityScore")));
             row.put("similarityDesc", MapOps.str(item.get("similarityDesc")));
+            enrichConfig(offerId, templateId, row);
             out.add(row);
         }
         return out;
+    }
+
+    /** 衍生补全全量配置 JSON：存量品优先取自身 seed 报文/24 字段，缺模板时按产品类型衍生同类型值源。 */
+    private void enrichConfig(String offerId, String templateId, Map<String, Object> row) {
+        Map<String, Object> offer = seed.findOffer(offerId);
+        if (offer != null && !offer.isEmpty()) {
+            row.put("offerInfo", seed.toFields24(offer));
+        }
+        if (templateId != null && !templateId.isBlank()) {
+            Map<String, Object> model = seed.reportOfOrDerive(offerId, templateId);
+            if (model != null && !model.isEmpty()) {
+                row.put("offerModel", model);
+            }
+        }
+    }
+
+    /** 融合组下发：主推荐 offer_id 命中存量融合组时返回组定义，否则 null。 */
+    private Map<String, Object> offerGroupOf(List<Map<String, Object>> list) {
+        Map<String, Object> group = groupSeed.findGroup(MapOps.str(list.get(0).get("similarOfferId")));
+        return group == null || group.isEmpty() ? null : group;
     }
 
     /* ================= B1 稽核文件上传 ================= */

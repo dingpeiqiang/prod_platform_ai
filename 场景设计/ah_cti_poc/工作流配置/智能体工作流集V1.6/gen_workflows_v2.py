@@ -791,7 +791,7 @@ files00 = workflow(
 # ============================================================
 # wf_sub_01 需求分析（环节2，模板轨精简版，8 节点）
 #   流程：开始(req_id) → 读取需求工单(requirement_report) → 提取需求字段
-#     → 产品识别(LLM：识别产品类型并选模板) → 相似产品检索(similar_offer 存量报文)
+#     → 产品识别(LLM：识别产品类型并选模板) → 相似产品检索(similar_offer 存量报文；offerModel/offerInfo 后端恒有值，缺失时按产品类型从存量同类型产品衍生)
 #     → 取模板(get_template) → 要素提取(LLM：按模板 x-label 提取配置要素嵌套JSON)
 #     → 要素校验与方案合并(CODE_EXTRACT_MERGE：六项质量校验+递归合并合一)
 #     → render_table(代码节点渲染分节表格)
@@ -1155,6 +1155,8 @@ CODE_EXTRACT_MERGE = (
     "    # 其次 offerInfo（同构字段）；兼容两种包裹层级——\n"
     "    # ① {similarOffer:{offerModel/offerInfo:...}}（工具外层再包一层）\n"
     "    # ② {similarOfferId,...,offerModel/offerInfo:...}（相似检索直接返回的扁平静态）\n"
+    "    # 后端已保证 offerModel/offerInfo 恒有值（命中品缺失时按产品类型从存量同类型产品衍生）；\n"
+    "    # 仍保留回退 offer 本体，兼容工具未透出上述字段的历史/异常情形。\n"
     "    def _pick(d):\n"
     "        if not isinstance(d, dict):\n"
     "            return None\n"
@@ -1577,12 +1579,12 @@ s01.append(code_node(119, "模板路由（类型→模板）", CODE_ROUTE_TEMPLA
     pos=(530, 135)))
 # 相似产品检索：以需求摘要+模板检索最相似存量产品，返回同构逻辑模型报文供合并补全
 s01.append(plugin_node(105, "相似产品检索", "query_similar_offer",
-    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；供要素合并节点按 JSONPath 对位补全",
+    "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；供要素合并节点按 JSONPath 对位补全。后端保证 offerModel/offerInfo 恒有值：命中存量品直接返回其报文；该品缺该模板报文时，按 templateId 从任一载有同模板的存量同类型产品衍生生成（schema 同构填充），避免 real 模式仅有扁字段导致合并落空",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
     [inp("businessDesc", "业务需求描述（=节点104合并摘要）", ref_block=nid(104), ref_rel="need_summary"),
      inp("templateId", "模板标识（节点119首品模板；相似检索模板提示）", ref_block=nid(119), ref_rel="template_id")],
     [
-     ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文）", "object"),
+     ("similarOffer", "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文；offerModel/offerInfo 后端恒有值——命中存量品直接返回，缺该模板时按产品类型从存量同类型产品衍生生成）", "object"),
      ("offer_group", "融合组下发（命中融合品时后端顶层内嵌 offer_group：group_id/main_offer_id/members/group_rules；单品为空）", "object")]))
 # 获取配置模板：读已迁移模板 schema，供要素提取与合并共用
 s01.append(code_node(106, "获取配置模板", CODE_GET_TEMPLATE,
@@ -1610,7 +1612,7 @@ s01.append(llm_node(107, "配置要素提取",
 s01.append(code_node(108, "要素校验与方案合并", CODE_EXTRACT_MERGE,
     [inp("schema_json", "模板 schema（节点106；按首品模板）", ref_block=nid(106), ref_rel="schema_json"),
      inp("elements_json", "配置要素数组（节点107提取；代码内逐品合并）", ref_block=nid(107), ref_rel="elements_json"),
-     inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo）", ref_block=nid(105), ref_rel="similarOffer"),
+     inp("offer_json", "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo；后端保证二者恒有值，缺失时已按产品类型从存量同类型产品衍生生成）", ref_block=nid(105), ref_rel="similarOffer"),
      inp("offer_group", "融合组下发（节点105 offer_group；命中融合品时写入 plan_json 组结构）", ref_block=nid(105), ref_rel="offer_group"),
      inp("threshold", "可提取命中率阈值（默认0.30）", content="0.30"),
      inp("record_json", "需求字段原文（节点103；供价格类叶子确定性兜底）", ref_block=nid(103), ref_rel="record_json")],
@@ -1685,7 +1687,7 @@ e01 = [edge(101, 102), edge(102, 103), edge(103, 115),
        edge(108, 109), edge(109, 114), edge(114, 110),
        edge(110, 117), edge(117, 112, -1), edge(112, 111), edge(117, 118, 0)]
 files01 = workflow(
-    "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品判产品类型)→模板路由代码(类型→模板，防幻觉)→相似产品检索(query_similar_offer，含融合 offer_group 下发)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested+融合组注入)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
+    "产销品-需求分析", "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品判产品类型)→模板路由代码(类型→模板，防幻觉)→相似产品检索(query_similar_offer，含融合 offer_group 下发；offerModel/offerInfo 后端恒有值，缺失时按产品类型从存量同类型产品衍生生成)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested+融合组注入)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
     "wf_sub_01", s01, e01)
 
 

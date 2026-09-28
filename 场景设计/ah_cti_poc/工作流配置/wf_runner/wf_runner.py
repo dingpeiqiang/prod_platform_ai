@@ -77,6 +77,11 @@ REPO_ROOT = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "..", ".."))
 H2_SEED = os.path.join(
     REPO_ROOT, "backend-app", "src", "main", "resources", "sql", "h2", "data-h2.sql"
 )
+# 主智能体提示词的权威来源（统一方案 §2.2 的围栏代码块）。--demo 编排者优先从此自动抽取，
+# 避免依赖易失的 logs/_prompt_22.txt（logs/ 已被 .gitignore 忽略，无法随仓库持久化）。
+UNIFIED_PLAN_MD = os.path.normpath(os.path.join(
+    BASE_DIR, "..", "..", "方案", "产销品加载AI应用-统一方案.md"
+))
 
 # ---------------------------------------------------------------- 颜色
 
@@ -1668,9 +1673,11 @@ class ChainResult:
         self.log_path = ""
         self.outputs = {}
         self.content = ""       # 结束节点渲染的面向用户正文（业务结论，权威）
+        self.end_title = ""     # 实际到达的结束节点标题（业务分支判别，权威）
+        self.skipped = False    # 因上游环节业务失败而被跳过（未执行）
 
     def verdict(self) -> str:
-        return "PASS" if self.passed else "FAIL"
+        return "SKIP" if self.skipped else ("PASS" if self.passed else "FAIL")
 
 
 def _chain_one(name: str, runner_kwargs: dict, log_dir: str,
@@ -1710,6 +1717,7 @@ def _chain_one(name: str, runner_kwargs: dict, log_dir: str,
         # 结束节点渲染的正文（业务结论）：流内成功/失败分支的权威表达
         for r in reversed(runner.results):
             if r.get("type") == 9:
+                cr.end_title = str(r.get("title") or "").strip()
                 cr.content = str((r.get("outputs") or {}).get("content", "") or "").strip()
                 break
         for k in CHAIN_CARRY_KEYS:
@@ -1735,6 +1743,31 @@ def _collect_chain_outputs(ctx: dict) -> dict:
             if v not in (None, ""):
                 found[k] = v
     return found
+
+
+# 结束节点标题中出现即判定「业务未达成、须中止串链」的失败标记。
+# 依据各子工作流结束节点命名约定（如 结束(配置未通过-未写config)、结束(有待补充)、
+# 结束(需求工单缺失-失败)）；成功分支标题（…完成/已发起/已生成/已提报/正常…）不含这些词。
+CHAIN_HALT_MARKS = ("失败", "未通过", "未写", "缺失", "有待补充")
+
+
+def chain_business_halt(cr: "ChainResult") -> str:
+    """判定环节是否在业务层未达成（应中止串链）。返回中止原因，正常达成返回空串。
+
+    串行执行时，上游环节业务未达成（含异常分支结束节点、待补充阻断、节点级报错），
+    其余下游环节的入参前提已不成立，继续执行无意义——必须中止，避免"带病空跑"。
+    """
+    if cr.skipped:
+        return ""
+    if cr.error > 0:
+        return f"节点级错误 {cr.error} 个（{cr.error_msg or '详见日志'}）"
+    title = cr.end_title or ""
+    for mark in CHAIN_HALT_MARKS:
+        if mark in title:
+            return f"业务分支未达成：{title}"
+    if not cr.passed:
+        return cr.error_msg or "执行未通过"
+    return ""
 
 
 def _run_chain(args) -> int:
@@ -1778,7 +1811,16 @@ def _run_chain(args) -> int:
     print(f"{C.GREY}链路 req_id = {carried['req_id']}{C.RESET}")
 
     results = []
+    halt_reason = ""
     for i, name in enumerate(names, 1):
+        if halt_reason:
+            # 上游环节业务未达成：下游环节入参前提不成立，标记跳过、不再执行
+            cr = ChainResult(name)
+            cr.skipped = True
+            results.append(cr)
+            print(f"\n{C.BOLD}[{i}/{len(names)}]{C.RESET} {C.YELLOW}{name}{C.RESET} ... "
+                  f"{C.YELLOW}跳过（上游环节未达成，串链已中止）{C.RESET}", flush=True)
+            continue
         seed_preview = _chain_seed(name, carried, _chain_start_inputs(name), overrides)
         print(f"\n{C.BOLD}[{i}/{len(names)}]{C.RESET} {C.CYAN}{name}{C.RESET} ... 执行中"
               f"  {C.GREY}入参 {seed_preview}{C.RESET}", flush=True)
@@ -1788,35 +1830,48 @@ def _run_chain(args) -> int:
         tag = f"{C.GREEN}PASS{C.RESET}" if cr.passed else f"{C.RED}FAIL{C.RESET}"
         detail = (f"{C.GREY}节点 {cr.total} · OK {cr.ok} · 回退 {cr.fallback} · "
                   f"错误 {cr.error} · {cr.elapsed_ms}ms{C.RESET}")
-        print(f"    → {tag}  {C.BOLD}{cr.flow_name}{C.RESET}  {detail}")
+        end_note = f"  {C.GREY}结束分支：{cr.end_title}{C.RESET}" if cr.end_title else ""
+        print(f"    → {tag}  {C.BOLD}{cr.flow_name}{C.RESET}  {detail}{end_note}")
         if cr.passed and cr.outputs:
             print(f"    {C.GREY}出参: {cr.outputs}{C.RESET}")
         if not cr.passed and cr.error_msg:
             print(f"    {C.RED}✗ {cr.error_msg}{C.RESET}")
         if cr.log_path:
             print(f"    {C.GREY}日志: {cr.log_path}{C.RESET}")
+        reason = chain_business_halt(cr)
+        if reason:
+            halt_reason = f"{name}：{reason}"
+            print(f"    {C.RED}⛔ 业务未达成，串链中止（下游环节不再执行）：{reason}{C.RESET}")
 
-    passed = sum(1 for r in results if r.passed)
-    failed = len(results) - passed
+    ran = [r for r in results if not r.skipped]
+    skipped = [r for r in results if r.skipped]
+    passed = sum(1 for r in ran if r.passed)
+    failed = len(ran) - passed
     print()
     print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
-    print(f"{C.BOLD}链路汇总{C.RESET}  环节 {len(results)}  "
+    print(f"{C.BOLD}链路汇总{C.RESET}  环节 {len(results)}（执行 {len(ran)} / 跳过 {len(skipped)}）  "
           f"{C.GREEN}PASS {passed}{C.RESET}  {C.RED}FAIL {failed}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}" + "─" * 78 + f"{C.RESET}")
     print(f"{'环节':<28}{'结论':<8}{'节点':>6}{'OK':>6}{'回退':>6}{'错误':>6}{'耗时ms':>10}")
     for r in results:
+        if r.skipped:
+            verdict_col = f"{C.YELLOW}SKIP{C.RESET}"
+            print(f"{r.name:<28}{verdict_col}      {'-':>6}{'-':>6}{'-':>6}{'-':>6}{'-':>10}")
+            continue
         verdict_plain = "PASS" if r.passed else "FAIL"
         verdict_col = (f"{C.GREEN}PASS{C.RESET}" if r.passed else f"{C.RED}FAIL{C.RESET}")
         pad = " " * max(0, 8 - len(verdict_plain))
         print(f"{r.name:<28}{verdict_col}{pad}{r.total:>6}{r.ok:>6}{r.fallback:>6}"
               f"{r.error:>6}{r.elapsed_ms:>10}")
+    if halt_reason:
+        print(f"\n{C.RED}串链中止：{C.RESET} {halt_reason}")
     if failed:
         print(f"\n{C.RED}失败环节：{C.RESET}")
-        for r in results:
+        for r in ran:
             if not r.passed:
                 print(f"  - {C.BOLD}{r.name}{C.RESET}  {C.RED}{r.error_msg}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}" + "═" * 78 + f"{C.RESET}")
-    return 1 if failed else 0
+    return 1 if (failed or halt_reason) else 0
 
 
 def _workflow_exists(name: str) -> bool:
@@ -1828,6 +1883,11 @@ def _workflow_exists(name: str) -> bool:
 
 
 # ---------------------------------------------------------------- 对话式编排（--demo）
+
+# 编排者（主智能体）单轮输出的 max_tokens 覆盖值。种子配置默认 4096 偏小：当决策回合
+# 的 reply 中夹带《加载方案》等长 markdown 表时会被截断，导致 JSON 无法解析。
+# 该值仅约束编排者「决策/结果表达」调用，不影响子工作流内部节点。
+ORCHESTRATOR_MAX_TOKENS = 8192
 
 # 演示剧本 V3.0 的用户回合脚本：每条为 (幕, 用户消息, 语义断言标签列表)。
 # 断言由 runner 侧确定性校验（不依赖 LLM 自述），覆盖确认门禁、逐环节推进、
@@ -1900,17 +1960,22 @@ def _reply_text(text: str) -> str:
 
 
 def _extract_json_object(text: str) -> dict | None:
-    """从 LLM 回复中提取首个平衡大括号 JSON 对象（严格 JSON 单对象协议）。"""
+    """从 LLM 回复中提取首个平衡大括号 JSON 对象（严格 JSON 单对象协议）。
+
+    容错增强（应对 max_tokens 截断：LLM 把长 markdown 塞进 reply 导致 JSON 未闭合）：
+    当平衡扫描/整体解析均失败时，按「顶层字段逐字段恢复」——优先抢救 action/workflow，
+    再到 reply/reason，避免因单个超长字段截断而整条决策丢失。
+    """
     if not text:
         return None
     s = text.strip()
-    # 优先整体解析
+    # 1) 优先整体解析
     try:
         obj = json.loads(s)
         return obj if isinstance(obj, dict) else None
     except Exception:
         pass
-    # 回落：扫描首个平衡 {} 块
+    # 2) 回落：扫描首个平衡 {} 块
     start = s.find("{")
     while start != -1:
         depth = 0
@@ -1928,18 +1993,76 @@ def _extract_json_object(text: str) -> dict | None:
                     except Exception:
                         break
         start = s.find("{", start + 1)
-    return None
+    # 3) 兜底：截断 JSON 的字段级恢复
+    return _salvage_truncated_json(s)
+
+
+def _salvage_truncated_json(s: str) -> dict | None:
+    """从被截断的 JSON 文本中按顶层字段逐个抢救，返回可用的决策对象。
+
+    仅处理被双引号包裹的字符串字段（本协议 action/workflow/reply/reason 均为字符串）。
+    """
+    if "{" not in s:
+        return None
+
+    def grab(key: str) -> str:
+        m = re.search(r'"' + re.escape(key) + r'"\s*:\s*"', s)
+        if not m:
+            return ""
+        i = m.end()
+        out = []
+        while i < len(s):
+            ch = s[i]
+            if ch == "\\" and i + 1 < len(s):
+                nxt = s[i + 1]
+                out.append({"n": "\n", "t": "\t", "r": "\r"}.get(nxt, nxt))
+                i += 2
+                continue
+            if ch == '"':
+                break
+            out.append(ch)
+            i += 1
+        return "".join(out).strip()
+
+    obj = {}
+    for key in ("action", "workflow", "reason", "reply"):
+        val = grab(key)
+        if val:
+            obj[key] = val
+    return obj or None
 
 
 def _demo_prompt_path() -> str:
     return os.path.join(BASE_DIR, "logs", "_prompt_22.txt")
 
 
+def _extract_orchestrator_prompt_from_plan(path: str = UNIFIED_PLAN_MD) -> str:
+    """从统一方案 §2.2 抽取主智能体提示词（围栏代码块全文）。
+
+    以「### 2.2」小节标题定位，取其后的首个 ``` 围栏块为提示词原文。抽取失败返回空串。
+    """
+    if not os.path.isfile(path):
+        return ""
+    try:
+        text = io.open(path, encoding="utf-8", errors="ignore").read()
+    except Exception:
+        return ""
+    m = re.search(r"###\s*2\.2.*?```[^\n]*\n(.*?)\n```", text, re.S)
+    if not m:
+        return ""
+    body = m.group(1).strip()
+    # 必须确含关键锚点，防抽到错块（如仅含说明的片段）
+    if "【意图→工作流映射表" not in body or "【限制】" not in body:
+        return ""
+    return body
+
+
 def _load_orchestrator_prompt(names: list) -> str:
     """构造编排者 system prompt：内置主智能体提示词（§2.2）+ 已发布子工作流清单。
 
-    优先读取已抽取的 `logs/_prompt_22.txt`（§2.2 原文）；缺失则内置精简兜底提示词，
-    保证离线/无素材时仍可运行（但联网实跑应使用原文）。
+    提示词来源优先级：① `logs/_prompt_22.txt` 覆盖文件（临时调参用）；② 统一方案 §2.2
+    围栏块自动抽取（权威、可随仓库持久化）；③ 内置精简兜底（离线/无素材时保证可运行，
+    但联网实跑应使用 §2.2 原文）。
     """
     base = ""
     p = _demo_prompt_path()
@@ -1948,6 +2071,8 @@ def _load_orchestrator_prompt(names: list) -> str:
             base = io.open(p, encoding="utf-8").read().strip()
         except Exception:
             base = ""
+    if not base:
+        base = _extract_orchestrator_prompt_from_plan()
     if not base:
         base = (
             "你是安徽电信产销品域数字员工。只做三件事：①按【意图→工作流映射表】语义识别直调"
@@ -1974,6 +2099,9 @@ JSON 字段：
 }}
 规则：需要执行动作时用 call_workflow；仅需回复/拒绝/引导时用 reply_only（此时 workflow 留空）。
 确认门禁未命中（如用户要求跳过确认直接落地）必须 reply_only 并拒绝推进，不得直调执行主干子流。
+【reply 长度铁律】reply 为面向用户的简明话术，**严禁**把完整方案/大段 markdown 多头表格塞入 reply：
+表格请概括为一两句话，或用不超过 3 行的小结；确需完整明细时只给出「已生成，可点击…查看」的指引。
+理由：reply 过长会使 JSON 被输出长度上限截断，导致整条决策失效。
 
 【执行主干固定顺序（用户每回复一次推进一个环节，严禁跳步/并行）】
 确认配置 → wf_sub_02（智能配置）→ wf_sub_03（稽核发起）→ wf_sub_05（资费校准）→ wf_sub_04（自动测试）。
@@ -2262,7 +2390,8 @@ def _run_demo(args) -> int:
         print(f"\n{C.BOLD}[{idx}/{len(DEMO_TURNS)}]{C.RESET} {C.MAGENTA}{stage}{C.RESET} "
               f"{C.BOLD}用户：{C.RESET}{user_msg}", flush=True)
         prompt = _build_demo_decision_prompt(history, user_msg, carried, last_result, done)
-        text, is_fb, note = (llm.chat(prompt, system=system_prompt)
+        text, is_fb, note = (llm.chat(prompt, system=system_prompt,
+                                     max_tokens=ORCHESTRATOR_MAX_TOKENS)
                              if llm else (LlmClient._mock(prompt), True, "offline/mock"))
         decision = _extract_json_object(text) or {}
         action = (decision.get("action") or "").strip()
@@ -2297,7 +2426,8 @@ def _run_demo(args) -> int:
             stage_hint = labels[0] if labels else ""
             if llm and not is_fb:
                 rp = _build_demo_reply_prompt(user_msg, wf, last_result, carried, stage_hint, done)
-                rtext, r_fb, r_note = llm.chat(rp, system=system_prompt)
+                rtext, r_fb, r_note = llm.chat(rp, system=system_prompt,
+                                               max_tokens=ORCHESTRATOR_MAX_TOKENS)
                 if not r_fb and rtext.strip():
                     reply = _reply_text(rtext)
                     decision["reply"] = reply

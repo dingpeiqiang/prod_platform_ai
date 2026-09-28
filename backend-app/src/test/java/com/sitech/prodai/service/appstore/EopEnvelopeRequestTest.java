@@ -17,7 +17,7 @@ class EopEnvelopeRequestTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> envelope(AppStoreInterfaceProperties props) throws Exception {
-        EopInterfaceAdapter adapter = new EopInterfaceAdapter(props, new ObjectMapper());
+        EopInterfaceAdapter adapter = new EopInterfaceAdapter(props, new ObjectMapper(), null, null);
         Method m = EopInterfaceAdapter.class.getDeclaredMethod("envelopeRequest", Map.class);
         m.setAccessible(true);
         return (Map<String, Object>) m.invoke(adapter, Map.of("sqlId", "20260626001"));

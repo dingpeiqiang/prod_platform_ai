@@ -19,7 +19,7 @@ class EopResponseParsingTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> parse(String resp) throws Exception {
-        EopInterfaceAdapter adapter = new EopInterfaceAdapter(new AppStoreInterfaceProperties(), new ObjectMapper());
+        EopInterfaceAdapter adapter = new EopInterfaceAdapter(new AppStoreInterfaceProperties(), new ObjectMapper(), null, null);
         Method m = EopInterfaceAdapter.class.getDeclaredMethod("parse", String.class);
         m.setAccessible(true);
         return (Map<String, Object>) m.invoke(adapter, resp);
@@ -42,8 +42,8 @@ class EopResponseParsingTest {
     @Test
     @DisplayName("EOP 业务错误透出 errdetail（含下游原始返回）")
     void eopErrorSurfacesErrDetail() throws Exception {
-        EopInterfaceAdapter adapter = new EopInterfaceAdapter(new AppStoreInterfaceProperties(), new ObjectMapper());
-        Method m = EopInterfaceAdapter.class.getDeclaredMethod("assertNoEopError", String.class, Map.class);
+        EopInterfaceAdapter adapter = new EopInterfaceAdapter(new AppStoreInterfaceProperties(), new ObjectMapper(), null, null);
+        Method m = EopInterfaceAdapter.class.getDeclaredMethod("assertNoEopError", String.class, String.class, Map.class);
         m.setAccessible(true);
 
         Map<String, Object> body = Map.of(
@@ -52,7 +52,7 @@ class EopResponseParsingTest {
                 "errdetail", "该地址返回码：405，报文片段：'405 Method Not Allowed'");
 
         Exception ex = Assertions.assertThrows(java.lang.reflect.InvocationTargetException.class,
-                () -> m.invoke(adapter, "notify", body));
+                () -> m.invoke(adapter, "notify", "http://demo/biz", body));
         String msg = ex.getCause().getMessage();
         Assertions.assertTrue(msg.contains("errcode=310"), "应含 errcode：" + msg);
         Assertions.assertTrue(msg.contains("errmsg=服务端内部异常"), "应含 errmsg：" + msg);

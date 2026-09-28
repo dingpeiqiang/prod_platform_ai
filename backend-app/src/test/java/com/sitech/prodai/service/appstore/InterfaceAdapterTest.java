@@ -24,6 +24,9 @@ class InterfaceAdapterTest {
     @Autowired
     private InterfaceFacade interfaceFacade;
 
+    @Autowired
+    private OfferSeedService offerSeedService;
+
     @Test
     @DisplayName("dev 装配生效模式为 mock")
     void modeIsMock() {
@@ -146,12 +149,47 @@ class InterfaceAdapterTest {
     }
 
     @Test
-    @DisplayName("传参 mode=auto：回落 yml 配置（dev=mock），成功且无回落标注")
+    @DisplayName("传参覆盖 mode=auto：回落 yml 配置（dev=mock），成功且无回落标注")
     void overrideAutoFallsBackToYml() {
         Map<String, Object> body = interfaceFacade.auditAsyncNotify(Map.of(
                 "sales_id", "900117029",
                 "mode", "auto"));
         Assertions.assertEquals(Boolean.TRUE, body.get("success"));
         Assertions.assertNull(body.get("note"));
+    }
+
+    @Test
+    @DisplayName("衍生兜底：未收录/缺模板销售品按模板从存量同类型产品生成全量配置 JSON（offerModel）")
+    void deriveOfferModelForUnknownOffer() {
+        // 构造一个未收录销售品，请求某模板 → 应衍生同类型存量报文明文（非空、模板同构）
+        Map<String, Object> derived = offerSeedService.reportOfOrDerive("000000000", "familyBasePrc");
+        Assertions.assertFalse(derived.isEmpty(), "未收录品应能按模板衍生出同类型报文");
+        Assertions.assertTrue(derived.containsKey("baseInfo"), "衍生报文应为模板同构（含 baseInfo）：" + derived.keySet());
+    }
+
+    @Test
+    @DisplayName("衍生兜底：存量品优先取自身该模板报文，不做同类型替换")
+    void preferOwnModelOverDonor() {
+        Map<String, Object> own = offerSeedService.reportOf("900102308", "personMainPrc");
+        Map<String, Object> resolved = offerSeedService.reportOfOrDerive("900102308", "personMainPrc");
+        Assertions.assertNotNull(own);
+        Assertions.assertEquals(own, resolved, "存量品命中时应原样返回自身报文");
+    }
+
+    @Test
+    @DisplayName("A1 相似度：传 templateId 时返回项均含 offerModel 全量配置 JSON")
+    void a1SimilarCarriesOfferModel() {
+        Map<String, Object> body = interfaceFacade.similarOfferQuery(Map.of(
+                "business_desc", "新增5G畅享融合套餐含宽带副卡高清",
+                "templateId", "familyBasePrc"));
+        Assertions.assertEquals("0", body.get("resultCode"), "应成功：" + body.get("resultMsg"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("similarOfferList");
+        Assertions.assertNotNull(list);
+        Assertions.assertFalse(list.isEmpty());
+        for (Map<String, Object> row : list) {
+            Assertions.assertTrue(row.containsKey("offerModel"),
+                    "每项应携带衍生补全的 offerModel：" + row.get("similarOfferId"));
+        }
     }
 }

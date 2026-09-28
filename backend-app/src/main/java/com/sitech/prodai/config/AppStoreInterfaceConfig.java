@@ -27,8 +27,10 @@ public class AppStoreInterfaceConfig {
 
     @Bean
     public EopInterfaceAdapter eopInterfaceAdapter(AppStoreInterfaceProperties props,
-                                                   ObjectMapper objectMapper) {
-        return new EopInterfaceAdapter(props, objectMapper);
+                                                   ObjectMapper objectMapper,
+                                                   com.sitech.prodai.service.appstore.OfferSeedService seed,
+                                                   com.sitech.prodai.service.appstore.OfferGroupSeedService groupSeed) {
+        return new EopInterfaceAdapter(props, objectMapper, seed, groupSeed);
     }
 
     @Bean

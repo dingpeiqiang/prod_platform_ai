@@ -157,6 +157,63 @@ public class OfferSeedService {
     }
 
     /**
+     * 存量销售品的逻辑模型报文，命中失败时按产品类型从存量同类型产品衍生生成（演示兜底）。
+     * <p>
+     * 背景：query_similar_offer 的相似产品出参在 real 模式/未收录场景下不含全量配置 JSON
+     * （offerModel/offerInfo）。为让需求分析模板轨 merge_nested 对位补全可继续，此处按请求模板
+     * 以 schema 为骨架、以存量同类型产品报文为值源衍生一份完整配置 JSON，保证链路不中断。
+     *
+     * @param offerId    命中的销售品编码（可为空/未收录）
+     * @param templateId 模板标识（personMainPrc 等 6 套之一）
+     * @return 该销售品该模板报文；缺失时衍生自同类型存量产品；模板非法/无同类型样本返回 null
+     */
+    public Map<String, Object> reportOfOrDerive(String offerId, String templateId) {
+        Map<String, Object> own = reportOf(offerId, templateId);
+        if (own != null && !own.isEmpty()) {
+            return own;
+        }
+        return deriveReport(templateId);
+    }
+
+    /**
+     * 按模板从存量同类型产品衍生逻辑模型报文：取任一载有该模板的存量销售品报文为基准，
+     * 若传入参照销售品编码（如命中品是在库存量品）则优先以它为值源。
+     * <p>
+     * 衍生策略（KISS）：schema 同构 → 直接复用同类型存量产品已实例化报文（键=模板字段名），
+     * 保证与模板 schema 完全对位；不做字段级跨品拼装，避免臆造值。
+     *
+     * @param templateId       模板标识
+     * @param preferredOfferId 首选值源销售品编码（可空）
+     * @return 模板同构报文；无该模板样本返回空 Map
+     */
+    public Map<String, Object> deriveReport(String templateId, String preferredOfferId) {
+        String tid = templateId == null ? "" : templateId.trim();
+        if (tid.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> preferred = reportOf(preferredOfferId, tid);
+        if (preferred != null && !preferred.isEmpty()) {
+            return preferred;
+        }
+        return donorReportOf(tid);
+    }
+
+    /** 同类型值源：任一载有该模板的存量销售品报文（保序取首个，确定性）。 */
+    private Map<String, Object> donorReportOf(String templateId) {
+        for (Map.Entry<String, Map<String, Map<String, Object>>> entry : offerModels.entrySet()) {
+            Map<String, Object> report = entry.getValue().get(templateId);
+            if (report != null && !report.isEmpty()) {
+                return report;
+            }
+        }
+        return Map.of();
+    }
+
+    public Map<String, Object> deriveReport(String templateId) {
+        return deriveReport(templateId, null);
+    }
+
+    /**
      * 相似度匹配：关键词命中（名称/系列/权益类型/资费档位/资源量）加权 + 档位相近度 + 资源相近度，
      * 返回按 score 降序列表。任意合理需求均至少返回基础分命中产品（未命中不中断流程）。
      *
@@ -191,10 +248,11 @@ public class OfferSeedService {
             item.put("similarityScore", String.format(Locale.ROOT, "%.2f", score));
             item.put("similarityDesc", descOf(offer));
             item.put("offerInfo", toFields24(offer));
-            // 存量产品逻辑模型报文（模板同构嵌套，key=模板字段名）：按请求模板直接取用，不实时生成
+            // 存量产品逻辑模型报文（模板同构嵌套，key=模板字段名）：按请求模板直接取用，不实时生成；
+            // 命中品缺该模板报文时，按产品类型从存量同类型产品衍生生成（演示兜底，保证 merge_nested 链路不中断）
             if (templateId != null && !templateId.isBlank()) {
-                Map<String, Object> model = reportOf(offerId, templateId);
-                if (model != null) {
+                Map<String, Object> model = reportOfOrDerive(offerId, templateId);
+                if (model != null && !model.isEmpty()) {
                     item.put("offerModel", model);
                 }
             }

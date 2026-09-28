@@ -21,7 +21,7 @@ class EopUploadStagingTest {
     private EopInterfaceAdapter adapterWith(String uploadDir) {
         AppStoreInterfaceProperties props = new AppStoreInterfaceProperties();
         props.getEop().setUploadDir(uploadDir);
-        return new EopInterfaceAdapter(props, new ObjectMapper());
+        return new EopInterfaceAdapter(props, new ObjectMapper(), null, null);
     }
 
     @Test
