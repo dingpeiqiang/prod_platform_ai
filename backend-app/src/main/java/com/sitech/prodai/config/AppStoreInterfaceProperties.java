@@ -121,6 +121,11 @@ public class AppStoreInterfaceProperties {
          * 先把文件写入该目录暂存，再读取该文件上传 EOP；目录不存在则自动创建。
          */
         private String uploadDir = "/data/stq/crmpos/crm-pgcent-mng/upload";
+        /**
+         * B1 上传接口的普通直调绝对地址（EOP 不支持上传接口时使用）：
+         * 非空时优先于 {@code base-url + paths.upload}，供上传不受 EOP 网关约束、直连下游服务。
+         */
+        private String uploadUrl = "";
         /** real 接口调用超时（毫秒）。 */
         private int timeoutMs = 60000;
         /**
@@ -256,6 +261,14 @@ public class AppStoreInterfaceProperties {
 
         public void setTimeoutMs(int timeoutMs) {
             this.timeoutMs = timeoutMs;
+        }
+
+        public String getUploadUrl() {
+            return uploadUrl;
+        }
+
+        public void setUploadUrl(String uploadUrl) {
+            this.uploadUrl = uploadUrl;
         }
     }
 

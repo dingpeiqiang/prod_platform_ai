@@ -138,7 +138,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         Object bytesObj = req.get("bytes");
         byte[] bytes = bytesObj instanceof byte[] b ? b : null;
         String fileName = MapOps.str(firstNonBlank(MapOps.str(req.get("fileName")), MapOps.str(req.get("file_name"))));
-        String url = businessUrl("upload");
+        String url = uploadUrl();
         long begin = System.currentTimeMillis();
         logRealBegin("upload", "POST", url);
         try {
@@ -147,14 +147,14 @@ public class EopInterfaceAdapter implements InterfaceFacade {
                 if (fileName.isBlank()) {
                     fileName = MapOps.str(reqId) + ".xlsx";
                 }
-                // 先落盘暂存（文件名附加时间戳）到 upload-dir，再读取该文件上传 EOP。
+                // 先落盘暂存（文件名附加时间戳）到 upload-dir，再读取该文件上传。
                 fileName = stageFile(fileName, bytes);
                 bytes = readStaged(uploadDir(), fileName);
-                // EOP 规范：multipart/form-data 上传，文件字段名由配置指定（默认 file），
+                // multipart/form-data 上传，文件字段名由配置指定（默认 file），
                 // req_id/chat_id 作为普通表单字段随文件一并提交。
                 body = postMultipart("upload", url, reqId, chatId, fileName, bytes);
             } else if (!reqId.isBlank()) {
-                // 兼容形态：无文件字节时仅提交 {req_id, chat_id}（EOP 侧自行生成文件）
+                // 兼容形态：无文件字节时仅提交 {req_id, chat_id}（服务侧自行生成文件）
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("req_id", reqId);
                 if (!chatId.isBlank()) {
@@ -458,7 +458,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
         logRealResponse(key, url, System.currentTimeMillis() - start, resp);
         Map<String, Object> body = parse(resp);
-        assertNoEopError(key, body);
+        assertNoEopError(key, url, body);
         return body;
     }
 
@@ -485,7 +485,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
         logRealResponse(key, url, System.currentTimeMillis() - start, resp);
         Map<String, Object> body = parse(resp);
-        assertNoEopError(key, body);
+        assertNoEopError(key, url, body);
         return body;
     }
 
@@ -564,7 +564,7 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         }
         logRealResponse(key, url, System.currentTimeMillis() - start, resp);
         Map<String, Object> body = parse(resp);
-        assertNoEopError(key, body);
+        assertNoEopError(key, url, body);
         return body;
     }
 
@@ -610,8 +610,13 @@ public class EopInterfaceAdapter implements InterfaceFacade {
      * 严格校验 EOP 业务错误：响应含 {@code errcode}/{@code errmsg}/{@code errdetail}（如鉴权失败 errcode=242）
      * 时抛出携带原始错误码/信息/详情的异常，由 {@link #realFail} 归一为 {@code REAL_CALL_FAILED}，
      * 避免把业务错误静默降级为"未命中"。errdetail 常含下游原始返回（如 405 页面片段），须一并透出便于定位。
+     * <p>
+     * 当 {url} 为 B1 普通直调地址（非 EOP 网关）时，下游响应结构不含 errcode/errmsg，跳过该校验。
      */
-    private void assertNoEopError(String key, Map<String, Object> body) {
+    private void assertNoEopError(String key, String url, Map<String, Object> body) {
+        if (isPlainUpload(url)) {
+            return;
+        }
         String errcode = firstNonBlank(MapOps.str(body.get("errcode")), MapOps.str(body.get("errorCode")));
         String errmsg = firstNonBlank(MapOps.str(body.get("errmsg")), MapOps.str(body.get("errorMsg")));
         String errdetail = firstNonBlank(MapOps.str(body.get("errdetail")), MapOps.str(body.get("errorDetail")),
@@ -625,6 +630,21 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             }
             throw new IllegalStateException(msg.toString());
         }
+    }
+
+    /** B1 上传地址：配置了 upload-url 则直调该绝对地址，否则回落 base-url + paths.upload。 */
+    private String uploadUrl() {
+        String u = props.getEop().getUploadUrl();
+        if (u != null && !u.isBlank()) {
+            return u.trim();
+        }
+        return businessUrl("upload");
+    }
+
+    /** 判断给定地址是否为 B1 普通直调上传地址（用于跳过 EOP 专有的 errcode/errmsg 校验）。 */
+    private boolean isPlainUpload(String url) {
+        String u = props.getEop().getUploadUrl();
+        return u != null && !u.isBlank() && u.trim().equals(url);
     }
 
     /** 业务地址 = base-url + paths.<接口键>；未配置则明确报错（严格 real，不静默）。 */

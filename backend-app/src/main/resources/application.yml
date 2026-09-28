@@ -143,13 +143,15 @@ prodai:
         # B1 上传前稽核 Excel 本地落盘目录（文件名自动附加时间戳 _yyyyMMddHHmmss），落盘后再上传 EOP
         upload-dir: ${EOP_UPLOAD_DIR:/data/stq/crmpos/crm-pgcent-mng/upload}
         timeout-ms: ${EOP_TIMEOUT_MS:60000}
+        # B1 上传接口：EOP 不支持，改为普通直调地址（绝对地址，优先于 base-url+paths.upload；为空时回落 EOP）
+        upload-url: ${EOP_UPLOAD_URL:http://134.95.235.12:5002/upload}
         # 接口键 → 业务路径（拼到 base-url 之后）
         paths:
           similar: ${EOP_PATH_SIMILAR:/api/ah/cpcp/similar}
           upload: ${EOP_PATH_UPLOAD:/api/ah/cpcp/upload}
           notify: ${EOP_PATH_NOTIFY:/api/ah/cpcp/async_report_notify_direct}
           insert: ${EOP_PATH_INSERT:/api/ahhui/cpcp/insertAiAuditResult}
-          sql: ${EOP_PATH_SQL:/api/ah/slzx/invokeInfo/executeSqlService}
+          sql: ${EOP_PATH_SQL:/api/anhui/cpcp/executeSql}
           testStart: ${EOP_PATH_TEST_START:/api/anhui/cpcp/offerTest}
           testScenes: ${EOP_PATH_TEST_SCENES:/api/anhui/cpcp/getTestScenes}
           testProgress: ${EOP_PATH_TEST_PROGRESS:/api/anhui/cpcp/getTestProgress}
@@ -160,7 +162,7 @@ prodai:
           upload: "2069625643688792064"
           notify: "2069670925484838912"
           insert: "2092438683005603840"
-          sql: "2077203852248748032"
+          sql: "2070444944312127490"
           testStart: "2070425775141294080"
           testScenes: "2070440544124538880"
           testProgress: "2071410624769560576"
