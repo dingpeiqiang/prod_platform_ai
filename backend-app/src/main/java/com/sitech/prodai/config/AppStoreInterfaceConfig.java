@@ -21,8 +21,9 @@ import org.springframework.context.annotation.Configuration;
 public class AppStoreInterfaceConfig {
 
     @Bean
-    public MockInterfaceAdapter mockInterfaceAdapter(OfferSimV16Service sim) {
-        return new MockInterfaceAdapter(sim);
+    public MockInterfaceAdapter mockInterfaceAdapter(OfferSimV16Service sim,
+                                                     AppStoreInterfaceProperties props) {
+        return new MockInterfaceAdapter(sim, props);
     }
 
     @Bean

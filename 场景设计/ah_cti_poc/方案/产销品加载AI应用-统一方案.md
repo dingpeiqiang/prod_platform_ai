@@ -55,7 +55,7 @@
 | 原平台构件（第 2~6 章业务口径描述） | V2.0 工作流 JSON 实现（当前基线） |
 | --- | --- |
 | 智能体常驻提示词 | 智能体（LLM）按 3.2 提示词【意图→工作流映射表】做**语义识别并直调** 14 个子流；上传 .xlsx 时挂载 skill 解析文档为结构化文本（工作流不接收文件）；无独立意图调度主流程 |
-| 子工作流 `wf_sub_01~08` | 14 个工作流 JSON：`wf_sub_00`~`wf_sub_13`（`gen_workflows_v2.py` 确定性生成，位于 `工作流配置/智能体工作流集V1.6/`） |
+| 子工作流 `wf_sub_01~08` | 14 个工作流 JSON：`wf_sub_00`~`wf_sub_13`（`gen_workflows.py` 确定性生成，位于 `工作流配置/智能体工作流集V1.6/`） |
 | 插件工具 1~14 契约 | 后端 AppStoreV16Controller `/api/v1/appstore/*` 适配端点（13 工具 + 8 个 V2.0 新增端点，网关 `BASE_URL=http://10.86.13.201:31281`） |
 | 代码节点 | 确定性逻辑内嵌为工作流 **type=6 代码节点**（CODE_RENDER_REQ / CODE_GET_TEMPLATE / CODE_VALIDATE_ELEMENTS / CODE_MERGE_NESTED / CODE_OP_VALIDATE_NESTED / CODE_RENDER_TABLE / CODE_EXTRACT_RECORD / CODE_POLL_PROGRESS / CODE_MAP_FIXED_CASES / CODE_FUSION_GROUP_ECHO / CODE_OP_ROOT_CAUSE / CODE_OP_CREATE_WO / CODE_OP_SHELF_COMPLIANCE / CODE_SUMMARY_APPROVAL / CODE_DOWNLOAD_* 等）（需求文档解析不在工作流内，由智能体 skill 承担） |
 | 平台知识库 K1~K5 + 向量召回 | `knowledge/` 目录 + 确定性代码节点/后端服务按需读取（K4 按销售品 ID 单文件精确定位，禁止全量读取） |
@@ -192,7 +192,7 @@
 | 配置项 | 取值 |
 | --- | --- |
 | 插件 | 挂载第 4 章全部插件工具与后端适配端点（22 个：13 工具 + 节点结果存储查询插件 + 8 适配端点） |
-| 工作流 | 挂载 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`，见 `工作流配置/智能体工作流集V1.6/`，`gen_workflows_v2.py` 生成；无意图调度主流程，由智能体语义识别直调；需求文档解析由挂载 skill 承担，不占工作流） |
+| 工作流 | 挂载 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`，见 `工作流配置/智能体工作流集V1.6/`，`gen_workflows.py` 生成；无意图调度主流程，由智能体语义识别直调；需求文档解析由挂载 skill 承担，不占工作流） |
 | 知识库 | 产销品业务规范库 / 资费规则库 / 测试规范库 / 存量销售品资料库 / FAQ（K1~K5，`knowledge/` 目录） |
 
 ---
@@ -582,7 +582,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ### 5.2 14 个子工作流清单（当前实现基线）
 
-> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows_v2.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。V3.11 需求文档解析**不由工作流承担**（工作流 start 节点无法接收文件/附件），改由智能体挂载 skill 解析为结构化文本后作为 `requirement_text` 传入 `wf_sub_00`。**
+> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。V3.11 需求文档解析**不由工作流承担**（工作流 start 节点无法接收文件/附件），改由智能体挂载 skill 解析为结构化文本后作为 `requirement_text` 传入 `wf_sub_00`。**
 
 | 子工作流 | 编码 | 入参 | 关键链路 / 代码节点 |
 | --- | --- | --- | --- |
@@ -616,7 +616,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 | 规范条款 | 本方案落点 |
 | --- | --- |
-| 源码驱动纪律 | 14 子工作流 JSON 全部由 `gen_workflows_v2.py` 生成，禁止手改；改逻辑→改生成器→重新生成+全量校验 |
+| 源码驱动纪律 | 14 子工作流 JSON 全部由 `gen_workflows.py` 生成，禁止手改；改逻辑→改生成器→重新生成+全量校验 |
 | 节点 type 全集 | 仅 0/1/2/3/6/9/13；无循环节点（轮询用 CODE_POLL_PROGRESS） |
 | 入参两态/引用三层一致 | 常量 vs 引用；`nameValue[1]`/`currValue`=上游 id+出参名 |
 | array 出参配 item 树 | ARRAY_ITEM_FIELDS 白名单，无裸数组 |
@@ -756,7 +756,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - **循环体**：对每品执行该环节的调用/渲染，产出结果写入 `results[offer_seq]`。
 - **循环输出**：聚合为单键结果（如 `spec_results[]`、`fee_results[]`），仍以父 `req_id` 落 `node_name`。
 - **失败隔离**：单品失败记录该 `offer_seq` 明细，不影响其余品；整体通过性 = 全部品通过（如 `spec` 仅当 N 品全 pass 才写入）。
-- **节点 type 合规**：仅使用 0/1/2/3/6/9/13；循环不引入新 type。**生成器确定性生成**（`gen_workflows_v2.py`），禁手改 JSON。
+- **节点 type 合规**：仅使用 0/1/2/3/6/9/13；循环不引入新 type。**生成器确定性生成**（`gen_workflows.py`），禁手改 JSON。
 
 ##### 6.6.5.4 逐子流支撑矩阵（14 子流）
 
@@ -795,7 +795,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 风险 | 说明 | 对策 |
 | --- | --- | --- |
 | `CODE_GEN_OFFER_ID` 单值碰撞 | `wf_sub_02` 节点111 单值生成，多品易碰撞 | 扩展为逐品生成，以 `offer_seq` 参与种子保证唯一 |
-| 无循环节点 | 平台仅 type=6 内嵌 for | 循环全部内嵌代码节点，禁引入新 type；`gen_workflows_v2.py` 确定性生成 |
+| 无循环节点 | 平台仅 type=6 内嵌 for | 循环全部内嵌代码节点，禁引入新 type；`gen_workflows.py` 确定性生成 |
 | 单品失败污染整体 | 任一品失败不应误判其余品 | 逐品结果隔离 + 失败明细带 `offer_seq`；写入性键（spec/fee/test）以"全品通过"为门禁 |
 | 出参键越界 | 聚合数组键须 ⊆ 代码节点返回键 | 聚合键（如 `spec_results[]`）显式纳入节点返回；出参 ⊆ 代码节点返回键纪律不破 |
 | 多 globalId/requestIds 归集 | 稽核/测试异步结果需按品对齐 | 以 `offer_seq`/`sales_id`/`requestId` 为关联键归集，落库仍父键单键 |
@@ -852,7 +852,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 <xsbot-panel …>
 ```
 
-**落点**：`gen_workflows_v2.py` 中 `wf_sub_07` 节点710 prompt 补格式规范；节点707 prompt 明确"禁止输出 `{…}` 占位符，字段为空时省略该行或写"无"；异常分支另设**汇总渲染**（不再由结束节点直嵌 `{offers}` 原始 JSON，改由逐品列表文本承载）。异常节点709 结束模板同步去除括注指令、`{offers}` 裸 JSON。
+**落点**：`gen_workflows.py` 中 `wf_sub_07` 节点710 prompt 补格式规范；节点707 prompt 明确"禁止输出 `{…}` 占位符，字段为空时省略该行或写"无"；异常分支另设**汇总渲染**（不再由结束节点直嵌 `{offers}` 原始 JSON，改由逐品列表文本承载）。异常节点709 结束模板同步去除括注指令、`{offers}` 裸 JSON。
 
 #### 6.7.1 业务编码 ↔ 图谱 OfferingId 对齐设计
 
@@ -876,11 +876,11 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 | # | 部署项 | 配置值 |
 | --- | --- | --- |
-| 1 | 工作流 JSON | 14 个子工作流（`工作流配置/智能体工作流集V1.6/`，含稽核两阶段 wf_sub_03/wf_sub_12、测试两阶段 wf_sub_04/wf_sub_13），`gen_workflows_v2.py` 生成，ALL_OK |
+| 1 | 工作流 JSON | 14 个子工作流（`工作流配置/智能体工作流集V1.6/`，含稽核两阶段 wf_sub_03/wf_sub_12、测试两阶段 wf_sub_04/wf_sub_13），`gen_workflows.py` 生成，ALL_OK |
 | 2 | 智能体提示词 | 3.2 意图→工作流映射表 + 确认语义识别 + 步进式纪律 + 超范围拒答 |
 | 3 | 子工作流节点 | 代码节点（CODE_*）与插件端点逐条核对（wf_sub_01 节点106~113、wf_sub_04/13 测试两阶段、wf_sub_03/12 稽核两阶段，节点315） |
 | 4 | knowledge/ 知识库 | K1~K5 + K5存量报文 + ontology-fields + seed_offer_groups + 存量产品目录_清洗后 |
-| 5 | 生成器 | `gen_workflows_v2.py`（代码节点内嵌 CODE_* 逻辑，固定用例与九章节模板内嵌一致） |
+| 5 | 生成器 | `gen_workflows.py`（代码节点内嵌 CODE_* 逻辑，固定用例与九章节模板内嵌一致） |
 | 6 | 网关地址 | `BASE_URL=http://10.86.13.201:31281`（替换真实实现仅改此值） |
 | 7 | 后端依赖 | 13 工具模拟服务 + 8 适配端点（AppStoreV16Controller）+ NodeResultService（pd_ai_node_results 表）；**V3.9 新增** InterfaceFacade（mock/real 策略）+ 智能稽核四接口适配（`/audit/file/upload`、`/audit/async/notify`、`/audit/result/insert`、`/audit/sql/query`）；**V3.10 新增** 需求文档解析端点 `/requirement/parse-xlsx` |
 | 8 | 接口模式配置 | `application.yml` 新增 `prodai.appstore.interface.*`：`mode=mock`（开发，返回模拟报文）/`real`（现场，直连真实接口）+ `eop.*`（base-url/app-key/dst-sys-id/svc-code/sign/upload-file-field/timeout）+ `poll.audit.*`/`poll.test.*`（见 4.5.4；分环境由 application-dev.yml / application-prod.yml 覆盖） |
@@ -957,7 +957,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 2 后端适配端点开发 | 既有 13 工具 + 8 新适配端点（含 V3.10 需求文档解析 `/requirement/parse-xlsx`）逐一联调（裸报文契约、异步测试轮询、实时稽核同步返回） | 5天 |
 | 2.5 现场接口适配（V3.9） | `application.yml` 新增 `prodai.appstore.interface.*` 配置组 + InterfaceFacade + Spring 策略工厂；9 现场接口封装（A1/C1~C4 信封归一、B1~B4 智能稽核四接口）；dev/prod 分环境配置；mock/real 同构校验 | 4天 |
 | 3 知识库建设 | 规范文档采编、《产品信息.txt》切片入库（knowledge/）、FAQ 编制 | 3天 |
-| 4 工作流编排 | `gen_workflows_v2.py` 生成 14 个子工作流 JSON 并导入调试；代码节点、req_id 自查链路联调 | 6天 |
+| 4 工作流编排 | `gen_workflows.py` 生成 14 个子工作流 JSON 并导入调试；代码节点、req_id 自查链路联调 | 6天 |
 | 5 智能体集成 | 提示词、插件、工作流、知识库装配；模型参数调优 | 2天 |
 | 6 验证与优化 | 全流程验证：方案确认门禁、需求审批二次确认、步进式推进、异常引导与续跑、审批门禁、消息查询、受理验证结论完整性；提示词迭代 | 4天 |
 
@@ -1031,7 +1031,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 ### A. 工作流 JSON 路线（当前基线，已就绪项以 [x] 标注）
 - [x] 知识资产迁至 `knowledge/`：K1~K5、ontology-fields、seed_offer_groups、templates 注册表、存量产品目录_清洗后、K5 存量报文
 - [x] 后端 `/api/v1/appstore/*` 适配端点就绪（13 工具 + 8 新端点；BASE_URL=http://10.86.13.201:31281）
-- [x] `gen_workflows_v2.py` 生成 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`）并导入
+- [x] `gen_workflows.py` 生成 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`）并导入
 - [x] 确定性逻辑内嵌 type=6 代码节点（CODE_*）取代技能包脚本子命令
 - [x] 智能体按 3.2 提示词语义识别直调（职责分层：只做语义识别/业务理解/结果表达）
 - [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+推送即结束，审批状态由 wf_sub_08 查询）、监控运维（根因闭环）、审批进度/存量查询/存量合规辅助子流

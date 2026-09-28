@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-需求提报",
-  "flowRemark": "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（一次抽 N 品，输出 offers 数组 snake_case 字段，未提及项空串）→代码节点render_requirement_report确定性逐品渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report，result_json 含 req_id+offers[])后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
+  "flowRemark": "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（snake_case平面JSON，未提及项空串）→代码节点render_requirement_report确定性渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report)后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -22,15 +22,6 @@
             "relName": "",
             "name": "reporter",
             "description": "提报人（会话用户，未提供可空）",
-            "type": "string",
-            "required": false,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "req_id",
-            "description": "需求单号（可选，链路/调试透传；非空时沿用，严禁重新生成）",
             "type": "string",
             "required": false,
             "content": ""
@@ -61,8 +52,8 @@
       {
         "outputs": [
           {
-            "name": "offers_json",
-            "description": "需求商品字段数组 JSON 字符串（每元素为一个商品的 snake_case 字段，未提及项为空字符串）",
+            "name": "elements_json",
+            "description": "需求字段 snake_case 平面 JSON（未提及项为空字符串）",
             "type": "string",
             "content": ""
           }
@@ -74,7 +65,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品需求提报助手（环节1 需求提报），只做一件事：把用户需求原文翻译为结构化需求字段 JSON（可能含多个商品），不做补全、不做完整性判断、不渲染文档、不做任何业务决策。需求原文：{requirement_text}\n输出一个 offers 数组：用户原文中每提及一个销售品，就输出一个数组元素；元素按原文出现顺序编号 offer_seq 从 1 开始递增；仅提及一个销售品时数组长度为 1。\n每个元素字段口径（snake_case，逐字引用用户描述，未提及字段填空字符串）：\n- offer_seq：商品序号（整数，从 1 开始）\n- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费/融合套餐）；series：所属系列\n  · 产品类型判定优先看需求原文关键词：含“融合”二字（如“5G-A 融合套餐”“5G畅享融合79元套餐”）一律判为**融合套餐**；家庭类（家庭成员/家庭共享）判为家庭基础套餐；仅个人/宽带/附加资费按其余枚举对应。\n- members：融合成员（仅融合品——product_type 为融合套餐或家庭基础套餐时填写，逗号/顿号分隔，逐字引用原文成员如“主卡、宽带、天翼高清、副卡功能费”；非融合品不填）\n- price：套餐档位（月费，元/月）；resources：套内资源（流量/语音/短信/副卡等）；out_price：套外资费\n- billing_cycle：计费周期；effective_way：生效方式；validity：套餐有效期\n- change_rule：变更规则；cancel_rule：退订/拆机规则\n强制同义映射：月费/月租/套餐费+金额→price；每月XX G/含XX流量→resources；XX分钟语音/通话→resources；支持副卡→resources；按月付费→billing_cycle；X月X日生效→effective_way；退订/拆机→cancel_rule。\n各商品字段严格归属对应商品，禁止跨商品串值；禁止臆造字段值；原文未明确的字段一律空字符串。\n输出要求：只输出一个 JSON 对象，对象仅含一个键 offers_json，其值为上述 offers 数组 JSON 的字符串（即先按字段口径生成 offers 数组，再将该数组 JSON 整体作为 offers_json 的值，值为一个字符串，形如 {\"offers_json\": \"[{\\\"offer_seq\\\":1,\\\"name\\\":\\\"...\\\",...}]\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。"
+              "content": "你是产销品需求提报助手（环节1 需求提报），只做一件事：把用户需求原文翻译为结构化需求字段 JSON，不做补全、不做完整性判断、不渲染文档、不做任何业务决策。需求原文：{requirement_text}\n字段口径（snake_case 平面 JSON，逐字引用用户描述，未提及字段填空字符串）：\n- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费）；series：所属系列\n- members：融合成员（仅融合品如家庭基础套餐，逗号/顿号分隔；单商品不填）\n- price：套餐档位（月费，元/月）；resources：套内资源（流量/语音/短信/副卡等）；out_price：套外资费\n- billing_cycle：计费周期；effective_way：生效方式；validity：套餐有效期\n- change_rule：变更规则；cancel_rule：退订/拆机规则\n强制同义映射：月费/月租/套餐费+金额→price；每月XX G/含XX流量→resources；XX分钟语音/通话→resources；支持副卡→resources；按月付费→billing_cycle；X月X日生效→effective_way；退订/拆机→cancel_rule。\n禁止臆造字段值；原文未明确的字段一律空字符串。\n输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述需求字段 JSON 的字符串（即先按字段口径生成字段 JSON，再将该字段 JSON 整体作为 elements_json 的值，值为一个字符串，形如 {\"elements_json\": \"{\\\"name\\\":\\\"...\\\",...}\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。"
             }
           ],
           "inputParameters": [
@@ -134,41 +125,27 @@
             "type": "string"
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000003,offers",
-            "name": "offers",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000003,elements",
+            "name": "elements",
             "type": "string"
           }
         ],
-        "code": "import json, random, datetime\nfrom typing import Any, Dict\n\nEMPTY_MARKS = ('', '待补充', '系统待生成', '无', '暂无')\nFUSION_PRODUCT_TYPES = ('家庭基础套餐', '融合套餐')\nBASE_FIELDS = (\n    ('name', '销售品名称'), ('product_type', '产品类型'), ('series', '所属系列'),\n    ('price', '套餐档位（月费）'), ('resources', '套内资源'), ('out_price', '套外资费'),\n    ('billing_cycle', '计费周期'), ('effective_way', '生效方式'), ('validity', '套餐有效期'),\n    ('change_rule', '变更规则'), ('cancel_rule', '退订/拆机规则'),\n)\nFUSION_EXTRA_FIELDS = (('members', '融合成员'),)\nPRICE_FIELDS = ('price',)\nREQUIRED_FIELDS = ('price', 'resources')\n\ndef _norm(v):\n    if v is None:\n        return ''\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    return '' if s in EMPTY_MARKS else s\n\ndef _gen_req_id():\n    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')\n    return 'PLAN%s%03d' % (ts, random.randint(0, 999))\n\ndef _parse(raw):\n    if isinstance(raw, dict):\n        return raw\n    if isinstance(raw, list):\n        return {'offers': raw}\n    if not isinstance(raw, str) or not raw.strip():\n        return {}\n    try:\n        obj = json.loads(raw)\n        if isinstance(obj, list):\n            # V3.12 多商品：LLM 抽取出参可能是 N 品字段数组，归一为 {'offers': [...]}\n            return {'offers': obj}\n        return obj\n    except Exception:\n        t = raw.strip()\n        if ':' in t and not t.startswith('{') and not t.startswith('['):\n            try:\n                obj = json.loads(t.split(':', 1)[1].strip())\n                if isinstance(obj, list):\n                    return {'offers': obj}\n                return obj\n            except Exception:\n                return {}\n        return {}\n\ndef fields_for(product_type):\n    pt = _norm(product_type)\n    # 融合判定：枚举命中 或 产品类型文本含“融合”二字（兼容 LLM 输出“融合套餐/5G-A融合”等变体）\n    if pt in FUSION_PRODUCT_TYPES or '融合' in str(pt):\n        return BASE_FIELDS + FUSION_EXTRA_FIELDS\n    return BASE_FIELDS\n\nasync def main(args):\n    p = args.params\n    # V3.12 多商品：入参 offers_json（N 品字段数组），兼容旧 elements_json（单品平面 JSON → 包装为 1 品）\n    raw = p.get('offers_json') or p.get('elements_json') or ''\n    obj = _parse(raw)\n    if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n        elements_list = obj.get('offers')\n    elif isinstance(obj, dict) and obj:\n        elements_list = [obj]\n    else:\n        elements_list = []\n    req_id = str(p.get('req_id') or _gen_req_id())\n    reporter = str(p.get('reporter') or '')\n    need_summary = str(p.get('need_summary') or '')\n    today = datetime.date.today().strftime('%Y-%m-%d')\n    def cell(v):\n        return '待补充' if v == '' else str(v)\n    def table(rows):\n        if not rows:\n            return []\n        out = ['| 字段 | 内容 |', '| --- | --- |']\n        out += ['| %s | %s |' % (k, v) for k, v in rows]\n        return out\n    offers_out = []\n    pending_all = []\n    lines = []\n    lines.append('## 销售品需求提报单')\n    base_rows = [('需求单号', req_id), ('提报日期', today), ('商品数量', str(len(elements_list)))]\n    if reporter:\n        base_rows.append(('提报人', reporter))\n    if need_summary:\n        base_rows.append(('需求概述', need_summary))\n    lines.append('### 1. 需求基本信息')\n    lines += table(base_rows)\n    lines.append('')\n    for idx, elements in enumerate(elements_list, start=1):\n        if not isinstance(elements, dict):\n            continue\n        offer_seq = int(elements.get('offer_seq') or idx)\n        fmt = lambda k: _norm(elements.get(k))\n        fields = fields_for(elements.get('product_type'))\n        values = {}\n        pending = []\n        for key, label in fields:\n            val = fmt(key)\n            values[key] = val\n            if key in REQUIRED_FIELDS and (val == '' or (key in PRICE_FIELDS and val in (0, '0', '0元'))):\n                pending.append(label)\n        offers_out.append({'offer_seq': offer_seq, 'fields': values, 'pending_fields': pending})\n        if pending:\n            pending_all.append('第%d档（%s）：%s' % (offer_seq, cell(values.get('name')), '、'.join(pending)))\n        prod_rows = [('销售品名称', cell(values['name'])), ('产品类型', cell(values['product_type']))]\n        if values['series']:\n            prod_rows.append(('所属系列', values['series']))\n        if values.get('members'):\n            prod_rows.append(('融合成员', values['members']))\n        fee_rows = [('套餐档位（月费）', (str(values['price']) + ' 元/月') if values['price'] != '' else '待补充')]\n        if values['resources']:\n            fee_rows.append(('套内资源', values['resources']))\n        if values['out_price']:\n            fee_rows.append(('套外资费', values['out_price']))\n        if values['billing_cycle']:\n            fee_rows.append(('计费周期', values['billing_cycle']))\n        order_rows = []\n        if values['effective_way']:\n            order_rows.append(('生效方式', values['effective_way']))\n        if values['validity']:\n            order_rows.append(('套餐有效期', values['validity']))\n        if values['change_rule']:\n            order_rows.append(('变更规则', values['change_rule']))\n        if values['cancel_rule']:\n            order_rows.append(('退订/拆机规则', values['cancel_rule']))\n        lines.append('### 商品 %d（offer_seq=%d）：%s' % (idx, offer_seq, cell(values['name'])))\n        lines.append('#### 产品/销售品信息')\n        lines += table(prod_rows)\n        lines.append('')\n        lines.append('#### 资费方案要点')\n        lines += table(fee_rows)\n        lines.append('')\n        lines.append('#### 订购/变更/退订规则')\n        if order_rows:\n            lines += table(order_rows)\n        else:\n            lines.append('（未提及，从宽不催补）')\n        lines.append('')\n    lines.append('### 待补充字段')\n    lines.append('\\n'.join(pending_all) if pending_all else '无')\n    while lines and lines[-1] == '':\n        lines.pop()\n    text = '\\n'.join(lines)\n    ret: Output = {\n        \"report_text\": text,\n        \"pending_fields\": '；'.join(pending_all),\n        \"pending_count\": (str(len(pending_all)) if pending_all else ''),\n        \"req_id\": req_id,\n        \"offers\": json.dumps({'req_id': req_id, 'offers': offers_out}, ensure_ascii=False),\n    }\n    return ret",
+        "code": "import json, random, datetime\nfrom typing import Any, Dict\n\nEMPTY_MARKS = ('', '待补充', '系统待生成', '无', '暂无')\nFUSION_PRODUCT_TYPES = ('家庭基础套餐',)\nBASE_FIELDS = (\n    ('name', '销售品名称'), ('product_type', '产品类型'), ('series', '所属系列'),\n    ('price', '套餐档位（月费）'), ('resources', '套内资源'), ('out_price', '套外资费'),\n    ('billing_cycle', '计费周期'), ('effective_way', '生效方式'), ('validity', '套餐有效期'),\n    ('change_rule', '变更规则'), ('cancel_rule', '退订/拆机规则'),\n)\nFUSION_EXTRA_FIELDS = (('members', '融合成员'),)\nPRICE_FIELDS = ('price',)\nREQUIRED_FIELDS = ('price', 'resources')\n\ndef _norm(v):\n    if v is None:\n        return ''\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    return '' if s in EMPTY_MARKS else s\n\ndef _gen_req_id():\n    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')\n    return 'PLAN%s%03d' % (ts, random.randint(0, 999))\n\ndef fields_for(product_type):\n    if _norm(product_type) in FUSION_PRODUCT_TYPES:\n        return BASE_FIELDS + FUSION_EXTRA_FIELDS\n    return BASE_FIELDS\n\nasync def main(args):\n    p = args.params\n    raw = p.get('elements_json') or ''\n    elements = {}\n    if isinstance(raw, str) and raw.strip():\n        try:\n            elements = json.loads(raw)\n        except Exception:\n            try:\n                t = raw.strip()\n                if ':' in t and not t.startswith('{') and not t.startswith('['):\n                    t = t.split(':', 1)[1].strip()\n                elements = json.loads(t)\n            except Exception:\n                elements = {}\n    elif isinstance(raw, dict):\n        elements = raw\n    req_id = str(p.get('req_id') or _gen_req_id())\n    reporter = str(p.get('reporter') or '')\n    need_summary = str(p.get('need_summary') or '')\n    today = datetime.date.today().strftime('%Y-%m-%d')\n    fmt = lambda k: _norm(elements.get(k))\n    fields = fields_for(elements.get('product_type'))\n    values = {}\n    pending = []\n    for key, label in fields:\n        val = fmt(key)\n        values[key] = val\n        if key in REQUIRED_FIELDS and (val == '' or (key in PRICE_FIELDS and val in (0, '0', '0元'))):\n            pending.append(label)\n    def cell(v):\n        return '待补充' if v == '' else str(v)\n    lines = []\n    lines.append('## 销售品需求提报单')\n    base_rows = [('需求单号', req_id), ('提报日期', today)]\n    if reporter:\n        base_rows.append(('提报人', reporter))\n    if need_summary:\n        base_rows.append(('需求概述', need_summary))\n    prod_rows = [('销售品名称', cell(values['name'])), ('产品类型', cell(values['product_type']))]\n    if values['series']:\n        prod_rows.append(('所属系列', values['series']))\n    if values.get('members'):\n        prod_rows.append(('融合成员', values['members']))\n    fee_rows = [('套餐档位（月费）', (values['price'] + ' 元/月') if values['price'] != '' else '待补充')]\n    if values['resources']:\n        fee_rows.append(('套内资源', values['resources']))\n    if values['out_price']:\n        fee_rows.append(('套外资费', values['out_price']))\n    if values['billing_cycle']:\n        fee_rows.append(('计费周期', values['billing_cycle']))\n    order_rows = []\n    if values['effective_way']:\n        order_rows.append(('生效方式', values['effective_way']))\n    if values['validity']:\n        order_rows.append(('套餐有效期', values['validity']))\n    if values['change_rule']:\n        order_rows.append(('变更规则', values['change_rule']))\n    if values['cancel_rule']:\n        order_rows.append(('退订/拆机规则', values['cancel_rule']))\n    def table(rows):\n        if not rows:\n            return []\n        out = ['| 字段 | 内容 |', '| --- | --- |']\n        out += ['| %s | %s |' % (k, v) for k, v in rows]\n        return out\n    lines.append('### 1. 需求基本信息')\n    lines += table(base_rows)\n    lines.append('')\n    lines.append('### 2. 产品/销售品信息')\n    lines += table(prod_rows)\n    lines.append('')\n    lines.append('### 3. 资费方案要点')\n    lines += table(fee_rows)\n    lines.append('')\n    lines.append('### 4. 订购/变更/退订规则')\n    if order_rows:\n        lines += table(order_rows)\n    else:\n        lines.append('（未提及，从宽不催补）')\n    lines.append('')\n    lines.append('### 5. 待补充字段')\n    lines.append('、'.join(pending) if pending else '无')\n    while lines and lines[-1] == '':\n        lines.pop()\n    text = '\\n'.join(lines)\n    ret: Output = {\n        \"report_text\": text,\n        \"pending_fields\": ','.join(pending),\n        \"pending_count\": (str(len(pending)) if pending else ''),\n        \"req_id\": req_id,\n        \"elements\": json.dumps(values, ensure_ascii=False),\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000002",
-            "relName": "offers_json",
-            "name": "offers_json",
-            "description": "引用节点2需求商品字段数组 JSON",
+            "relName": "elements_json",
+            "name": "elements_json",
+            "description": "引用节点2需求字段 JSON",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000002",
-              "a1b2c3d4-0000-4000-8000-000000000002,offers_json"
+              "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000002,offers_json"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
-            "relName": "req_id",
-            "name": "req_id",
-            "description": "需求单号（开始节点，非空时沿用不重新生成）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000001",
-              "a1b2c3d4-0000-4000-8000-000000000001,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,req_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
@@ -349,17 +326,17 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
-            "relName": "offers",
+            "relName": "elements",
             "name": "result_json",
-            "description": "需求商品字段数组 JSON（=代码节点渲染后归一 offers，含 req_id+offers[]）",
+            "description": "需求字段 JSON（=代码节点渲染后归一 elements）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000003",
-              "a1b2c3d4-0000-4000-8000-000000000003,offers"
+              "a1b2c3d4-0000-4000-8000-000000000003,elements"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,offers"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,elements"
           },
           {
             "blockID": "",
@@ -375,7 +352,7 @@
         "nodeMeta": {
           "title": "保存需求工单",
           "code": "save_node_result",
-          "description": "节点结果存储（复用）：req_id=代码节点生成的需求单号 req_id，node_name=requirement_report（需求提报单），result_json=归一后需求商品字段数组 JSON（含 req_id+offers[]）；同键覆盖；供 wf_sub_01 需求分析按 req_id+requirement_report 读取延续",
+          "description": "节点结果存储（复用）：req_id=代码节点生成的需求单号 req_id，node_name=requirement_report（需求提报单），result_json=归一后需求字段 JSON；同键覆盖；供 wf_sub_01 需求分析按 req_id+requirement_report 读取延续",
           "version": "1"
         },
         "authentic_info_new": {
@@ -403,7 +380,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -530,7 +507,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=00&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求提报单\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {

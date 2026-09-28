@@ -3,14 +3,14 @@
 > 适用范围：`场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` 下的 14 个子工作流 JSON
 > （`wf_sub_00`~`wf_sub_13`，无 `wf_main_intent` 意图调度主流程；智能体按方案 3.2 提示词
 > 【意图→工作流映射表】语义识别直调）。
-> 本规范以生成器 `gen_workflows.py`（基础生成器）与 `gen_workflows_v2.py`（V2.0）为准，
+> 本规范以生成器 `gen_workflows.py`（唯一生成入口）与共享常量库 `wf_common.py` 为准，
 > 所有 JSON 均为生成器产物，**禁止手工改 JSON**，一律改生成器后重新生成。
 
 ---
 
 ## 一、总原则（务必先读）
 
-1. **源码驱动**：工作流 JSON 由 `gen_workflows_v2.py`（导入 `gen_workflows.py`）生成，输出到本目录同名 `.json`。
+1. **源码驱动**：工作流 JSON 由 `gen_workflows.py`（导入共享常量库 `wf_common.py`）生成，输出到本目录同名 `.json`。
    改工作流 = 改生成器 → 运行生成 → 校验 ALL_OK，绝不应直接编辑 JSON。
 2. **14 个子工作流 JSON**：`wf_sub_00`~`wf_sub_13`（14 个；`wf_main_intent`/`wf_merged_exec` 为 V2.0 早期意图调度/执行主干设计，已废弃不再生成，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调各子流）。其中 `wf_sub_12`（规格稽核轮询）/`wf_sub_13`（测试轮询查询）为 V3.10 两阶段拆分新增。
 3. **出参契约为 snake_case**：工作流所有节点出参、插件契约字段统一 snake_case（见 AGENTS.md「JSON 数据传输统一使用 snake_case」）。
@@ -25,10 +25,10 @@
 | 项 | 约定 |
 |---|---|
 | 目录 | `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/` |
-| 生成器 | `gen_workflows_v2.py`（V2.0，被 import 的 `gen_workflows.py` 为 V1.7 基线） |
+| 生成器 | `gen_workflows.py`（唯一生成入口，被其 import 的 `wf_common.py` 为共享常量库） |
 | 输出文件 | `wf_sub_00_需求提报.json`、`wf_sub_01_需求分析.json` … `wf_sub_13_测试查询结果.json`（14 个） |
 | 文件命名 | `wf_{类型}_{中文名}.json`；子流 `wf_sub_{两位序号}_{中文名}`（无 `wf_main_intent` 意图调度主流程） |
-| 生成命令 | 在含 `gen_workflows_v2.py` 的目录运行 `python gen_workflows_v2.py`（需与 `gen_workflows.py` 同目录） |
+| 生成命令 | 在含 `gen_workflows.py` 的目录运行 `python gen_workflows.py`（需与 `wf_common.py` 同目录） |
 
 > 目录名 `智能体工作流集V1.6` **不要改**（避免破坏导入/平台路径），版本语义以生成器文件头 `V2.0` 为准。
 
@@ -296,7 +296,7 @@ end_node(seq, title, inputs, out_content)
 - `out_content`：模板字符串，用 `{入参名}` 占位（如 `"《执行方案》已生成（req_id：{req_id}）\n\n{plan_md}"`）。
 - 常附加 `【下一步】`/`【确认执行】` 引导语，衔接下游子流。
 - 分支结束节点各自独立 `end_node`（如 `结束(有待补充)` / `结束(无待补充)`），title 区分语义。
-- **页面地址输出（统一约定）**：每个子工作流结束节点**不再内联** `xsbot-panel` 代码块，而是由**独立代码节点（type=6，`panel_code_node(...)`）专门构建** ```` ```xsbot-panel ```` 片段（节点出参 `panel`），结束节点模板末尾仅引用 `{panel}`。对齐参考示例形态：**单面板、单 url**（`panels` 仅一个外链面板）。生成辅助见 `gen_workflows_v2.py`（`OPS_WEB_BASE`/`CONFIG_WB_PAGE`/`gen_panel_code`/`panel_inputs`/`panel_code_node`）。
+- **页面地址输出（统一约定）**：每个子工作流结束节点**不再内联** `xsbot-panel` 代码块，而是由**独立代码节点（type=6，`panel_code_node(...)`）专门构建** ```` ```xsbot-panel ```` 片段（节点出参 `panel`），结束节点模板末尾仅引用 `{panel}`。对齐参考示例形态：**单面板、单 url**（`panels` 仅一个外链面板）。生成辅助见 `gen_workflows.py`（`OPS_WEB_BASE`/`CONFIG_WB_PAGE`/`gen_panel_code`/`panel_inputs`/`panel_code_node`）。
   - 每个结束节点前须插入一个 `panel_code_node`，其入参用 `panel_inputs(...)` 绑定上游 `chat_id`（起始节点透传）及可选 `offer_id/offer_name`（无法 `name==ref_rel` 之处按上游出参名绑定）；`offer_id` 仅在**智能配置落地后**（02~09）绑定真实落地 offer_id，落地前（00/01）**不绑定、传空**；并将 `panel` 入参（`ref_block=该代码节点`、`ref_rel="panel"`）加入结束节点 `inputs`，模板以 `{panel}` 收尾。
   - 单面板 url 统一用环节业务页 `config-workbench.html?offer_id=..&name=..&chatId=..&req_id=..&stage=<N>&view=stage`（页面按 `stage/view` 渲染对应业务），`title` 用环节业务名；`chatId` 运行期以 `chat_id` 实值填充，`req_id` 运行期以 `req_id` 实值填充（有 req_id 的环节 00~06 透传；07~10 无 req_id 则为空串）。**不再**使用产品详情页/监控看板（`product-detail.html`）与"配置工作台（view=workbench）"冗余面板。
   - **JSON 必须紧凑（无空格）**，逐字对齐参考示例：`{"version":"1.0","message_id":"<chat_id>","panels":[{"panel":"right","mode":"external","url":"<url>","title":"<环节业务名>"}]}`——冒号/逗号后**不得有空格**；`panel` 无 `**页面地址：**` 前缀，整段形如 `\n\n```xsbot-panel\n{紧凑JSON}\n```\n`。本节 v1.4 起由 `gen_panel_code` 直接拼装紧凑字符串（不用 `json.dumps` 默认带空格输出）。
@@ -349,8 +349,8 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 
 ## 十四、生成与校验流程
 
-1. 修改 `gen_workflows_v2.py`（新增/改节点、边、常量）。
-2. 运行 `python gen_workflows_v2.py`，逐一打印 `written: <文件名>`。
+1. 修改 `gen_workflows.py`（新增/改节点、边、常量；共享构造器/常量在 `wf_common.py`）。
+2. 运行 `python gen_workflows.py`，逐一打印 `written: <文件名>`。
 3. 校验（重建后需 **14 个子工作流全量 ALL_OK**）：
    - 每个 `.json` 可被 `json.load`（`ensure_ascii=False, indent=2` 写出）。
    - 所有 `edges` 的 `startId/endId` 均存在于 `nodes` 的 `id`。
@@ -378,9 +378,10 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 ---
 
 **最后更新**：2026-09-28
-**版本**：v1.10
+**版本**：v1.11
 
 ### 变更记录
+- v1.11（2026-09-28）：**生成器文件重命名（去「两个生成器」歧义）**：原 `gen_workflows_v2.py`（唯一生成入口）→ `gen_workflows.py`，原 `gen_workflows.py`（共享常量库）→ `wf_common.py`；`gen_workflows.py` 改为 `from wf_common import ...`，两目录（`智能体工作流集V1.6` 与 `-prod`）同步，文档与 `_probe_urls.py` glob 一并更新。
 - v1.10（2026-09-28）：**① 数量口径修正为 14 个子工作流 + 存量 fan-out 清理**：适用范围/总原则/文件组织/七节 seq 分段/十二节/十四节校验条数由"12 个（wf_sub_00~11）"更新为 **14 个（wf_sub_00~13，含 V3.10 两阶段拆分新增 wf_sub_12 规格稽核轮询 / wf_sub_13 测试轮询查询）**；② 按 6.4 修正 3 处存量 fan-out（wf_sub_01 节点 103/108、wf_sub_05 节点 402、wf_sub_08 节点 802 串联化），14 个 JSON 重生成并全量校验 ALL_OK，同步 `-prod`；③ 删除临时残留 `_test00.json`（v1.6 早期 8 节点旧版）。
 - v1.9（2026-09-20）：**补充节点出边单线约束（6.4）**：明确平台不允许一个节点连接两条及以上出边（fan-out），非条件分支（type≠2）节点至多一条出边，仅 type=2 分支节点允许 fan-out（按 sourcePort 路由）；给出修正原则（消除冗余边/串行化并行分支/必要时用 type=2 路由）并说明执行器用全局 ctx 解析引用、不依赖直接边故数据流不变；§十四校验流程同步新增 fan-out 校验项（任一节点出度>1 且 type≠2 即 FAIL）。依据本轮 wf_sub_03(节点202)/wf_sub_05(节点402)冗余边删除与 wf_sub_04 开始节点301三分支串行化修复沉淀。
 - v1.8（2026-09-20）：**wf_sub_11 纳入生成器 + 数量口径统一为 12 个子工作流 JSON**：① `gen_workflows_v2.py` 新增 `wf_sub_11_发起需求审批` 生成段（对齐 V3.3 契约手写版行为：自查 requirement_report → 提取原文 → submit_release_approval(approval-type=requirement) → 回执渲染），并修复手写版引用未定义常量 `PANEL_00_TPL` 的缺陷，生成并写出 **12 个子工作流 JSON（`wf_sub_00`~`wf_sub_11`）**；② `wf_sub_00` 移除审批节点、结束节点改为止于确认点（对齐 V3.3"未确认不发起审批"契约）；③ 适用范围/文件组织/总原则/七节 seq 分段/十四节校验条数由"11/12/13 个"历史口径统一为 **12 个子工作流 JSON（无 `wf_main_intent` 意图调度主流程，智能体按方案 3.2 提示词【意图→工作流映射表】语义识别直调）**；④ 十二节子流程节点（type=13）标注 @deprecated（`wf_main_intent` 主调度已废弃）。12 个 JSON 已重生成并全量校验 OK。

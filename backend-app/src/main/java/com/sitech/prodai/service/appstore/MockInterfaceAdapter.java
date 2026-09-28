@@ -36,6 +36,9 @@ public class MockInterfaceAdapter implements InterfaceFacade {
 
     private final OfferSimV16Service sim;
 
+    /** 可选：提供上传落盘目录以支持 B1 回执 file_name 与下载（缺省时跳过落盘）。 */
+    private final com.sitech.prodai.config.AppStoreInterfaceProperties props;
+
     /** B4 稽核轮询模拟：同一 requestIds 前 N 次返回「处理中」，之后返回完成，复现轮询两阶段。
      *  键=requestIds 参数串；值=该批次已查询次数。N 由 AUDIT_POLL_PENDING_TIMES 控制。 */
     private static final int AUDIT_POLL_PENDING_TIMES = 2;
@@ -43,7 +46,13 @@ public class MockInterfaceAdapter implements InterfaceFacade {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     public MockInterfaceAdapter(OfferSimV16Service sim) {
+        this(sim, null);
+    }
+
+    public MockInterfaceAdapter(OfferSimV16Service sim,
+                                com.sitech.prodai.config.AppStoreInterfaceProperties props) {
         this.sim = sim;
+        this.props = props;
     }
 
     @Override
@@ -54,6 +63,32 @@ public class MockInterfaceAdapter implements InterfaceFacade {
     /** 入口日志：显式标注本次走模拟报文。 */
     private void logMock(String key, Map<String, Object> req) {
         log.info("[MockInterfaceAdapter][模拟] key={} 返回内置模拟报文 request={}", key, req);
+    }
+
+    /**
+     * mock 落盘：把生成的稽核字节写入 upload-dir，文件名附加时间戳 {@code _yyyyMMddHHmmss}，
+     * 与 real 侧命名一致，使下载端点按 file_name 可直接命中。
+     *
+     * @return 落盘后的文件名；落盘失败返回空串（不阻断主流程）
+     */
+    private String stageMockFile(String fileName, byte[] bytes) {
+        try {
+            String base = fileName == null || fileName.isBlank() ? "稽核需求.xlsx" : fileName.trim();
+            String stamp = LocalDateTime.now().format(STAMP);
+            int dot = base.lastIndexOf('.');
+            String stamped = dot > 0
+                    ? base.substring(0, dot) + "_" + stamp + base.substring(dot)
+                    : base + "_" + stamp;
+            java.nio.file.Path dir = java.nio.file.Paths.get(props.getEop().getUploadDir());
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Path target = dir.resolve(stamped);
+            java.nio.file.Files.write(target, bytes);
+            log.info("[MockInterfaceAdapter][模拟·落盘] B1 稽核文件已落盘 path={} bytes={}", target, bytes.length);
+            return stamped;
+        } catch (Exception e) {
+            log.warn("[MockInterfaceAdapter][模拟·落盘] 失败，跳过 file_name 回填: {}", e.getMessage());
+            return "";
+        }
     }
 
     /* ================= A1 相似度分析 ================= */
@@ -84,6 +119,14 @@ public class MockInterfaceAdapter implements InterfaceFacade {
         Map<String, Object> body = new LinkedHashMap<>();
         String fileId = "file_" + LocalDateTime.now().format(STAMP) + "_mock0001";
         body.put("file_id", fileId);
+        // 落盘生成的字节（若提供），回填带时间戳文件名，供下载端点按 file_name 定位
+        Object bytesObj = req.get("bytes");
+        if (props != null && bytesObj instanceof byte[] bytes && bytes.length > 0) {
+            String staged = stageMockFile(fileName, bytes);
+            if (!staged.isBlank()) {
+                body.put("file_name", staged);
+            }
+        }
         Map<String, Object> salesId = new LinkedHashMap<>();
         for (String[] row : MOCK_OFFERS) {
             Map<String, Object> item = new LinkedHashMap<>();

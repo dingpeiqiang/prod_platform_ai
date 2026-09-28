@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-存量合规扫描",
-  "flowRemark": "子工作流10（阶段5 新增(可选)：shelf_compliance 批量 R-C* 合规+整改引导）。CODE_OP_SHELF_COMPLIANCE 占位(阶段1.1 Java 插件待就绪)→就绪门禁（backend_pending=1 走失败结束，标记服务未接入）→LLM 合规报告渲染（R-C* 合规结论+整改引导）。",
+  "flowRemark": "子工作流10（阶段5 新增(可选)：shelf_compliance 批量 R-C* 合规+整改引导）。CODE_OP_SHELF_COMPLIANCE 占位(阶段1.1 Java 插件待就绪)→LLM 合规报告渲染（R-C* 合规结论+整改引导）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -62,162 +62,6 @@
         "type": 6
       },
       {
-        "flowJson": null,
-        "inputs": {
-          "condition": [
-            {
-              "sourcePort": -1,
-              "itemflag": true,
-              "logic": 1,
-              "conditions": [
-                {
-                  "left": {
-                    "blockID": "a1b2c3d4-0000-4000-8000-000000001002",
-                    "relName": "backend_pending",
-                    "nameValue": [
-                      "a1b2c3d4-0000-4000-8000-000000001002",
-                      "a1b2c3d4-0000-4000-8000-000000001002,backend_pending"
-                    ],
-                    "currValue": "a1b2c3d4-0000-4000-8000-000000001002,backend_pending",
-                    "name": "",
-                    "description": "",
-                    "type": "ref",
-                    "content": ""
-                  },
-                  "right": {
-                    "blockID": "",
-                    "relName": "",
-                    "nameValue": "",
-                    "currValue": ",",
-                    "name": "",
-                    "description": "",
-                    "type": "string",
-                    "content": "1"
-                  },
-                  "conditions": [
-                    {
-                      "value": 1,
-                      "label": "等于"
-                    },
-                    {
-                      "value": 2,
-                      "label": "不等于"
-                    },
-                    {
-                      "value": 3,
-                      "label": "长度大于"
-                    },
-                    {
-                      "value": 4,
-                      "label": "长度大于等于"
-                    },
-                    {
-                      "value": 5,
-                      "label": "长度小于"
-                    },
-                    {
-                      "value": 6,
-                      "label": "长度小于等于"
-                    },
-                    {
-                      "value": 7,
-                      "label": "包含"
-                    },
-                    {
-                      "value": 8,
-                      "label": "不包含"
-                    },
-                    {
-                      "value": 9,
-                      "label": "为空"
-                    },
-                    {
-                      "value": 10,
-                      "label": "不为空"
-                    },
-                    {
-                      "value": 15,
-                      "label": "长度等于"
-                    }
-                  ],
-                  "operator": 1
-                }
-              ]
-            }
-          ]
-        },
-        "nodeMeta": {
-          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
-          "title": "合规服务就绪判定"
-        },
-        "position": {
-          "x": 735,
-          "y": 300
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000001006",
-        "dependencyData": [
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-000000001002",
-            "name": "存量合规扫描",
-            "disabled": true,
-            "children": [
-              {
-                "relName": "a1b2c3d4-0000-4000-8000-000000001002,backend_pending",
-                "name": "backend_pending",
-                "type": "string",
-                "content": ""
-              }
-            ]
-          }
-        ],
-        "type": 2
-      },
-      {
-        "outputs": {
-          "name": "",
-          "type": "string",
-          "content": "❌ 存量合规扫描暂不可用：shelf_compliance 服务尚未接入（阶段1.1）。\n说明：{note}\n请在服务就绪后重试。"
-        },
-        "settings": {
-          "stream": false,
-          "output_mode": "text"
-        },
-        "terminatePlan": "useAnswerContent",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000001002",
-            "relName": "note",
-            "name": "note",
-            "description": "占位说明",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000001002",
-              "a1b2c3d4-0000-4000-8000-000000001002,note"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000001002,note"
-          }
-        ],
-        "checkErr": false,
-        "prompt_system": "",
-        "nodeMeta": {
-          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
-          "title": "结束(合规服务未就绪-失败)"
-        },
-        "type": 9,
-        "top_p": 1,
-        "top_k": 0.1,
-        "temperature": 0.1,
-        "position": {
-          "x": 1095,
-          "y": 170
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000001007",
-        "dependencyData": []
-      },
-      {
         "outputs": [
           {
             "name": "compliance_report",
@@ -277,8 +121,8 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1095,
-          "y": 430
+          "x": 735,
+          "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001003",
         "dependencyData": [],
@@ -292,7 +136,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=10&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=10&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"存量合规看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=10&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"存量合规看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -318,7 +162,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000001005",
         "position": {
-          "x": 1455,
+          "x": 1095,
           "y": 300
         },
         "dependencyData": [],
@@ -377,7 +221,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 1455,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001004",
@@ -392,18 +236,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000001006",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001002"
-      },
-      {
-        "sourcePort": 0,
         "endId": "a1b2c3d4-0000-4000-8000-000000001003",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001006"
-      },
-      {
-        "sourcePort": -1,
-        "endId": "a1b2c3d4-0000-4000-8000-000000001007",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001006"
+        "startId": "a1b2c3d4-0000-4000-8000-000000001002"
       },
       {
         "sourcePort": null,

@@ -272,6 +272,26 @@ public class AppStoreInterfaceProperties {
         }
     }
 
+    /**
+     * 稽核文件名校验：去除路径分隔符与目录穿越（仅保留末段文件名），空值返回空串。
+     * 供 B1 上传回执落名与下载端点按 file_name 唯一定位使用，避免 {@code ../} 越权读取。
+     */
+    public static String sanitizeAuditFileName(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        String name = fileName.trim();
+        if (name.isEmpty()) {
+            return "";
+        }
+        // 去掉可能被 URL 编码或调用方带入的目录前缀
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        return name.trim();
+    }
+
     /** 轮询窗口（前缀 poll，供工作流 type=6 代码节点读取；窗口耗尽输出"处理中"引导续查，非中断）。 */
     public static class Poll {
         private final Window audit = new Window(5000, 60);

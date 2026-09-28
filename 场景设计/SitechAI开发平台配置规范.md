@@ -29,7 +29,7 @@
 ## 二、源码驱动（最重要的工程纪律）
 
 1. **所有工作流 JSON 与插件 Export JSON 都是生成器产物，一律禁止手工改 JSON**；
-2. 改工作流 = 改生成器（`gen_workflows_v2.py` / `gen_plugins.py`）→ 运行生成 → 全量校验 ALL_OK；
+2. 改工作流 = 改生成器（`gen_workflows.py` / `gen_plugins.py`）→ 运行生成 → 全量校验 ALL_OK；
 3. 校验项（交叉引用断链是最高频问题，务必全查）：
    - 每个 JSON 可被 `json.load`（`ensure_ascii=False, indent=2` 写出）；
    - 所有 `edges` 的 `startId/endId` 均存在于 `nodes` 的 `id`；

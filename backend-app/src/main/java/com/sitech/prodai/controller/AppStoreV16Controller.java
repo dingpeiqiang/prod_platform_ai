@@ -1,5 +1,6 @@
 package com.sitech.prodai.controller;
 
+import com.sitech.prodai.config.AppStoreInterfaceProperties;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.appstore.AuditExcelGenerator;
 import com.sitech.prodai.service.appstore.AuditRequirementSource;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -42,6 +45,7 @@ public class AppStoreV16Controller {
     private final AuditExcelGenerator auditExcelGenerator;
     private final AuditRequirementSource auditRequirementSource;
     private final InterfaceFacade interfaceFacade;
+    private final AppStoreInterfaceProperties interfaceProperties;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
@@ -50,7 +54,8 @@ public class AppStoreV16Controller {
                                  com.sitech.prodai.service.appstore.RequirementDocService requirementDocService,
                                  AuditExcelGenerator auditExcelGenerator,
                                  AuditRequirementSource auditRequirementSource,
-                                 InterfaceFacade interfaceFacade) {
+                                 InterfaceFacade interfaceFacade,
+                                 AppStoreInterfaceProperties interfaceProperties) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
@@ -60,6 +65,7 @@ public class AppStoreV16Controller {
         this.auditExcelGenerator = auditExcelGenerator;
         this.auditRequirementSource = auditRequirementSource;
         this.interfaceFacade = interfaceFacade;
+        this.interfaceProperties = interfaceProperties;
     }
 
     /* ================= 模板 schema 下发 get_template_schema ================= */
@@ -100,7 +106,8 @@ public class AppStoreV16Controller {
 
     @Operation(summary = "智能稽核文件上传", description = "入参 req_id + chat_id（无前端文件）：服务端按 req_id 查需求（requirement_report）与配置（requirement）信息，生成稽核 Excel（可选包+关联关系 sheet）后上传，解析销售品清单返回 file_id 与 sales_id（B1，适配层 mock/real 可切换）；可选 mode=real/mock 覆盖本次模式")
     @PostMapping(value = "/audit/file/upload", consumes = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
-    public Map<String, Object> auditFileUpload(@RequestBody Map<String, Object> req) {
+    public Map<String, Object> auditFileUpload(@RequestBody Map<String, Object> req,
+                                               jakarta.servlet.http.HttpServletRequest httpRequest) {
         String reqId = MapOps.str(req.get("req_id"));
         Map<String, Object> source = auditRequirementSource.resolve(reqId);
         if (source == null) {
@@ -129,7 +136,56 @@ public class AppStoreV16Controller {
         if (!mode.isBlank()) {
             call.put("mode", mode);
         }
-        return interfaceFacade.auditFileUpload(call);
+        Map<String, Object> out = interfaceFacade.auditFileUpload(call);
+        enrichAuditDownload(out, httpRequest, call);
+        return out;
+    }
+
+    /**
+     * 为 B1 上传回执补齐 file_name / download_url：以文件名（含时间戳）作为唯一定位键，
+     * 下载链接指向 {@code GET /audit/file/download?file_name=...}，不依赖 EOP 的 file_id。
+     * file_name 优先取适配层实际落盘名，回退到本次生成的原始文件名。
+     */
+    private void enrichAuditDownload(Map<String, Object> out, jakarta.servlet.http.HttpServletRequest httpRequest,
+                                     Map<String, Object> call) {
+        if (out == null) {
+            return;
+        }
+        String fileName = MapOps.str(out.get("file_name"));
+        if (fileName.isBlank()) {
+            fileName = MapOps.str(call.get("fileName"));
+        }
+        if (fileName.isBlank()) {
+            fileName = "稽核需求.xlsx";
+        }
+        out.put("file_name", fileName);
+        out.put("download_url", externalBaseUrl(httpRequest)
+                + "/api/v1/appstore/audit/file/download?file_name="
+                + java.net.URLEncoder.encode(fileName, java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * B1 稽核文件下载：按 file_name（原名_yyyyMMddHHmmss.ext）从 upload-dir 定位唯一文件后附件返回。
+     * file_name 缺失时返回 400 说明；文件不存在返回 404。
+     */
+    @Operation(summary = "智能稽核文件下载", description = "按 file_name（含时间戳，B1 上传回执返回）下载稽核 Excel 附件")
+    @GetMapping("/audit/file/download")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> auditFileDownload(
+            @RequestParam(value = "file_name", required = false) String fileName) {
+        String name = AppStoreInterfaceProperties.sanitizeAuditFileName(fileName);
+        if (name.isBlank()) {
+            return org.springframework.http.ResponseEntity.badRequest().build();
+        }
+        Path path = Paths.get(interfaceProperties.getEop().getUploadDir()).resolve(name).normalize();
+        org.springframework.core.io.Resource resource = new org.springframework.core.io.FileSystemResource(path);
+        if (!resource.exists()) {
+            return org.springframework.http.ResponseEntity.notFound().build();
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename*=UTF-8''"
+                        + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8))
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(resource);
     }
 
     @Operation(summary = "异步报告生成并通知", description = "按销售品通知 AI 能力中心启动稽核报告生成，返回 request_id 供轮询（B2，GET query）")

@@ -207,6 +207,10 @@ public class EopInterfaceAdapter implements InterfaceFacade {
             if (body.get("file_id") == null && body.get("sales_id") == null) {
                 throw new IllegalStateException("B1 real 出参缺少 file_id/sales_id");
             }
+            // 回填实际落盘文件名（含时间戳），供调用方据此生成下载链接（不依赖 file_id）
+            if (body.get("file_name") == null && fileName != null && !fileName.isBlank()) {
+                body.put("file_name", fileName);
+            }
             logRealDone("upload", System.currentTimeMillis() - begin, body);
             return body;
         } catch (Exception e) {

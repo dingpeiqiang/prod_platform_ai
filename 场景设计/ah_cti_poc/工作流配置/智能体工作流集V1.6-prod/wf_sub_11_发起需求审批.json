@@ -126,22 +126,12 @@
             "type": "string"
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000001103,req_id",
-            "name": "req_id",
-            "type": "string"
-          },
-          {
             "relName": "a1b2c3d4-0000-4000-8000-000000001103,offer_id",
             "name": "offer_id",
             "type": "string"
-          },
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-000000001103,offers",
-            "name": "offers",
-            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -172,162 +162,6 @@
         },
         "dependencyData": [],
         "type": 6
-      },
-      {
-        "flowJson": null,
-        "inputs": {
-          "condition": [
-            {
-              "sourcePort": -1,
-              "itemflag": true,
-              "logic": 1,
-              "conditions": [
-                {
-                  "left": {
-                    "blockID": "a1b2c3d4-0000-4000-8000-000000001103",
-                    "relName": "record_json",
-                    "nameValue": [
-                      "a1b2c3d4-0000-4000-8000-000000001103",
-                      "a1b2c3d4-0000-4000-8000-000000001103,record_json"
-                    ],
-                    "currValue": "a1b2c3d4-0000-4000-8000-000000001103,record_json",
-                    "name": "",
-                    "description": "",
-                    "type": "ref",
-                    "content": ""
-                  },
-                  "right": {
-                    "blockID": "",
-                    "relName": "",
-                    "nameValue": "",
-                    "currValue": ",",
-                    "name": "",
-                    "description": "",
-                    "type": "string",
-                    "content": ""
-                  },
-                  "conditions": [
-                    {
-                      "value": 1,
-                      "label": "等于"
-                    },
-                    {
-                      "value": 2,
-                      "label": "不等于"
-                    },
-                    {
-                      "value": 3,
-                      "label": "长度大于"
-                    },
-                    {
-                      "value": 4,
-                      "label": "长度大于等于"
-                    },
-                    {
-                      "value": 5,
-                      "label": "长度小于"
-                    },
-                    {
-                      "value": 6,
-                      "label": "长度小于等于"
-                    },
-                    {
-                      "value": 7,
-                      "label": "包含"
-                    },
-                    {
-                      "value": 8,
-                      "label": "不包含"
-                    },
-                    {
-                      "value": 9,
-                      "label": "为空"
-                    },
-                    {
-                      "value": 10,
-                      "label": "不为空"
-                    },
-                    {
-                      "value": 15,
-                      "label": "长度等于"
-                    }
-                  ],
-                  "operator": 9
-                }
-              ]
-            }
-          ]
-        },
-        "nodeMeta": {
-          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
-          "title": "需求工单有效性判定"
-        },
-        "position": {
-          "x": 1095,
-          "y": 300
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000001107",
-        "dependencyData": [
-          {
-            "relName": "a1b2c3d4-0000-4000-8000-000000001103",
-            "name": "提取需求工单原文",
-            "disabled": true,
-            "children": [
-              {
-                "relName": "a1b2c3d4-0000-4000-8000-000000001103,record_json",
-                "name": "record_json",
-                "type": "string",
-                "content": ""
-              }
-            ]
-          }
-        ],
-        "type": 2
-      },
-      {
-        "outputs": {
-          "name": "",
-          "type": "string",
-          "content": "❌ 未找到该需求单号（{req_id}）的需求提报记录，无法发起需求工单审批。\n请先在【需求提报】（环节1/8）生成《销售品需求提报单》，再回复【发起需求审批】。"
-        },
-        "settings": {
-          "stream": false,
-          "output_mode": "text"
-        },
-        "terminatePlan": "useAnswerContent",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000001101",
-            "relName": "req_id",
-            "name": "req_id",
-            "description": "需求单号",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000001101",
-              "a1b2c3d4-0000-4000-8000-000000001101,req_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000001101,req_id"
-          }
-        ],
-        "checkErr": false,
-        "prompt_system": "",
-        "nodeMeta": {
-          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
-          "title": "结束(需求工单缺失-失败)"
-        },
-        "type": 9,
-        "top_p": 1,
-        "top_k": 0.1,
-        "temperature": 0.1,
-        "position": {
-          "x": 1455,
-          "y": 170
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000001108",
-        "dependencyData": []
       },
       {
         "outputs": [
@@ -437,8 +271,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001104",
         "position": {
-          "x": 1455,
-          "y": 430
+          "x": 1095,
+          "y": 300
         },
         "dependencyData": [],
         "type": 3,
@@ -460,7 +294,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），**先判定提交是否成功**：仅当 approval_id 非空且 status 不属于（FAIL/失败/error/空）时视为成功，否则视为失败。\n【成功口径】（approval_id 非空且 status 正常）输出：\n【环节1/8·需求提报】✅ 需求工单审批已发起\n- 需求单号：{req_id}\n- 需求工单审批单号：{approval_id}，状态：{status}\n- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n【环节1/8·需求提报】❌ 需求工单审批发起失败\n- 需求单号：{req_id}\n- 失败原因：审批服务未返回有效审批单号（approval_id 为空，status={status}）\n- 建议：请确认需求提报已完成，回复【重新执行】后重试；若持续失败请联系管理员。\n约束：逐字引用出参，严禁编造审批单号/状态，严禁在失败时输出任何✅成功措辞。\n输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。"
+              "content": "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），输出需求工单审批发起回执：\n【环节1/8·需求提报】✅ 需求工单审批已发起\n- 需求单号：{req_id}\n- 需求工单审批单号：{approval_id}，状态：{status}\n- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n约束：逐字引用出参，禁止编造审批单号/状态；未取得 approval_id 时按失败口径输出并引导【重新执行】。\n输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -518,7 +352,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1815,
+          "x": 1455,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001105",
@@ -533,7 +367,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求工单审批\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"需求工单审批\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -573,7 +407,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000001109",
         "position": {
-          "x": 2175,
+          "x": 1815,
           "y": 300
         },
         "dependencyData": [],
@@ -632,7 +466,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000001106",
@@ -652,18 +486,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000001107",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001103"
-      },
-      {
-        "sourcePort": 0,
         "endId": "a1b2c3d4-0000-4000-8000-000000001104",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001107"
-      },
-      {
-        "sourcePort": -1,
-        "endId": "a1b2c3d4-0000-4000-8000-000000001108",
-        "startId": "a1b2c3d4-0000-4000-8000-000000001107"
+        "startId": "a1b2c3d4-0000-4000-8000-000000001103"
       },
       {
         "sourcePort": null,

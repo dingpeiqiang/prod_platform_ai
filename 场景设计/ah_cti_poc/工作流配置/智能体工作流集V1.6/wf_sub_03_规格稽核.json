@@ -176,6 +176,20 @@
             "required": false
           },
           {
+            "name": "file_name",
+            "cname": "上传文件名（含时间戳，唯一标识）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "download_url",
+            "cname": "文件下载地址（按 file_name 定位）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
             "name": "sales_id",
             "cname": "销售品清单（销售品名→offerId/location/sheet_name，N 品行）",
             "sechema": [],
@@ -373,9 +387,29 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000208,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000208,file_id",
+            "name": "file_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000208,file_name",
+            "name": "file_name",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000208,download_url",
+            "name": "download_url",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text",
+            "name": "sales_list_text",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n                'offers', 'req_id', 'plan_json')\n\ndef _any(v):\n    # 平台出参可能是已序列化 JSON 字符串，也可能是原始 list/str；统一尝试解析\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        # 兼容占位：老消费方仅认 raw 时可回退取值\n        env.setdefault('raw', md)\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False)\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\n_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n                'offers', 'req_id', 'plan_json', 'file_name', 'download_url')\n\ndef _any(v):\n    if isinstance(v, (list, dict)):\n        return v\n    if v is None:\n        return None\n    s = str(v)\n    if not s.strip():\n        return None\n    t = s.strip()\n    if t[0] in '[{' and t[-1] in ']}':\n        try:\n            return json.loads(t)\n        except Exception:\n            return s\n    return s\n\ndef _sales_lines(raw):\n    # 清单 JSON（销售品名→{offerId,location,sheet_name}）→ 编号逐行文本\n    obj = _any(raw)\n    if not isinstance(obj, dict):\n        return str(raw or '')\n    lines = []\n    for i, (name, item) in enumerate(obj.items(), start=1):\n        info = item if isinstance(item, dict) else {}\n        offer_id = str(info.get('offerId') or info.get('offer_id') or '')\n        sheet = str(info.get('sheet_name') or '')\n        lines.append('%d. %s（销售品ID=%s，Sheet=%s）' % (i, name, offer_id, sheet))\n    return '\\n'.join(lines)\n\nasync def main(args):\n    p = args.params\n    env: Dict[str, Any] = {}\n    for key in _PASSTHROUGH:\n        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n            env[key] = _any(p.get(key))\n    md = str(p.get('md') or p.get('markdown') or '')\n    md_key = str(p.get('md_key') or 'report_md')\n    if md:\n        env[md_key] = md\n        env.setdefault('raw', md)\n    file_id = str(p.get('file_id') or '')\n    file_name = str(p.get('file_name') or '')\n    download_url = str(p.get('download_url') or '')\n    sales_list_text = _sales_lines(p.get('sales_id'))\n    ret: Output = {\n        'record_json': json.dumps(env, ensure_ascii=False),\n        'file_id': file_id,\n        'file_name': file_name,\n        'download_url': download_url,\n        'sales_list_text': sales_list_text\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -405,6 +439,34 @@
               "a1b2c3d4-0000-4000-8000-000000000202,file_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "file_name",
+            "name": "file_name",
+            "description": "上传文件名（节点202，含时间戳）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,file_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "download_url",
+            "name": "download_url",
+            "description": "文件下载地址（节点202）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,download_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,download_url"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
@@ -831,7 +893,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】稽核发起失败：requestIds 为空（file_id={file_id}）\n\n发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核发起失败：requestIds 为空\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -855,18 +917,60 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
             "relName": "file_id",
             "name": "file_id",
-            "description": "上传文件ID（节点202）",
+            "description": "上传文件ID（节点208封包）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "file_name",
+            "name": "file_name",
+            "description": "上传文件名（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "download_url",
+            "name": "download_url",
+            "description": "文件下载地址（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "sales_list_text",
+            "name": "sales_list_text",
+            "description": "稽核销售品列表（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
@@ -918,7 +1022,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}，file_id={file_id}）\n> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}）\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -942,18 +1046,60 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
             "relName": "file_id",
             "name": "file_id",
-            "description": "上传文件ID（节点202）",
+            "description": "上传文件ID（节点208封包）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000202",
-              "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,file_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "file_name",
+            "name": "file_name",
+            "description": "上传文件名（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "download_url",
+            "name": "download_url",
+            "description": "文件下载地址（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "sales_list_text",
+            "name": "sales_list_text",
+            "description": "稽核销售品列表（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
