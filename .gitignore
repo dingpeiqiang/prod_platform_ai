@@ -102,3 +102,7 @@ frontend.zip
 
 # 工作流批量导入请求体运行产物（可随时由 gen_import_requests.py 重新生成）
 场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/import_requests_out/
+
+# 平台导入请求头（含会过期的会话 Cookie/JSESSIONID，随时间轮换，不入库）
+场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/import_headers.json
+场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6-prod/import_headers.json
