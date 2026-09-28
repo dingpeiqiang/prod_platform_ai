@@ -240,7 +240,14 @@ public class MockInterfaceAdapter implements InterfaceFacade {
     @Override
     public Map<String, Object> testScenes(Map<String, Object> req) {
         logMock("testScenes", req);
-        return sim.testScenes(withGlobalId(req));
+        Map<String, Object> call = withGlobalId(req);
+        Map<String, Object> out = sim.testScenes(call);
+        if (!taskNotFound(out)) {
+            return out;
+        }
+        // mock 兜底：任务已失效（后端重启/多实例内存丢失）时合成终态任务，保证查询链路可完整演示
+        sim.ensureMockTerminalTask(MapOps.str(call.get("globalId")), offerIdHint(req));
+        return sim.testScenes(call);
     }
 
     /* ================= C3 查询测试进度 ================= */
@@ -248,7 +255,13 @@ public class MockInterfaceAdapter implements InterfaceFacade {
     @Override
     public Map<String, Object> testProgress(Map<String, Object> req) {
         logMock("testProgress", req);
-        return sim.testProgress(withGlobalId(req));
+        Map<String, Object> call = withGlobalId(req);
+        Map<String, Object> out = sim.testProgress(call);
+        if (!taskNotFound(out)) {
+            return out;
+        }
+        sim.ensureMockTerminalTask(MapOps.str(call.get("globalId")), offerIdHint(req));
+        return sim.testProgress(call);
     }
 
     /* ================= C4 查询测试结果 ================= */
@@ -257,7 +270,28 @@ public class MockInterfaceAdapter implements InterfaceFacade {
     public Map<String, Object> testResult(Map<String, Object> req) {
         logMock("testResult", req);
         String baseUrl = MapOps.str(req.get("external_base_url"));
-        return sim.testResult(withGlobalId(req), baseUrl);
+        Map<String, Object> call = withGlobalId(req);
+        Map<String, Object> out = sim.testResult(call, baseUrl);
+        if (!taskNotFound(out)) {
+            return out;
+        }
+        sim.ensureMockTerminalTask(MapOps.str(call.get("globalId")), offerIdHint(req));
+        return sim.testResult(call, baseUrl);
+    }
+
+    /** 判定 C2~C4 出参是否「查无对应测试任务」的业务失败信封（resultCode 非 0 且 resultObject 缺省）。 */
+    private boolean taskNotFound(Map<String, Object> out) {
+        if (out == null) {
+            return false;
+        }
+        String code = MapOps.str(out.get("resultCode"));
+        String msg = MapOps.str(out.get("resultMsg"));
+        return !code.isEmpty() && !"0".equals(code) && msg.contains("查无对应测试任务");
+    }
+
+    /** 从请求体读取销售品ID提示（兼容 offer_id/offerId），供 mock 兜底合成任务定位销售品。 */
+    private String offerIdHint(Map<String, Object> req) {
+        return firstNonBlank(MapOps.str(req.get("offerId")), MapOps.str(req.get("offer_id")));
     }
 
     /* ---------------- 入参归一 ---------------- */

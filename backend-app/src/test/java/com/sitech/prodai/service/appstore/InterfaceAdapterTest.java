@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.appstore;
 
 import com.sitech.prodai.ProdAiApplication;
+import com.sitech.prodai.service.common.MapOps;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -128,6 +129,34 @@ class InterfaceAdapterTest {
         Map<?, ?> progressBody = (Map<?, ?>) ro;
         Assertions.assertNotNull(progressBody.get("totalSteps"));
         Assertions.assertNotNull(progressBody.get("done"));
+    }
+
+    @Test
+    @DisplayName("mock 兜底：已失效 globalId 合成终态报文（C3 done=true 全场景完成；C4 testScenes 全通过，不下发「查无对应测试任务」）")
+    void mockFallbackSynthesizesTerminalReplyForLostTask() {
+        String lostGlobalId = "50202609282105416868245365";
+        Map<String, Object> progress = interfaceFacade.testProgress(Map.of("global_id", lostGlobalId));
+        Assertions.assertEquals("0", progress.get("resultCode"),
+                "mock 模式不应返回查无任务：" + progress.get("resultMsg"));
+        Map<?, ?> progressBody = (Map<?, ?>) progress.get("resultObject");
+        Assertions.assertNotNull(progressBody, "C3 应透传 EOP resultObject：" + progress);
+        Assertions.assertEquals(Boolean.TRUE, progressBody.get("done"), "兜底任务应为终态：" + progressBody);
+        Assertions.assertEquals(progressBody.get("totalSceneCount"), progressBody.get("finishedSceneCount"),
+                "兜底任务应为全场景完成：" + progressBody);
+
+        Map<String, Object> result = interfaceFacade.testResult(Map.of("global_id", lostGlobalId));
+        Assertions.assertEquals("0", result.get("resultCode"),
+                "mock 模式结果查询应成功：" + result.get("resultMsg"));
+        Map<?, ?> resultBody = (Map<?, ?>) result.get("resultObject");
+        Assertions.assertNotNull(resultBody, "C4 应透传 EOP resultObject：" + result);
+        List<Map<String, Object>> scenes = MapOps.castListOfMaps(resultBody.get("testScenes"));
+        Assertions.assertFalse(scenes.isEmpty(), "应返回逐场景结果：" + resultBody);
+        for (Map<String, Object> scene : scenes) {
+            for (Map<String, Object> point : MapOps.castListOfMaps(scene.get("testCasePointResults"))) {
+                Assertions.assertEquals("0", MapOps.str(point.get("resultCode")),
+                        "兜底任务测点应全部通过：" + point);
+            }
+        }
     }
 
     @Test

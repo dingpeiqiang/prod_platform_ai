@@ -2232,6 +2232,53 @@ public class OfferSimV16Service {
         return null;
     }
 
+    /**
+     * mock 兜底：为已失效/未知的 globalId 合成一个「已终态·全场景通过」的测试任务，
+     * 使 mock 模式下 C3/C4 始终返回与真实 EOP 同构的查询报文，而非「查无对应测试任务」。
+     *
+     * <p>触发场景：后端重启/多实例导致内存 testTasks 丢失，且 test_pending 持久化记录不可用
+     * （未落库或已被清理）时，演示仍可完整走通「查询进度→终态判定→查询结果」链路。
+     *
+     * <p>确定性口径：优先取调用方提示的 offer_id，其次回退种子库首个销售品；任务时长置 0，
+     * 使 done 恒为 true、finishedSceneCount==totalSceneCount（全场景通过，无失败注入）。
+     *
+     * @param globalId    测试流水号（保持原值，保证报告/流水号一致）
+     * @param offerIdHint 调用方提示的销售品ID（可为空）
+     * @return 合成后的任务；无可用种子销售品时返回 null
+     */
+    public synchronized Map<String, Object> ensureMockTerminalTask(String globalId, String offerIdHint) {
+        if (globalId == null || globalId.isBlank()) {
+            return null;
+        }
+        String key = globalId.trim();
+        Map<String, Object> existed = testTasks.get(key);
+        if (existed != null) {
+            return existed;
+        }
+        String offerId = offerIdHint == null ? "" : offerIdHint.trim();
+        Map<String, Object> offer = resolveOffer(offerId);
+        if (offer == null) {
+            List<Map<String, Object>> all = seed.listOffers();
+            offer = all.isEmpty() ? null : all.get(0);
+        }
+        if (offer == null) {
+            return null;
+        }
+        String resolvedOfferId = MapOps.str(offer.get("offer_id"));
+        Map<String, Object> task = new LinkedHashMap<>();
+        task.put("global_id", key);
+        task.put("offer_id", resolvedOfferId);
+        task.put("scene_nbrs", sceneNbrsOf(offer));
+        task.put("created_at", recoverCreatedAt(key));
+        // 时长置 0 → elapsed>=duration 恒真 → done=true、finishedSceneCount==totalSceneCount
+        task.put("duration_ms", 0L);
+        task.put("done", true);
+        task.put("failed", false);
+        testTasks.put(key, task);
+        log.info("[OfferSimV16] mock 兜底合成终态测试任务: globalId={}, offer_id={}", key, resolvedOfferId);
+        return task;
+    }
+
     /** 从 globalId 前缀反推发起时刻（格式：50 + yyyyMMddHHmmss + 10 位随机数）；不可解析则回退当前时刻。 */
     private long recoverCreatedAt(String globalId) {
         try {
