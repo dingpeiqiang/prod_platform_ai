@@ -317,6 +317,56 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000330,offers_text",
+            "name": "offers_text",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000330,offer_count",
+            "name": "offer_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000330,scene_count",
+            "name": "scene_count",
+            "type": "string"
+          }
+        ],
+        "code": "import json\n\n_STATUS_CN = {'SUCCESS': '已发起', 'PENDING': '处理中', 'PARTIAL': '部分成功', 'FAIL': '失败', 'FAILED': '失败'}\n_SCENE_STATUS_CN = {'SUCCESS': '通过', 'PASS': '通过', 'FAIL': '失败', 'FAILED': '失败',\n                    'PENDING': '处理中', 'RUNNING': '执行中', 'WAIT': '待执行'}\n\ndef _as_list(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, str):\n        s = v.strip()\n        if s[:1] in '[{':\n            try:\n                return json.loads(s)\n            except Exception:\n                return []\n    return []\n\ndef _scene_line(scene, idx):\n    if not isinstance(scene, dict):\n        return '    ' + str(idx) + '. ' + str(scene) + ' · 待执行'\n    nbr = str(scene.get('testSceneNbr') or scene.get('sceneNbr') or scene.get('code') or '?')\n    name = str(scene.get('testSceneName') or scene.get('sceneName') or scene.get('name') or '未命名场景')\n    raw = str(scene.get('status') or scene.get('result') or 'WAIT').upper()\n    st = _SCENE_STATUS_CN.get(raw, '待执行')\n    return '    ' + str(idx) + '. [' + nbr + '] ' + name + ' · ' + st\n\nasync def main(args):\n    p = args.params\n    offers = _as_list(p.get('offers'))\n    blocks = []\n    scene_total = 0\n    for i, o in enumerate(offers, start=1):\n        if not isinstance(o, dict):\n            continue\n        seq = o.get('offer_seq', i)\n        oid = o.get('offer_id') or o.get('offerId') or '—'\n        gid = o.get('globalId') or o.get('global_id') or '—'\n        st = str(o.get('status') or o.get('result') or 'SUCCESS').upper()\n        st_cn = _STATUS_CN.get(st, st)\n        head = ('  【商品' + str(seq) + '】offer_id=' + str(oid)\n                + ' 测试流水号=' + str(gid) + ' 发起状态=' + st_cn)\n        scenes = _as_list(o.get('testScenes') or o.get('test_scenes'))\n        scenes = sorted(scenes, key=lambda s: (s.get('sort') if isinstance(s, dict) and s.get('sort') is not None else 999))\n        scene_total += len(scenes)\n        if scenes:\n            head += ' 场景数=' + str(len(scenes))\n            body = '\\n'.join(_scene_line(s, k) for k, s in enumerate(scenes, start=1))\n            blocks.append(head + '\\n' + body)\n        else:\n            blocks.append(head + '\\n    - （无场景清单）')\n    offers_text = '\\n'.join(blocks) if blocks else '  （无逐品明细）'\n    ret: Output = {\n        'offers_text': offers_text,\n        'offer_count': str(len([o for o in offers if isinstance(o, dict)])),\n        'scene_count': str(scene_total)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品测试发起结果数组（节点303出参 offers，含 testScenes 场景清单）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000303",
+              "a1b2c3d4-0000-4000-8000-000000000303,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "回执结构化排版"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000330",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000308,record_json",
             "name": "record_json",
             "type": "string"
@@ -380,7 +430,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000308",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [],
@@ -476,7 +526,7 @@
           "title": "测试发起门禁"
         },
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000322",
@@ -575,7 +625,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000305",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 430
         },
         "dependencyData": [],
@@ -644,7 +694,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000321",
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 430
         },
         "dependencyData": [],
@@ -712,7 +762,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000323",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 170
         },
         "dependencyData": [],
@@ -722,7 +772,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试发起未全部成功：整批状态={status}\n{offers}\n\n整批存在 PARTIAL/FAIL，本次未写入 test_pending，无法轮询结论。\n【下一步】请修正后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试发起未全部成功\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 结论：整批存在 PARTIAL/FAIL，本次未写入 test_pending，无法轮询结论。\n■ 下一步：请修正后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -746,18 +796,46 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000303,status"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
-            "relName": "offers",
-            "name": "offers",
-            "description": "逐品测试发起结果数组（节点303出参 offers）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "offers_text",
+            "name": "offers_text",
+            "description": "逐品场景执行状态结构化文本（节点330）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000303",
-              "a1b2c3d4-0000-4000-8000-000000000303,offers"
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,offers_text"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,offers"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,offers_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "offer_count",
+            "name": "offer_count",
+            "description": "逐品数量（节点330）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,offer_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,offer_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "scene_count",
+            "name": "scene_count",
+            "description": "场景总数（节点330）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,scene_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,scene_count"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000310",
@@ -799,7 +877,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000324",
@@ -809,7 +887,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试已发起（整批状态={status}），逐品测试流水号与场景清单：\n{offers}\n> 测试平台异步执行，请回复【查询测试结果】拉取测试结论（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试已发起\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 提示：场景状态为发起态（待执行）；测试平台异步执行，请回复【查询测试结果】拉取逐场景执行结论（未完成会提示稍后续查）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -819,18 +897,46 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
-            "relName": "offers",
-            "name": "offers",
-            "description": "逐品测试发起结果数组（节点303出参 offers）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "offers_text",
+            "name": "offers_text",
+            "description": "逐品场景执行状态结构化文本（节点330）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000303",
-              "a1b2c3d4-0000-4000-8000-000000000303,offers"
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,offers_text"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000303,offers"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,offers_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "offer_count",
+            "name": "offer_count",
+            "description": "逐品数量（节点330）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,offer_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,offer_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000330",
+            "relName": "scene_count",
+            "name": "scene_count",
+            "description": "场景总数（节点330）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000330",
+              "a1b2c3d4-0000-4000-8000-000000000330,scene_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000330,scene_count"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000303",
@@ -886,7 +992,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3255,
+          "x": 3615,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000307",
@@ -916,8 +1022,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000308",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000330",
         "startId": "a1b2c3d4-0000-4000-8000-000000000303"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000308",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000330"
       },
       {
         "sourcePort": null,

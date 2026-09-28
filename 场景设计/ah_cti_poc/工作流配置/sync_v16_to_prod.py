@@ -2,7 +2,8 @@
 
 过程：
 1. 删除 V1.6-prod 目录下所有 .json 文件；
-2. 从 V1.6 复制全部 .json 文件到 V1.6-prod；
+2. 从 V1.6 复制目标 .json 文件到 V1.6-prod（仅 wf_sub_*.json、import_headers.json
+   及中文导出 *_export.json；跳过 _ 开头的临时脚手架文件，避免其非 UTF-8 编码导致解码失败）；
 3. 批量替换环境地址（测试环境 -> 生产环境）。
 
 用法：python sync_v16_to_prod.py
@@ -27,6 +28,21 @@ def replace_env(text: str) -> str:
     return text
 
 
+def is_target(path: Path) -> bool:
+    name = path.name
+    if name.startswith("_"):
+        return False
+    return name == "import_headers.json" or name.startswith("wf_sub_") or name.endswith("_export.json")
+
+
+def read_text(path: Path) -> str:
+    # 原始字节若带 UTF-16 BOM 则按 UTF-16 解码，否则 UTF-8
+    raw = path.read_bytes()
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16")
+    return raw.decode("utf-8")
+
+
 def main() -> None:
     if not SRC_DIR.is_dir():
         raise SystemExit(f"源目录不存在: {SRC_DIR}")
@@ -37,9 +53,9 @@ def main() -> None:
         print(f"[删除] {old_file.name}")
 
     for src_file in SRC_DIR.glob("*.json"):
-        with open(src_file, "r", encoding="utf-8", newline="") as fp:
-            content = fp.read()
-        content = replace_env(content)
+        if not is_target(src_file):
+            continue
+        content = replace_env(read_text(src_file))
         with open(DST_DIR / src_file.name, "w", encoding="utf-8", newline="") as fp:
             fp.write(content)
         print(f"[复制+替换] {src_file.name}")

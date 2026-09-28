@@ -350,14 +350,13 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 ## 十四、生成与校验流程
 
 1. 修改 `gen_workflows.py`（新增/改节点、边、常量；共享构造器/常量在 `wf_common.py`）。
-2. 运行 `python gen_workflows.py`，逐一打印 `written: <文件名>`。
-3. 校验（重建后需 **14 个子工作流全量 ALL_OK**）：
+2. 运行 `python gen_workflows.py`。生成器在**写出前自动调用 `wf_common.validate_workflow(data, fn)`** 按本节校验，逐项打印 `written: <文件名> OK`；任一子流违规即打印 `VALIDATE FAIL` 明细并以非零码 `SystemExit` 中止（不产出不合规 JSON）。
+3. 校验项（重建后需 **14 个子工作流全量 OK**，均由 `validate_workflow` 自动执行）：
    - 每个 `.json` 可被 `json.load`（`ensure_ascii=False, indent=2` 写出）。
+   - 所有节点 `type` ∈ `{0,1,2,3,6,9,13}`。
    - 所有 `edges` 的 `startId/endId` 均存在于 `nodes` 的 `id`。
    - **fan-out 校验（节点出边单线约束）**：统计各 `startId` 出度，任一节点出度>1 且其 `type≠2`（非条件分支）即 FAIL（对齐 6.4）。允许的 fan-out 仅限 type=2 分支节点。
-   - 所有 `dependencyData`/`dep_node` 引用的节点与出参真实存在。
-   - 所有 `inp(..., ref_block=nid(x))` 的 `x` 是有效上游节点。
-   - 所有引用出参（`ref_rel`）在对应上游节点 `outputs` 中已声明。
+   - 所有引用入参（`inp(type="ref")`）的 `blockID` 存在、`relName` 在对应上游节点出参（开始节点取 `inputs`）中已声明、且三层（`blockID`/`nameValue[0]`/`currValue`）一致。
    - **代码节点出参声明完备性**：代码节点（type=6）`Output={...}` 返回的每个顶层键，必须在 `code_out(...)` 出参中已声明（平台按「返回键 ⊆ 声明出参」严格校验，返回未声明键会导致节点校验失败、工作流无法执行；本地 `wf_runner` 宽松忽略故不可见）。
    - 插件 array 出参 `sechema` 有 item 树（对齐 `ARRAY_ITEM_FIELDS`）。
    - **结束节点占位符校验**：对每个 type=9 节点，提取 `outputs.content` 中所有 `{...}` 占位符（跳过 `xsbot-panel` 代码块内的内嵌 JSON），逐个核对是否与 `inputs[].name` 逐字一致（含大小写）；不一致即 FAIL（对齐 11.1，防止"节点无法显示"）。
@@ -378,9 +377,10 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 ---
 
 **最后更新**：2026-09-28
-**版本**：v1.11
+**版本**：v1.12
 
 ### 变更记录
+- v1.12（2026-09-28）：**生成器内置自动校验**：`wf_common.validate_workflow(data, fn)` 落地第十四节全部静态校验项（type 白名单/悬空边/fan-out/引用三层一致与出参存在/代码节点返回键⊆声明出参/结束节点占位符），`gen_workflows.py` 写出前逐流校验，违规打印 `VALIDATE FAIL` 明细并非零退出（不产出不合规 JSON）；第十四节流程同步改为由该校验器自动执行。
 - v1.11（2026-09-28）：**生成器文件重命名（去「两个生成器」歧义）**：原 `gen_workflows_v2.py`（唯一生成入口）→ `gen_workflows.py`，原 `gen_workflows.py`（共享常量库）→ `wf_common.py`；`gen_workflows.py` 改为 `from wf_common import ...`，两目录（`智能体工作流集V1.6` 与 `-prod`）同步，文档与 `_probe_urls.py` glob 一并更新。
 - v1.10（2026-09-28）：**① 数量口径修正为 14 个子工作流 + 存量 fan-out 清理**：适用范围/总原则/文件组织/七节 seq 分段/十二节/十四节校验条数由"12 个（wf_sub_00~11）"更新为 **14 个（wf_sub_00~13，含 V3.10 两阶段拆分新增 wf_sub_12 规格稽核轮询 / wf_sub_13 测试轮询查询）**；② 按 6.4 修正 3 处存量 fan-out（wf_sub_01 节点 103/108、wf_sub_05 节点 402、wf_sub_08 节点 802 串联化），14 个 JSON 重生成并全量校验 ALL_OK，同步 `-prod`；③ 删除临时残留 `_test00.json`（v1.6 早期 8 节点旧版）。
 - v1.9（2026-09-20）：**补充节点出边单线约束（6.4）**：明确平台不允许一个节点连接两条及以上出边（fan-out），非条件分支（type≠2）节点至多一条出边，仅 type=2 分支节点允许 fan-out（按 sourcePort 路由）；给出修正原则（消除冗余边/串行化并行分支/必要时用 type=2 路由）并说明执行器用全局 ctx 解析引用、不依赖直接边故数据流不变；§十四校验流程同步新增 fan-out 校验项（任一节点出度>1 且 type≠2 即 FAIL）。依据本轮 wf_sub_03(节点202)/wf_sub_05(节点402)冗余边删除与 wf_sub_04 开始节点301三分支串行化修复沉淀。

@@ -9,7 +9,7 @@
 # 供 wf_sub_06 审批推送的四环节门禁自查；
 # ID 规范（统一键）：全链路唯一批次标识=req_id（PLAN+yyyyMMddHHmmss+3位随机数，执行方案与
 # 执行主干共用同一 req_id，原 plan_id/execution_id 双键合并为 req_id 单键，同键覆盖写）
-import json, os, io, uuid
+import json, os, io, uuid, re, collections
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 BASE_URL = "http://10.86.13.201:31281"
@@ -1230,7 +1230,76 @@ CODE_PACK_RECORD = (
 )
 
 
-# CODE_PACK_AUDIT_LAUNCH：wf_sub_03 节点208 专用封包（在 CODE_PACK_RECORD 之上补齐回执四要素）。
+# CODE_FMT_OFFERS：逐品「测试场景执行状态」结构化排版（供结束节点对齐回执）。
+# 背景：结束节点原样拼 {offers} 会直出紧凑 JSON 字符串，长且难读；且需体现商品列表的逐场景状态。
+# 方案：本节点把 offers[]（可能为 JSON 字符串或原始 list）逐品渲染为商品块 + 场景子行：
+#   【商品N】offer_id=xxx 测试流水号=xxx 发起状态=已发起
+#     - [S_O_TC] 可选包订购场景 · 待执行
+#     - [S_U_TC] 可选包退订场景 · 待执行
+# 场景态来源：6a 为发起阶段，C2 get_test_scenes 仅返回场景清单（testSceneNbr/testSceneName/sort），
+#   故场景态统一标注「待执行」，由 6b 轮询 C3/C4 后回填真实执行态。
+#   兼容 C3/C4 若已带场景级 status（success/fail/处理中）则按其值渲染。
+# 出参：offers_text（多行文本）、offer_count（品数）、scene_count（场景总数）。
+CODE_FMT_OFFERS = (
+    "import json\n"
+    "\n"
+    "_STATUS_CN = {'SUCCESS': '已发起', 'PENDING': '处理中', 'PARTIAL': '部分成功', 'FAIL': '失败', 'FAILED': '失败'}\n"
+    "_SCENE_STATUS_CN = {'SUCCESS': '通过', 'PASS': '通过', 'FAIL': '失败', 'FAILED': '失败',\n"
+    "                    'PENDING': '处理中', 'RUNNING': '执行中', 'WAIT': '待执行'}\n"
+    "\n"
+    "def _as_list(v):\n"
+    "    if isinstance(v, list):\n"
+    "        return v\n"
+    "    if isinstance(v, str):\n"
+    "        s = v.strip()\n"
+    "        if s[:1] in '[{':\n"
+    "            try:\n"
+    "                return json.loads(s)\n"
+    "            except Exception:\n"
+    "                return []\n"
+    "    return []\n"
+    "\n"
+    "def _scene_line(scene, idx):\n"
+    "    if not isinstance(scene, dict):\n"
+    "        return '    ' + str(idx) + '. ' + str(scene) + ' · 待执行'\n"
+    "    nbr = str(scene.get('testSceneNbr') or scene.get('sceneNbr') or scene.get('code') or '?')\n"
+    "    name = str(scene.get('testSceneName') or scene.get('sceneName') or scene.get('name') or '未命名场景')\n"
+    "    raw = str(scene.get('status') or scene.get('result') or 'WAIT').upper()\n"
+    "    st = _SCENE_STATUS_CN.get(raw, '待执行')\n"
+    "    return '    ' + str(idx) + '. [' + nbr + '] ' + name + ' · ' + st\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    offers = _as_list(p.get('offers'))\n"
+    "    blocks = []\n"
+    "    scene_total = 0\n"
+    "    for i, o in enumerate(offers, start=1):\n"
+    "        if not isinstance(o, dict):\n"
+    "            continue\n"
+    "        seq = o.get('offer_seq', i)\n"
+    "        oid = o.get('offer_id') or o.get('offerId') or '—'\n"
+    "        gid = o.get('globalId') or o.get('global_id') or '—'\n"
+    "        st = str(o.get('status') or o.get('result') or 'SUCCESS').upper()\n"
+    "        st_cn = _STATUS_CN.get(st, st)\n"
+    "        head = ('  【商品' + str(seq) + '】offer_id=' + str(oid)\n"
+    "                + ' 测试流水号=' + str(gid) + ' 发起状态=' + st_cn)\n"
+    "        scenes = _as_list(o.get('testScenes') or o.get('test_scenes'))\n"
+    "        scenes = sorted(scenes, key=lambda s: (s.get('sort') if isinstance(s, dict) and s.get('sort') is not None else 999))\n"
+    "        scene_total += len(scenes)\n"
+    "        if scenes:\n"
+    "            head += ' 场景数=' + str(len(scenes))\n"
+    "            body = '\\n'.join(_scene_line(s, k) for k, s in enumerate(scenes, start=1))\n"
+    "            blocks.append(head + '\\n' + body)\n"
+    "        else:\n"
+    "            blocks.append(head + '\\n    - （无场景清单）')\n"
+    "    offers_text = '\\n'.join(blocks) if blocks else '  （无逐品明细）'\n"
+    "    ret: Output = {\n"
+    "        'offers_text': offers_text,\n"
+    "        'offer_count': str(len([o for o in offers if isinstance(o, dict)])),\n"
+    "        'scene_count': str(scene_total)\n"
+    "    }\n"
+    "    return ret"
+)
 # 背景：结束节点需渲染【下载链接/文件名/文件id/稽核销售品列表】，但结束节点不能读取上游节点出参，
 #   必须由本节点在封包时把四要素渲染好并作为显式出参透传，结束节点仅引用本节点出参。
 # 入参：与 CODE_PACK_RECORD 同款（sales_id/file_id/requestIds/offers/req_id/offer_id/md/md_key）+
@@ -2409,6 +2478,96 @@ files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = 
 #   工作流 JSON 的唯一生成入口是同目录 gen_workflows.py（from wf_common import ...）。
 #   legacy files 构建已被 gen_workflows.py 取代，其写盘仅在直接运行本文件时执行，
 #   以免被 import 时无条件覆盖生成器产物（历史「流程陷阱」）。
+# ============================================================
+# 工作流 JSON 规范校验（对齐《工作流JSON开发规范.md》第十四节）
+# 生成器写出前调用，发现违规即抛出，保证产物符合规范。
+# 校验项：
+#   1. 节点 type 均在允许集合
+#   2. edges 的 startId/endId 均存在
+#   3. fan-out：非条件分支(type=2)节点出度 ≤1
+#   4. 引用入参三层一致（blockID/nameValue[0]/currValue）且上游出参已声明
+#   5. 代码节点 Output 返回键 ⊆ 声明出参
+#   6. 结束节点占位符 ⊆ inputs[].name
+# ============================================================
+_ALLOWED_NODE_TYPES = {0, 1, 2, 3, 6, 9, 13}
+
+
+def _code_return_keys(code):
+    """提取代码节点中所有 `ret: Output = {...}` 的顶层键"""
+    keys = set()
+    for m in re.finditer(r'ret:\s*Output\s*=\s*\{', code or ''):
+        i, depth, s = m.end(), 1, ''
+        while i < len(code) and depth > 0:
+            c = code[i]
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+            if depth > 0:
+                s += c
+            i += 1
+        for km in re.finditer(r'([\'"])(\w+)\1\s*:', s):
+            pre = s[:km.start()]
+            if pre.count('{') - pre.count('}') + pre.count('[') - pre.count(']') <= 0:
+                keys.add(km.group(2))
+    return keys
+
+
+def validate_workflow(data, filename="<workflow>"):
+    """校验工作流 JSON 是否符合规范；返回错误列表（空=通过）"""
+    errs = []
+    W = (data or {}).get('workFlowSchemaJSON') or {}
+    nodes = W.get('nodes') or []
+    edges = W.get('edges') or []
+    byid = {n.get('id'): n for n in nodes}
+
+    for n in nodes:
+        if n.get('type') not in _ALLOWED_NODE_TYPES:
+            errs.append(f"[type] 节点 {n.get('id')} 非法 type={n.get('type')}")
+
+    for e in edges:
+        if e.get('startId') not in byid or e.get('endId') not in byid:
+            errs.append(f"[edge] 悬空边 {e.get('startId')}->{e.get('endId')}")
+
+    out_deg = collections.Counter(e['startId'] for e in edges)
+    for sid, deg in out_deg.items():
+        if deg > 1 and byid[sid].get('type') != 2:
+            errs.append(f"[fanout] 非分支节点 {sid}(type={byid[sid].get('type')}) 出度={deg}")
+
+    def _out_names(node):
+        if node.get('type') == 0:
+            return {x.get('name') for x in (node.get('inputs') or [])}
+        return {o.get('name') for o in (node.get('outputs') or [])}
+
+    for n in nodes:
+        for i in (n.get('inputs') or []):
+            if not isinstance(i, dict) or i.get('type') != 'ref':
+                continue
+            up = byid.get(i.get('blockID'))
+            if up is None:
+                errs.append(f"[ref] 节点 {n['id']} 入参 {i.get('name')} 引用不存在节点 {i.get('blockID')}")
+                continue
+            if i.get('relName') not in _out_names(up):
+                errs.append(f"[ref] 节点 {n['id']} 入参 {i.get('name')} 引用未声明出参 {up['id']},{i.get('relName')}")
+            if i.get('nameValue') and (i['nameValue'][0] != i.get('blockID')
+                                       or i.get('currValue') != i.get('blockID') + ',' + str(i.get('relName'))):
+                errs.append(f"[ref] 节点 {n['id']} 入参 {i.get('name')} 三层引用不一致")
+
+    for n in nodes:
+        if n.get('type') == 6:
+            extra = _code_return_keys(n.get('code')) - {o.get('name') for o in (n.get('outputs') or [])}
+            if extra:
+                errs.append(f"[code] 节点 {n['id']} 返回未声明出参 {sorted(extra)}")
+
+    for n in nodes:
+        if n.get('type') == 9:
+            names = {i.get('name') for i in (n.get('inputs') or [])}
+            for ph in re.findall(r'\{([A-Za-z0-9_]+)\}', (n.get('outputs') or {}).get('content', '')):
+                if ph not in names:
+                    errs.append(f"[placeholder] 结束节点 {n['id']} 占位符 {{{ph}}} 无对应入参")
+    return errs
+
+
 if __name__ == "__main__":
     for fn, data in files.items():
         data = apply_layout(data)

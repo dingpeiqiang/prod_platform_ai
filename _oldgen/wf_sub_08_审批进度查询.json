@@ -1,0 +1,460 @@
+{
+  "flowName": "产销品-审批工单查询",
+  "flowRemark": "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→LLM 工单摘要归纳：固定格式（审批单号/需求单号/销售品/状态/当前环节/审批人/最近意见/更新时间）+审批矩阵（逐字引用 approval_matrix[] 禁止编造）+按 approval_type 区分衔接（requirement→引导需求分析【开始配置】；launch→审批通过即视为已上架，引导后续运维查询，不再输出自动上线/监控运维方案）+收尾固定块（SKILL.md纪律5.1，禁止以矩阵表格收尾）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "需求单号（必填，审批工单关联主键：按此反查审批工单信息）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000801",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "req_id",
+            "cname": "需求单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "整批状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultCode",
+            "cname": "结果码",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "offers",
+            "cname": "逐品审批工单明细（多商品批量）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "审批工单查询",
+          "code": "query_approval_status",
+          "description": "工具13：自研模拟审批工单查询（req_id 关联主键，chat_id 会话入参；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品含审批单号/需求单号/销售品/类型/状态/当前环节/审批人/意见/更新时间及审批矩阵）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000802",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/approval/status"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,approval_id",
+            "name": "approval_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,approval_type",
+            "name": "approval_type",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000806,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\nasync def main(args):\n    raw = args.params.get('offers')\n    top_approval_id = ''\n    if isinstance(raw, dict):\n        top_approval_id = str(raw.get('approval_id') or '')\n    offers = [o for o in _load(raw) if isinstance(o, dict)]\n    first = offers[0] if offers else {}\n    req_id = str(args.params.get('req_id') or first.get('req_id') or '')\n    ret: Output = {\n        'req_id': req_id,\n        'offer_id': str(first.get('offer_id') or ''),\n        'approval_id': str(top_approval_id or first.get('approval_id') or ''),\n        'approval_type': str(first.get('approval_type') or ''),\n        'offers': json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品审批工单明细（节点802）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000802",
+              "a1b2c3d4-0000-4000-8000-000000000802,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000802,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（节点802）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000802",
+              "a1b2c3d4-0000-4000-8000-000000000802,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000802,req_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "审批首品提取"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000806",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_summary",
+            "description": "审批工单摘要",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态，≠单个商品状态）。按 flow-D D-1 固定格式归纳输出（多商品时逐品输出一段）：\n对 per_offer 的每一项，输出下面这一固定行；行内「」中的字段逐字取自该商品对应键，禁止保留花括号、禁止给值加 key 前缀（如不得写成 approval_id: X）、禁止把整批 status 当作单品状态：\n审批单号「approval_id」｜需求单号 {req_id}｜销售品「offer_id」｜状态：「status（该项的单品状态）」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n\n**审批矩阵（逐字引用该品 approval_matrix[]，禁止编造）：**\n| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n（逐行展开该品 approval_matrix 全部节点；出参无 approval_matrix 时省略本表，不得补造）\n\n审批类型衔接（按下述区分；否则只给摘要）：\n- 当前环节含「待上线审批」或 approval_type=requirement 且 status=审批中（需求审核已通过）→ 收尾块：> **建议处理：** 需求工单审批已通过，建议进入【需求分析】（可回复【开始配置】）\n- approval_type=launch 且 status=通过（上线审批通过）→ 输出\"审批已通过，销售品上架完成 ✅\"；审批通过即视为已完成上架，引导后续可查询监控运维\nstatus=驳回 时附驳回原因，并提示\"可修改执行方案后重新发起\";查无审批单时输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n输出要求：仅输出审批工单摘要（对应出参 approval_summary，含审批矩阵与收尾块），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "offers",
+              "name": "per_offer",
+              "description": "逐品审批工单明细（节点802）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号（节点802）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+              "relName": "status",
+              "name": "status",
+              "description": "整批状态（节点802）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000802",
+                "a1b2c3d4-0000-4000-8000-000000000802,status"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,status"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "状态摘要归纳",
+          "title": "状态摘要归纳"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000803",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000805,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=08&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=08&view=stage')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"上线审批看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000801",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000801",
+              "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000801,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000806",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000806",
+              "a1b2c3d4-0000-4000-8000-000000000806,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000806,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000806",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000806",
+              "a1b2c3d4-0000-4000-8000-000000000806,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000806,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000806",
+            "relName": "approval_id",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000806",
+              "a1b2c3d4-0000-4000-8000-000000000806,approval_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000806,approval_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000805",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{approval_summary}\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000803",
+            "relName": "approval_summary",
+            "name": "approval_summary",
+            "description": "审批工单摘要",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000803",
+              "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000805",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000805",
+              "a1b2c3d4-0000-4000-8000-000000000805,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000805,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(查询完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000804",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000802",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000801"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000803",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000802"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000806",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000803"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000805",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000806"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000804",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000805"
+      }
+    ],
+    "flowId": "wf_sub_08",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}
