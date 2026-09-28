@@ -377,6 +377,9 @@ public class AppStoreV16Controller {
             Map<String, Object> item = new java.util.LinkedHashMap<>();
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("globalId", globalId);
+            // 回填真实商品标识（源自测试任务关联的配置销售品），供 6b 封包 test_pending 后展示商品分组
+            item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offer.get("offer_id"), offer.get("offerId")));
+            item.put("offer_name", MapOps.firstNonEmpty(r.get("offer_name"), offer.get("offer_name")));
             item.put("testScenes", r.get("testScenes"));
             item.put("status", MapOps.empty(r.get("testScenes")) ? "fail" : "success");
             items.add(item);

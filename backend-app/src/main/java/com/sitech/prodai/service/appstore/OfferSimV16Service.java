@@ -525,6 +525,9 @@ public class OfferSimV16Service {
         }
         Map<String, Object> task = testTasks.get(MapOps.str(req.get("globalId")).trim());
         if (task == null) {
+            task = recoverTestTask(MapOps.str(req.get("globalId")));
+        }
+        if (task == null) {
             return camelFail("4002", "globalId 查无对应测试任务");
         }
         Map<String, Object> offer = resolveOffer(MapOps.str(task.get("offer_id")));
@@ -535,6 +538,8 @@ public class OfferSimV16Service {
         }
         Map<String, Object> body = camelOk();
         body.put("resultCode", "0");
+        body.put("offer_id", MapOps.str(task.get("offer_id")));
+        body.put("offer_name", offer == null ? "" : MapOps.str(offer.get("offer_name")));
         body.put("testScenes", scenes);
         return body;
     }
@@ -547,6 +552,9 @@ public class OfferSimV16Service {
             return eopEnvelope("1", "globalId 必填", null);
         }
         Map<String, Object> task = testTasks.get(globalId.trim());
+        if (task == null) {
+            task = recoverTestTask(globalId);
+        }
         if (task == null) {
             return eopEnvelope("1", "globalId 查无对应测试任务", null);
         }
@@ -587,6 +595,9 @@ public class OfferSimV16Service {
         }
         String globalId = MapOps.str(req.get("globalId")).trim();
         Map<String, Object> task = testTasks.get(globalId);
+        if (task == null) {
+            task = recoverTestTask(globalId);
+        }
         if (task == null) {
             return eopEnvelope("1", "globalId 查无对应测试任务", null);
         }
@@ -2166,6 +2177,67 @@ public class OfferSimV16Service {
      * 仍未命中时，回退到持久化的 config 环节结果（覆盖后端重启/多实例导致内存档案丢失的
      * 新增销售品场景），从 result_json 反查同 offer_id 的落地配置重建档案并回填内存缓存。
      */
+    /**
+     * 测试任务兜底重建：跨 req_id 扫描已持久化的 test_pending 环节结果，按 globalId 命中后
+     * 依据其 offers[] 元素的 offer_id 重建内存任务（时长/场景按发起口径重算），
+     * 使后端重启后仍可用 DB 中持久化的 globalId 查询模拟进度/场景/结果。
+     *
+     * <p>设计动机：testTasks 为进程内内存态，重启后丢失；而 test_pending 的 offers[]
+     * （含 offer_seq/offer_id/globalId/testScenes）已持久化于 node_result，是稳定的重建来源。
+     * 仅当 globalId 能在某条 test_pending 记录中命中时才重建。
+     *
+     * @return 重建成功返回任务；未命中返回 null
+     */
+    private Map<String, Object> recoverTestTask(String globalId) {
+        if (globalId == null || globalId.isBlank()) {
+            return null;
+        }
+        String key = globalId.trim();
+        for (Map<String, Object> rec : nodeResult.listByNodeName("test_pending")) {
+            Map<String, Object> json = parseConfig(MapOps.str(rec.get("result_json")));
+            if (json == null || json.isEmpty()) {
+                continue;
+            }
+            for (Map<String, Object> o : MapOps.castListOfMaps(json.get("offers"))) {
+                if (!key.equals(MapOps.str(o.get("globalId")).trim())) {
+                    continue;
+                }
+                String offerId = MapOps.str(MapOps.firstNonEmpty(o.get("offer_id"), o.get("offerId"))).trim();
+                if (offerId.isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> offer = resolveOffer(offerId);
+                if (offer == null) {
+                    continue;
+                }
+                Map<String, Object> task = new LinkedHashMap<>();
+                task.put("global_id", key);
+                task.put("offer_id", offerId);
+                task.put("scene_nbrs", sceneNbrsOf(offer));
+                task.put("created_at", recoverCreatedAt(key));
+                task.put("duration_ms", PROGRESS_TOTAL_MS);
+                task.put("done", false);
+                task.put("failed", false);
+                testTasks.put(key, task);
+                log.info("[OfferSimV16] 测试任务自持久化 test_pending 环节结果重建: globalId={}, offer_id={}",
+                        key, offerId);
+                return task;
+            }
+        }
+        return null;
+    }
+
+    /** 从 globalId 前缀反推发起时刻（格式：50 + yyyyMMddHHmmss + 10 位随机数）；不可解析则回退当前时刻。 */
+    private long recoverCreatedAt(String globalId) {
+        try {
+            String stamp = globalId.substring(2, 16);
+            LocalDateTime ts = LocalDateTime.parse(stamp, STAMP);
+            return ts.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return System.currentTimeMillis();
+        }
+    }
+
     private Map<String, Object> resolveOffer(String offerId) {
         if (offerId == null || offerId.isBlank()) {
             return seed.findOffer(offerId);

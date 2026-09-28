@@ -2301,7 +2301,8 @@ s13f.append(plugin_node(2302, "自查测试发起临时态", "query_node_result"
     method="get", pos=(240, 135)))
 s13f.append(code_node(2303, "提取测试商品数组", CODE_EXTRACT_GLOBAL_ID,
     [inp("query_list", "引用节点2302查询出参 list", ref_block=nid(2302), ref_rel="list")],
-    [code_out("record_json", 2303), code_out("offer_id", 2303), code_out("globalId", 2303), code_out("offers", 2303)],
+    [code_out("record_json", 2303), code_out("offer_id", 2303), code_out("offer_name", 2303),
+     code_out("globalId", 2303), code_out("offers", 2303)],
     pos=(390, 135)))
 # 2304 查询测试进度（V4.0 单次查询，非轮询；输出 is_final/progress_text 供终态判定与仪表盘）
 s13f.append(code_node(2304, "查询测试进度", CODE_PROGRESS_LITE,
@@ -2337,9 +2338,9 @@ s13f.append(code_node(2333, "构建测试结果报告", CODE_RENDER_TEST_REPORT,
     pos=(1140, 300)))
 # xsbot-panel 独立代码节点（终态结果分支 / 处理中分支各一）
 s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
-    panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
+    panel_inputs(2301, off_seq=2303, off_rel="offer_id", name_seq=2303, name_rel="offer_name", req_seq=2301), biz_title="测试报告"))
 s13f.append(panel_code_node(2325, "构建页面地址面板(处理中)", "06",
-    panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
+    panel_inputs(2301, off_seq=2303, off_rel="offer_id", name_seq=2303, name_rel="offer_name", req_seq=2301), biz_title="测试报告"))
 # 2323 结束（未终态：进度仪表盘，不写 test，引导续查）
 s13f.append(end_node(2323, "结束(测试处理中-进度仪表盘)",
     [inp("progress_text", "进度仪表盘文本（节点2304）", ref_block=nid(2304), ref_rel="progress_text"),
