@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-上线审批",
-  "flowRemark": "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。",
+  "flowRemark": "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 格式化审批矩阵(出参无矩阵时模拟单据级多节点审批流)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -1205,7 +1205,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom datetime import datetime, timedelta\n\nMATRIX_HEADER = ['| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |',\n                 '| :---: | :--- | :--- | :--- | :--- | :--- |']\n\nMOCK_FLOW = [\n    ('待业务审核', '商务经理', '已通过', '同意，销售品配置与资费符合上线要求'),\n    ('待技术复核', '技术负责人', '已通过', '技术方案与测试验证通过，准予上线'),\n    ('待上线审批', '运营总监', '审批中', '待确认上线窗口，其余无异议'),\n]\n\n\ndef _load(raw):\n    if isinstance(raw, (list, dict)):\n        return raw\n    if not isinstance(raw, str) or not raw.strip():\n        return []\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\n\ndef _matrix_of(o):\n    if not isinstance(o, dict):\n        return []\n    m = o.get('approval_matrix') or o.get('approvalMatrix') or o.get('matrix')\n    if not m:\n        for k, v in o.items():\n            if isinstance(v, list) and v and isinstance(v[0], dict):\n                m = v\n                break\n    return m if isinstance(m, list) else []\n\n\ndef _row(seq, node):\n    if not isinstance(node, dict):\n        node = {}\n    cur = (node.get('current_node') or node.get('node_name')\n           or node.get('node') or node.get('step') or '-')\n    role = (node.get('approver') or node.get('role')\n            or node.get('approver_role') or '-')\n    st = node.get('status') or node.get('state') or '-'\n    op = node.get('opinion') or node.get('comment') or '-'\n    tm = (node.get('update_time') or node.get('time')\n          or node.get('op_time') or '-')\n    return '| %s | %s | %s | %s | %s | %s |' % (seq, cur, role, st, op, tm)\n\n\ndef _mock_matrix():\n    base = datetime.now()\n    rows = []\n    for i, (cur, role, st, op) in enumerate(MOCK_FLOW):\n        tm = (base + timedelta(minutes=5 * i)).strftime('%Y-%m-%d %H:%M:%S')\n        rows.append({'current_node': cur, 'approver': role,\n                     'status': st, 'opinion': op, 'update_time': tm})\n    return rows\n\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('offers'))\n    if isinstance(offers, dict):\n        offers = [offers]\n    if not isinstance(offers, list):\n        offers = []\n    matrix = []\n    for o in offers:\n        matrix = _matrix_of(o)\n        if matrix:\n            break\n    if not matrix:\n        matrix = _mock_matrix()\n    lines = list(MATRIX_HEADER)\n    for seq, node in enumerate(matrix, start=1):\n        lines.append(_row(seq, node))\n    approval_matrix = '\\n'.join(lines)\n    approval_type = str(p.get('approval_type') or '').strip() or 'launch'\n    ret: Output = {\n        'approval_matrix': approval_matrix,\n        'approval_type': approval_type,\n    }\n    return ret\n",
+        "code": "import json\nfrom datetime import datetime, timedelta\n\nMATRIX_HEADER = ['| 序号 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |',\n                 '| :---: | :--- | :--- | :--- | :--- | :--- |']\n\n# 模拟审批流节点（单据级，顺序即审批先后）\nMOCK_FLOW = [\n    ('待业务审核', '商务经理', '已通过', '同意，销售品配置与资费符合上线要求'),\n    ('待技术复核', '技术负责人', '已通过', '技术方案与测试验证通过，准予上线'),\n    ('待上线审批', '运营总监', '审批中', '待确认上线窗口，其余无异议'),\n]\n\n\ndef _load(raw):\n    if isinstance(raw, (list, dict)):\n        return raw\n    if not isinstance(raw, str) or not raw.strip():\n        return []\n    try:\n        return json.loads(raw)\n    except Exception:\n        return []\n\n\ndef _matrix_of(o):\n    if not isinstance(o, dict):\n        return []\n    m = o.get('approval_matrix') or o.get('approvalMatrix') or o.get('matrix')\n    if not m:\n        for k, v in o.items():\n            if isinstance(v, list) and v and isinstance(v[0], dict):\n                m = v\n                break\n    return m if isinstance(m, list) else []\n\n\ndef _row(seq, node):\n    if not isinstance(node, dict):\n        node = {}\n    cur = (node.get('current_node') or node.get('node_name')\n           or node.get('node') or node.get('step') or '-')\n    role = (node.get('approver') or node.get('role')\n            or node.get('approver_role') or '-')\n    st = node.get('status') or node.get('state') or '-'\n    op = node.get('opinion') or node.get('comment') or '-'\n    tm = (node.get('update_time') or node.get('time')\n          or node.get('op_time') or '-')\n    return '| %s | %s | %s | %s | %s | %s |' % (seq, cur, role, st, op, tm)\n\n\ndef _mock_matrix():\n    base = datetime.now()\n    rows = []\n    for i, (cur, role, st, op) in enumerate(MOCK_FLOW):\n        tm = (base + timedelta(minutes=5 * i)).strftime('%Y-%m-%d %H:%M:%S')\n        rows.append({'current_node': cur, 'approver': role,\n                     'status': st, 'opinion': op, 'update_time': tm})\n    return rows\n\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('offers'))\n    if isinstance(offers, dict):\n        offers = [offers]\n    if not isinstance(offers, list):\n        offers = []\n    matrix = []\n    for o in offers:\n        matrix = _matrix_of(o)\n        if matrix:\n            break\n    if not matrix:\n        matrix = _mock_matrix()\n    lines = list(MATRIX_HEADER)\n    for seq, node in enumerate(matrix, start=1):\n        lines.append(_row(seq, node))\n    approval_matrix = '\\n'.join(lines)\n    approval_type = str(p.get('approval_type') or '').strip() or 'launch'\n    ret: Output = {\n        'approval_matrix': approval_matrix,\n        'approval_type': approval_type,\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -1245,7 +1245,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000618",
         "position": {
-          "x": 5595,
+          "x": 5775,
           "y": 300
         },
         "dependencyData": [],
@@ -1332,7 +1332,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5775,
+          "x": 6135,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000616",

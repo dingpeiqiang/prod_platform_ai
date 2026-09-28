@@ -34,6 +34,7 @@ from wf_common import (
     CODE_RENDER_TEST_REPORT,
     CODE_EXTRACT_REQUEST_IDS,
     CODE_FMT_OFFERS,
+    CODE_FMT_APPROVAL,
     CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
     validate_workflow,
 )
@@ -2792,24 +2793,27 @@ s6f.append(code_node(612, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
      inp("requirement_result", "执行方案原文（节点611提取）", ref_block=nid(611), ref_rel="record_json")],
      [code_out("summary_json", 612), code_out("offer_id", 612), code_out("all_pass", 612), code_out("fusion_verification", 612), code_out("offers", 612)],
     pos=(540, 385)))
-# 613 LLM：按 flow-C 模板生成《上线审批建议》（环节8 标题头 + 校验看板 + 风险 + 整体结论）
+# 613 LLM：按 flow-C 模板生成《上线审批建议》（结构化 Markdown：标题头 + 看板 + 风险 + 整体结论 + AI审批建议）
 s6f.append(llm_node(613, "上线审批建议生成",
-    "你是产销品上线审批智能体。基于结构化汇总（summary_json={summary_json}），按 flow-C 模板生成《{{套餐名称}}上线审批建议》，其中套餐名称取 summary_json 的 offer_name（可从产品信息确认）。\n"
-    "输出结构（对应出参 approval_suggest，标题头为强制）：\n"
-    "【环节8/9·上线审批】✅ 执行成功\n\n"
+    "你是产销品上线审批智能体。基于结构化汇总（summary_json={summary_json}），按 flow-C 模板生成《{offer_name}上线审批建议》，其中套餐名称取 summary_json 的 offer_name（可从产品信息确认）。\n"
+    "输出须为结构化 Markdown（对应出参 approval_suggest，一级标题头为强制），严格按以下骨架逐节填充：\n\n"
+    "## 【环节8/9·上线审批】✅ 执行成功\n\n"
     "已自动汇总前序环节结果，生成《{offer_name}上线审批建议》。\n\n"
-    "**上线校验看板：**\n\n"
-    "| 检查项 | 结果 |\n"
-    "| :--- | :--- |\n"
-    "| 需求完整性 | ✅/❌ |\n"
-    "| 配置规格稽核 | ✅/❌ |\n"
-    "| 资费校准 | ✅/❌ |\n"
-    "| 自动测试（三大验证：受理/计费/客服{fusion_verification}） | ✅/❌ |\n\n"
-    "**风险检查：** {{逐字引用配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}\n\n"
-    "**整体上线结论：** {{逐字引用正式版报告第三/八章三选一结论：✅建议上线/⚠️评估风险后上线/❌禁止上线}}\n\n"
-    "**AI审批建议：{{全部通过→'建议上线'；任一环节未通过→'暂缓上线'}}。**\n"
-    "约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n"
-    "输出要求：仅输出审批建议正文（对应出参 approval_suggest），不输出其他多余文字。",
+    "### 一、上线校验看板\n\n"
+    "| 检查项 | 结果 | 说明 |\n"
+    "| :--- | :--- | :--- |\n"
+    "| 需求完整性 | ✅/❌ | 需求存在且无待补充则 ✅ |\n"
+    "| 配置规格稽核 | ✅/❌ | spec pass 则 ✅ |\n"
+    "| 资费校准 | ✅/❌ | fee pass 则 ✅ |\n"
+    "| 自动测试（三大验证：受理/计费/客服{fusion_verification}） | ✅/❌ | test 通过且受理子集通过则 ✅ |\n\n"
+    "### 二、风险检查\n\n"
+    "{{逐字引用配置完整性/资费风险/计费风险/受理风险结论；P1 警告级问题引用正式版报告第六章风险汇总}}\n\n"
+    "### 三、整体上线结论\n\n"
+    "{{逐字引用正式版报告第三/八章三选一结论：✅建议上线/⚠️评估风险后上线/❌禁止上线}}\n\n"
+    "### 四、AI审批建议\n\n"
+    "**{{全部通过→'建议上线'；任一环节未通过→'暂缓上线'}}。**\n\n"
+    "约束：看板各检查项与四类自查结果一一对应（需求完整性=requirement 存在且无待补充；配置规格稽核=spec pass；资费校准=fee pass；自动测试=test 通过且受理子集通过）；自动测试检查项须与正式版报告整体上线结论一致；任一检查项未通过该行标 ❌ 并在“说明”列附原因；禁止补 ✅ 凑数、禁止虚构风险结论。\n"
+    "输出要求：仅输出上述 Markdown 审批建议正文（保持小节标题与表格结构），不输出其他多余文字。",
     [inp("summary_json", "结构化汇总（节点612）", ref_block=nid(612), ref_rel="summary_json"),
      inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
      inp("fusion_verification", "融合成员组合验证标记（节点612）", ref_block=nid(612), ref_rel="fusion_verification")],
@@ -2842,22 +2846,34 @@ s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
     [("approval_id", "工单级审批单号（顶层单值，覆盖整批商品）", "string"), ("status", "整批提交状态 SUCCESS/PARTIAL/FAIL", "string"),
      ("approval_type", "审批类型", "string"),
      ("offers", "逐品审批推送结果数组JSON（[{offer_seq,approval_type,status,approval_matrix}]，商品级状态；approval_id 已提升至顶层，元素不再重复携带）", "string")], pos=(990, 385)))
+# 618 格式化审批结果：从 615 出参 offers[] 取 approval_matrix 渲染 Markdown 表格；
+# 出参无 approval_matrix 时按单据级多节点审批流模拟生成一份（状态体现审批语义：已通过/审批中）
+s6f.append(code_node(618, "格式化审批结果", CODE_FMT_APPROVAL,
+    [inp("offers", "逐品审批推送结果数组（节点615出参）", ref_block=nid(615), ref_rel="offers"),
+     inp("approval_type", "审批类型（节点615出参，兜底 launch）", ref_block=nid(615), ref_rel="approval_type")],
+    [code_out("approval_matrix", 618), code_out("approval_type", 618)],
+    pos=(5595, 300)))
 # 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批状态由【查询审批进度】事后查询
 # （后端模拟自动流转：提交 10s 后"审批中"→"通过（上架完成）"，查询时惰性推进）
 s6f.append(end_node(616, "结束(审批已提交)",
     [inp("approval_id", "工单级审批单号（顶层单值）", ref_block=nid(615), ref_rel="approval_id"),
      inp("status", "整批提交状态（审批中，模拟约10s后自动通过）", ref_block=nid(615), ref_rel="status"),
-     inp("approval_type", "审批类型（launch=上线审批）", ref_block=nid(615), ref_rel="approval_type"),
-     inp("offers", "逐品审批推送结果数组（节点615出参）", ref_block=nid(615), ref_rel="offers")],
-    "《上线审批建议》已提交审批：\n- 工单级审批单号：{approval_id}，整批提交状态：{status}，审批类型：{approval_type}\n"
-    "逐品审批状态：\n{offers}\n"
-    "审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n"
-    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"))
+     inp("approval_type", "审批类型（launch=上线审批，节点618兜底）", ref_block=nid(618), ref_rel="approval_type"),
+     inp("approval_matrix", "审批矩阵 Markdown 表格（节点618）", ref_block=nid(618), ref_rel="approval_matrix")],
+    "### 上线审批已提交\n\n"
+    "| 项 | 值 |\n| :--- | :--- |\n"
+    "| 工单级审批单号 | {approval_id} |\n"
+    "| 整批提交状态 | {status} |\n"
+    "| 审批类型 | {approval_type} |\n\n"
+    "**审批矩阵**\n\n{approval_matrix}\n\n"
+    "> 审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n"
+    ">\n"
+    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。\n"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 格式化审批矩阵(出参无矩阵时模拟单据级多节点审批流)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
-     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,616)])
+     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,618), edge(618,616)])
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
