@@ -121,8 +121,13 @@ class InterfaceAdapterTest {
         Assertions.assertNotNull(scenes.get("testScenes"));
 
         Map<String, Object> progress = interfaceFacade.testProgress(Map.of("global_id", globalId));
+        // C3 严格对齐 EOP 裸信封：{resultCode, resultObject:{...}, resultMsg}
         Assertions.assertEquals("0", progress.get("resultCode"));
-        Assertions.assertNotNull(progress.get("totalSteps"));
+        Object ro = progress.get("resultObject");
+        Assertions.assertTrue(ro instanceof Map, "C3 出参应含 EOP resultObject：" + progress);
+        Map<?, ?> progressBody = (Map<?, ?>) ro;
+        Assertions.assertNotNull(progressBody.get("totalSteps"));
+        Assertions.assertNotNull(progressBody.get("done"));
     }
 
     @Test

@@ -1,0 +1,1849 @@
+﻿{
+  "flowName": "浜ч攢鍝?娴嬭瘯鏌ヨ缁撴灉",
+  "flowRemark": "瀛愬伐浣滄祦13锛堢幆鑺?b 娴嬭瘯杞锛屼袱闃舵鎷嗗垎鍚庡崐锛涘彲閲嶅瑙﹀彂锛夛細鑷煡 test_pending 鍙?globalId鈫扖ODE_POLL_PROGRESS 鐭獥鍙ｈ疆璇?C3 get_test_progress(闂撮殧5s/涓婇檺60娆?5鍒嗛挓)鈫?*銆愰棬绂丄銆慸one==true 鎵嶇户缁?*鈫扖4 get_test_result锛坱estScenes/orderId/offerInstId/offerName锛夆啋鑷煡 spec/fee(2317~2320)鈫扖ODE_MAP_FIXED_CASES 纭畾鎬ф瀯寤?31 鏉″浐瀹氱敤渚嬭〃+鏁翠綋缁撹+缂洪櫡娓呭崟+鍦烘櫙瑕嗙洊+E26鈫扡LM 鎸?K3 妯℃澘 V2.0 涔濈珷鑺傛覆鏌撴寮忕増鎶ュ憡鈫?*銆愰棬绂丅銆憄0_pass==1锛圥0 鍏ㄩ€氳繃锛夋墠 save(node_name=test)**鈫掍笅杞芥姤鍛?CODE_DOWNLOAD_TEST_REPORT)銆俤one!=true 鎴?p0_pass!=1 鍧囦笉鍐?test锛堣烦杩囧瓨鍌ㄧ洿鎺ョ粨鏉燂級锛涚獥鍙ｈ€楀敖闈為敊璇紝杈撳嚭澶勭悊涓紩瀵肩画鏌ワ紱杩炵画5娆″け璐ョ粓姝㈣浆浜哄伐銆?,
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "req_id",
+            "description": "鎵ц涓诲共鎵规鍙凤紙PLAN+yyyyMMddHHmmss+3浣嶉殢鏈烘暟锛屽彇褰撳墠鐪熷疄鏃跺埢鐢熸垚锛屼笌鍙戣捣娴佸悓閿級",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "chat_id",
+            "description": "{chatId}",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "宸ヤ綔娴佺殑璧峰鑺傜偣锛岀敤浜庤瀹氬惎鍔ㄥ伐浣滄祦闇€瑕佺殑淇℃伅",
+          "title": "寮€濮嬭妭鐐?
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002301",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "璁板綍鏁扮粍JSON",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "瀛樺偍閿紙=寮€濮嬭妭鐐?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "鐜妭鍚?test_pending",
+            "type": "string",
+            "required": true,
+            "content": "test_pending"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=鍙繑鍥炴渶鏂颁竴鏉★紙榛樿锛?,
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "鑷煡娴嬭瘯鍙戣捣涓存椂鎬?,
+          "code": "query_node_result",
+          "description": "鑺傜偣缁撴灉鏌ヨ锛堝鐢級锛歳eq_id=寮€濮嬭妭鐐?req_id锛宯ode_name=test_pending 鍙栧洖娴嬭瘯鍙戣捣涓存椂鎬侊紙result_json 鍚?req_id+offers[]锛屾瘡鍏冪礌鍚?offer_seq/globalId/testScenes锛?,
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002302",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002303,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002303,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002303,globalId",
+            "name": "globalId",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002303,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\ndef _join(v):\n    if isinstance(v, list):\n        return ','.join(str(x) for x in v if str(x))\n    return str(v or '')\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    global_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n            ids = []\n            normalized = []\n            for o in offers:\n                gid = _join(o.get('globalId') or o.get('global_id') or '')\n                oid = str(o.get('offer_id') or o.get('offerId') or '')\n                if gid:\n                    ids += [x for x in gid.split(',') if x]\n                normalized.append({'offer_seq': o.get('offer_seq'),\n                                   'offer_id': oid, 'globalId': gid})\n            if not ids:\n                ids = [x for x in _join(inner.get('globalId') or inner.get('global_id') or '').split(',') if x]\n            global_id = ','.join(ids)\n            offers_json = json.dumps(normalized, ensure_ascii=False)\n        else:\n            offers_json = '[]'\n    except Exception:\n        offer_id = ''\n        global_id = ''\n        offers_json = '[]'\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"globalId\": global_id,\n        \"offers\": offers_json\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002302",
+            "relName": "list",
+            "name": "query_list",
+            "description": "寮曠敤鑺傜偣2302鏌ヨ鍑哄弬 list",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002302",
+              "a1b2c3d4-0000-4000-8000-000000002302,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002302,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鎻愬彇娴嬭瘯鍟嗗搧鏁扮粍"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002303",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304,done",
+            "name": "done",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304,failed",
+            "name": "failed",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304,failIndex",
+            "name": "failIndex",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304,fail_reason",
+            "name": "fail_reason",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 60\nMAX_CONSECUTIVE_FAIL = 5\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _poll_round(offers):\n    # 鎻愪氦鎵归噺杩涘害绔偣锛岃繑鍥?(ok, all_done, any_failed, fail_reason, per_offer)\n    try:\n        body = json.dumps({'offers': offers}).encode('utf-8')\n        req = urllib.request.Request(PROGRESS_URL, data=body,\n                                     headers={'Content-Type': 'application/json'})\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n    except Exception:\n        return False, False, False, '', []\n    if not isinstance(resp, dict):\n        return False, False, False, '', []\n    items = resp.get('offers') or []\n    all_done = True\n    any_failed = False\n    reason = ''\n    for it in items:\n        if str(it.get('failed', '')).lower() == 'true':\n            any_failed = True\n            reason = '娴嬭瘯澶辫触/涓锛屼粛鍙栧畬鏁寸粨鏋滀緵鎶ュ憡瀹氫綅澶辫触鍘熷洜'\n        if str(it.get('done', '')).lower() != 'true':\n            all_done = False\n    if not items:\n        all_done = False\n    return True, all_done, any_failed, reason, items\n\nasync def main(args):\n    offers = _load(args.params.get('offers'))\n    offers = [o for o in offers if isinstance(o, dict) and str(o.get('globalId') or '')]\n    if not offers:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缂哄皯娴嬭瘯娴佹按鍙?globalId锛岃鍏堝彂璧锋祴璇?, 'offers': '[]'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        ok, all_done, any_failed, reason, items = _poll_round(offers)\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '杩炵画鏌ヨ澶辫触5娆★紝杞汉宸?, 'offers': '[]'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if any_failed:\n            ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                           'fail_reason': reason,\n                           'offers': json.dumps(items, ensure_ascii=False)}\n            return ret\n        if all_done:\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': '',\n                           'offers': json.dumps(items, ensure_ascii=False)}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '娴嬭瘯澶勭悊涓紝璇风◢鍚庡洖澶嶃€愭煡璇㈡祴璇曠粨鏋溿€戠画鏌?, 'offers': '[]'}\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offers",
+            "name": "offers",
+            "description": "閫愬搧娴嬭瘯娴佹按鍙锋暟缁勶紙鑺傜偣2303鍑哄弬 offers锛屾瘡鍏冪礌鍚?offer_seq/globalId锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "杞娴嬭瘯杩涘害"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002304",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+                    "relName": "done",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000002304",
+                      "a1b2c3d4-0000-4000-8000-000000002304,done"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "true"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "绛変簬"
+                    },
+                    {
+                      "value": 2,
+                      "label": "涓嶇瓑浜?
+                    },
+                    {
+                      "value": 3,
+                      "label": "闀垮害澶т簬"
+                    },
+                    {
+                      "value": 4,
+                      "label": "闀垮害澶т簬绛変簬"
+                    },
+                    {
+                      "value": 5,
+                      "label": "闀垮害灏忎簬"
+                    },
+                    {
+                      "value": 6,
+                      "label": "闀垮害灏忎簬绛変簬"
+                    },
+                    {
+                      "value": 7,
+                      "label": "鍖呭惈"
+                    },
+                    {
+                      "value": 8,
+                      "label": "涓嶅寘鍚?
+                    },
+                    {
+                      "value": 9,
+                      "label": "涓虹┖"
+                    },
+                    {
+                      "value": 10,
+                      "label": "涓嶄负绌?
+                    },
+                    {
+                      "value": 15,
+                      "label": "闀垮害绛変簬"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else鍒嗘敮鍒ゆ柇锛岀鍚堟潯浠惰蛋濡傛灉鍒嗘敮锛屽惁鍒欒蛋鍚﹀垯鍒嗘敮",
+          "title": "杞瀹屾垚鍒ゅ畾"
+        },
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002321",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002304",
+            "name": "杞娴嬭瘯杩涘害",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000002304,done",
+                "name": "done",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "offers",
+            "cname": "閫愬搧娴嬭瘯缁撴灉鏁扮粍JSON锛圼{offer_seq,testScenes,orderId,offerInstId,offerName,testRequestId,...}]锛?,
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "鏁存壒鐘舵€?SUCCESS/PARTIAL/FAIL",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "鎵ц鎵规鍙凤紙=寮€濮嬭妭鐐?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offers",
+            "name": "offers",
+            "description": "閫愬搧娴嬭瘯娴佹按鍙锋暟缁勶紙鑺傜偣2303鍑哄弬 offers锛屾瘡鍏冪礌鍚?offer_seq/globalId锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "鏌ヨ娴嬭瘯缁撴灉",
+          "code": "get_test_result",
+          "description": "鎺ュ彛C4锛圴3.12 澶氬晢鍝佹壒閲忥級锛氬叆鍙?{req_id, offers:[{offer_seq, globalId}]}锛坓lobalId 鍙栬嚜鑺傜偣2303閫愬搧杈撳嚭锛夛紝閫愬搧鐢熸垚閫愬満鏅祴鐐规瘮瀵规槑缁嗕笌鍙楃悊鍑瘉锛岃仛鍚堣繑鍥?{req_id, status, offers:[{offer_seq, globalId, testScenes, orderId, offerInstId, offerName, testRequestId, report_url}]}",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002305",
+        "position": {
+          "x": 1815,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/result"
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "璁板綍鏁扮粍JSON",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "瀛樺偍閿紙=寮€濮嬭妭鐐?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "鐜妭鍚?spec锛堣鏍肩ń鏍革級",
+            "type": "string",
+            "required": true,
+            "content": "spec"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=鍙繑鍥炴渶鏂颁竴鏉★紙榛樿锛?,
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "鑷煡绋芥牳缁撴灉",
+          "code": "query_node_result",
+          "description": "鑺傜偣缁撴灉鏌ヨ锛堝鐢級锛歳eq_id=寮€濮嬭妭鐐?req_id锛宯ode_name=spec 鍙栧洖瑙勬牸绋芥牳鐜妭缁撴灉锛坮esult_json=缁撴瀯鍖?envelope锛屽惈 error_list锛?,
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002317",
+        "position": {
+          "x": 2175,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002318,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002318,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002318,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002318,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 澶氬晢鍝侊細浼樺厛鍙?offers[] 鏁扮粍锛涙棫鍗曞搧骞抽潰瀵硅薄鍖呰涓?1 鍝侊紙offer_seq=1锛塡n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002317",
+            "relName": "list",
+            "name": "query_list",
+            "description": "寮曠敤鑺傜偣2317鏌ヨ鍑哄弬 list",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002317",
+              "a1b2c3d4-0000-4000-8000-000000002317,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002317,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鎻愬彇绋芥牳鍘熸枃"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002318",
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "list",
+            "cname": "璁板綍鏁扮粍JSON",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "瀛樺偍閿紙=寮€濮嬭妭鐐?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "鐜妭鍚?fee锛堣祫璐规牎鍑嗭級",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=鍙繑鍥炴渶鏂颁竴鏉★紙榛樿锛?,
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "鑷煡璧勮垂缁撴灉",
+          "code": "query_node_result",
+          "description": "鑺傜偣缁撴灉鏌ヨ锛堝鐢級锛歳eq_id=寮€濮嬭妭鐐?req_id锛宯ode_name=fee 鍙栧洖璧勮垂鏍″噯鐜妭缁撴灉锛坮esult_json=缁撴瀯鍖?envelope锛屽惈 compare_list/risk_list锛?,
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002319",
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002320,record_json",
+            "name": "record_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002320,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002320,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002320,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 澶氬晢鍝侊細浼樺厛鍙?offers[] 鏁扮粍锛涙棫鍗曞搧骞抽潰瀵硅薄鍖呰涓?1 鍝侊紙offer_seq=1锛塡n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002319",
+            "relName": "list",
+            "name": "query_list",
+            "description": "寮曠敤鑺傜偣2319鏌ヨ鍑哄弬 list",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002319",
+              "a1b2c3d4-0000-4000-8000-000000002319,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002319,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鎻愬彇璧勮垂鍘熸枃"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002320",
+        "position": {
+          "x": 3255,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,cases_json",
+            "name": "cases_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,dimension_summary",
+            "name": "dimension_summary",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion",
+            "name": "overall_conclusion",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,defect_list",
+            "name": "defect_list",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,p0_pass",
+            "name": "p0_pass",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,e26",
+            "name": "e26",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,e26_note",
+            "name": "e26_note",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,scene_cover",
+            "name": "scene_cover",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,scene_exec",
+            "name": "scene_exec",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,scene_summary",
+            "name": "scene_summary",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315,offers",
+            "name": "offers",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _scene_of(tr, nbr):\n    for s in (tr.get('testScenes') or []):\n        if s.get('testSceneNbr') == nbr:\n            return s\n    return None\n\ndef _scene_exec(tr):\n    # 閫愬満鏅墽琛岀姸鎬侊細鎸夎鍦烘櫙涓嬫祴鐐癸紙testCasePointResults锛夎仛鍚圽n    #   鍏ㄩ€?閫氳繃 / 鏈夊け璐?澶辫触 / 鏃犳祴鐐?澶勭悊涓紱鏃?testScenes=澶勭悊涓璡n    out = []\n    for s in (tr.get('testScenes') or []):\n        if not isinstance(s, dict):\n            continue\n        nbr = str(s.get('testSceneNbr') or s.get('sceneNbr') or '')\n        name = str(s.get('testSceneName') or s.get('sceneName') or '鏈懡鍚嶅満鏅?)\n        pts = [p for p in (s.get('testCasePointResults') or []) if isinstance(p, dict)]\n        if pts:\n            fail = any(str(p.get('resultCode')) not in ('0', 'None', '') and str(p.get('resultCode')) != '0' for p in pts)\n            status = '澶辫触' if fail else '閫氳繃'\n            ok = sum(1 for p in pts if str(p.get('resultCode')) == '0')\n            detail = '%d/%d 娴嬬偣閫氳繃' % (ok, len(pts))\n        else:\n            status, detail = '澶勭悊涓?, '鏃犳祴鐐规槑缁?\n        out.append({'scene_nbr': nbr, 'scene_name': name, 'status': status, 'detail': detail})\n    return out\n\ndef _point_ok(tr, nbr, point_nbr):\n    scene = _scene_of(tr, nbr)\n    if not scene:\n        return None\n    for p in (scene.get('testCasePointResults') or []):\n        if p.get('testPointNbr') == point_nbr:\n            return str(p.get('resultCode')) == '0'\n    return None\n\ndef _scene_pass(tr, nbr):\n    scene = _scene_of(tr, nbr)\n    if not scene:\n        return None\n    try:\n        return int(scene.get('successTestCaseCount') or 0) == int(scene.get('testCaseCount') or 0)\n    except Exception:\n        return False\n\ndef _compare_ok(fee, project):\n    for c in (fee.get('compare_list') or []):\n        if c.get('project_name') == project:\n            return str(c.get('result')) == '涓€鑷?\n    return None\n\ndef _load(text):\n    # 鍏煎涓婃父鐩存帴閫忎紶 dict/list锛堣妭鐐瑰嚭鍙傛湭搴忓垪鍖栨椂鐨勫父瑙佹儏褰級\n    if isinstance(text, list):\n        return {'testScenes': text}\n    if isinstance(text, dict):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        if isinstance(v, list):\n            return {'testScenes': v}\n        return v if isinstance(v, dict) else {}\n    except Exception:\n        return {}\n\n# V2.1 鍏ㄨ鐩栵細涓虹‖缂栫爜/鏁版嵁缂轰綅鐢ㄤ緥琛ュ厖纭畾鎬у垽瀹氫緷鎹紙璇诲彇 plan/compare_list/testScenes锛夛紝\n# 浣?31 鏉″浐瀹氱敤渚嬪潎浜у嚭 鉁?鉂岋紝涓嶅啀鍑虹幇銆屾湰閿€鍞搧鏈鐩栥€嶃€俓ndef _plan_val(plan, *keys):\n    # plan 鍙兘鏄?{fields:[{field,value},...]} 鎴栨墎骞?dict锛岃繑鍥為涓懡涓瓧娈靛€硷紙鏃犲垯绌轰覆锛塡n    arr = plan.get('fields') if isinstance(plan, dict) else None\n    if isinstance(arr, list):\n        for f in arr:\n            if isinstance(f, dict) and str(f.get('field') or '').strip() in keys:\n                return str(f.get('value') or '').strip()\n    if isinstance(plan, dict):\n        for k in keys:\n            v = plan.get(k)\n            if v not in (None, ''):\n                return str(v).strip()\n    return ''\n\ndef _cmp_all_ok(fee):\n    # compare_list 涓虹┖瑙嗕负鏃犲彲鐤戯紙POC 铏氭嫙鏁版嵁榛樿涓轰竴鑷达級锛岄潪绌哄垯椤诲叏閮ㄣ€屼竴鑷淬€峔n    cl = fee.get('compare_list') if isinstance(fee, dict) else None\n    if not cl:\n        return True\n    return all(str(c.get('result')) == '涓€鑷? for c in cl)\n\ndef _neg_hit(v):\n    return any(n in v for n in ('涓嶆敮鎸?, '绂佹', '涓嶅厑璁?, '涓嶅彲鍙樻洿', '鏃犲湴鍩熼檺鍒?))\n\ndef _plan_cap_ok(plan, default_ok, *keys):\n    # 鑳藉姏鍨嬫牎楠岋細plan 鏈０鏄庤涓哄叿澶囷紙default_ok锛夛紝鏄惧紡鍚﹀畾鍏抽敭璇嶆墠鍒も潓\n    v = _plan_val(plan, *keys)\n    if not v:\n        return default_ok\n    return not _neg_hit(v)\n\nFIXED_CASES = [\n    ('ACC-001', '閿€鍞搧鍩虹鍑嗗叆瑙勫垯鏍￠獙', 'P0', 'ACC', lambda tr, sp, fee, plan: _scene_pass(tr, 'S_O_TC')),\n    ('ACC-002', '浜у搧浜掓枼瑙勫垯鏍￠獙', 'P0', 'ACC', lambda tr, sp, fee, plan: _point_ok(tr, 'S_O_TC', 'P_MUTEX_REL')),\n    ('ACC-003', '浜у搧渚濊禆瑙勫垯鏍￠獙', 'P0', 'ACC', lambda tr, sp, fee, plan: _point_ok(tr, 'S_O_TC', 'P_RELY_REL')),\n    ('ACC-004', '璁㈣喘鎿嶄綔鑳藉姏鏍￠獙', 'P0', 'ACC', lambda tr, sp, fee, plan: (\n        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(\n            _scene_pass(tr, 'S_O_TC'), _point_ok(tr, 'S_O_TC', 'P_STATUS')))),\n    ('ACC-005', '鍙樻洿鎿嶄綔鑳藉姏鏍￠獙', 'P1', 'ACC', lambda tr, sp, fee, plan: _plan_cap_ok(plan, True, '鍙樻洿', '鍙樻洿鎿嶄綔', '濂楅鍙樻洿')),\n    ('ACC-006', '閫€璁㈡搷浣滆兘鍔涙牎楠?, 'P0', 'ACC', lambda tr, sp, fee, plan: _scene_pass(tr, 'S_U_TC')),\n    ('ACC-007', '鍙楃悊琛ㄥ崟蹇呭～瀛楁瀹屾暣鎬?, 'P0', 'ACC', lambda tr, sp, fee, plan: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME'), _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE'),\n                         _point_ok(tr, 'S_O_TC', 'P_PAY_MODE'))\n        else all((_point_ok(tr, 'S_O_TC', p) for p in ('P_OFFER_NAME', 'P_OFFER_TYPE', 'P_PAY_MODE'))))),\n    ('ACC-008', '闄愯喘鏁伴噺瑙勫垯鏍￠獙', 'P1', 'ACC', lambda tr, sp, fee, plan: _point_ok(tr, 'S_O_TC', 'P_ORD_CNT')),\n    ('ACC-009', '鍦板煙鍙楃悊鑼冨洿鏍￠獙', 'P1', 'ACC', lambda tr, sp, fee, plan: _plan_cap_ok(plan, True, '鍙楃悊鑼冨洿', '鍦板煙', '閿€鍞寖鍥?)),\n    ('ACC-010', '鍙楃悊鏃舵鐢熸晥鏍￠獙', 'P1', 'ACC', lambda tr, sp, fee, plan: _point_ok(tr, 'S_O_TC', 'P_EFF_DATE')),\n    ('ACC-011', '妯℃嫙璁㈣喘鎺ュ彛棰勬祴璇?, 'P0', 'ACC', lambda tr, sp, fee, plan: (\n        True if tr.get('orderId') and tr.get('offerInstId') else\n        (None if not any((tr.get('testScenes') or [])) else False))),\n    ('ACC-012', '妯℃嫙閫€璁㈡帴鍙ｉ娴嬭瘯', 'P0', 'ACC', lambda tr, sp, fee, plan: (\n        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(\n            _scene_pass(tr, 'S_U_TC'), _point_ok(tr, 'S_U_TC', 'P_STATUS')))),\n    ('BILL-001', '鍩虹璧勮垂閲戦鍚堟硶鎬ф牎楠?, 'P0', 'BILL', lambda tr, sp, fee, plan: _compare_ok(fee, '濂楅鏈堢')),\n    ('BILL-002', '璁¤垂鍛ㄦ湡绫诲瀷鏍￠獙', 'P0', 'BILL', lambda tr, sp, fee, plan: (\n        None if fee is None or not fee.get('compare_list') else\n        (str(_plan_val(plan, '璁¤垂鍛ㄦ湡', '璁¤垂鍛ㄦ湡绫诲瀷') or '鑷劧鏈?).strip() == '鑷劧鏈?))),\n    ('BILL-003', '璁¤垂璧风畻鏃堕棿瑙勫垯鏍￠獙', 'P0', 'BILL', lambda tr, sp, fee, plan: (\n        None if fee is None or not fee.get('compare_list') else all(\n            str(c.get('result')) == '涓€鑷? for c in fee['compare_list'] if c.get('project_name') == '濂楅鏈堢'))),\n    ('BILL-004', '璧勬簮鎵ｅ噺瑙勫垯鏍￠獙', 'P0', 'BILL', lambda tr, sp, fee, plan: (\n        None if fee is None or not fee.get('compare_list') else (lambda rs: None if None in rs else all(rs))(\n            [_compare_ok(fee, p) for p in ('娴侀噺璧犻€侀噺', '璇煶璧犻€侀噺', '鐭俊璧犻€侀噺')]))),\n    ('BILL-005', '闃舵/鎸夐噺鎵逛环瑙勫垯鏍￠獙', 'P1', 'BILL', lambda tr, sp, fee, plan: (\n        None if fee is None or not fee.get('compare_list') else (lambda rs: None if None in rs else all(rs))(\n            [_compare_ok(fee, p) for p in ('娴侀噺瓒呭嚭璧勮垂', '璇煶瓒呭嚭璧勮垂', '鐭俊瓒呭嚭璧勮垂')]))),\n    ('BILL-006', '浼樻儬鍙犲姞/鎹嗙粦鍑忓厤鏍￠獙', 'P1', 'BILL', lambda tr, sp, fee, plan: (\n        None if fee is None or 'risk_list' not in fee else not fee.get('risk_list'))),\n    ('BILL-007', '璐﹀崟灞曠ず椤归厤缃牎楠?, 'P1', 'BILL', lambda tr, sp, fee, plan: _cmp_all_ok(fee)),\n    ('BILL-008', '妯℃嫙璁㈣喘璐﹀崟璇曠畻', 'P0', 'BILL', lambda tr, sp, fee, plan: (\n        None if _scene_pass(tr, 'S_O_TC') is None else\n        (_scene_pass(tr, 'S_O_TC') and bool(tr.get('orderId')) and _cmp_all_ok(fee)))),\n    ('BILL-009', '閫€璁㈣垂鐢ㄧ粨绠楄瘯绠?, 'P1', 'BILL', lambda tr, sp, fee, plan: (\n        None if _scene_pass(tr, 'S_U_TC') is None else\n        (_scene_pass(tr, 'S_U_TC') and _cmp_all_ok(fee)))),\n    ('BILL-010', '璧勮垂鐢熸晥澶辨晥鑱斿姩鏍￠獙', 'P0', 'BILL', lambda tr, sp, fee, plan: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE'), _point_ok(tr, 'S_O_TC', 'P_EXP_DATE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE') and _point_ok(tr, 'S_O_TC', 'P_EXP_DATE')))),\n    ('CUST-001', '瀹㈡湇浜у搧鍩虹瑙嗗浘瀹屾暣鎬?, 'P0', 'CUST', lambda tr, sp, fee, plan: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME'), _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_OFFER_NAME') and _point_ok(tr, 'S_O_TC', 'P_OFFER_TYPE')))),\n    ('CUST-002', '瀹㈡埛璁㈠崟鏌ヨ鑳藉姏鏍￠獙', 'P0', 'CUST', lambda tr, sp, fee, plan: (\n        True if tr.get('offerInstId') else\n        (None if not any((tr.get('testScenes') or [])) else False))),\n    ('CUST-003', '瀹㈡湇渚т骇鍝佹搷浣滄潈闄愭牎楠?, 'P1', 'CUST', lambda tr, sp, fee, plan: _plan_cap_ok(plan, True, '鎿嶄綔鏉冮檺', '璁㈣喘', '閫€璁?, '鍙樻洿')),\n    ('CUST-004', '浜у搧璧勮垂瀵瑰璇存槑璇濇湳鏍￠獙', 'P0', 'CUST', lambda tr, sp, fee, plan: _cmp_all_ok(fee)),\n    ('CUST-005', '浜у搧鐢熸晥澶辨晥瑙勫垯璇濇湳鏍￠獙', 'P1', 'CUST', lambda tr, sp, fee, plan: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE'), _point_ok(tr, 'S_O_TC', 'P_EXP_DATE'))\n        else (_point_ok(tr, 'S_O_TC', 'P_EFF_DATE') and _point_ok(tr, 'S_O_TC', 'P_EXP_DATE')))),\n    ('CUST-006', '浜у搧閫€璁㈣鍒欒瘽鏈牎楠?, 'P1', 'CUST', lambda tr, sp, fee, plan: _scene_pass(tr, 'S_U_TC')),\n    ('CUST-007', '浜у搧闄愬埗瑙勫垯璇濇湳鏍￠獙', 'P1', 'CUST', lambda tr, sp, fee, plan: (\n        None if None in (_point_ok(tr, 'S_O_TC', 'P_MUTEX_REL'), _point_ok(tr, 'S_O_TC', 'P_RELY_REL'),\n                         _point_ok(tr, 'S_O_TC', 'P_ORD_CNT'))\n        else all((_point_ok(tr, 'S_O_TC', p) for p in ('P_MUTEX_REL', 'P_RELY_REL', 'P_ORD_CNT'))))),\n    ('CUST-008', '瀵瑰灞曠ず淇℃伅鍚堣鏍￠獙', 'P0', 'CUST', lambda tr, sp, fee, plan: (\n        None if sp is None or 'error_list' not in sp else not sp.get('error_list'))),\n    ('CUST-009', '瀹㈡湇甯歌闂FAQ瀹屽鎬?, 'P1', 'CUST', lambda tr, sp, fee, plan: _plan_cap_ok(plan, True, 'FAQ', '瀹㈡湇鏀寔', '甯歌闂')),\n]\n\ndef _conclude(rows, fee):\n    p0_fail = any(r['level'] == 'P0' and r['result'] == '鉂? for r in rows)\n    p1_fail = any(r['level'] == 'P1' and r['result'] == '鉂? for r in rows)\n    risk_nonempty = bool(fee and fee.get('risk_list'))\n    if p0_fail:\n        return '鉂?绂佹涓婄嚎'\n    if p1_fail or risk_nonempty:\n        return '鈿狅笍 璇勪及椋庨櫓鍚庝笂绾?\n    return '鉁?寤鸿涓婄嚎'\n\ndef _arr(v):\n    # 缁熶竴鎶婁笂娓稿嚭鍙傝В鏋愪负鍏冪礌鏁扮粍锛堝吋瀹?JSON 瀛楃涓?鏁扮粍/鍗曞璞?鍚?offers[] 淇″皝锛塡n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        if isinstance(v.get('offers'), list):\n            return v['offers']\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n    except Exception:\n        return []\n    if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n        return obj['offers']\n    if isinstance(obj, list):\n        return obj\n    return [obj] if isinstance(obj, dict) else []\n\ndef _by_seq(arr, seq):\n    # 鎸?offer_seq 鍖归厤鍏冪礌锛涙棤 offer_seq 鏃舵寜椤哄簭鍥為€€锛堝崟鍟嗗搧/鏃у舰鎬侊級\n    if not arr:\n        return None\n    for e in arr:\n        if isinstance(e, dict) and e.get('offer_seq') == seq:\n            return e\n    for e in arr:\n        if isinstance(e, dict) and e.get('offer_seq') in (None, ''):\n            return e\n    return arr[0] if len(arr) == 1 else None\n\ndef _judge_one(tr, sp, fee, plan, cfg_offer_id):\n    # 鍗曞搧 31 鏉″浐瀹氱敤渚嬪垽瀹?+ 姹囨€伙紙鍘熷崟鍝侀€昏緫锛屼緵閫愬搧璋冪敤锛塡n    rows, counts = [], {'ACC': [0, 0], 'BILL': [0, 0], 'CUST': [0, 0]}\n    defects = []\n    for case_id, name, level, dim, judge in FIXED_CASES:\n        verdict = judge(tr, sp, fee, plan)\n        if verdict is True:\n            result = '鉁?\n        elif verdict is False:\n            result = '鉂?\n        else:\n            result = '鉁?\n        if result in ('鉁?, '鉂?):\n            counts[dim][0 if result == '鉁? else 1] += 1\n            if result == '鉂?:\n                defects.append({'id': case_id, 'module': {'ACC': '鍙楃悊', 'BILL': '璁¤垂', 'CUST': '瀹㈡湇'}[dim],\n                                'level': level, 'desc': '鍑虹幇' + name + '鏈€氳繃锛岃鏍告煡閰嶇疆'})\n        rows.append({'caseId': case_id, 'caseName': name, 'level': level, 'dimension': dim, 'result': result})\n    conclusion = _conclude(rows, fee)\n    p0_pass = '1' if not any(r['level'] == 'P0' and r['result'] == '鉂? for r in rows) else '0'\n    e26 = '1'\n    e26_note = ''\n    test_offer_name = str(tr.get('offerName') or '')\n    plan_name = str(plan.get('offer_name') or plan.get('濂楅鍚嶇О') or '')\n    if test_offer_name and plan_name and test_offer_name != plan_name:\n        e26 = '0'\n        e26_note = \"娴嬭瘯骞冲彴 offerName('%s') 涓庨厤缃?濂楅鍚嶇О('%s') 涓嶄竴鑷碶" % (test_offer_name, plan_name)\n    group_check = tr.get('offer_group_check')\n    if e26 == '1' and isinstance(group_check, dict):\n        check_roles = set()\n        for m in (group_check.get('members') or []):\n            r = str(m.get('role') or '').strip()\n            if r:\n                check_roles.add(r)\n        plan_roles = set()\n        for mo in (plan.get('member_offers') or []):\n            r = str(mo.get('role') or '').strip()\n            if r:\n                plan_roles.add(r)\n        if check_roles and plan_roles and check_roles != plan_roles:\n            e26 = '0'\n            e26_note = '铻嶅悎缁勬垚鍛樿鑹查泦鍚堜笉涓€鑷达細娴嬭瘯骞冲彴[' + ','.join(sorted(check_roles)) + '] vs 閰嶇疆[' + ','.join(sorted(plan_roles)) + ']'\n    scene_cover = []\n    scene_nbrs = [s.get('testSceneNbr') for s in (tr.get('testScenes') or [])]\n    for req_nbr in ('S_O_TC', 'S_U_TC'):\n        if req_nbr not in scene_nbrs:\n            scene_cover.append('搴旇鐩栧満鏅?s聽鏈墽琛岋紙S_O_TC/S_U_TC 涓烘墍鏈夐攢鍞搧蹇呴€夛級' % req_nbr)\n    allow_card = str(plan.get('鍓崱瑙勫垯') or plan.get('allow_add_card') or '')\n    if allow_card == '鍏佽' and 'S_ADD_CARD' not in scene_nbrs:\n        scene_cover.append('搴旇鐩栧満鏅?S_ADD_CARD锛堝壇鍗″姞瑁咃級鏈墽琛岋紝鏁翠綋缁撹涓嶅緱涓衡€溾渽寤鸿涓婄嚎鈥濓紝闄嶇骇涓衡€溾殸锔忚瘎浼伴闄╁悗涓婄嚎鈥?)\n    if scene_cover and conclusion == '鉁?寤鸿涓婄嚎':\n        conclusion = '鈿狅笍 璇勪及椋庨櫓鍚庝笂绾?\n    return {'rows': rows, 'counts': counts, 'defects': defects, 'conclusion': conclusion,\n            'p0_pass': p0_pass, 'e26': e26, 'e26_note': e26_note, 'scene_cover': scene_cover,\n            'scene_exec': _scene_exec(tr)}\n\nasync def main(args):\n    p = args.params\n    # V3.12 澶氬晢鍝侊細閫愬搧鍒ゅ畾锛岃仛鍚堟暣鎵圭粨璁猴紙鍏ㄥ搧 p0_pass==1 鎵嶆暣鎵归€氳繃锛塡n    test_arr = _arr(p.get('test_offers') if p.get('test_offers') is not None else p.get('test_result_json'))\n    spec_arr = _arr(p.get('spec_offers') if p.get('spec_offers') is not None else p.get('spec_record'))\n    fee_arr = _arr(p.get('fee_offers') if p.get('fee_offers') is not None else p.get('fee_record'))\n    plan_arr = _arr(p.get('plan_offers') if p.get('plan_offers') is not None else p.get('plan_json'))\n    # 閫愬搧搴忓彿锛氫互 test 缁撴灉鏁扮粍涓轰富锛堟棤搴忔椂鎸夐『搴忚ˉ 1..N锛塡n    seqs = []\n    for i, t in enumerate(test_arr, start=1):\n        s = t.get('offer_seq') if isinstance(t, dict) else None\n        seqs.append(s if s not in (None, '') else i)\n    if not seqs:\n        seqs = [1]\n    offers_out = []\n    total = {'ACC': [0, 0], 'BILL': [0, 0], 'CUST': [0, 0]}\n    all_defects = []\n    all_rows = []\n    all_scene_cover = []\n    all_scene_exec = []\n    batch_p0 = '1'\n    batch_e26 = '1'\n    batch_e26_notes = []\n    conclusions = []\n    for seq in seqs:\n        tr = _by_seq(test_arr, seq) or {}\n        if not isinstance(tr, dict):\n            tr = {}\n        sp = _by_seq(spec_arr, seq)\n        fee = _by_seq(fee_arr, seq)\n        plan = _by_seq(plan_arr, seq)\n        if not isinstance(tr, dict):\n            tr = {}\n        # 鍙楃悊鍑瘉/琚祴鍚嶇О閫忎紶鍥炲～锛堝鍟嗗搧鏃堕€愬搧鍙栬鍝佸厓绱狅級\n        if not tr.get('offerName'):\n            tr['offerName'] = str(p.get('test_offer_name') or '')\n        if not tr.get('orderId'):\n            tr['orderId'] = str(p.get('order_id') or '')\n        if not tr.get('offerInstId'):\n            tr['offerInstId'] = str(p.get('offer_inst_id') or '')\n        sp = sp if isinstance(sp, dict) else (_load(p.get('spec_record') or '') if not spec_arr else {})\n        fee = fee if isinstance(fee, dict) else ((_load(p.get('fee_record') or '') if not fee_arr else {}))\n        plan = plan if isinstance(plan, dict) else ((_load(p.get('plan_json') or '') if not plan_arr else {}))\n        cfg_offer_id = str(tr.get('offer_id') or p.get('offer_id') or '')\n        if not isinstance(plan, dict):\n            plan = {}\n        inner_plan = plan.get('plan_json')\n        if isinstance(inner_plan, dict):\n            merged = dict(plan)\n            merged.update(inner_plan)\n            plan = merged\n        one = _judge_one(tr, sp, fee, plan, cfg_offer_id)\n        for d in ('ACC', 'BILL', 'CUST'):\n            total[d][0] += one['counts'][d][0]\n            total[d][1] += one['counts'][d][1]\n        dim_counts = {}\n        for d in ('ACC', 'BILL', 'CUST'):\n            dim_counts[d] = {'pass': one['counts'][d][0], 'fail': one['counts'][d][1]}\n        for r in one['rows']:\n            rr = dict(r)\n            rr['offer_seq'] = seq\n            all_rows.append(rr)\n        for dd in one['defects']:\n            d2 = dict(dd)\n            d2['offer_seq'] = seq\n            all_defects.append(d2)\n        if one['p0_pass'] != '1':\n            batch_p0 = '0'\n        if one['e26'] != '1':\n            batch_e26 = '0'\n            batch_e26_notes.append('offer_seq=%s: %s' % (seq, one['e26_note']))\n        if one['scene_cover']:\n            all_scene_cover.append('offer_seq=%s: %s' % (seq, ';'.join(one['scene_cover'])))\n        conclusions.append('offer_seq=%s: %s' % (seq, one['conclusion']))\n        for se in one['scene_exec']:\n            se2 = dict(se)\n            se2['offer_seq'] = seq\n            all_scene_exec.append(se2)\n        offers_out.append({'offer_seq': seq, 'offer_id': cfg_offer_id,\n                            'cases_json': json.dumps(one['rows'], ensure_ascii=False),\n                            'dimension_summary': json.dumps(dim_counts, ensure_ascii=False),\n                            'overall_conclusion': one['conclusion'],\n                            'defect_list': json.dumps(one['defects'], ensure_ascii=False),\n                            'p0_pass': one['p0_pass'], 'e26': one['e26'],\n                            'e26_note': one['e26_note'],\n                            'scene_exec': json.dumps(one['scene_exec'], ensure_ascii=False),\n                            'scene_cover': ';'.join(one['scene_cover'])})\n    # 鏁存壒鑱氬悎缁撹锛氬叏鍝?鉁?寤鸿涓婄嚎锛涗换涓€ 鉂?绂佹涓婄嚎锛涘惁鍒欒瘎浼伴闄╁悗涓婄嚎\n    if batch_p0 != '1':\n        batch_conclusion = '鉂?绂佹涓婄嚎'\n    elif all(('鉂? not in c) for c in conclusions) and all(('鈿? not in c) for c in conclusions):\n        batch_conclusion = '鉁?寤鸿涓婄嚎'\n        if all_scene_cover:\n            batch_conclusion = '鈿狅笍 璇勪及椋庨櫓鍚庝笂绾?\n    else:\n        batch_conclusion = '鈿狅笍 璇勪及椋庨櫓鍚庝笂绾?\n    batch_dim = {d: {'pass': v[0], 'fail': v[1]} for d, v in total.items()}\n    _MARK = {'閫氳繃': '鉁?, '澶辫触': '鉂?, '澶勭悊涓?: '鈴?}\n    _by_seq_lines = {}\n    for se in all_scene_exec:\n        _by_seq_lines.setdefault(se['offer_seq'], []).append(\n            '    - [' + str(se.get('scene_nbr') or '?') + '] ' + str(se.get('scene_name') or '')\n            + ' 路 ' + _MARK.get(se.get('status'), '') + str(se.get('status') or '')\n            + '锛? + str(se.get('detail') or '') + '锛?)\n    scene_lines = []\n    for sq in sorted(_by_seq_lines.keys()):\n        scene_lines.append('  銆愬晢鍝? + str(sq) + '銆慭\n' + '\\n'.join(_by_seq_lines[sq]))\n    scene_summary_text = '\\n'.join(scene_lines) if scene_lines else '  锛堟棤鍦烘櫙鏄庣粏锛?\n    ret: Output = {\n        \"cases_json\": json.dumps(all_rows, ensure_ascii=False),\n        \"dimension_summary\": json.dumps(batch_dim, ensure_ascii=False),\n        \"overall_conclusion\": batch_conclusion,\n        \"defect_list\": json.dumps(all_defects, ensure_ascii=False),\n        \"p0_pass\": batch_p0,\n        \"e26\": batch_e26,\n        \"e26_note\": '; '.join(batch_e26_notes),\n        \"scene_cover\": ' || '.join(all_scene_cover),\n        \"scene_exec\": json.dumps(all_scene_exec, ensure_ascii=False),\n        \"scene_summary\": scene_summary_text,\n        \"offers\": json.dumps(offers_out, ensure_ascii=False),\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002305",
+            "relName": "offers",
+            "name": "test_offers",
+            "description": "閫愬搧娴嬭瘯缁撴灉鏁扮粍锛堣妭鐐?305鍑哄弬 offers锛屾瘡鍏冪礌鍚?offer_seq/testScenes/orderId/offerInstId/offerName锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002305",
+              "a1b2c3d4-0000-4000-8000-000000002305,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002305,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offers",
+            "name": "plan_offers",
+            "description": "閫愬搧閰嶇疆鏁扮粍锛堣妭鐐?303鎻愬彇 offers锛屾瘡鍏冪礌鍚?offer_seq/offer_id/plan_json锛汦26 涓庡満鏅鐩栦緷鎹級",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002318",
+            "relName": "offers",
+            "name": "spec_offers",
+            "description": "閫愬搧绋芥牳鏁扮粍锛堣妭鐐?318鎻愬彇 offers锛屾瘡鍏冪礌鍚?offer_seq/error_list锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002318",
+              "a1b2c3d4-0000-4000-8000-000000002318,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002318,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002320",
+            "relName": "offers",
+            "name": "fee_offers",
+            "description": "閫愬搧璧勮垂鏁扮粍锛堣妭鐐?320鎻愬彇 offers锛屾瘡鍏冪礌鍚?offer_seq/compare_list/risk_list锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002320",
+              "a1b2c3d4-0000-4000-8000-000000002320,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002320,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鍥哄畾鐢ㄤ緥鏄犲皠"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002315",
+        "position": {
+          "x": 3615,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "test_report",
+            "description": "銆婇攢鍞搧鑷姩鍖栨祴璇曟姤鍛娿€嬫寮忕増閫愬搧姝ｆ枃锛堝惈鍙楃悊楠岃瘉鐙珛鎴愯妭锛?,
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "浣犳槸浜ч攢鍝佽嚜鍔ㄦ祴璇曟姤鍛婄敓鎴愬姪鎵嬶紙V3.12 澶氬晢鍝侊級銆傞€愬搧娴嬭瘯缁撴灉锛坱est_offers={test_offers}锛屾瘡鍏冪礌鍚?offer_seq/testScenes/orderId/offerInstId/offerName/testRequestId锛夈€侀€愬搧 31 鏉″浐瀹氱敤渚嬬‘瀹氭€ф槧灏勭粨鏋滐紙offers_case={offers_case}锛屾瘡鍏冪礌鍚?offer_seq/cases_json/dimension_summary/overall_conclusion/defect_list/scene_cover/e26锛変笌鏁存壒鑱氬悎锛坈ases_json={cases_json}锛宒imension_summary={dimension_summary}锛宱verall_conclusion={overall_conclusion}锛宒efect_list={defect_list}锛宻cene_cover={scene_cover}锛宻cene_summary={scene_summary}锛宔26={e26}锛夈€?*鎸夊晢鍝侀€愬搧鐢熸垚鎶ュ憡**锛氭瘡涓晢鍝佽緭鍑轰竴浠姐€婇攢鍞搧鑷姩鍖栨祴璇曟姤鍛娿€嬶紝鏍囬涓恒€? 鍟嗗搧{offer_seq}锛歿璇ュ搧offerName}銆嶏紝9 绔犺妭缁撴瀯濡備笅锛歕n涓€銆佹姤鍛婃杩帮紙鐩殑/鑼冨洿/渚濇嵁/绛夌骇瀹氫箟 P0鎷︽埅/P1璀﹀憡/P2鎻愮ず锛夛紱\n浜屻€佸熀纭€淇℃伅锛?2 椤癸細鎶ュ憡缂栧彿 TEST-REP-褰撴棩-鍟嗗搧搴忓彿/娴嬭瘯浠诲姟ID 璇ュ搧testRequestId/琚祴閿€鍞搧鍚嶇О 璇ュ搧offerName/閿€鍞搧缂栫爜 璇ュ搧offer_id/浜у搧绫诲瀷/鎵€灞炰笟鍔″煙 浜ч攢鍝佸煙/鎵€灞為儴闂?浜у晢鍝佷腑蹇僀RM_POS/鐢熸晥鏃堕棿/娴嬭瘯鏂瑰紡 鍏ㄨ嚜鍔ㄦ櫤鑳芥祴璇?娴嬭瘯鏃堕棿 鎶ュ憡鐢熸垚鏃堕棿/鍏宠仈鍔犺浇鏂规 {req_id}/娴嬭瘯娴佹按鍙?璇ュ搧globalId锛夛紱\n涓夈€佹祴璇曟€讳綋缁撹锛?*閫愬搧鍞竴鏁版嵁婧?璇ュ搧 dimension_summary**锛氭€绘牎楠岀敤渚嬫暟=璇ュ搧鍚勭淮搴?pass+fail 鍚堣锛涙暣浣撲笂绾跨粨璁?璇ュ搧 overall_conclusion銆?*绂佹鏀圭敤 testScenes 鐨勫満鏅?testCaseCount 鍚堣**锛沑n涓壜烽檮銆?*鍟嗗搧娴嬭瘯鍦烘櫙鎵ц鐘舵€?*锛堟瘡涓晢鍝佸繀椤诲崟鍒楋紝鏁版嵁婧?scene_summary 涓鍟嗗搧鐨勫満鏅锛夛細閫愬満鏅緭鍑?`鍦烘櫙缂栧彿 鍦烘櫙鍚嶇О 路 鎵ц鐘舵€侊紙娴嬬偣閫氳繃鏁?鎬绘暟锛塦锛屾墽琛岀姸鎬佸彇 鉁呴€氳繃/鉂屽け璐?鈴冲鐞嗕腑锛涜鍝佹棤鍦烘櫙琛屾椂杈撳嚭'锛堟棤鍦烘櫙鏄庣粏锛?銆?*绂佹閬楁紡鍟嗗搧銆佺姝㈣櫄鏋勫満鏅?*锛沑n鍥涖€佸垎椤规祴璇曠粨鏋滐細4.1 鍙楃悊楠岃瘉锛堣鍝?cases_json 鐨?ACC 琛岋級+ 鍙楃悊鍑瘉 orderId/offerInstId锛堜负绌烘寜E14鏍囨敞'鏈幏鍙栧埌鍙楃悊鍑瘉锛岄渶浜哄伐鏍稿疄'锛夛紱4.2 璁¤垂楠岃瘉锛堣鍝?BILL 琛岋級锛?.3 瀹㈡湇楠岃瘉锛堣鍝?CUST 琛岋級銆?*绔犺妭鏍囬涓庣敤渚嬫蹇呴』涓ユ牸瀵瑰簲**锛沑n浜斻€佺己闄烽棶棰樻槑缁嗘竻鍗曪紙璇ュ搧 defect_list锛屾棤鍒欏啓'鏃?锛夛紱\n鍏€佷笟鍔￠闄╂眹鎬伙紙璇ュ搧 defect_list 涓?P1 鉂?椤癸紱鏃犺鍛婄骇椋庨櫓鍥哄畾杈撳嚭'鏈彂鐜拌鍛婄骇椋庨櫓銆?锛夛紱\n涓冦€佹暣鏀逛慨澶嶅缓璁紙鏃犻樆鏂?璀﹀憡闂鍥哄畾杈撳嚭'鏃犻渶鏁存敼'锛夛紱\n鍏€佹渶缁堟祴璇曠粨璁轰笌瀹℃壒寤鸿锛堣鍝?overall_conclusion锛涜鍝?e26=0 鏃剁粨璁洪』浠庝弗鏍囨敞骞舵彁绀轰汉宸ユ牳瀹烇級锛沑n涔濄€佺増鏈鏄庯紙V1.0锛夈€俓n涓ユ牸閬靛畧锛?1 鏉″浐瀹氱敤渚嬫竻鍗曠姝㈠鍒犳敼锛涚敤渚嬬粨鏋滀粎渚濇嵁 cases_json 鍒ゅ畾锛涘彧鍩轰簬杈撳叆鏁版嵁鐢熸垚锛岀姝㈣櫄鏋勶紱閫愬搧缁熻涓庤鍝佸洓绔犻€愯缁撹蹇呴』鑷唇锛涜褰?e26 涓嶄竴鑷存椂鎸?E26 涓柇鍙ｅ緞杈撳嚭銆俓n杈撳嚭瑕佹眰锛氫粎杈撳嚭鎶ュ憡姝ｆ枃锛堝搴斿嚭鍙?test_report锛夛紝澶氬晢鍝佹椂閫愬搧渚濇杈撳嚭锛堟瘡鍝佷互銆? 鍟嗗搧{offer_seq}锛歿offerName}銆嶄负浜岀骇鍒嗛殧鏍囬锛夛紱鍏朵腑鍥涚珷鍒嗛」鍐?*鍙楃悊楠岃瘉鐙珛鎴愯妭**锛堟爣棰?鐜妭7/9路鍙楃悊楠岃瘉'锛岄€愬瓧寮曠敤 orderId/offerInstId 涓庨€愬彈鐞嗗満鏅?S_O_TC/S_ADD_CARD/S_U_TC 缁撹锛岃瀺鍚堝搧鍚?S_GROUP_BIND/S_ADDON_SUB锛夛紱涓嶈緭鍑哄叾浠栧浣欐枃瀛椼€?
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002305",
+              "relName": "offers",
+              "name": "test_offers",
+              "description": "閫愬搧娴嬭瘯缁撴灉鏁扮粍锛堣妭鐐?305鍑哄弬 offers锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002305",
+                "a1b2c3d4-0000-4000-8000-000000002305,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002305,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "offers",
+              "name": "offers_case",
+              "description": "閫愬搧鐢ㄤ緥鏄犲皠缁撴灉鏁扮粍锛堣妭鐐?315鍑哄弬 offers锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "鎵ц鎵规鍙凤紙寮€濮嬭妭鐐癸級",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002301",
+                "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "cases_json",
+              "name": "cases_json",
+              "description": "鏁存壒鍥哄畾鐢ㄤ緥琛岋紙鑺傜偣2315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,cases_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,cases_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "dimension_summary",
+              "name": "dimension_summary",
+              "description": "鏁存壒涓夌淮搴︾粺璁★紙鑺傜偣2315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,dimension_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,dimension_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "overall_conclusion",
+              "name": "overall_conclusion",
+              "description": "鏁存壒鏁翠綋缁撹锛堣妭鐐?315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "defect_list",
+              "name": "defect_list",
+              "description": "鏁存壒缂洪櫡娓呭崟锛堣妭鐐?315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,defect_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,defect_list"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "scene_cover",
+              "name": "scene_cover",
+              "description": "鏁存壒鍦烘櫙瑕嗙洊鏍稿锛堣妭鐐?315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,scene_cover"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,scene_cover"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "scene_summary",
+              "name": "scene_summary",
+              "description": "閫愬搧鍦烘櫙鎵ц鐘舵€佹枃鏈紙鑺傜偣2315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+              "relName": "e26",
+              "name": "e26",
+              "description": "鏁存壒琚祴涓€鑷存€э紙鑺傜偣2315锛?,
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000002315",
+                "a1b2c3d4-0000-4000-8000-000000002315,e26"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000002315,e26"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "娴嬭瘯鎶ュ憡鐢熸垚(姝ｅ紡鐗?绔犺妭)",
+          "title": "娴嬭瘯鎶ュ憡鐢熸垚(姝ｅ紡鐗?绔犺妭)"
+        },
+        "model": "qwen3-30b-a3b",
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 3975,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002306",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+                    "relName": "p0_pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000002315",
+                      "a1b2c3d4-0000-4000-8000-000000002315,p0_pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000002315,p0_pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "绛変簬"
+                    },
+                    {
+                      "value": 2,
+                      "label": "涓嶇瓑浜?
+                    },
+                    {
+                      "value": 3,
+                      "label": "闀垮害澶т簬"
+                    },
+                    {
+                      "value": 4,
+                      "label": "闀垮害澶т簬绛変簬"
+                    },
+                    {
+                      "value": 5,
+                      "label": "闀垮害灏忎簬"
+                    },
+                    {
+                      "value": 6,
+                      "label": "闀垮害灏忎簬绛変簬"
+                    },
+                    {
+                      "value": 7,
+                      "label": "鍖呭惈"
+                    },
+                    {
+                      "value": 8,
+                      "label": "涓嶅寘鍚?
+                    },
+                    {
+                      "value": 9,
+                      "label": "涓虹┖"
+                    },
+                    {
+                      "value": 10,
+                      "label": "涓嶄负绌?
+                    },
+                    {
+                      "value": 15,
+                      "label": "闀垮害绛変簬"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else鍒嗘敮鍒ゆ柇锛岀鍚堟潯浠惰蛋濡傛灉鍒嗘敮锛屽惁鍒欒蛋鍚﹀垯鍒嗘敮",
+          "title": "娴嬭瘯閫氳繃鍒ゅ畾"
+        },
+        "position": {
+          "x": 4695,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002322",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002315",
+            "name": "鍥哄畾鐢ㄤ緥鏄犲皠",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000002315,p0_pass",
+                "name": "p0_pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "record_id",
+            "cname": "瀛樺偍璁板綍ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "鎵ц鎵规鏍囪瘑锛?寮€濮嬭妭鐐?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "鐜妭鍚?test锛堣嚜鍔ㄦ祴璇曪級",
+            "type": "string",
+            "required": true,
+            "content": "test"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002306",
+            "relName": "test_report",
+            "name": "result_json",
+            "description": "鐜妭缁撴灉JSON=姝ｅ紡鐗堟祴璇曟姤鍛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002306",
+              "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "鏈幆鑺傜姸鎬?ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "娴嬭瘯缁撴灉瀛樺偍",
+          "code": "save_node_result",
+          "description": "鐜妭缁撴灉瀛樺偍锛堝鐢級锛歳eq_id=鍏ュ弬 req_id锛宯ode_name=test锛堣嚜鍔ㄦ祴璇曪紝鏈€缁堟€侊級锛況esult_json=姝ｅ紡鐗堟祴璇曟姤鍛婏紱浠呮暣鎵?test_passed==閫氳繃锛坧0_pass==1锛屽嵆鍏ㄩ儴鍟嗗搧鏃?P0 闃绘柇锛夋椂鍐欏叆锛堥棬绂侊細鐜妭6 涓庡鎵瑰洓鐜妭纭牎楠屼互 test 涓哄噯锛?,
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002308",
+        "position": {
+          "x": 5055,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002316,download_url",
+            "name": "download_url",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002316,note",
+            "name": "note",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002316,backend_pending",
+            "name": "backend_pending",
+            "type": "string"
+          }
+        ],
+        "code": "import json, urllib.request, urllib.parse\nfrom typing import Any, Dict\n\nREPORT_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/report'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _probe(url):\n    try:\n        req = urllib.request.Request(url)\n        with urllib.request.urlopen(req, timeout=20) as resp:\n            return resp.status == 200 and bool(resp.read())\n    except Exception:\n        return False\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('offers'))\n    pairs = []\n    for o in offers:\n        if not isinstance(o, dict):\n            continue\n        gid = str(o.get('globalId') or o.get('global_id') or '').strip()\n        if gid:\n            pairs.append((o.get('offer_seq'), o.get('offer_id'), gid))\n    if not pairs:\n        gid = str(p.get('global_id') or p.get('globalId') or '').strip()\n        if gid:\n            pairs.append((None, None, gid))\n    if not pairs:\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': '',\n            'note': '鏈幏鍙栧埌娴嬭瘯娴佹按鍙凤紝鏃犳硶鐢熸垚鎶ュ憡涓嬭浇鍦板潃锛涙姤鍛婃鏂囪涓婃柟杈撳嚭锛屽彲澶嶅埗淇濆瓨',\n        }\n        return ret\n    lines = []\n    all_ok = True\n    for seq, oid, gid in pairs:\n        url = REPORT_URL + '?global_id=' + urllib.parse.quote(gid)\n        ok = _probe(url)\n        all_ok = all_ok and ok\n        tag = ('鍟嗗搧%s ' % seq) if seq not in (None, '') else ''\n        lines.append('- %s%s锛?s' % (tag, gid, url))\n    download_url = '\\n'.join(lines)\n    if all_ok:\n        ret: Output = {\n            'backend_pending': '0',\n            'download_url': download_url,\n            'note': '姝ｅ紡鐗堟祴璇曟姤鍛婂凡鐢熸垚锛屽彲鐐瑰嚮閾炬帴涓嬭浇',\n        }\n    else:\n        ret: Output = {\n            'backend_pending': '1',\n            'download_url': download_url,\n            'note': '鎶ュ憡涓嬭浇绔偣鏆備笉鍙揪鎴栨姤鍛婃湭鐢熸垚锛屽彲澶嶅埗涓婃柟鎶ュ憡姝ｆ枃淇濆瓨锛涘悗绔氨缁悗鐐瑰嚮閾炬帴涓嬭浇姝ｅ紡鐗堟姤鍛?,\n        }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offers",
+            "name": "offers",
+            "description": "閫愬搧娴嬭瘯娴佹按鍙锋暟缁勶紙鑺傜偣2303鍑哄弬 offers锛屾瘡鍏冪礌鍚?offer_seq/offer_id/globalId锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "娴嬭瘯鎶ュ憡涓嬭浇"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002316",
+        "position": {
+          "x": 5415,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002309,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"娴嬭瘯鎶ュ憡\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "浼氳瘽娑堟伅ID锛堢敤浜?xsbot-panel message_id 涓?url 鐨?chatId锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "闇€姹傚崟鍙?鏂规鎵规鍙凤紙鐢ㄤ簬闈㈡澘 url 鐨?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "閿€鍞搧ID/闇€姹傚崟鍙凤紙鐢ㄤ簬闈㈡澘 url 鐨?offer_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鏋勫缓椤甸潰鍦板潃闈㈡澘"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002309",
+        "position": {
+          "x": 4335,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002325,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    biz_url = 'http://10.86.13.201:31280/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"娴嬭瘯鎶ュ憡\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "浼氳瘽娑堟伅ID锛堢敤浜?xsbot-panel message_id 涓?url 鐨?chatId锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "闇€姹傚崟鍙?鏂规鎵规鍙凤紙鐢ㄤ簬闈㈡澘 url 鐨?req_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "閿€鍞搧ID/闇€姹傚崟鍙凤紙鐢ㄤ簬闈㈡澘 url 鐨?offer_id锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "缂栧啓浠ｇ爜锛屽鐞嗚緭鍏ュ彉閲忔潵鐢熸垚杩斿洖鍊?,
+          "title": "鏋勫缓椤甸潰鍦板潃闈㈡澘(澶勭悊涓?"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002325",
+        "position": {
+          "x": 1815,
+          "y": 170
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "銆愮幆鑺?/8路鑷姩娴嬭瘯銆戞煡璇㈡祴璇曠粨鏋滐細瀹屾垚={done}\n{fail_reason}\n\n娴嬭瘯灏氭湭瀹屾垚锛屾湰娆℃湭鍐欏叆娴嬭瘯缁撹锛坱est 浠嶄负绌猴級锛屾棤娉曟帹杩涗笂绾垮鎵广€俓n銆愪笅涓€姝ャ€戣绋嶅悗鍥炲\"鏌ヨ娴嬭瘯缁撴灉\"缁煡锛涜嫢鎸佺画鏃犺繘灞曡鑱旂郴浜哄伐鏍告煡娴嬭瘯鍙戣捣锛堢幆鑺?a锛夈€俓n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "done",
+            "name": "done",
+            "description": "鏄惁绐楀彛鍐呭畬鎴愶紙鑺傜偣2304锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,done"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "fail_reason",
+            "name": "fail_reason",
+            "description": "杞寮傚父/澶勭悊涓鏄庯紙鑺傜偣2304锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "琚祴閿€鍞搧ID锛堜緵闈㈡澘锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002325",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 椤甸潰鍦板潃鐗囨",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002325",
+              "a1b2c3d4-0000-4000-8000-000000002325,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002325,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "宸ヤ綔娴佺殑鏈€缁堣妭鐐癸紝鐢ㄤ簬杩斿洖宸ヤ綔娴佽繍琛屽悗鐨勭粨鏋滀俊鎭?,
+          "title": "缁撴潫(娴嬭瘯澶勭悊涓?鏈啓test)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002323",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "銆愮幆鑺?/8路鑷姩娴嬭瘯銆戞煡璇㈡祴璇曠粨鏋滐細鏁翠綋涓婄嚎缁撹 {overall_conclusion}锛堝瓨鍦?P0 闃绘柇锛屾湭閫氳繃锛塡n\n鈻?鍟嗗搧娴嬭瘯鍦烘櫙鎵ц鐘舵€侊細\n{scene_summary}\n\n{test_report}\n\n娴嬭瘯鏈€氳繃锛屾湰娆℃湭鍐欏叆娴嬭瘯缁撹锛坱est 浠嶄负绌猴級锛屾棤娉曟帹杩涗笂绾垮鎵广€俓n銆愪笅涓€姝ャ€戣鎸夋姤鍛婂洓/浜旂珷鐨?鉂?闃绘柇椤规暣鏀归厤缃悗锛岄噸鏂板洖澶峔"涓嬩竴姝"鍙戣捣娴嬭瘯锛堢幆鑺?a锛夈€俓n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "done",
+            "name": "done",
+            "description": "鏄惁绐楀彛鍐呭畬鎴愶紙鑺傜偣2304锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,done"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "琚祴閿€鍞搧ID锛堜緵闈㈡澘锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+            "relName": "scene_summary",
+            "name": "scene_summary",
+            "description": "閫愬搧鍦烘櫙鎵ц鐘舵€佹枃鏈紙鑺傜偣2315锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002315",
+              "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002306",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "姝ｅ紡鐗堟祴璇曟姤鍛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002306",
+              "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+            "relName": "overall_conclusion",
+            "name": "overall_conclusion",
+            "description": "鏁翠綋涓婄嚎缁撹",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002315",
+              "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "娴嬭瘯娴佹按鍙?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002309",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 椤甸潰鍦板潃鐗囨",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002309",
+              "a1b2c3d4-0000-4000-8000-000000002309,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002309,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "宸ヤ綔娴佺殑鏈€缁堣妭鐐癸紝鐢ㄤ簬杩斿洖宸ヤ綔娴佽繍琛屽悗鐨勭粨鏋滀俊鎭?,
+          "title": "缁撴潫(娴嬭瘯鏈€氳繃-鏈啓test)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 5055,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002324",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "銆愮幆鑺?/8路鑷姩娴嬭瘯銆戞煡璇㈡祴璇曠粨鏋滐細瀹屾垚={done}\n{fail_reason}\n\n鈻?鍟嗗搧娴嬭瘯鍦烘櫙鎵ц鐘舵€侊細\n{scene_summary}\n\n{test_report}\n\n銆愭姤鍛婁笅杞姐€戜笅杞藉湴鍧€锛歿download_url}锛堜负绌哄～鍐橽"鏆備笉鍙敤锛岃涓婃柟鎶ュ憡姝ｆ枃\"锛夛紙{dl_note}锛塡n\n銆愪笅涓€姝ャ€戝彲鍙戦€乗"涓婄嚎瀹℃壒\"鎻愪氦瀹℃壒娴侊紙琚祴 offer_id={offerId}锛屾祴璇曟祦姘村彿锛歿globalId}锛夛紙鏁翠綋涓婄嚎缁撹锛歿overall_conclusion}锛夈€俓n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "done",
+            "name": "done",
+            "description": "鏄惁绐楀彛鍐呭畬鎴愶紙鑺傜偣2304锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,done"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,done"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002304",
+            "relName": "fail_reason",
+            "name": "fail_reason",
+            "description": "杞寮傚父/澶勭悊涓鏄庯紙鑺傜偣2304锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002304",
+              "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002304,fail_reason"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "琚祴閿€鍞搧ID锛堜緵闈㈡澘锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+            "relName": "scene_summary",
+            "name": "scene_summary",
+            "description": "閫愬搧鍦烘櫙鎵ц鐘舵€佹枃鏈紙鑺傜偣2315锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002315",
+              "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002315,scene_summary"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002306",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "姝ｅ紡鐗堟祴璇曟姤鍛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002306",
+              "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002306,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002315",
+            "relName": "overall_conclusion",
+            "name": "overall_conclusion",
+            "description": "鏁翠綋涓婄嚎缁撹",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002315",
+              "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002315,overall_conclusion"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "娴嬭瘯娴佹按鍙?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002316",
+            "relName": "download_url",
+            "name": "download_url",
+            "description": "鎶ュ憡涓嬭浇鍦板潃锛堣妭鐐?316锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002316",
+              "a1b2c3d4-0000-4000-8000-000000002316,download_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002316,download_url"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002316",
+            "relName": "note",
+            "name": "dl_note",
+            "description": "涓嬭浇璇存槑锛堣妭鐐?316锛?,
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002316",
+              "a1b2c3d4-0000-4000-8000-000000002316,note"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002316,note"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002309",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 椤甸潰鍦板潃鐗囨",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002309",
+              "a1b2c3d4-0000-4000-8000-000000002309,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002309,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "宸ヤ綔娴佺殑鏈€缁堣妭鐐癸紝鐢ㄤ簬杩斿洖宸ヤ綔娴佽繍琛屽悗鐨勭粨鏋滀俊鎭?,
+          "title": "缁撴潫(娴嬭瘯鏌ヨ瀹屾垚)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 5775,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002310",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002302",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002301"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002303",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002302"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002304",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002303"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002321",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002304"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002305",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002321"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002325",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002321"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002323",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002325"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002317",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002305"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002318",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002317"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002319",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002318"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002320",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002319"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002315",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002320"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002306",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002315"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002309",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002306"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002322",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002309"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002308",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002322"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002324",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002322"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002316",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002308"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002310",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002316"
+      }
+    ],
+    "flowId": "wf_sub_13",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

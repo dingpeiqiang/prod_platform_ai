@@ -406,8 +406,8 @@ public class AppStoreV16Controller {
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("globalId", globalId);
             item.put("status", "success");
-            for (String k : java.util.List.of("totalSteps", "activeIndex", "done", "failed", "failIndex",
-                    "totalSceneCount", "finishedSceneCount", "failedSceneCount", "resultCode", "resultMsg")) {
+            // 透传 EOP 裸信封（resultCode/resultObject/resultMsg）——服务出参与 EOP 真实服务逐字一致
+            for (String k : java.util.List.of("resultCode", "resultObject", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
@@ -442,8 +442,8 @@ public class AppStoreV16Controller {
             item.put("globalId", globalId);
             boolean okResult = "0".equals(MapOps.str(r.get("resultCode")));
             item.put("status", okResult ? "success" : "fail");
-            for (String k : java.util.List.of("resultCode", "resultMsg", "testRequestId", "testRequestName", "offerName",
-                    "orderId", "offerInstId", "testScenes", "testCases", "report_url", "offer_group_check")) {
+            // 透传 EOP 裸信封（resultCode/resultObject/resultMsg）——服务出参与 EOP 真实服务逐字一致
+            for (String k : java.util.List.of("resultCode", "resultObject", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }

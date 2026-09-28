@@ -395,14 +395,10 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         logRealBegin("testProgress", "POST", url);
         try {
             Map<String, Object> body = postBare("testProgress", url, globalId);
-            Map<String, Object> resultObject = bareResultObject("testProgress", body);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("resultCode", MapOps.str(body.get("resultCode")));
-            out.put("resultMsg", MapOps.str(body.get("resultMsg")));
-            copyIfPresent(resultObject, out, "globalId", "totalSteps", "activeIndex", "done", "failed",
-                    "failIndex", "totalSceneCount", "finishedSceneCount", "failedSceneCount");
-            logRealDone("testProgress", System.currentTimeMillis() - begin, out);
-            return out;
+            // 原样透传 EOP 裸信封 {resultCode, resultObject:{...}, resultMsg}，不做扁平化（与 mock 同构）
+            bareResultObject("testProgress", body);
+            logRealDone("testProgress", System.currentTimeMillis() - begin, body);
+            return body;
         } catch (Exception e) {
             return realFail("testProgress", url, e);
         }
@@ -421,16 +417,14 @@ public class EopInterfaceAdapter implements InterfaceFacade {
         logRealBegin("testResult", "POST", url);
         try {
             Map<String, Object> body = postBare("testResult", url, globalId);
+            // 原样透传 EOP 裸信封 {resultCode, resultObject:{...}, resultMsg}，不做扁平化（与 mock 同构）；
+            // 校验 resultObject 存在（缺失即 EOP 异常响应，抛错由 realFail 归一）。
             Map<String, Object> resultObject = bareResultObject("testResult", body);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("resultCode", MapOps.str(body.get("resultCode")));
-            out.put("resultMsg", MapOps.str(body.get("resultMsg")));
-            copyIfPresent(resultObject, out, "testRequestId", "testRequestName", "offerId", "offerName", "globalId");
             List<Map<String, Object>> scenes = MapOps.castListOfMaps(resultObject.get("testScenes"));
-            out.put("testScenes", scenes);
-            backfillAcceptanceProof(resultObject, scenes, out);
-            logRealDone("testResult", System.currentTimeMillis() - begin, out);
-            return out;
+            // EOP 受理凭证在场景内，回填到 resultObject 顶层，保证下游/工作流按顶层可读
+            backfillAcceptanceProof(resultObject, scenes, resultObject);
+            logRealDone("testResult", System.currentTimeMillis() - begin, body);
+            return body;
         } catch (Exception e) {
             return realFail("testResult", url, e);
         }

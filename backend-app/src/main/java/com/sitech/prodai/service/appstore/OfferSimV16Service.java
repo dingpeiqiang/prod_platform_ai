@@ -542,12 +542,13 @@ public class OfferSimV16Service {
     /* ================= 接口6：查询测试进度 get_test_progress ================= */
 
     public Map<String, Object> testProgress(Map<String, Object> req) {
-        if (MapOps.empty(req.get("globalId"))) {
-            return camelFail("4002", "globalId 必填");
+        String globalId = MapOps.str(req.get("globalId"));
+        if (MapOps.empty(globalId)) {
+            return eopEnvelope("1", "globalId 必填", null);
         }
-        Map<String, Object> task = testTasks.get(MapOps.str(req.get("globalId")).trim());
+        Map<String, Object> task = testTasks.get(globalId.trim());
         if (task == null) {
-            return camelFail("4002", "globalId 查无对应测试任务");
+            return eopEnvelope("1", "globalId 查无对应测试任务", null);
         }
         List<String> scenes = castStrList(task.get("scene_nbrs"));
         int totalSteps = scenes.size() + 2;
@@ -564,32 +565,33 @@ public class OfferSimV16Service {
         int failedCount = done && failed ? 1 : 0;
         int failIndex = failedCount > 0 ? 2 : -1;
 
-        Map<String, Object> body = camelOk();
-        body.put("resultCode", "0");
-        body.put("totalSteps", String.valueOf(totalSteps));
-        body.put("activeIndex", String.valueOf(done ? totalSteps - 1 : Math.min(totalSteps - 1, 2 + finished)));
-        body.put("done", String.valueOf(done));
-        body.put("failed", String.valueOf(failed));
-        body.put("failIndex", String.valueOf(failIndex));
-        body.put("totalSceneCount", String.valueOf(scenes.size()));
-        body.put("finishedSceneCount", String.valueOf(finished));
-        body.put("failedSceneCount", String.valueOf(failedCount));
-        return body;
+        // EOP 真实出参：resultObject 内为原生 number/bool（totalSteps=5、done=true、failIndex=-1）
+        Map<String, Object> ro = new LinkedHashMap<>();
+        ro.put("globalId", globalId.trim());
+        ro.put("totalSteps", totalSteps);
+        ro.put("activeIndex", done ? totalSteps - 1 : Math.min(totalSteps - 1, 2 + finished));
+        ro.put("done", done);
+        ro.put("failed", failed);
+        ro.put("failIndex", failIndex);
+        ro.put("totalSceneCount", scenes.size());
+        ro.put("finishedSceneCount", finished);
+        ro.put("failedSceneCount", failedCount);
+        return eopEnvelope("0", "处理成功", ro);
     }
 
     /* ================= 接口7：查询测试结果 get_test_result ================= */
 
     public Map<String, Object> testResult(Map<String, Object> req, String externalBaseUrl) {
         if (MapOps.empty(req.get("globalId"))) {
-            return camelFail("4002", "globalId 必填");
+            return eopEnvelope("1", "globalId 必填", null);
         }
         String globalId = MapOps.str(req.get("globalId")).trim();
         Map<String, Object> task = testTasks.get(globalId);
         if (task == null) {
-            return camelFail("4002", "globalId 查无对应测试任务");
+            return eopEnvelope("1", "globalId 查无对应测试任务", null);
         }
         if (!Boolean.TRUE.equals(task.get("done"))) {
-            return camelFail("4003", "测试未完成（done!=true），请先轮询接口6");
+            return eopEnvelope("1", "测试未完成（done!=true），请先轮询接口6", null);
         }
         Map<String, Object> offer = resolveOffer(MapOps.str(task.get("offer_id")));
         String offerId = MapOps.str(task.get("offer_id"));
@@ -611,24 +613,24 @@ public class OfferSimV16Service {
         // 归档自动化测试报告 Markdown（同 globalId 覆盖刷新），并在出参回传下载链接
         testReports.put(globalId, buildTestReport(globalId, offer, offerId, orderId, offerInstId, sceneResults));
 
-        Map<String, Object> body = camelOk();
-        body.put("resultCode", "0");
-        body.put("resultMsg", "测试完成，共 " + sceneResults.size() + " 个场景");
-        body.put("testRequestId", "TR" + globalId.substring(2));
-        body.put("testRequestName", MapOps.str(offer.get("offer_name")) + "_测试验证");
-        body.put("offerName", MapOps.str(offer.get("offer_name")));
-        body.put("orderId", orderId);
-        body.put("offerInstId", offerInstId);
-        body.put("testScenes", sceneResults);
-        body.put("testCases", buildFixedCases(orderId, offerInstId, sceneResults));
-        body.put("report_url", testReportUrlOf(globalId, externalBaseUrl));
-        // V2.0 融合商品扩展：融合品测试 → 出参内嵌 offer_group_check（组一致性核对结果，
-        // E26 组核对数据源——模型仅逐字引用，禁止自行聚合改判）；单品无该键（行为零变化）。
+        // EOP 真实出参：resultObject 含 testRequestId/testRequestName/testScenes[]/offerId/offerName/globalId
+        Map<String, Object> ro = new LinkedHashMap<>();
+        ro.put("testRequestId", "TR" + globalId.substring(2));
+        ro.put("testRequestName", MapOps.str(offer.get("offer_name")) + "_测试验证");
+        ro.put("testScenes", sceneResults);
+        ro.put("offerId", offerId);
+        ro.put("offerName", MapOps.str(offer.get("offer_name")));
+        ro.put("globalId", globalId);
+        // mock 扩展（EOP 无此键，供工作流报告下载 / 组核对使用，不影响 EOP 同构判定）
+        ro.put("testCases", buildFixedCases(orderId, offerInstId, sceneResults));
+        ro.put("report_url", testReportUrlOf(globalId, externalBaseUrl));
+        ro.put("orderId", orderId);
+        ro.put("offerInstId", offerInstId);
         Map<String, Object> groupCheck = buildOfferGroupCheck(task, offer, sceneResults, orderId, offerInstId);
         if (groupCheck != null) {
-            body.put("offer_group_check", groupCheck);
+            ro.put("offer_group_check", groupCheck);
         }
-        return body;
+        return eopEnvelope("0", "处理成功", ro);
     }
 
     /**
@@ -1931,19 +1933,27 @@ public class OfferSimV16Service {
         // 组场景在 10 标准测点基础上追加组类测点（P_SHARE/P_GROUP_MUTEX/P_MEMBER_STATUS）
         List<String> pointCodes = new ArrayList<>(seed.testPoints());
         pointCodes.addAll(extraGroupPoints(nbr));
+        int pointId = 1;
         for (String code : pointCodes) {
             String preset = presetOf(presets, nbr, code, offer);
             String testValue = preset;
             boolean mismatched = mismatch.contains(code) && "S_O_TC".equals(nbr);
             if (mismatched) {
+                // 与 C4 规范一致：不一致时实质值带实际值前缀（mock 增量取"已失效"）
                 testValue = "已失效";
             }
+            String resultMsg = mismatched
+                    ? "实际值：" + testValue + "，结果不一致"
+                    : (MapOps.str(pointName(code)).contains("依赖") ? "满足依赖关系" : "比对一致");
             Map<String, Object> point = new LinkedHashMap<>();
+            point.put("testSceneId", MapOps.str(scene.get("testSceneId")));
+            point.put("testPointId", String.valueOf(pointId++));
             point.put("testPointNbr", code);
+            point.put("testPointName", pointName(code));
             point.put("presetValue", preset);
             point.put("testValue", testValue);
             point.put("resultCode", mismatched ? "1" : "0");
-            point.put("resultMsg", mismatched ? "实测值与预期值不一致" : "比对一致");
+            point.put("resultMsg", resultMsg);
             if (mismatched) {
                 fail++;
             } else {
@@ -1955,9 +1965,53 @@ public class OfferSimV16Service {
         scene.put("successTestCaseCount", String.valueOf(success));
         scene.put("failTestCaseCount", String.valueOf(fail));
         scene.put("testCasePointResults", points);
-        scene.put("objTestSceneRel", "resultMsg=场景测试通过; summaryDesc="
-                + MapOps.str(scene.get("testSceneDesc")) + "; suggestion=无");
+        // C4 规范：objTestSceneRel 为 object（resultCode/resultMsg/summaryDesc/suggestion），
+        // 与 real EOP 报文同构；此前 mock 输出字符串，导致工作流解析分支不一致。
+        Map<String, Object> sceneRel = new LinkedHashMap<>();
+        sceneRel.put("resultCode", fail == 0 ? "0" : "1");
+        String summary = "场景【" + MapOps.str(scene.get("testSceneName")) + "】共 " + points.size()
+                + " 个测试点，" + success + " 个一致、" + fail + " 个不一致。"
+                + MapOps.str(scene.get("testSceneDesc"));
+        sceneRel.put("resultMsg", summary);
+        sceneRel.put("summaryDesc", summary);
+        sceneRel.put("suggestion", fail == 0 ? "无" : "针对不一致测点，建议核查规格配置与实际受理结果差异。");
+        scene.put("objTestSceneRel", sceneRel);
+        // C4 规范：受理凭证位于场景内（工作流/适配层按顶层读取，适配层会回填顶层）
+        scene.put("orderId", offer == null ? "" : orderIdOf(offer));
+        scene.put("offerInstId", offer == null ? "" : offerInstIdOf(offer));
         return scene;
+    }
+
+    /** 测点编码 → 中文名称（严格对齐 C4 规范 10 测点 + 3 组类测点） */
+    private String pointName(String code) {
+        return switch (code) {
+            case "P_EFF_DATE" -> "销售品实例生效时间";
+            case "P_EXP_DATE" -> "销售品实例失效时间";
+            case "P_STATUS" -> "销售品实例状态";
+            case "P_MAIN_PROD" -> "包含产品信息";
+            case "P_RELY_REL" -> "销售品依赖关系";
+            case "P_MUTEX_REL" -> "销售品互斥关系";
+            case "P_ORD_CNT" -> "销售品订购数量";
+            case "P_OFFER_NAME" -> "销售品名称";
+            case "P_OFFER_TYPE" -> "销售品类型";
+            case "P_PAY_MODE" -> "销售品付费方式";
+            case "P_SHARE" -> "融合成员共享规则";
+            case "P_GROUP_MUTEX" -> "融合组级互斥";
+            case "P_MEMBER_STATUS" -> "融合成员状态";
+            default -> code;
+        };
+    }
+
+    /** 场景内受理凭证 orderId（派生态，稳定可复现；真实模式由 EOP 返回、适配层回填顶层） */
+    private String orderIdOf(Map<String, Object> offer) {
+        String offerId = MapOps.str(offer.get("offer_id"));
+        return "8104" + (offerId.isEmpty() ? "0000000000" : offerId);
+    }
+
+    /** 场景内销售品实例 ID offerInstId（派生态） */
+    private String offerInstIdOf(Map<String, Object> offer) {
+        String offerId = MapOps.str(offer.get("offer_id"));
+        return "81000351" + (offerId.length() >= 8 ? offerId.substring(offerId.length() - 8) : offerId);
     }
 
     /** 测点预期值取值：标准测点走 preset_map；组类测点（P_SHARE 等）按组定义生成（逐字引用 preset/规则原文） */
@@ -2342,6 +2396,21 @@ public class OfferSimV16Service {
 
     private static Map<String, Object> camelOk() {
         return ok();
+    }
+
+    /**
+     * EOP 真实出参信封（C1~C4 裸结构）：{@code {resultCode, resultObject:{...}, resultMsg}}。
+     * mock 侧对 C3/C4 严格对齐 EOP 线上报文——resultObject 为业务体（原生 number/bool），
+     * resultObject 为 null（业务失败）时省略该键。字段顺序与 EOP 一致（resultCode → resultObject → resultMsg）。
+     */
+    private static Map<String, Object> eopEnvelope(String resultCode, String resultMsg, Map<String, Object> resultObject) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("resultCode", resultCode);
+        if (resultObject != null) {
+            body.put("resultObject", resultObject);
+        }
+        body.put("resultMsg", resultMsg);
+        return body;
     }
 
     /** snake_case 业务失败体（工具2/3/7/8/13/14，错误码为数字字符串） */

@@ -30,7 +30,8 @@ from wf_common import (
     selector_node2, cond_item, cond_ref, cond_str, edge, workflow, apply_layout,
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_PACK_AUDIT_LAUNCH, CODE_POLL_AUDIT,
-    CODE_EXTRACT_GLOBAL_ID,
+    CODE_EXTRACT_GLOBAL_ID, CODE_PROGRESS_LITE, CODE_EXTRACT_TEST_RESULTS,
+    CODE_RENDER_TEST_REPORT,
     CODE_EXTRACT_REQUEST_IDS,
     CODE_FMT_OFFERS,
     CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
@@ -1677,24 +1678,49 @@ CODE_MAP_FIXED_CASES = (
     "    return None\n"
     "\n"
     "def _scene_exec(tr):\n"
-    "    # 逐场景执行状态：按该场景下测点（testCasePointResults）聚合\n"
-    "    #   全通=通过 / 有失败=失败 / 无测点=处理中；无 testScenes=处理中\n"
+    "    # 逐场景执行状态（结果报文对齐）：\n"
+    "    #   1) 场景级 objTestSceneRel.resultCode：'1'=失败 / '2'=中止 → 失败；\n"
+    "    #   2) 否则按测点聚合：全通('0')=通过 / 有失败=失败 / 测点 resultCode 全为空=处理中；\n"
+    "    #   3) 无测点且有场景计数：success==count 且 count>0=通过，fail>0=失败，否则处理中；\n"
+    "    #   4) 无 testScenes=无场景行（整批处理中，由 scene_summary 兜底）\n"
     "    out = []\n"
     "    for s in (tr.get('testScenes') or []):\n"
     "        if not isinstance(s, dict):\n"
     "            continue\n"
     "        nbr = str(s.get('testSceneNbr') or s.get('sceneNbr') or '')\n"
     "        name = str(s.get('testSceneName') or s.get('sceneName') or '未命名场景')\n"
+    "        rel = s.get('objTestSceneRel') if isinstance(s.get('objTestSceneRel'), dict) else {}\n"
+    "        rel_rc = str(rel.get('resultCode') or '').strip()\n"
     "        pts = [p for p in (s.get('testCasePointResults') or []) if isinstance(p, dict)]\n"
-    "        if pts:\n"
-    "            fail = any(str(p.get('resultCode')) not in ('0', 'None', '') and str(p.get('resultCode')) != '0' for p in pts)\n"
+    "        total_cnt = _int(s.get('testCaseCount'))\n"
+    "        ok_cnt = _int(s.get('successTestCaseCount'))\n"
+    "        fail_cnt = _int(s.get('failTestCaseCount'))\n"
+    "        point_rcs = [str(p.get('resultCode') or '').strip() for p in pts]\n"
+    "        has_point_result = any(rc != '' for rc in point_rcs)\n"
+    "        if rel_rc in ('1', '2'):\n"
+    "            status = '失败'\n"
+    "            detail = ('%d/%d 测点通过' % (ok_cnt, total_cnt)) if total_cnt else (rel.get('resultMsg') or '场景级失败')\n"
+    "        elif has_point_result:\n"
+    "            fail = any(rc not in ('0', '') for rc in point_rcs)\n"
+    "            ok = sum(1 for rc in point_rcs if rc == '0')\n"
     "            status = '失败' if fail else '通过'\n"
-    "            ok = sum(1 for p in pts if str(p.get('resultCode')) == '0')\n"
     "            detail = '%d/%d 测点通过' % (ok, len(pts))\n"
+    "        elif total_cnt > 0 and fail_cnt > 0:\n"
+    "            status = '失败'\n"
+    "            detail = '%d/%d 用例失败' % (fail_cnt, total_cnt)\n"
+    "        elif total_cnt > 0 and ok_cnt >= total_cnt:\n"
+    "            status = '通过'\n"
+    "            detail = '%d/%d 用例通过' % (ok_cnt, total_cnt)\n"
     "        else:\n"
-    "            status, detail = '处理中', '无测点明细'\n"
+    "            status, detail = '处理中', ('%d 个测点待回填' % len(pts) if pts else '待执行')\n"
     "        out.append({'scene_nbr': nbr, 'scene_name': name, 'status': status, 'detail': detail})\n"
     "    return out\n"
+    "\n"
+    "def _int(v, default=0):\n"
+    "    try:\n"
+    "        return int(str(v).strip())\n"
+    "    except Exception:\n"
+    "        return default\n"
     "\n"
     "def _point_ok(tr, nbr, point_nbr):\n"
     "    scene = _scene_of(tr, nbr)\n"
@@ -2043,8 +2069,12 @@ CODE_MAP_FIXED_CASES = (
     "            + ' · ' + _MARK.get(se.get('status'), '') + str(se.get('status') or '')\n"
     "            + '（' + str(se.get('detail') or '') + '）')\n"
     "    scene_lines = []\n"
-    "    for sq in sorted(_by_seq_lines.keys()):\n"
-    "        scene_lines.append('  【商品' + str(sq) + '】\\n' + '\\n'.join(_by_seq_lines[sq]))\n"
+    "    for sq in seqs:\n"
+    "        _tr = _by_seq(test_arr, sq) or {}\n"
+    "        oname = str(_tr.get('offerName') or '') if isinstance(_tr, dict) else ''\n"
+    "        head = '  【商品' + str(sq) + (('：' + oname) if oname else '') + '】'\n"
+    "        scene_lines.append(head + '\\n' + ('\\n'.join(_by_seq_lines.get(sq))\n"
+    "                                            if _by_seq_lines.get(sq) else '    - \u23f3处理中（无场景明细）'))\n"
     "    scene_summary_text = '\\n'.join(scene_lines) if scene_lines else '  （无场景明细）'\n"
     "    ret: Output = {\n"
     "        \"cases_json\": json.dumps(all_rows, ensure_ascii=False),\n"
@@ -2245,11 +2275,15 @@ files4f = workflow(
      edge(323,324), edge(305,321), edge(321,307)])
 
 # ============================================================
-# wf_sub_13 自动测试·测试轮询查询（环节6b，两阶段拆分后半；可重复触发）
-#   自查 test_pending 取 globalId → C3 get_test_progress（CODE_POLL_PROGRESS 短窗口轮询）
-#   → C4 get_test_result（done=true 后取 testScenes/orderId/offerInstId/offerName）
-#   → 自查 spec/fee（317~320）→ CODE_MAP_FIXED_CASES(315) → LLM(2306 九章节报告)
-#   → save(node_name=test)（test_passed==通过 才写）→ 下载报告(2316) → 面板 → 结束
+# wf_sub_13 自动测试·测试查询结果（环节6b 两阶段查询；可重复触发）
+#   V4.0 两阶段查询重构（去旧留新）：去掉 31 固定用例映射 / LLM 九章节报告 /
+#   p0 门禁 / test 存储 / 报告下载链路，改为「进度仪表盘 + 结构化结果展示」两分支：
+#     自查 test_pending 取 globalId → 2304 CODE_PROGRESS_LITE 按 globalId **单次查询**进度
+#     → 2321 终态判定（is_final==true）：
+#         · 未终态 → 2325 面板 → 2323 结束（进度仪表盘，引导续查，不写 test）
+#         · 终态   → 2305 C4 get_test_result → 2332 提取归一化 → 2333 构建结构化报告
+#                    → 2309 面板 → 2310 结束（场景级 ✅/❌/⏳ + 逐测点明细表）
+#   终态判定口径：done==true 或 finishedSceneCount>=totalSceneCount>0（含全失败场景）。
 # ============================================================
 s13f = []
 s13f.append(start_node(2301, [
@@ -2269,165 +2303,68 @@ s13f.append(code_node(2303, "提取测试商品数组", CODE_EXTRACT_GLOBAL_ID,
     [inp("query_list", "引用节点2302查询出参 list", ref_block=nid(2302), ref_rel="list")],
     [code_out("record_json", 2303), code_out("offer_id", 2303), code_out("globalId", 2303), code_out("offers", 2303)],
     pos=(390, 135)))
-# C3 轮询测试进度（代码节点内嵌轮询，5s 间隔 / 单次窗口 60 次 = 5 分钟；V3.12 多商品批量）
-s13f.append(code_node(2304, "轮询测试进度", CODE_POLL_PROGRESS,
+# 2304 查询测试进度（V4.0 单次查询，非轮询；输出 is_final/progress_text 供终态判定与仪表盘）
+s13f.append(code_node(2304, "查询测试进度", CODE_PROGRESS_LITE,
     [inp("offers", "逐品测试流水号数组（节点2303出参 offers，每元素含 offer_seq/globalId）", ref_block=nid(2303), ref_rel="offers")],
-    [code_out("done", 2304), code_out("failed", 2304), code_out("failIndex", 2304), code_out("fail_reason", 2304), code_out("offers", 2304)],
+    [code_out("done", 2304), code_out("failed", 2304), code_out("is_final", 2304),
+     code_out("progress_text", 2304), code_out("fail_reason", 2304), code_out("offers", 2304)],
     pos=(560, 300)))
-# 完成门禁：done==true 才继续查询结果；否则（处理中/缺 globalId/轮询异常）跳过查询与存储，直接结束
-s13f.append(selector_node2(2321, "轮询完成判定",
-    [dep_node(2304, "轮询测试进度", ["done"])],
-    [(-1, [cond_item(cond_ref(2304, "done", "轮询测试进度"), 1, cond_str("true"))])],
+# 终态判定：is_final==true（done==true 或全部场景已执行完，含全失败）才继续查询结果；
+# 否则（真正处理中/缺 globalId/查询异常）走进度仪表盘结束，不写 test。
+s13f.append(selector_node2(2321, "测试终态判定",
+    [dep_node(2304, "查询测试进度", ["is_final"])],
+    [(-1, [cond_item(cond_ref(2304, "is_final", "查询测试进度"), 1, cond_str("true"))])],
     pos=(430, 300)))
-# C4 查询测试结果（V3.12 多商品批量；done=true 后调用一次）
+# C4 查询测试结果（V4.0 多商品批量；终态后调用一次）
 s13f.append(plugin_node(2305, "查询测试结果", "get_test_result",
-    "接口C4（V3.12 多商品批量）：入参 {req_id, offers:[{offer_seq, globalId}]}（globalId 取自节点2303逐品输出），逐品生成逐场景测点比对明细与受理凭证，聚合返回 {req_id, status, offers:[{offer_seq, globalId, testScenes, orderId, offerInstId, offerName, testRequestId, report_url}]}",
+    "接口C4（V4.0 多商品批量）：入参 {req_id, offers:[{offer_seq, globalId}]}（globalId 取自节点2303逐品输出），逐品调用 EOP get_test_result 并原样透传其裸信封（{resultCode, resultObject:{testRequestId,testRequestName,testScenes[],orderId,offerInstId,offerId,offerName,globalId,report_url}, resultMsg}），聚合返回 {req_id, status, offers:[{offer_seq, globalId, status, resultCode, resultObject, resultMsg}]}",
     BASE_URL + "/api/v1/appstore/test/offer/result",
     [inp("req_id", "执行批次号（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("offers", "逐品测试流水号数组（节点2303出参 offers，每元素含 offer_seq/globalId）", ref_block=nid(2303), ref_rel="offers")],
     [
-     ("offers", "逐品测试结果数组JSON（[{offer_seq,testScenes,orderId,offerInstId,offerName,testRequestId,...}]）", "string"),
+     ("offers", "逐品测试结果数组JSON（[{offer_seq, globalId, status, resultCode, resultObject:{testScenes[],orderId,offerInstId,offerName,testRequestId,report_url}, resultMsg}]，resultObject 为 EOP 裸信封业务体）", "string"),
      ("status", "整批状态 SUCCESS/PARTIAL/FAIL", "string")]))
-# 自查 spec（node_name=spec → 结构化 envelope：error_list/audit_suggest）与
-# 自查 fee（node_name=fee → 结构化 envelope：compare_list/risk_list），
-# 供 2315 固定用例的计费(BILL-001~009)/客服(CUST-004/008)分项确定性填充。
-s13f.append(plugin_node(2317, "自查稽核结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（result_json=结构化 envelope，含 error_list）",
-    BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
-     inp("node_name", "环节名=spec（规格稽核）", content="spec"),
-     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [ ("list", "记录数组JSON", "string")],
-    method="get", pos=(240, 430)))
-s13f.append(code_node(2318, "提取稽核原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点2317查询出参 list", ref_block=nid(2317), ref_rel="list")],
-    [code_out("record_json", 2318), code_out("req_id", 2318), code_out("offer_id", 2318), code_out("offers", 2318)],
-    pos=(390, 430)))
-s13f.append(plugin_node(2319, "自查资费结果", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（result_json=结构化 envelope，含 compare_list/risk_list）",
-    BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
-     inp("node_name", "环节名=fee（资费校准）", content="fee"),
-     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
-    [ ("list", "记录数组JSON", "string")],
-    method="get", pos=(240, 555)))
-s13f.append(code_node(2320, "提取资费原文", CODE_EXTRACT_RECORD,
-    [inp("query_list", "引用节点2319查询出参 list", ref_block=nid(2319), ref_rel="list")],
-    [code_out("record_json", 2320), code_out("req_id", 2320), code_out("offer_id", 2320), code_out("offers", 2320)],
-    pos=(390, 555)))
-# CODE_MAP_FIXED_CASES：确定性构建逐品 31 条固定用例表 + 整批结论 + 缺陷 + 场景覆盖 + E26 核对
-s13f.append(code_node(2315, "固定用例映射", CODE_MAP_FIXED_CASES,
-    [inp("test_offers", "逐品测试结果数组（节点2305出参 offers，每元素含 offer_seq/testScenes/orderId/offerInstId/offerName）", ref_block=nid(2305), ref_rel="offers"),
-     inp("plan_offers", "逐品配置数组（节点2303提取 offers，每元素含 offer_seq/offer_id/plan_json；E26 与场景覆盖依据）", ref_block=nid(2303), ref_rel="offers"),
-     inp("spec_offers", "逐品稽核数组（节点2318提取 offers，每元素含 offer_seq/error_list）", ref_block=nid(2318), ref_rel="offers"),
-     inp("fee_offers", "逐品资费数组（节点2320提取 offers，每元素含 offer_seq/compare_list/risk_list）", ref_block=nid(2320), ref_rel="offers")],
-    [code_out("cases_json", 2315), code_out("dimension_summary", 2315), code_out("overall_conclusion", 2315), code_out("defect_list", 2315), code_out("p0_pass", 2315), code_out("e26", 2315), code_out("e26_note", 2315), code_out("scene_cover", 2315), code_out("scene_exec", 2315), code_out("scene_summary", 2315), code_out("offers", 2315)],
+# 2332 提取测试结果：归一化真实 EOP result 报文（testScenes/测点/objTestSceneRel）
+s13f.append(code_node(2332, "提取测试结果", CODE_EXTRACT_TEST_RESULTS,
+    [inp("result_offers", "节点2305查询出参 offers（真实 EOP testScenes 报文）", ref_block=nid(2305), ref_rel="offers")],
+    [code_out("offers", 2332), code_out("result_list", 2332)],
     pos=(900, 300)))
-# LLM（2306）：按 K3 模板 V2.0 九章节渲染《销售品自动化测试报告》正式版 + 受理验证独立成节
-s13f.append(llm_node(2306, "测试报告生成(正式版9章节)",
-    "你是产销品自动测试报告生成助手（V3.12 多商品）。逐品测试结果（test_offers={test_offers}，每元素含 offer_seq/testScenes/orderId/offerInstId/offerName/testRequestId）、逐品 31 条固定用例确定性映射结果（offers_case={offers_case}，每元素含 offer_seq/cases_json/dimension_summary/overall_conclusion/defect_list/scene_cover/e26）与整批聚合（cases_json={cases_json}，dimension_summary={dimension_summary}，overall_conclusion={overall_conclusion}，defect_list={defect_list}，scene_cover={scene_cover}，scene_summary={scene_summary}，e26={e26}）。**按商品逐品生成报告**：每个商品输出一份《销售品自动化测试报告》，标题为「# 商品{offer_seq}：{该品offerName}」，9 章节结构如下：\n"
-    "一、报告概述（目的/范围/依据/等级定义 P0拦截/P1警告/P2提示）；\n"
-    "二、基础信息（12 项：报告编号 TEST-REP-当日-商品序号/测试任务ID 该品testRequestId/被测销售品名称 该品offerName/销售品编码 该品offer_id/产品类型/所属业务域 产销品域/所属部门 产商品中心CRM_POS/生效时间/测试方式 全自动智能测试/测试时间 报告生成时间/关联加载方案 {req_id}/测试流水号 该品globalId）；\n"
-    "三、测试总体结论（**逐品唯一数据源=该品 dimension_summary**：总校验用例数=该品各维度 pass+fail 合计；整体上线结论=该品 overall_conclusion。**禁止改用 testScenes 的场景 testCaseCount 合计**；\n"
-    "三·附、**商品测试场景执行状态**（每个商品必须单列，数据源=scene_summary 中该商品的场景行）：逐场景输出 `场景编号 场景名称 · 执行状态（测点通过数/总数）`，执行状态取 ✅通过/❌失败/⏳处理中；该品无场景行时输出'（无场景明细）'。**禁止遗漏商品、禁止虚构场景**；\n"
-    "四、分项测试结果：4.1 受理验证（该品 cases_json 的 ACC 行）+ 受理凭证 orderId/offerInstId（为空按E14标注'未获取到受理凭证，需人工核实'）；4.2 计费验证（该品 BILL 行）；4.3 客服验证（该品 CUST 行）。**章节标题与用例段必须严格对应**；\n"
-    "五、缺陷问题明细清单（该品 defect_list，无则写'无'）；\n"
-    "六、业务风险汇总（该品 defect_list 中 P1 ❌ 项；无警告级风险固定输出'未发现警告级风险。'）；\n"
-    "七、整改修复建议（无阻断/警告问题固定输出'无需整改'）；\n"
-    "八、最终测试结论与审批建议（该品 overall_conclusion；该品 e26=0 时结论须从严标注并提示人工核实）；\n"
-    "九、版本说明（V1.0）。\n"
-    "严格遵守：31 条固定用例清单禁止增删改；用例结果仅依据 cases_json 判定；只基于输入数据生成，禁止虚构；逐品统计与该品四章逐行结论必须自洽；记录 e26 不一致时按 E26 中断口径输出。\n"
-    "输出要求：仅输出报告正文（对应出参 test_report），多商品时逐品依次输出（每品以「# 商品{offer_seq}：{offerName}」为二级分隔标题）；其中四章分项内**受理验证独立成节**（标题'环节7/9·受理验证'，逐字引用 orderId/offerInstId 与逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 结论，融合品含 S_GROUP_BIND/S_ADDON_SUB）；不输出其他多余文字。",
-    [inp("test_offers", "逐品测试结果数组（节点2305出参 offers）", ref_block=nid(2305), ref_rel="offers"),
-     inp("offers_case", "逐品用例映射结果数组（节点2315出参 offers）", ref_block=nid(2315), ref_rel="offers"),
-     inp("req_id", "执行批次号（开始节点）", ref_block=nid(2301), ref_rel="req_id"),
-     inp("cases_json", "整批固定用例行（节点2315）", ref_block=nid(2315), ref_rel="cases_json"),
-     inp("dimension_summary", "整批三维度统计（节点2315）", ref_block=nid(2315), ref_rel="dimension_summary"),
-     inp("overall_conclusion", "整批整体结论（节点2315）", ref_block=nid(2315), ref_rel="overall_conclusion"),
-     inp("defect_list", "整批缺陷清单（节点2315）", ref_block=nid(2315), ref_rel="defect_list"),
-     inp("scene_cover", "整批场景覆盖核对（节点2315）", ref_block=nid(2315), ref_rel="scene_cover"),
-     inp("scene_summary", "逐品场景执行状态文本（节点2315）", ref_block=nid(2315), ref_rel="scene_summary"),
-     inp("e26", "整批被测一致性（节点2315）", ref_block=nid(2315), ref_rel="e26")],
-    [out("test_report", "《销售品自动化测试报告》正式版逐品正文（含受理验证独立成节）")],
+# 2333 构建测试结果报告：场景级结构化列表 + 逐测点明细表（Markdown）
+s13f.append(code_node(2333, "构建测试结果报告", CODE_RENDER_TEST_REPORT,
+    [inp("result_list", "节点2332归一化结果数组", ref_block=nid(2332), ref_rel="result_list")],
+    [code_out("test_report", 2333), code_out("scene_count", 2333), code_out("scene_failed", 2333),
+     code_out("point_pass", 2333), code_out("point_total", 2333)],
     pos=(1140, 300)))
-# 通过门禁：p0_pass==1（P0 用例全通过）才写 test（门禁：环节6 与审批四环节硬校验以 test 为准）；
-# 存在 P0 阻断（或测试未完成）跳过存储，避免空壳/未通过 test 蒙混放行上线审批。
-# 说明：测试报告生成(2306)与页面地址面板(2309)前置到本判定之前，使“通过/未通过/处理中”三分支均可引用。
-s13f.append(selector_node2(2322, "测试通过判定",
-    [dep_node(2315, "固定用例映射", ["p0_pass"])],
-    [(-1, [cond_item(cond_ref(2315, "p0_pass", "固定用例映射"), 1, cond_str("1"))])],
-    pos=(1140, 450)))
-# 存储 test 环节结果（node_name=test，衔接 wf_sub_06 四环节门禁；整批全通过 才写）
-s13f.append(plugin_node(2308, "测试结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=正式版测试报告；仅整批 test_passed==通过（p0_pass==1，即全部商品无 P0 阻断）时写入（门禁：环节6 与审批四环节硬校验以 test 为准）",
-    BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
-     inp("node_name", "环节名=test（自动测试）", content="test"),
-     inp("result_json", "环节结果JSON=正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
-     inp("status", "本环节状态=ok", content="ok")],
-    [ ("record_id", "存储记录ID", "string")],
-    pos=(1380, 135)))
-# 下载测试报告（阶段1.2）：按测试流水号逐品组装正式下载端点地址，探活失败回退为下载引导
-s13f.append(code_node(2316, "测试报告下载", CODE_DOWNLOAD_TEST_REPORT,
-    [inp("offers", "逐品测试流水号数组（节点2303出参 offers，每元素含 offer_seq/offer_id/globalId）", ref_block=nid(2303), ref_rel="offers")],
-    [code_out("download_url", 2316), code_out("note", 2316), code_out("backend_pending", 2316)],
-    pos=(1520, 300)))
-# xsbot-panel 独立代码节点
+# xsbot-panel 独立代码节点（终态结果分支 / 处理中分支各一）
 s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
-# 未完成/轮询异常分支结束（未写 test）：展示 done/fail_reason + 面板，引导续查
 s13f.append(panel_code_node(2325, "构建页面地址面板(处理中)", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", req_seq=2301), biz_title="测试报告"))
-s13f.append(end_node(2323, "结束(测试处理中-未写test)",
-    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
-     inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
+# 2323 结束（未终态：进度仪表盘，不写 test，引导续查）
+s13f.append(end_node(2323, "结束(测试处理中-进度仪表盘)",
+    [inp("progress_text", "进度仪表盘文本（节点2304）", ref_block=nid(2304), ref_rel="progress_text"),
      inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2325), ref_rel="panel")],
-    "【环节6/8·自动测试】查询测试结果：完成={done}\n"
-    "{fail_reason}\n\n"
+    "【环节6/8·自动测试】查询测试结果\n\n"
+    "■ 商品测试进度：\n{progress_text}\n\n"
     "测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
     "【下一步】请稍后回复\"查询测试结果\"续查；若持续无进展请联系人工核查测试发起（环节6a）。\n\n"
     "{panel}"))
-# 存在 P0 阻断分支结束（未写 test）：展示报告正文 + 面板，引导整改后重测
-s13f.append(end_node(2324, "结束(测试未通过-未写test)",
-    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
+# 2310 结束（终态：结构化测试结果展示，不写 test）
+s13f.append(end_node(2310, "结束(测试结果结构化展示)",
+    [inp("test_report", "结构化测试结果报告（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
      inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
-     inp("scene_summary", "逐品场景执行状态文本（节点2315）", ref_block=nid(2315), ref_rel="scene_summary"),
-     inp("test_report", "正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
-     inp("overall_conclusion", "整体上线结论", ref_block=nid(2315), ref_rel="overall_conclusion"),
      inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
-    "【环节6/8·自动测试】查询测试结果：整体上线结论 {overall_conclusion}（存在 P0 阻断，未通过）\n\n"
-    "■ 商品测试场景执行状态：\n{scene_summary}\n\n"
+    "【环节6/8·自动测试】测试结果查询完成\n\n"
     "{test_report}\n\n"
-    "测试未通过，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
-    "【下一步】请按报告四/五章的 ❌ 阻断项整改配置后，重新回复\"下一步\"发起测试（环节6a）。\n\n"
     "{panel}"))
-s13f.append(end_node(2310, "结束(测试查询完成)",
-    [inp("done", "是否窗口内完成（节点2304）", ref_block=nid(2304), ref_rel="done"),
-     inp("fail_reason", "轮询异常/处理中说明（节点2304）", ref_block=nid(2304), ref_rel="fail_reason"),
-     inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
-     inp("scene_summary", "逐品场景执行状态文本（节点2315）", ref_block=nid(2315), ref_rel="scene_summary"),
-     inp("test_report", "正式版测试报告", ref_block=nid(2306), ref_rel="test_report"),
-     inp("overall_conclusion", "整体上线结论", ref_block=nid(2315), ref_rel="overall_conclusion"),
-     inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
-     inp("download_url", "报告下载地址（节点2316）", ref_block=nid(2316), ref_rel="download_url"),
-     inp("dl_note", "下载说明（节点2316）", ref_block=nid(2316), ref_rel="note"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
-    "【环节6/8·自动测试】查询测试结果：完成={done}\n"
-    "{fail_reason}\n\n"
-    "■ 商品测试场景执行状态：\n{scene_summary}\n\n{test_report}\n\n"
-    "【报告下载】下载地址：{download_url}（为空填写\"暂不可用，见上方报告正文\"）（{dl_note}）\n\n"
-    "【下一步】可发送\"上线审批\"提交审批流（被测 offer_id={offerId}，测试流水号：{globalId}）"
-    "（整体上线结论：{overall_conclusion}）。\n\n{panel}"))
 files13f = workflow(
-    "产销品-测试查询结果", "子工作流13（环节6b 测试轮询，两阶段拆分后半；可重复触发）：自查 test_pending 取 globalId→CODE_POLL_PROGRESS 短窗口轮询 C3 get_test_progress(间隔5s/上限60次=5分钟)→**【门禁A】done==true 才继续**→C4 get_test_result（testScenes/orderId/offerInstId/offerName）→自查 spec/fee(2317~2320)→CODE_MAP_FIXED_CASES 确定性构建 31 条固定用例表+整体结论+缺陷清单+场景覆盖+E26→LLM 按 K3 模板 V2.0 九章节渲染正式版报告→**【门禁B】p0_pass==1（P0 全通过）才 save(node_name=test)**→下载报告(CODE_DOWNLOAD_TEST_REPORT)。done!=true 或 p0_pass!=1 均不写 test（跳过存储直接结束）；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_13", s13f,
+    "产销品-测试查询结果", "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告（逐场景 ✅/❌/⏳ + 逐测点明细表）→结束节点 Markdown 展示；未终态则输出「进度仪表盘」（进度条/步数/场景计数）并结束引导续查。全程不写 test（结构展示型子流）。", "wf_sub_13", s13f,
     [edge(2301,2302), edge(2302,2303), edge(2303,2304),
      edge(2304,2321), edge(2321,2305,-1), edge(2321,2325,0), edge(2325,2323),
-     edge(2305,2317), edge(2317,2318), edge(2318,2319), edge(2319,2320),
-     edge(2320,2315), edge(2315,2306), edge(2306,2309), edge(2309,2322),
-     edge(2322,2308,-1), edge(2322,2324,0),
-     edge(2308,2316), edge(2316,2310)])
+     edge(2305,2332), edge(2332,2333), edge(2333,2309), edge(2309,2310)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
