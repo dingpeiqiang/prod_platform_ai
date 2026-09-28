@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-上线审批",
-  "flowRemark": "子工作流6（双轨 approval-type=launch；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含offer_id与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。",
+  "flowRemark": "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(环节8标题头+校验看板+风险+整体结论)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→结束(展示审批单号/提交状态，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -119,12 +119,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000603,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000603,offer_id",
             "name": "offer_id",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000603,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -233,9 +243,24 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000605,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000605,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000605,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000605,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -344,9 +369,24 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000607,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000607,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000607,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000607,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -455,9 +495,24 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000609,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000609,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000609,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000609,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -566,9 +621,24 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000611,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000611,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000611,offer_id",
+            "name": "offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000611,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -613,12 +683,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+            "name": "all_pass",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000612,fusion_verification",
             "name": "fusion_verification",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\n\ndef _req_summary(req, cfg):\n    # requirement_summary：优先需求原文；否则从执行方案提取可读摘要（避免 JSON 大对象导致空串）\n    req_plan = cfg.get('plan_json')\n    if isinstance(req_plan, str):\n        try:\n            req_plan = json.loads(req_plan)\n        except Exception:\n            req_plan = None\n    raw = req.get('raw') if isinstance(req, dict) else ''\n    if isinstance(raw, str) and raw.strip():\n        return raw[:500]\n    parts = []\n    if isinstance(req_plan, dict):\n        base = req_plan.get('baseInfo') or {}\n        prc = (req_plan.get('optionalInfo') or {}).get('printContent') or {}\n        if base.get('prodPrcName'):\n            parts.append(str(base['prodPrcName']))\n        if prc.get('prcMonthFee'):\n            parts.append('月费%s' % prc['prcMonthFee'])\n        if prc.get('containResource'):\n            parts.append('含%s' % prc['containResource'])\n    if parts:\n        return '；'.join(parts)[:500]\n    return json.dumps(req_plan if isinstance(req_plan, dict) else req, ensure_ascii=False)[:500]\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # 融合成员组合验证标记：plan 含 group/member_offers 时附加（审批看板动态渲染，避免脏占位符）\n    plan_grp = cfg.get('plan_json')\n    if isinstance(plan_grp, str):\n        try:\n            plan_grp = json.loads(plan_grp)\n        except Exception:\n            plan_grp = None\n    has_members = bool(isinstance(plan_grp, dict) and (\n        (isinstance(plan_grp.get('group'), dict) and plan_grp['group'].get('members'))\n        or plan_grp.get('member_offers')))\n    fusion_verification = '＋融合成员组合验证' if has_members else ''\n    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：V2.5 起存储结构化 envelope（pass/error_list/audit_summary/audit_suggest），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    audit_summary = str(spec.get('audit_suggest') or spec.get('raw') or spec.get('audit_summary') or '')\n    if str(spec.get('pass') or '') in ('0', '1'):\n        spec_pass = str(spec.get('pass'))\n    else:\n        spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：V2.5 起存储结构化 envelope（pass/risk_list/compare_list/risk_summary），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    risk_summary = str(fee.get('risk_summary') or fee.get('raw') or '')\n    if str(fee.get('pass') or '') in ('0', '1'):\n        fee_pass = str(fee.get('pass'))\n    else:\n        fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'fusion_verification': fusion_verification,\n        'requirement_summary': _req_summary(req, cfg),\n        'config': {'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"offer_id\": offer_id,\n        \"fusion_verification\": fusion_verification\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _parse(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    if ':' in t and not t.startswith('{') and not t.startswith('['):\n        t = t.split(':', 1)[1].strip()\n    try:\n        v = json.loads(t)\n        return v if isinstance(v, dict) else {'raw': t}\n    except Exception:\n        return {'raw': t}\n\n\ndef _req_summary(req, cfg):\n    # requirement_summary：优先需求原文；否则从执行方案提取可读摘要（避免 JSON 大对象导致空串）\n    req_plan = cfg.get('plan_json')\n    if isinstance(req_plan, str):\n        try:\n            req_plan = json.loads(req_plan)\n        except Exception:\n            req_plan = None\n    raw = req.get('raw') if isinstance(req, dict) else ''\n    if isinstance(raw, str) and raw.strip():\n        return raw[:500]\n    parts = []\n    if isinstance(req_plan, dict):\n        base = req_plan.get('baseInfo') or {}\n        prc = (req_plan.get('optionalInfo') or {}).get('printContent') or {}\n        if base.get('prodPrcName'):\n            parts.append(str(base['prodPrcName']))\n        if prc.get('prcMonthFee'):\n            parts.append('月费%s' % prc['prcMonthFee'])\n        if prc.get('containResource'):\n            parts.append('含%s' % prc['containResource'])\n    if parts:\n        return '；'.join(parts)[:500]\n    return json.dumps(req_plan if isinstance(req_plan, dict) else req, ensure_ascii=False)[:500]\n\nasync def main(args):\n    p = args.params\n    cfg = _parse(p.get('config_result') or '')\n    spec = _parse(p.get('spec_result') or '')\n    fee = _parse(p.get('fee_result') or '')\n    test = _parse(p.get('test_result') or '')\n    req = _parse(p.get('requirement_result') or '')\n    # 融合成员组合验证标记：plan 含 group/member_offers 时附加（审批看板动态渲染，避免脏占位符）\n    plan_grp = cfg.get('plan_json')\n    if isinstance(plan_grp, str):\n        try:\n            plan_grp = json.loads(plan_grp)\n        except Exception:\n            plan_grp = None\n    has_members = bool(isinstance(plan_grp, dict) and (\n        (isinstance(plan_grp.get('group'), dict) and plan_grp['group'].get('members'))\n        or plan_grp.get('member_offers')))\n    fusion_verification = '＋融合成员组合验证' if has_members else ''\n    # config 环节：完整落地配置JSON（内含 offer_id 与 plan_json）\n    offer_id = str(cfg.get('offer_id') or '')\n    offer_name = str(cfg.get('offer_name') or '')\n    # spec 环节：V2.5 起存储结构化 envelope（pass/error_list/audit_summary/audit_suggest），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    audit_summary = str(spec.get('audit_suggest') or spec.get('raw') or spec.get('audit_summary') or '')\n    if str(spec.get('pass') or '') in ('0', '1'):\n        spec_pass = str(spec.get('pass'))\n    else:\n        spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n    # fee 环节：V2.5 起存储结构化 envelope（pass/risk_list/compare_list/risk_summary），\n    #   兼容旧版仅存 markdown 的情形（回退 raw 文本启发式判定）\n    risk_summary = str(fee.get('risk_summary') or fee.get('raw') or '')\n    if str(fee.get('pass') or '') in ('0', '1'):\n        fee_pass = str(fee.get('pass'))\n    else:\n        fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n    test_report = str(test.get('raw') or test.get('test_report') or '')\n    order_id = ''\n    offer_inst_id = ''\n    import re\n    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        order_id = m.group(1)\n    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n    if m:\n        offer_inst_id = m.group(1)\n    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n    summary = {\n        'offer_id': offer_id,\n        'offer_name': offer_name,\n        'fusion_verification': fusion_verification,\n        'requirement_summary': _req_summary(req, cfg),\n        'config': {'offer_id': offer_id,\n                   'plan_json': cfg.get('plan_json')},\n        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n        'test': {'passed': test_passed, 'order_id': order_id,\n                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n    }\n    # V3.12 多商品：从 config 落地报文的 offers[] 逐品展开审批看板元素\n    offers_out = []\n    cfg_offers = cfg.get('offers') if isinstance(cfg, dict) else None\n    if isinstance(cfg_offers, list) and cfg_offers:\n        for i, c in enumerate(cfg_offers, start=1):\n            if not isinstance(c, dict):\n                continue\n            o_id = str(c.get('offer_id') or c.get('offerId') or '')\n            offers_out.append({\n                'offer_seq': int(c.get('offer_seq') or i),\n                'offer_id': o_id,\n                'offer_name': str(c.get('offer_name') or ''),\n                'config_status': str(c.get('status') or ''),\n                'plan_json': c.get('plan_json'),\n                'spec': dict(summary['spec']),\n                'fee': dict(summary['fee']),\n                'test': dict(summary['test']),\n                'all_pass': summary['all_pass'],\n            })\n    summary['offers'] = offers_out\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"offer_id\": offer_id,\n        \"all_pass\": '1' if summary['all_pass'] else '0',\n        \"fusion_verification\": fusion_verification,\n        \"offers\": json.dumps(offers_out, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -788,6 +868,117 @@
         "type": 1
       },
       {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
+                    "relName": "all_pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000612",
+                      "a1b2c3d4-0000-4000-8000-000000000612,all_pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "报告写入门禁"
+        },
+        "position": {
+          "x": 4695,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000617",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000612",
+            "name": "合成结构化汇总",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000612,all_pass",
+                "name": "all_pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
         "outputs": [
           {
             "name": "record_id",
@@ -852,7 +1043,7 @@
         "nodeMeta": {
           "title": "报告存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；仅 all_pass==1（spec/fee/test 全品通过）时写入（门禁：由节点617判定）；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
           "version": "1"
         },
         "authentic_info_new": {
@@ -865,7 +1056,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000614",
         "position": {
-          "x": 4695,
+          "x": 5055,
           "y": 300
         },
         "dependencyData": [],
@@ -876,14 +1067,14 @@
         "outputs": [
           {
             "name": "approval_id",
-            "cname": "审批单号",
+            "cname": "工单级审批单号（顶层单值，覆盖整批商品）",
             "sechema": [],
             "type": "string",
             "required": false
           },
           {
             "name": "status",
-            "cname": "提交状态",
+            "cname": "整批提交状态 SUCCESS/PARTIAL/FAIL",
             "sechema": [],
             "type": "string",
             "required": false
@@ -894,40 +1085,19 @@
             "sechema": [],
             "type": "string",
             "required": false
+          },
+          {
+            "name": "offers",
+            "cname": "逐品审批推送结果数组JSON（[{offer_seq,approval_type,status,approval_matrix}]，商品级状态；approval_id 已提升至顶层，元素不再重复携带）",
+            "sechema": [],
+            "type": "string",
+            "required": false
           }
         ],
         "submit_way": "post",
         "flowJson": null,
         "authentic_info": "",
         "inputs": [
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
-            "relName": "offer_id",
-            "name": "offer_id",
-            "description": "销售品ID（节点612从config提取）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000612",
-              "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offer_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000613",
-            "relName": "approval_suggest",
-            "name": "report_url",
-            "description": "上线审批建议（节点613正文）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000613",
-              "a1b2c3d4-0000-4000-8000-000000000613,approval_suggest"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000613,approval_suggest"
-          },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
             "relName": "req_id",
@@ -941,6 +1111,34 @@
               "a1b2c3d4-0000-4000-8000-000000000601,req_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000601,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000612",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品销售品ID数组（节点612出参 offers，每元素含 offer_seq/offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000612",
+              "a1b2c3d4-0000-4000-8000-000000000612,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000612,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000613",
+            "relName": "approval_suggest",
+            "name": "report_url",
+            "description": "上线审批建议（节点613正文，逐品共用）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000613",
+              "a1b2c3d4-0000-4000-8000-000000000613,approval_suggest"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000613,approval_suggest"
           },
           {
             "blockID": "",
@@ -974,7 +1172,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9：自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；offer_id=节点612从config提取，report_url=节点613审批建议",
+          "description": "工具9（V3.12 多商品批量）：入参 {req_id, approval_flow, report_url, offers:[{offer_seq, offer_id}]}，一个需求单对应一张审批单（工单级 approval_id），工单内含多商品；逐品自研模拟审批推送（V9.1 双轨，此处 approval-type=launch 上线审批）；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同offer_id返回原approval_id；聚合返回 {approval_id, req_id, status, offers:[{offer_seq, approval_type, status, approval_matrix}]}（approval_id 为工单级单值，仅顶层；商品级状态见 offers[].status）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -987,7 +1185,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000615",
         "position": {
-          "x": 5055,
+          "x": 5415,
           "y": 300
         },
         "dependencyData": [],
@@ -998,7 +1196,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《上线审批建议》已提交审批：\n- 审批单号：{approval_id}，提交状态：{status}，审批类型：{approval_type}\n审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"
+          "content": "《上线审批建议》已提交审批：\n- 工单级审批单号：{approval_id}，整批提交状态：{status}，审批类型：{approval_type}\n逐品审批状态：\n{offers}\n审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n\n> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）\n\n"
         },
         "settings": {
           "stream": false,
@@ -1011,7 +1209,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
             "relName": "approval_id",
             "name": "approval_id",
-            "description": "审批单号",
+            "description": "工单级审批单号（顶层单值）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -1025,7 +1223,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
             "relName": "status",
             "name": "status",
-            "description": "提交状态（审批中，模拟约10s后自动通过）",
+            "description": "整批提交状态（审批中，模拟约10s后自动通过）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -1048,6 +1246,20 @@
               "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000615,approval_type"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000615",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品审批推送结果数组（节点615出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000615",
+              "a1b2c3d4-0000-4000-8000-000000000615,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000615,offers"
           }
         ],
         "checkErr": false,
@@ -1061,7 +1273,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5415,
+          "x": 5775,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000616",
@@ -1131,13 +1343,23 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000614",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000617",
         "startId": "a1b2c3d4-0000-4000-8000-000000000613"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000614",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000617"
       },
       {
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000615",
         "startId": "a1b2c3d4-0000-4000-8000-000000000614"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000615",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000617"
       },
       {
         "sourcePort": null,

@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（multipart Excel）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
+  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -44,7 +44,7 @@
         "outputs": [
           {
             "name": "list",
-            "cname": "记录数组JSON（取[0].result_json为环节结果原文）",
+            "cname": "记录数组JSON（取[0].result_json为环节结果原文，含 offers[]）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -91,7 +91,7 @@
         "nodeMeta": {
           "title": "读取配置环节结果",
           "code": "query_node_result",
-          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id 及可选 group）",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为整批落地结果原文，内含 req_id+offers[] 及可选 group）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -119,12 +119,22 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000207,req_id",
+            "name": "req_id",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000207,offer_id",
             "name": "offer_id",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000207,offers",
+            "name": "offers",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    request_ids = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n            rid = inner.get('requestIds')\n            if isinstance(rid, (list, tuple)):\n                request_ids = ','.join(str(x) for x in rid)\n            elif rid is not None:\n                request_ids = str(rid)\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"requestIds\": request_ids\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -181,7 +191,7 @@
           },
           {
             "name": "sales_id",
-            "cname": "销售品清单（销售品名→offerId/location/sheet_name）",
+            "cname": "销售品清单（销售品名→offerId/location/sheet_name，N 品行）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -192,35 +202,39 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "",
-            "relName": "",
-            "name": "audit_file",
-            "description": "稽核需求Excel（会话文件引用，multipart）",
-            "type": "string",
-            "required": true,
-            "content": "",
-            "part_name": "file"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
-            "relName": "offer_id",
-            "name": "offer_id",
-            "description": "销售品ID（节点207解析，供 mock 清单定位）",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行主干批次号（=开始节点 req_id；后端按此查需求+配置生成稽核 Excel）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000207",
-              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（会话上下文）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "智能稽核文件上传",
           "code": "audit_file_upload",
-          "description": "接口B1：智能稽核文件上传（multipart Excel）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}；audit_file 取会话文件引用（开发 mock 返回预置清单）",
+          "description": "接口B1：智能稽核文件上传（后端按 req_id 查需求与配置信息，逐品生成稽核 Excel 后上传）→ file_id + sales_id{销售品名:{offerId,location,sheet_name}}（N 品行清单）；入参仅 req_id + chat_id，无前端文件（开发 mock 返回预置清单）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -470,6 +484,34 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
+            "relName": "offers",
+            "name": "offers",
+            "description": "需求商品数组（节点207提取，供 4b 逐品回显）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（节点207提取）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
             "relName": "offer_id",
             "name": "offer_id",
             "description": "主销售品ID（节点207提取，供 4b 面板/回显）",
@@ -514,6 +556,117 @@
         },
         "dependencyData": [],
         "type": 6
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
+                    "relName": "requestIds",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000203",
+                      "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": ""
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 10
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "稽核发起门禁"
+        },
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000211",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000203",
+            "name": "异步报告生成并通知",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000203,requestIds",
+                "name": "requestIds",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
       },
       {
         "outputs": [
@@ -580,7 +733,7 @@
         "nodeMeta": {
           "title": "稽核发起临时态存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；4b 轮询自查读取",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=audit_pending（稽核发起临时态，非最终 spec）；result_json=发起结果封包（requestIds/sales_id 清单/回执）；仅 requestIds 非空时写入（门禁：逐品发起成功，由节点211判定）；4b 轮询自查读取",
           "version": "1"
         },
         "authentic_info_new": {
@@ -593,8 +746,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000205",
         "position": {
-          "x": 2535,
-          "y": 300
+          "x": 2895,
+          "y": 430
         },
         "dependencyData": [],
         "type": 3,
@@ -608,7 +761,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=03&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"规格稽核\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=03&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=03&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"规格稽核\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -662,11 +815,208 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000209",
         "position": {
-          "x": 2895,
-          "y": 300
+          "x": 3255,
+          "y": 430
         },
         "dependencyData": [],
         "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000212,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=03&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=03&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"规格稽核\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板(发起失败)"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000212",
+        "position": {
+          "x": 2895,
+          "y": 170
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节4/8·规格稽核】稽核发起失败：requestIds 为空\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
+            "relName": "requestIds",
+            "name": "requestIds",
+            "description": "全部 requestId 集合（节点203，空表示发起失败）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000203",
+              "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,requestIds"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "file_id",
+            "name": "file_id",
+            "description": "上传文件ID（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "file_name",
+            "name": "file_name",
+            "description": "上传文件名（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,file_name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "download_url",
+            "name": "download_url",
+            "description": "文件下载地址（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,download_url"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000208",
+            "relName": "sales_list_text",
+            "name": "sales_list_text",
+            "description": "稽核销售品列表（节点208封包）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000208",
+              "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000208,sales_list_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（节点207）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000212",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000212",
+              "a1b2c3d4-0000-4000-8000-000000000212,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000212,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(稽核发起失败-未写audit_pending)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 3255,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000213",
+        "dependencyData": []
       },
       {
         "outputs": {
@@ -791,7 +1141,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3255,
+          "x": 3615,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000210",
@@ -831,8 +1181,23 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000205",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000211",
         "startId": "a1b2c3d4-0000-4000-8000-000000000208"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000205",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000211"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000212",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000211"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000213",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000212"
       },
       {
         "sourcePort": null,

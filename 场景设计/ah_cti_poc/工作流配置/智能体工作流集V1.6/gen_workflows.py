@@ -2232,8 +2232,8 @@ s12f.append(plugin_node(2202, "自查稽核发起临时态", "query_node_result"
     method="get", pos=(240, 135)))
 s12f.append(code_node(2203, "提取 requestIds", CODE_EXTRACT_REQUEST_IDS,
     [inp("query_list", "引用节点2202查询出参 list", ref_block=nid(2202), ref_rel="list")],
-    [code_out("record_json", 2203), code_out("offer_id", 2203), code_out("requestIds", 2203),
-     code_out("offers", 2203)],
+    [code_out("record_json", 2203), code_out("offer_id", 2203), code_out("offer_name", 2203),
+     code_out("requestIds", 2203), code_out("offers", 2203), code_out("sales_list_text", 2203)],
     pos=(390, 135)))
 s12f.append(code_node(2204, "轮询稽核完成", CODE_POLL_AUDIT,
     [inp("offers", "逐品 requestIds 集合（节点2203）", ref_block=nid(2203), ref_rel="offers")],
@@ -2253,8 +2253,10 @@ s12f.append(code_node(2205, "查询稽核结果", CODE_AUDIT_QUERY,
 s12f.append(llm_node(2206, "整改建议生成",
     "你是配置规格稽核结果呈现助手。基于稽核出参（per_offer={per_offer}，error_list={error_list}，"
     "audit_summary={audit_summary}）输出稽核结果。整批结论 pass={pass}（全品通过=1）。\n"
-    "【通过分支】pass==1 或 error_list 为空时，只输出一行通过结论，禁止列任何检查项/明细/统计：\n"
-    "  格式：`全部销售品稽核通过（{audit_summary}）`，逐字引用 audit_summary。\n"
+    "【通过分支】pass==1 或 error_list 为空时，只输出结论，禁止列任何检查项/明细/统计：\n"
+    "  第一行固定：`全部销售品稽核通过`；\n"
+    "  第二行逐字引用 audit_summary（逐品一行：`#n 销售品ID：结论`，多品之间用；分隔则原样引用，"
+    "禁止再加外层括号、禁止改写括号）。\n"
     "  **严禁输出七项检查项清单、严禁输出\"稽核项总数/通过数/失败数\"、严禁出现任何 ❌、失败、缺失、"
     "\"服务项缺失\"、\"资源容量不匹配\"等字样**；该分支下\"未发现问题\"即是唯一正确结论。\n"
     "【不通过分支】pass==0 且 error_list 非空时才进入明细渲染（逐品渲染，仅渲染 pass!=1 的商品）：\n"
@@ -2294,10 +2296,10 @@ s12f.append(plugin_node(2208, "稽核结果存储", "save_node_result",
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")], pos=(1040, 135)))
 s12f.append(panel_code_node(2209, "构建页面地址面板", "03",
-    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", name_seq=2203, name_rel="offer_name", req_seq=2201), biz_title="规格稽核"))
 # 未完成/轮询异常分支结束（未写 spec）：展示 completed/fail_reason + 面板，引导续查
 s12f.append(panel_code_node(2216, "构建页面地址面板(处理中)", "03",
-    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", name_seq=2203, name_rel="offer_name", req_seq=2201), biz_title="规格稽核"))
 s12f.append(end_node(2213, "结束(稽核处理中-未写spec)",
     [inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
      inp("fail_reason", "轮询异常/处理中说明（节点2204）", ref_block=nid(2204), ref_rel="fail_reason"),
@@ -2310,7 +2312,7 @@ s12f.append(end_node(2213, "结束(稽核处理中-未写spec)",
     "{panel}"))
 # 未通过分支结束（未写 spec）：展示 ❌ 明细 + 面板，引导整改后重新发起
 s12f.append(panel_code_node(2215, "构建页面地址面板(未通过)", "03",
-    panel_inputs(2201, off_seq=2203, off_rel="offer_id", req_seq=2201), biz_title="规格稽核"))
+    panel_inputs(2201, off_seq=2203, off_rel="offer_id", name_seq=2203, name_rel="offer_name", req_seq=2201), biz_title="规格稽核"))
 s12f.append(end_node(2214, "结束(稽核未通过-未写spec)",
     [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
      inp("audit_suggest", "稽核明细清单（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
@@ -2323,13 +2325,13 @@ s12f.append(end_node(2214, "结束(稽核未通过-未写spec)",
     "{panel}"))
 s12f.append(end_node(2210, "结束(稽核查询完成)",
     [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
-     inp("completed", "窗口内是否完成（节点2204）", ref_block=nid(2204), ref_rel="completed"),
-     inp("fail_reason", "轮询异常/处理中说明（节点2204）", ref_block=nid(2204), ref_rel="fail_reason"),
      inp("audit_suggest", "稽核明细清单（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
+     inp("sales_list_text", "稽核销售品列表（节点2203提取）", ref_block=nid(2203), ref_rel="sales_list_text"),
      inp("offer_id", "销售品ID（节点2203解析，供查看面板）", ref_block=nid(2203), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2209), ref_rel="panel")],
-    "【环节4/8·规格稽核】查询稽核结果：完成={completed}，稽核结论 pass={pass}\n"
-    "{fail_reason}\n\n{audit_suggest}\n\n"
+    "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}\n\n"
+    "{audit_suggest}\n\n"
+    "稽核销售品列表：\n{sales_list_text}\n\n"
     "【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n"
     "{panel}"))
 files12f = workflow(

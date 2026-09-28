@@ -6,7 +6,7 @@
   python gen_import_requests.py --out ./myout        # 自定义输出目录
 
 说明：
-- 读取同目录下 12 个工作流 JSON，将其顶层对象作为请求 body 的 schema 字段。
+- 读取同目录下 14 个工作流 JSON，将其顶层对象作为请求 body 的 schema 字段。
 - 外层补充 action / orgId / projectId（默认取自示例）与 schema 平级。
 - action=A 表示新增保存；如需覆盖可自行改 --action。
 - 生成模式：每个工作流生成 <flowId>__import.json（UTF-8，ensure_ascii=False），
@@ -29,7 +29,7 @@ DEFAULT_ORG_ID = "10000"
 DEFAULT_PROJECT_ID = "c436c568-c42c-497e-b55d-de21cd98fdd8"
 DEFAULT_ACTION = "A"
 
-# 本方案 12 个子工作流：前缀 -> flowId（中文部分通过 glob 前缀解析，避免硬编码中文文件名；
+# 本方案 14 个子工作流：前缀 -> flowId（中文部分通过 glob 前缀解析，避免硬编码中文文件名；
 # 无 wf_main_intent 意图调度主流程，V3.3 起由智能体按意图映射表直调各子流）
 WORKFLOW_PREFIXES = [
     ("wf_sub_00", "wf_sub_00_"),
@@ -44,6 +44,8 @@ WORKFLOW_PREFIXES = [
     ("wf_sub_09", "wf_sub_09_"),
     ("wf_sub_10", "wf_sub_10_"),
     ("wf_sub_11", "wf_sub_11_"),
+    ("wf_sub_12", "wf_sub_12_"),
+    ("wf_sub_13", "wf_sub_13_"),
 ]
 
 

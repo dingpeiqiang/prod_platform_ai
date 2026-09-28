@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-监控运维",
-  "flowRemark": "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；阶段5 重写：异常分支追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析）→异常判定（error_count≠0走异常分支；fee_error_rate>0.1 亦视为异常）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。根因/优化一律依据出参逐字引用，禁止自行编造。",
+  "flowRemark": "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；V3.12 多商品：监控查询返回 offers[]，节点714 聚合异常判定；异常分支对首个异常商品追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析全部商品）→监控聚合（聚合异常量/首个异常商品；error_count≠0 或任一品 fee_error_rate>0.1 走异常分支）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。告警/根因/建单保持单体（首个异常商品）；根因/优化一律依据出参逐字引用，禁止自行编造。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -159,6 +159,13 @@
             ],
             "type": "array",
             "required": false
+          },
+          {
+            "name": "offers",
+            "cname": "逐品监控明细（多商品批量）",
+            "sechema": [],
+            "type": "string",
+            "required": false
           }
         ],
         "submit_way": "get",
@@ -221,7 +228,7 @@
         "nodeMeta": {
           "title": "监控查询",
           "code": "query_product_monitor",
-          "description": "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析",
+          "description": "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析全部商品，返回 offers[] 逐品指标",
           "version": "1"
         },
         "authentic_info_new": {
@@ -242,6 +249,232 @@
         "url": "http://172.30.8.52:6174/api/v1/appstore/product/monitor"
       },
       {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,error_count",
+            "name": "error_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,any_abnormal",
+            "name": "any_abnormal",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id",
+            "name": "first_offer_id",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name",
+            "name": "first_offer_name",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_order_count",
+            "name": "first_order_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_order_trend",
+            "name": "first_order_trend",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_error_count",
+            "name": "first_error_count",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_error_trend",
+            "name": "first_error_trend",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate",
+            "name": "first_fee_error_rate",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_trend",
+            "name": "first_fee_trend",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list",
+            "name": "first_alarm_list",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,offers",
+            "name": "offers",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,monitor_lines",
+            "name": "monitor_lines",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _num(v):\n    try:\n        return float(str(v).strip() or 0)\n    except Exception:\n        return 0.0\n\nasync def main(args):\n    p = args.params\n    # 兼容：单品旧结构（顶层标量）退化为一元素；批量优先取 offers\n    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n    if not offers and str(p.get('offer_id') or ''):\n        offers = [{'offer_seq': 1, 'offer_id': str(p.get('offer_id') or ''),\n                   'offer_name': str(p.get('offer_name') or ''),\n                   'order_count': str(p.get('order_count') or ''),\n                   'order_trend': str(p.get('order_trend') or ''),\n                   'error_count': str(p.get('error_count') or ''),\n                   'error_trend': str(p.get('error_trend') or ''),\n                   'fee_error_rate': str(p.get('fee_error_rate') or ''),\n                   'fee_trend': str(p.get('fee_trend') or ''),\n                   'alarm_list': p.get('alarm_list') or []}]\n    norm = []\n    err_total = 0.0\n    any_abnormal = False\n    first = None\n    for i, o in enumerate(offers, start=1):\n        seq = o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i\n        ec = _num(o.get('error_count'))\n        fr = _num(o.get('fee_error_rate'))\n        abnormal = (ec != 0) or (fr > 0.1)\n        norm.append({'offer_seq': seq,\n                     'offer_id': str(o.get('offer_id') or ''),\n                     'offer_name': str(o.get('offer_name') or ''),\n                     'order_count': str(o.get('order_count') or ''),\n                     'order_trend': str(o.get('order_trend') or ''),\n                     'error_count': str(o.get('error_count') or ''),\n                     'error_trend': str(o.get('error_trend') or ''),\n                     'fee_error_rate': str(o.get('fee_error_rate') or ''),\n                     'fee_trend': str(o.get('fee_trend') or ''),\n                     'alarm_list': o.get('alarm_list') or []})\n        err_total += ec\n        if abnormal:\n            any_abnormal = True\n            if first is None:\n                first = norm[-1]\n    if first is None and norm:\n        first = norm[0]\n    f = first or {}\n    def _j(v):\n        return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)\n    def _pct(v):\n        # 计费差错率小数（如 0.0020）转百分比文本，供自然语言简报展示\n        try:\n            return '%.2f%%' % (_num(v) * 100)\n        except Exception:\n            return ''\n    def _alarms(v):\n        if isinstance(v, str):\n            try:\n                v = json.loads(v)\n            except Exception:\n                v = [v] if v.strip() else []\n        if isinstance(v, list) and v:\n            texts = []\n            for x in v:\n                if isinstance(x, dict):\n                    t = x.get('content') or x.get('alarm_content') or x.get('message') or ''\n                    lv = x.get('alarm_level') or ''\n                    texts.append(('%s（%s）' % (t, lv)) if (t and lv) else (str(t) if t else str(x)))\n                else:\n                    texts.append(str(x))\n            return '、'.join(texts)\n        return '无'\n    lines = []\n    for o in norm:\n        nm = str(o.get('offer_name') or '') or '未登记'\n        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s（%s），告警：%s'\n                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n                        _pct(o.get('fee_error_rate')), str(o.get('fee_trend') or ''),\n                        _alarms(o.get('alarm_list'))))\n    ret: Output = {\n        'error_count': ('%g' % err_total) if err_total else '0',\n        'any_abnormal': 'true' if any_abnormal else 'false',\n        'first_offer_id': str(f.get('offer_id') or ''),\n        'first_offer_name': str(f.get('offer_name') or ''),\n        'first_order_count': str(f.get('order_count') or ''),\n        'first_order_trend': str(f.get('order_trend') or ''),\n        'first_error_count': str(f.get('error_count') or ''),\n        'first_error_trend': str(f.get('error_trend') or ''),\n        'first_fee_error_rate': str(f.get('fee_error_rate') or ''),\n        'first_fee_trend': str(f.get('fee_trend') or ''),\n        'first_alarm_list': _j(f.get('alarm_list') or []),\n        'offers': json.dumps(norm, ensure_ascii=False),\n        'monitor_lines': '\\n'.join(lines)\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品监控明细（节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "offer_name",
+            "name": "offer_name",
+            "description": "产品名称（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "order_count",
+            "name": "order_count",
+            "description": "订单量（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "order_trend",
+            "name": "order_trend",
+            "description": "订单量趋势（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "error_count",
+            "name": "error_count",
+            "description": "异常量（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "error_trend",
+            "name": "error_trend",
+            "description": "异常量趋势（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,error_trend"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_trend"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "fee_error_rate",
+            "name": "fee_error_rate",
+            "description": "计费差错率（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "fee_trend",
+            "name": "fee_trend",
+            "description": "计费差错率趋势（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,fee_trend"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_trend"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+            "relName": "alarm_list",
+            "name": "alarm_list",
+            "description": "告警列表（单品兜底，节点702）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000702",
+              "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "监控聚合"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000714",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
         "flowJson": null,
         "inputs": {
           "condition": [
@@ -252,13 +485,13 @@
               "conditions": [
                 {
                   "left": {
-                    "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-                    "relName": "error_count",
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+                    "relName": "any_abnormal",
                     "nameValue": [
-                      "a1b2c3d4-0000-4000-8000-000000000702",
-                      "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+                      "a1b2c3d4-0000-4000-8000-000000000714",
+                      "a1b2c3d4-0000-4000-8000-000000000714,any_abnormal"
                     ],
-                    "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count",
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000714,any_abnormal",
                     "name": "",
                     "description": "",
                     "type": "ref",
@@ -272,7 +505,7 @@
                     "name": "",
                     "description": "",
                     "type": "string",
-                    "content": "0"
+                    "content": "true"
                   },
                   "conditions": [
                     {
@@ -320,7 +553,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 2
+                  "operator": 1
                 }
               ]
             }
@@ -331,25 +564,25 @@
           "title": "异常判定"
         },
         "position": {
-          "x": 735,
+          "x": 1095,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000703",
         "dependencyData": [
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000702",
-            "name": "监控查询",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714",
+            "name": "监控聚合",
             "disabled": true,
             "children": [
               {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000702,error_count",
+                "relName": "a1b2c3d4-0000-4000-8000-000000000714,error_count",
                 "name": "error_count",
                 "type": "string",
                 "content": ""
               },
               {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate",
-                "name": "fee_error_rate",
+                "relName": "a1b2c3d4-0000-4000-8000-000000000714,any_abnormal",
+                "name": "any_abnormal",
                 "type": "string",
                 "content": ""
               }
@@ -379,74 +612,74 @@
           ],
           "inputParameters": [
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "offer_name",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_offer_name",
               "name": "offer_name",
-              "description": "产品名称",
+              "description": "产品名称（首个异常商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "order_count",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_order_count",
               "name": "order_count",
-              "description": "订单量",
+              "description": "订单量（首个异常商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "error_count",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_error_count",
               "name": "error_count",
-              "description": "异常量",
+              "description": "异常量（首个异常商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "fee_error_rate",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_fee_error_rate",
               "name": "fee_error_rate",
-              "description": "计费差错率",
+              "description": "计费差错率（首个异常商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "alarm_list",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_alarm_list",
               "name": "alarm_list",
-              "description": "告警列表",
+              "description": "告警列表（首个异常商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
             }
           ]
         },
@@ -460,7 +693,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000704",
@@ -489,18 +722,18 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
-            "description": "销售品ID",
+            "description": "销售品ID（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           },
           {
             "blockID": "",
@@ -530,7 +763,7 @@
         "nodeMeta": {
           "title": "异常告警",
           "code": "send_alert",
-          "description": "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）",
+          "description": "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）；单体：仅对首个异常商品告警（send_alert 暂未批量化）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -543,7 +776,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000705",
         "position": {
-          "x": 1455,
+          "x": 1815,
           "y": 430
         },
         "dependencyData": [],
@@ -602,18 +835,18 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
-            "description": "销售品ID",
+            "description": "销售品ID（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           }
         ],
         "checkErr": false,
@@ -624,7 +857,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000706",
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 430
         },
         "dependencyData": [],
@@ -646,7 +879,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品运维归因智能体。基于监控异常数据与 ops_root_cause 出参（backend_pending={backend_pending}，anomalies={anomalies}，paths={paths}，reason_engine={reason_engine}，action_list={action_list}，note={note}），按 flow-D D-2 第6步模板输出根因推理链与优化方案：\n**异动根因推理链路（{reason_engine，占位时省略}）**\n- 异动确认：{anomalies 摘要：指标 code、delta、message，逐字引用}\n- 归因路径（按 paths 排名）：| 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |\n（逐行展开 topN；paths 为空 → 照实引用出参 message\"已确认异动但未命中归因规则\"，禁止编造根因）\n- 命中规则：{swrl_fired / applied_rules，逗号分隔，空则照实省略}\n- 证据三元组：{evidence_triples 逐字摘要}\n\n**优化方案（规则驱动）**\n{action_list 逐条引用；无则引用出参 message，禁止编造}\n约束：本服务当前 backend_pending={backend_pending}（根因本体推理 ops_root_cause 待后端接入，阶段1.1），此时 output 归因段落须以占位说明（{note}）呈现，禁止自行编造根因/证据/优化方案。\n输出要求：仅输出根因推理链+优化方案正文（对应出参 root_cause_report），不输出其他多余文字。"
+              "content": "你是产销品运维归因智能体。基于监控异常数据与 ops_root_cause 出参（backend_pending={backend_pending}，anomalies={anomalies}，paths={paths}，reason_engine={reason_engine}，action_list={action_list}，note={note}），按 flow-D D-2 第6步模板输出根因推理链与优化方案：\n**异动根因推理链路（{reason_engine，占位时省略}）**\n- 异动确认：{anomalies 摘要：指标 code、delta、message，逐字引用}\n- 归因路径（按 paths 排名）：| 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |\n（逐行展开 topN；paths 为空 → 照实引用出参 message\"已确认异动但未命中归因规则\"，禁止编造根因）\n- 命中规则：{swrl_fired / applied_rules，逗号分隔，空则照实省略}\n- 证据三元组：{evidence_triples 逐字摘要}\n\n**优化方案（规则驱动）**\n{action_list 逐条引用；无则引用出参 message，禁止编造}\n约束：本服务当前 backend_pending={backend_pending}（根因本体推理 ops_root_cause 待后端接入，阶段1.1），此时 output 归因段落须以占位说明（{note}）呈现，禁止自行编造根因/证据/优化方案。\n**输出纪律**：所有字段引用必须替换为实际数据；字段为空时该行省略或写「无」，**严禁原样输出 `{...}` 形式的模板占位符**，**严禁输出「逐字引用/逐条引用」等提示词指令文字**。\n输出要求：仅输出根因推理链+优化方案正文（对应出参 root_cause_report），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -774,7 +1007,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 2175,
+          "x": 2535,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000707",
@@ -803,18 +1036,18 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
-            "description": "销售品ID",
+            "description": "销售品ID（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           }
         ],
         "checkErr": false,
@@ -825,7 +1058,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000708",
         "position": {
-          "x": 2535,
+          "x": 2895,
           "y": 300
         },
         "dependencyData": [],
@@ -839,7 +1072,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -871,32 +1104,32 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
             "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_name",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_name",
             "name": "offer_name",
             "description": "产品名称（用于面板 url 的 name）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
           }
         ],
         "checkErr": false,
@@ -907,7 +1140,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000712",
         "position": {
-          "x": 2895,
+          "x": 3255,
           "y": 300
         },
         "dependencyData": [],
@@ -917,7 +1150,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节9/9·监控运维】✅ 执行成功\n\n【销售品运行监控】{offer_id}（{date_range}）\n- 产品名称：{offer_name}（为空显示\"未登记\"）\n- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n- 告警列表：{alarm_list}（为空显示\"无\"）\n已推送告警，告警单号 {alert_id}\n\n{root_cause_report}\n**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}\n\n{panel}"
+          "content": "【环节9/9·监控运维】✅ 执行成功\n\n【销售品运行监控】{offer_id}（{date_range}）\n- 产品名称：{offer_name}\n- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n已推送告警，告警单号 {alert_id}\n\n【逐品运行监控明细】\n{monitor_lines}\n\n{root_cause_report}\n**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -927,32 +1160,32 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_name",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_name",
             "name": "offer_name",
-            "description": "产品名称",
+            "description": "产品名称（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
-            "description": "销售品ID（监控查询出参，后端可能按 req_id 解析）",
+            "description": "销售品ID（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
@@ -969,102 +1202,130 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000701,date_range"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "order_count",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_order_count",
             "name": "order_count",
-            "description": "订单量",
+            "description": "订单量（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "order_trend",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_order_trend",
             "name": "order_trend",
-            "description": "订单量趋势",
+            "description": "订单量趋势（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_order_trend"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_order_trend"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "error_count",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_error_count",
             "name": "error_count",
-            "description": "异常量",
+            "description": "异常量（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "error_trend",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_error_trend",
             "name": "error_trend",
-            "description": "异常量趋势",
+            "description": "异常量趋势（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,error_trend"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_error_trend"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_trend"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_error_trend"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "fee_error_rate",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_fee_error_rate",
             "name": "fee_error_rate",
-            "description": "计费差错率",
+            "description": "计费差错率（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "fee_trend",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_fee_trend",
             "name": "fee_trend",
-            "description": "计费差错率趋势",
+            "description": "计费差错率趋势（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,fee_trend"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_fee_trend"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_trend"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_trend"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "alarm_list",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_alarm_list",
             "name": "alarm_list",
-            "description": "告警列表",
+            "description": "告警列表（首个异常商品，节点714）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "monitor_lines",
+            "name": "monitor_lines",
+            "description": "逐品监控自然语言明细（节点714）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,monitor_lines"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,monitor_lines"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品监控明细（节点714）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,offers"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000705",
@@ -1148,7 +1409,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3255,
+          "x": 3615,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000709",
@@ -1170,93 +1431,107 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。基于正常监控数据输出运营摘要（产品名称/订单量/异常量/计费差错率/告警列表），整体正常时给出简洁说明，无需强行生成建议。输入：offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n输出要求：仅输出运营摘要正文（对应出参 ops_summary），不输出其他多余文字。"
+              "content": "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：offers={offers}，offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n格式要求：\n1. 逐品各一行，每行形如「产品名称：订单量 X（趋势），异常量 Y（趋势），计费差错率 Z（趋势），无告警」；计费差错率以百分比呈现（如 0.0020 → 0.20%）。\n2. alarm_list 为空或 [] 时写「无告警」，非空时列出告警内容。\n3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n4. 禁止将入参按其出现顺序斜杠/逗号原样拼接成值串（如「产品名/287/0/0.0020/[]」）；禁止内嵌原始 JSON；禁止残留任何 { 占位符或「为空显示…」一类括注指令。\n输出要求：仅输出运营摘要正文（对应出参 ops_summary），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "offer_name",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "offers",
+              "name": "offers",
+              "description": "逐品监控明细（节点714）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_offer_name",
               "name": "offer_name",
-              "description": "产品名称",
+              "description": "产品名称（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "order_count",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_order_count",
               "name": "order_count",
-              "description": "订单量",
+              "description": "订单量（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_count"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_order_count"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "order_trend",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_order_trend",
               "name": "order_trend",
-              "description": "订单量趋势",
+              "description": "订单量趋势（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_order_trend"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,order_trend"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_order_trend"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "error_count",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_error_count",
               "name": "error_count",
-              "description": "异常量",
+              "description": "异常量（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_error_count"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "fee_error_rate",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_fee_error_rate",
               "name": "fee_error_rate",
-              "description": "计费差错率",
+              "description": "计费差错率（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,fee_error_rate"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_fee_error_rate"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-              "relName": "alarm_list",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "first_alarm_list",
               "name": "alarm_list",
-              "description": "告警列表",
+              "description": "告警列表（首个商品，节点714）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000702",
-                "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,alarm_list"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_alarm_list"
             }
           ]
         },
@@ -1270,7 +1545,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000710",
@@ -1330,7 +1605,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000711",
@@ -1344,7 +1619,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    biz_url = ('http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -1376,32 +1651,32 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_id",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_id",
             "name": "offer_id",
             "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
-            "relName": "offer_name",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+            "relName": "first_offer_name",
             "name": "offer_name",
             "description": "产品名称（用于面板 url 的 name）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000702",
-              "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              "a1b2c3d4-0000-4000-8000-000000000714",
+              "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000714,first_offer_name"
           }
         ],
         "checkErr": false,
@@ -1412,7 +1687,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000713",
         "position": {
-          "x": 1455,
+          "x": 1815,
           "y": 170
         },
         "dependencyData": [],
@@ -1427,8 +1702,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000703",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000714",
         "startId": "a1b2c3d4-0000-4000-8000-000000000702"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000703",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000714"
       },
       {
         "sourcePort": 0,
