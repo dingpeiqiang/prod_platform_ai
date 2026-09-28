@@ -37,9 +37,11 @@ def main() -> None:
         print(f"[删除] {old_file.name}")
 
     for src_file in SRC_DIR.glob("*.json"):
-        content = src_file.read_text(encoding="utf-8")
+        with open(src_file, "r", encoding="utf-8", newline="") as fp:
+            content = fp.read()
         content = replace_env(content)
-        (DST_DIR / src_file.name).write_text(content, encoding="utf-8")
+        with open(DST_DIR / src_file.name, "w", encoding="utf-8", newline="") as fp:
+            fp.write(content)
         print(f"[复制+替换] {src_file.name}")
 
     print("完成。")

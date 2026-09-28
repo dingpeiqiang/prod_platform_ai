@@ -2372,18 +2372,83 @@ s5f.append(plugin_node(402, "计费校验", "check_billing_rule",
      ("risk_list", "整批风险清单（逐品聚合）", "array"),
      ("compare_list", "整批资费比对明细（逐品聚合，融合组行含 member_role）", "array"),
      ("offers", "逐品校验结果数组JSON（[{offer_seq,pass,risk_list,compare_list}]）", "string")]))
+# 资费校准商品列表：以 config 环节 offers[]（名称/ID）为准、按 offer_seq 关联节点402校验结论，
+# 确定性渲染「资费校准商品列表」markdown（序号/销售品名称/销售品ID/校准结论），供结束节点回显与 LLM 分组命名。
+CODE_OFFER_LIST = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "def _load(v):\n"
+    "    if isinstance(v, list):\n"
+    "        return v\n"
+    "    if isinstance(v, dict):\n"
+    "        return v.get('offers') if isinstance(v.get('offers'), list) else [v]\n"
+    "    if not isinstance(v, str) or not v.strip():\n"
+    "        return []\n"
+    "    try:\n"
+    "        obj = json.loads(v)\n"
+    "        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n"
+    "            return obj['offers']\n"
+    "        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n"
+    "    except Exception:\n"
+    "        return []\n"
+    "\n"
+    "def _name(o, seq):\n"
+    "    plan = o.get('plan_json')\n"
+    "    if isinstance(plan, str):\n"
+    "        try:\n"
+    "            plan = json.loads(plan)\n"
+    "        except Exception:\n"
+    "            plan = None\n"
+    "    base = plan.get('baseInfo') if isinstance(plan, dict) and isinstance(plan.get('baseInfo'), dict) else {}\n"
+    "    nm = str(base.get('prodPrcName') or o.get('offer_name') or o.get('name') or '').strip()\n"
+    "    if not nm:\n"
+    "        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n"
+    "        nm = ('新增销售品%s' % oid) if oid else ('商品%s' % seq)\n"
+    "    return nm\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    cfg_offers = [o for o in _load(p.get('config_offers')) if isinstance(o, dict)]\n"
+    "    res_offers = [o for o in _load(p.get('result_offers')) if isinstance(o, dict)]\n"
+    "    pass_by_seq: Dict[Any, str] = {}\n"
+    "    for o in res_offers:\n"
+    "        pass_by_seq[str(o.get('offer_seq'))] = str(o.get('pass') or '')\n"
+    "    lines = []\n"
+    "    for i, o in enumerate(cfg_offers, start=1):\n"
+    "        seq = o.get('offer_seq')\n"
+    "        seq = seq if seq not in (None, '') else i\n"
+    "        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n"
+    "        verdict = pass_by_seq.get(str(seq), '')\n"
+    "        mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n"
+    "        lines.append('%d. %s（销售品ID=%s）：%s' % (i, _name(o, seq), oid or '—', mark))\n"
+    "    if not lines and res_offers:\n"
+    "        for i, o in enumerate(res_offers, start=1):\n"
+    "            seq = o.get('offer_seq') or i\n"
+    "            verdict = str(o.get('pass') or '')\n"
+    "            mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n"
+    "            lines.append('%d. 商品%s：%s' % (i, seq, mark))\n"
+    "    ret: Output = {'offer_list_text': '\\n'.join(lines)}\n"
+    "    return ret"
+)
+s5f.append(code_node(414, "资费校准商品列表", CODE_OFFER_LIST,
+    [inp("config_offers", "配置环节逐品数组（节点407提取，含 offer_seq/offer_id/plan_json）", ref_block=nid(407), ref_rel="offers"),
+     inp("result_offers", "逐品校验结果（节点402出参 offers，含 offer_seq/pass）", ref_block=nid(402), ref_rel="offers")],
+    [code_out("offer_list_text", 414)], pos=(520, 260)))
 s5f.append(llm_node(403, "风险解读",
-    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出：\n"
-    "0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}」；单商品（无 offer_seq 键）不输出小节标题。\n"
+    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）供开头回显：\n"
+    "0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n"
     "1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
     "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
     "3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
     "4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
-    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，直接输出「资费校准通过，未发现叠加/互斥冲突」。\n"
+    "5）商品列表回显：仅当存在 offer_list_text（非空）时，在输出最开头输出一节「**资费校准商品列表：**」，逐行逐字引用 offer_list_text（禁止改写、禁止增删行），其后空一行再接各商品小节。\n"
+    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，仍须输出商品列表回显，结论行输出「资费校准通过，未发现叠加/互斥冲突」（有商品列表时不得省略该节）。\n"
     "输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。",
     [inp("risk_list", "引用节点402风险清单（逐品聚合）", ref_block=nid(402), ref_rel="risk_list"),
-     inp("compare_list", "引用节点402资费比对明细（逐品聚合，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list")],
-    [out("risk_summary", "风险解读（多商品按 offer_seq 分组）")]))
+     inp("compare_list", "引用节点402资费比对明细（逐品聚合，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list"),
+     inp("offer_list_text", "资费校准商品列表文本（节点414确定性渲染）", ref_block=nid(414), ref_rel="offer_list_text")],
+    [out("risk_summary", "风险解读（多商品按 offer_seq 分组，含商品列表回显）")]))
 # 计费校验结论聚合：插件仅逐品返回 offers[].pass，顶层 pass/risk_list/compare_list 为空；
 # 本节点从 offers[] 确定性聚合顶层结论，供结束节点 {pass} 与后续封包引用（避免空值）。
 CODE_AGG_BILLING = (
@@ -2465,22 +2530,29 @@ s5f.append(end_node(413, "结束(资费未通过-未写fee)",
     [inp("pass", "校验结论（节点410聚合）", ref_block=nid(410), ref_rel="pass"),
      inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
      inp("risk_summary", "风险解读（节点403）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("offer_list_text", "资费校准商品列表（节点414）", ref_block=nid(414), ref_rel="offer_list_text"),
      inp("offer_id", "首品销售品ID（节点407）", ref_block=nid(407), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(412), ref_rel="panel")],
-    "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n{risk_summary}\n\n"
+    "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n\n"
+    "**资费校准商品列表：**\n{offer_list_text}\n\n"
+    "{risk_summary}\n\n"
     "整批存在不一致，本次未写入 fee，无法推进上线审批。\n"
-    "【下一步】请按比对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"))
+    "【下一步】请按比对上文对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"))
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论（节点410聚合）", ref_block=nid(410), ref_rel="pass"),
      inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
      inp("risk_summary", "风险解读（多商品按 offer_seq 分组）", ref_block=nid(403), ref_rel="risk_summary"),
+     inp("offer_list_text", "资费校准商品列表（节点414）", ref_block=nid(414), ref_rel="offer_list_text"),
      inp("offer_id", "首品销售品ID（节点407提取，供查看面板）", ref_block=nid(407), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(409), ref_rel="panel")],
-    "资费校准完成：pass={pass}\n{risk_summary}\n\n"
-    "{panel}"))
+    "【环节5/8·资费校准】资费校准完成：pass={pass}\n\n"
+    "**资费校准商品列表：**\n{offer_list_text}\n\n"
+    "{risk_summary}\n\n"
+    "【下一步】可回复\"下一步\"推进后续环节。\n\n{panel}"))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
     [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,410),
+     edge(407,414), edge(402,414), edge(414,403),
      edge(410,408), edge(408,411), edge(411,405,-1), edge(411,412,0), edge(412,413), edge(405,409), edge(409,404)])
 
 
@@ -4122,6 +4194,6 @@ for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分
                  ("wf_sub_10_存量合规扫描.json", files10f), ("wf_sub_11_发起需求审批.json", files11f),
                  ("wf_sub_12_规格稽核查询.json", files12f), ("wf_sub_13_测试查询结果.json", files13f)]:
     data = apply_layout(data)
-    with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
+    with io.open(os.path.join(BASE, fn), "w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     print("written:", fn)
