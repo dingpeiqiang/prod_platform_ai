@@ -104,10 +104,10 @@ def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name
     return refs
 
 
-def panel_code_node(seq, title, stage, in_refs, biz_title=None):
+def panel_code_node(seq, title, stage, in_refs, biz_title=None, pos=(650, 300)):
     """type=6 代码节点：独立构建单面板 xsbot-panel 片段，输出 panel 供结束节点 {panel} 引用。"""
     return code_node(seq, title, gen_panel_code(stage, biz_title), in_refs,
-                     [code_out("panel", seq)])
+                     [code_out("panel", seq)], pos=pos)
 
 
 # ============================================================
@@ -1088,7 +1088,7 @@ CODE_GEN_OFFER_ID = (
 s2f = []
 s2f.append(start_node(101, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
-    inp("chat_id", "{chatId}", required=True)]))
+    inp("chat_id", "{chatId}", required=True)], pos=(15, 300)))
 s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
     "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组（list[0].result_json 为执行方案原文）",
     BASE_URL + "/api/v1/appstore/result/query",
@@ -1096,11 +1096,11 @@ s2f.append(plugin_node(102, "读取执行方案", "query_node_result",
      inp("node_name", "环节名=requirement", content="requirement"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
     [ ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
-    method="get"))
+    method="get", pos=(375, 300)))
 s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
     [code_out("record_json", 106), code_out("req_id", 106), code_out("offer_id", 106), code_out("offers", 106)],
-    pos=(530, 300)))
+    pos=(735, 300)))
 # 111 生成商品编码（V3.12 多商品）：逐品补齐 9 位 900 编码（存量重配透传既有编码），
 # 输出 offers[]（每元素含 offer_id）注入 save_product_config 批量落地
 s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
@@ -1108,7 +1108,7 @@ s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
      inp("existing_offer_id", "执行方案中既有 offer_id（节点106提取，单品兜底）", ref_block=nid(106), ref_rel="offer_id"),
      inp("req_id", "需求单号（节点106提取，注入逐品 plan_json）", ref_block=nid(106), ref_rel="req_id")],
     [code_out("offers", 111), code_out("offer_id", 111)],
-    pos=(530, 440)))
+    pos=(1095, 300)))
 s2f.append(plugin_node(103, "配置落地", "save_product_config",
     "工具7（V3.12 多商品批量）：入参 {req_id, offers:[{offer_seq, offer_id, plan_json}]}，逐品解析执行方案JSON写入模拟CRM配置库（同 plan_json 幂等），聚合返回 {req_id, status, offers:[{offer_seq, offer_id, save_result, status, product_config, script_url, group?}]}；后端从各品 plan_json 的 req_id 键提取方案key；新增产品时商品编码由节点111逐品生成（9位900编码）注入 offer_id；融合组时元素含 group（main_offer_id+members[]{role,offer_id}）",
     BASE_URL + "/api/v1/appstore/product/config/save",
@@ -1121,24 +1121,25 @@ s2f.append(plugin_node(103, "配置落地", "save_product_config",
      ("save_result", "整批四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
      ("product_config", "整批落地结果JSON（含 offers[]，每元素含 offer_id/plan_json/可选 group）", "string"),
      ("script_url", "配置脚本下载地址（后端生成，GET即返回可执行脚本）", "string"),
-     ("offers", "逐品落地结果数组JSON（[{offer_seq,offer_id,status,product_config,...}]）", "string")]))
+     ("offers", "逐品落地结果数组JSON（[{offer_seq,offer_id,status,product_config,...}]）", "string")],
+    pos=(1455, 300)))
 # 融合成员回显代码节点（V3.12 多商品）：逐品 group 回显；无 group 路径零变化
 s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
     [inp("group_json", "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]）", ref_block=nid(103), ref_rel="offers"),
      inp("status", "落地总状态（节点103出参 status）", ref_block=nid(103), ref_rel="status")],
     [code_out("fusion_echo", 107), code_out("fusion_status", 107), code_out("fusion_note", 107)],
-    pos=(900, 300)))
+    pos=(1815, 300)))
 s2f.append(code_node(108, "配置要点简介", CODE_CONFIG_SUMMARY,
     [inp("product_config", "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]，元素含 product_config）", ref_block=nid(103), ref_rel="offers"),
      inp("req_id", "执行批次号（节点103出参 req_id，组装 config_json 信封）", ref_block=nid(103), ref_rel="req_id")],
     [code_out("config_summary", 108), code_out("offers", 108), code_out("config_json", 108)],
-    pos=(860, 420)))
+    pos=(2175, 300)))
 # 写入门禁：契约§4——config 仅当整批落地 status==SUCCESS（全品通过）才写入；
 # status!=SUCCESS（PARTIAL/FAIL）跳过硬写，走未写库结束分支，避免脏写 config 蒙混下游。
 s2f.append(selector_node2(112, "配置写入门禁",
     [dep_node(103, "配置落地", ["status"])],
     [(-1, [cond_item(cond_ref(103, "status", "配置落地"), 1, cond_str("SUCCESS"))])],
-    pos=(980, 300)))
+    pos=(2535, 300)))
 s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=整批落地结果JSON（含 req_id+offers[]，每元素含 offer_id 及可选 group）；仅整批 status==SUCCESS 时写入（门禁：全品落地通过，由节点112判定）；供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -1146,13 +1147,13 @@ s2f.append(plugin_node(105, "环节结果存储", "save_node_result",
      inp("node_name", "环节名=config（智能配置）", content="config"),
      inp("result_json", "环节结果JSON=整批落地结果JSON（含 req_id+offers[]，由节点108组装）", ref_block=nid(108), ref_rel="config_json"),
      inp("status", "本环节状态=ok", content="ok")],
-    [ ("record_id", "存储记录ID", "string")], pos=(1060, 135)))
+    [ ("record_id", "存储记录ID", "string")], pos=(2895, 430)))
 # xsbot-panel 独立代码节点
 s2f.append(panel_code_node(109, "构建页面地址面板", "02",
-    panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板"))
+    panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板", pos=(3255, 430)))
 # 未通过分支面板 + 结束（未写 config）
 s2f.append(panel_code_node(113, "构建页面地址面板(未写库)", "02",
-    panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板"))
+    panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板", pos=(2895, 170)))
 s2f.append(end_node(114, "结束(配置未通过-未写config)",
     [inp("status", "整批落地状态（节点103）", ref_block=nid(103), ref_rel="status"),
      inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
@@ -1161,7 +1162,7 @@ s2f.append(end_node(114, "结束(配置未通过-未写config)",
     "【环节3/8·智能配置】配置未全部通过：status={status}\n写入结果：{save_result}\n\n"
     "整批存在 PARTIAL/FAIL，本次未写入 config（config 仍为空），无法推进稽核/测试/审批。\n"
     "【下一步】请按落地失败明细修正后重新回复\"下一步\"发起配置（环节3）。\n\n"
-    "{panel}"))
+    "{panel}", pos=(3255, 170)))
 s2f.append(end_node(104, "结束(配置落地完成)",
     [inp("offer_id", "首品销售品ID（节点111生成/透传的逐品编码首品值）", ref_block=nid(111), ref_rel="offer_id"),
      inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
@@ -1173,7 +1174,7 @@ s2f.append(end_node(104, "结束(配置落地完成)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(109), ref_rel="panel")],
     "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n"
     "{config_summary}\n{fusion_note}\n"
-    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}"))
+    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}", pos=(3615, 300)))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（V3.12 多商品）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取需求商品数组 offers[]→生成商品编码（逐品：新增品生成9位900编码/存量重配透传既有编码）→save_product_config 批量落地（后端逐品聚合返回 offers[]）→融合成员回显（逐品 group 回显）→配置要点简介（逐品）→存储 node_name=config（result_json 含 req_id+offers[]）。", "wf_sub_02", s2f,
     [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,107), edge(107,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
@@ -1465,15 +1466,26 @@ CODE_OFFER_LIST = (
     "    except Exception:\n"
     "        return []\n"
     "\n"
+    "def _inner(o):\n"
+    "    # config 环节 offer 的真实名称在 product_config（JSON字符串）内，需下钻一层\n"
+    "    pc = o.get('product_config')\n"
+    "    if isinstance(pc, str):\n"
+    "        try:\n"
+    "            pc = json.loads(pc)\n"
+    "        except Exception:\n"
+    "            pc = None\n"
+    "    return pc if isinstance(pc, dict) else o\n"
+    "\n"
     "def _name(o, seq):\n"
-    "    plan = o.get('plan_json')\n"
+    "    src = _inner(o)\n"
+    "    plan = src.get('plan_json')\n"
     "    if isinstance(plan, str):\n"
     "        try:\n"
     "            plan = json.loads(plan)\n"
     "        except Exception:\n"
     "            plan = None\n"
     "    base = plan.get('baseInfo') if isinstance(plan, dict) and isinstance(plan.get('baseInfo'), dict) else {}\n"
-    "    nm = str(base.get('prodPrcName') or o.get('offer_name') or o.get('name') or '').strip()\n"
+    "    nm = str(base.get('prodPrcName') or src.get('offer_name') or o.get('offer_name') or o.get('name') or '').strip()\n"
     "    if not nm:\n"
     "        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n"
     "        nm = ('新增销售品%s' % oid) if oid else ('商品%s' % seq)\n"
@@ -1508,19 +1520,19 @@ s5f.append(code_node(414, "资费校准商品列表", CODE_OFFER_LIST,
      inp("result_offers", "逐品校验结果（节点402出参 offers，含 offer_seq/pass）", ref_block=nid(402), ref_rel="offers")],
     [code_out("offer_list_text", 414)], pos=(520, 260)))
 s5f.append(llm_node(403, "风险解读",
-    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）供开头回显：\n"
+    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）仅供取名，**商品列表回显由结束节点确定性输出、此处不重复输出**：\n"
     "0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n"
     "1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
     "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
     "3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
     "4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
-    "5）商品列表回显：仅当存在 offer_list_text（非空）时，在输出最开头输出一节「**资费校准商品列表：**」，逐行逐字引用 offer_list_text（禁止改写、禁止增删行），其后空一行再接各商品小节。\n"
-    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，仍须输出商品列表回显，结论行输出「资费校准通过，未发现叠加/互斥冲突」（有商品列表时不得省略该节）。\n"
+    "5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n"
+    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n"
     "输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。",
     [inp("risk_list", "引用节点402风险清单（逐品聚合）", ref_block=nid(402), ref_rel="risk_list"),
      inp("compare_list", "引用节点402资费比对明细（逐品聚合，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list"),
      inp("offer_list_text", "资费校准商品列表文本（节点414确定性渲染）", ref_block=nid(414), ref_rel="offer_list_text")],
-    [out("risk_summary", "风险解读（多商品按 offer_seq 分组，含商品列表回显）")]))
+    [out("risk_summary", "风险解读（多商品按 offer_seq 分组；商品列表由结束节点输出，此处不重复）")]))
 # 计费校验结论聚合：插件仅逐品返回 offers[].pass，顶层 pass/risk_list/compare_list 为空；
 # 本节点从 offers[] 确定性聚合顶层结论，供结束节点 {pass} 与后续封包引用（避免空值）。
 CODE_AGG_BILLING = (
@@ -1623,8 +1635,7 @@ s5f.append(end_node(404, "结束(资费校准完成)",
     "【下一步】可回复\"下一步\"推进后续环节。\n\n{panel}"))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
-    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,410),
-     edge(407,414), edge(402,414), edge(414,403),
+    [edge(401,406), edge(406,407), edge(407,402), edge(402,414), edge(414,403), edge(403,410),
      edge(410,408), edge(408,411), edge(411,405,-1), edge(411,412,0), edge(412,413), edge(405,409), edge(409,404)])
 
 

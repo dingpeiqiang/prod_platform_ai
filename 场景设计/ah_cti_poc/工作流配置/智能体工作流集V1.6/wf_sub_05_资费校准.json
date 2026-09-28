@@ -352,7 +352,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return v.get('offers') if isinstance(v.get('offers'), list) else [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _name(o, seq):\n    plan = o.get('plan_json')\n    if isinstance(plan, str):\n        try:\n            plan = json.loads(plan)\n        except Exception:\n            plan = None\n    base = plan.get('baseInfo') if isinstance(plan, dict) and isinstance(plan.get('baseInfo'), dict) else {}\n    nm = str(base.get('prodPrcName') or o.get('offer_name') or o.get('name') or '').strip()\n    if not nm:\n        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n        nm = ('新增销售品%s' % oid) if oid else ('商品%s' % seq)\n    return nm\n\nasync def main(args):\n    p = args.params\n    cfg_offers = [o for o in _load(p.get('config_offers')) if isinstance(o, dict)]\n    res_offers = [o for o in _load(p.get('result_offers')) if isinstance(o, dict)]\n    pass_by_seq: Dict[Any, str] = {}\n    for o in res_offers:\n        pass_by_seq[str(o.get('offer_seq'))] = str(o.get('pass') or '')\n    lines = []\n    for i, o in enumerate(cfg_offers, start=1):\n        seq = o.get('offer_seq')\n        seq = seq if seq not in (None, '') else i\n        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n        verdict = pass_by_seq.get(str(seq), '')\n        mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n        lines.append('%d. %s（销售品ID=%s）：%s' % (i, _name(o, seq), oid or '—', mark))\n    if not lines and res_offers:\n        for i, o in enumerate(res_offers, start=1):\n            seq = o.get('offer_seq') or i\n            verdict = str(o.get('pass') or '')\n            mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n            lines.append('%d. 商品%s：%s' % (i, seq, mark))\n    ret: Output = {'offer_list_text': '\\n'.join(lines)}\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return v.get('offers') if isinstance(v.get('offers'), list) else [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _inner(o):\n    # config 环节 offer 的真实名称在 product_config（JSON字符串）内，需下钻一层\n    pc = o.get('product_config')\n    if isinstance(pc, str):\n        try:\n            pc = json.loads(pc)\n        except Exception:\n            pc = None\n    return pc if isinstance(pc, dict) else o\n\ndef _name(o, seq):\n    src = _inner(o)\n    plan = src.get('plan_json')\n    if isinstance(plan, str):\n        try:\n            plan = json.loads(plan)\n        except Exception:\n            plan = None\n    base = plan.get('baseInfo') if isinstance(plan, dict) and isinstance(plan.get('baseInfo'), dict) else {}\n    nm = str(base.get('prodPrcName') or src.get('offer_name') or o.get('offer_name') or o.get('name') or '').strip()\n    if not nm:\n        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n        nm = ('新增销售品%s' % oid) if oid else ('商品%s' % seq)\n    return nm\n\nasync def main(args):\n    p = args.params\n    cfg_offers = [o for o in _load(p.get('config_offers')) if isinstance(o, dict)]\n    res_offers = [o for o in _load(p.get('result_offers')) if isinstance(o, dict)]\n    pass_by_seq: Dict[Any, str] = {}\n    for o in res_offers:\n        pass_by_seq[str(o.get('offer_seq'))] = str(o.get('pass') or '')\n    lines = []\n    for i, o in enumerate(cfg_offers, start=1):\n        seq = o.get('offer_seq')\n        seq = seq if seq not in (None, '') else i\n        oid = str(o.get('offer_id') or o.get('offerId') or '').strip()\n        verdict = pass_by_seq.get(str(seq), '')\n        mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n        lines.append('%d. %s（销售品ID=%s）：%s' % (i, _name(o, seq), oid or '—', mark))\n    if not lines and res_offers:\n        for i, o in enumerate(res_offers, start=1):\n            seq = o.get('offer_seq') or i\n            verdict = str(o.get('pass') or '')\n            mark = '通过' if verdict == '1' else ('未通过' if verdict == '0' else '—')\n            lines.append('%d. 商品%s：%s' % (i, seq, mark))\n    ret: Output = {'offer_list_text': '\\n'.join(lines)}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -402,7 +402,7 @@
         "outputs": [
           {
             "name": "risk_summary",
-            "description": "风险解读（多商品按 offer_seq 分组，含商品列表回显）",
+            "description": "风险解读（多商品按 offer_seq 分组；商品列表由结束节点输出，此处不重复）",
             "type": "string",
             "content": ""
           }
@@ -414,7 +414,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）供开头回显：\n0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n5）商品列表回显：仅当存在 offer_list_text（非空）时，在输出最开头输出一节「**资费校准商品列表：**」，逐行逐字引用 offer_list_text（禁止改写、禁止增删行），其后空一行再接各商品小节。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，仍须输出商品列表回显，结论行输出「资费校准通过，未发现叠加/互斥冲突」（有商品列表时不得省略该节）。\n输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。"
+              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）仅供取名，**商品列表回显由结束节点确定性输出、此处不重复输出**：\n0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -1243,21 +1243,6 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000403",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
-      },
-      {
-        "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000410",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000403"
-      },
-      {
-        "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000414",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000407"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000414",
         "startId": "a1b2c3d4-0000-4000-8000-000000000402"
       },
@@ -1265,6 +1250,11 @@
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000403",
         "startId": "a1b2c3d4-0000-4000-8000-000000000414"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000410",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000403"
       },
       {
         "sourcePort": null,
