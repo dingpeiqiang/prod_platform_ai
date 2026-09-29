@@ -31,7 +31,7 @@ from wf_common import (
     dep_node, BASE, BASE_URL, CODE_EXTRACT_RECORD, CODE_POLL_PROGRESS,
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_PACK_AUDIT_LAUNCH, CODE_POLL_AUDIT,
     CODE_EXTRACT_GLOBAL_ID, CODE_PROGRESS_LITE, CODE_EXTRACT_TEST_RESULTS,
-    CODE_RENDER_TEST_REPORT,
+    CODE_RENDER_TEST_REPORT, CODE_PACK_TEST_RESULT,
     CODE_EXTRACT_REQUEST_IDS,
     CODE_FMT_OFFERS,
     CODE_FMT_APPROVAL,
@@ -2446,9 +2446,11 @@ s13f.append(plugin_node(2305, "查询测试结果", "get_test_result",
     [
      ("offers", "逐品测试结果数组JSON（[{offer_seq, globalId, status, resultCode, resultObject:{testScenes[],orderId,offerInstId,offerName,testRequestId,report_url}, resultMsg}]，resultObject 为 EOP 裸信封业务体）", "string"),
      ("status", "整批状态 SUCCESS/PARTIAL/FAIL", "string")]))
-# 2332 提取测试结果：归一化真实 EOP result 报文（testScenes/测点/objTestSceneRel）
+# 2332 提取测试结果：归一化真实 EOP result 报文（testScenes/测点/objTestSceneRel），
+#   并按 offer_seq 用权威名册名（节点2302 test_pending list 内的 name）覆盖 EOP 系统名。
 s13f.append(code_node(2332, "提取测试结果", CODE_EXTRACT_TEST_RESULTS,
-    [inp("result_offers", "节点2305查询出参 offers（真实 EOP testScenes 报文）", ref_block=nid(2305), ref_rel="offers")],
+    [inp("result_offers", "节点2305查询出参 offers（真实 EOP testScenes 报文）", ref_block=nid(2305), ref_rel="offers"),
+     inp("roster", "权威名册（节点2302 test_pending list，含逐品 name），按 offer_seq 覆盖 EOP 系统名", ref_block=nid(2302), ref_rel="list")],
     [code_out("offers", 2332), code_out("result_list", 2332)],
     pos=(900, 300)))
 # 2333 构建测试结果报告：场景级结构化列表 + 逐测点明细表（Markdown）
@@ -2463,22 +2465,27 @@ s13f.append(selector_node2(2334, "测试通过判定",
     [dep_node(2333, "构建测试结果报告", ["scene_failed"])],
     [(-1, [cond_item(cond_ref(2333, "scene_failed", "构建测试结果报告"), 1, cond_str("0"))])],
     pos=(1300, 450)))
-# 测试结论封包（通过态）：把报告 Markdown 与归一 offers 封成 test 落库体（pass=1 + test_report）
-s13f.append(code_node(2311, "测试结论封包", CODE_PACK_RECORD,
-    [inp("offers", "逐品归一结果数组（节点2332出参 offers）", ref_block=nid(2332), ref_rel="offers"),
+# 测试结论封包（通过态）：把报告 Markdown 与逐品轻量摘要封成 test 落库体（pass=1 + test_report）。
+# 注意：不得把逐点 testScenes/points 全量塞入 result_json（实测 4 品可达 68KB，超后端
+#   NodeResultService MAX_RESULT_JSON_BYTES=64KB 上限被拒写 5004），故改用 CODE_PACK_TEST_RESULT。
+s13f.append(code_node(2311, "测试结论封包", CODE_PACK_TEST_RESULT,
+    [inp("result_list", "逐品归一结果数组（节点2332出参 result_list）", ref_block=nid(2332), ref_rel="result_list"),
      inp("req_id", "执行批次号（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
-     inp("md", "测试结果报告 Markdown（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
-     inp("md_key", "md 落库字段名", content="test_report"),
+     inp("test_report", "测试结果报告 Markdown（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
+     inp("scene_count", "场景总数（节点2333）", ref_block=nid(2333), ref_rel="scene_count"),
+     inp("scene_failed", "失败场景数（节点2333）", ref_block=nid(2333), ref_rel="scene_failed"),
+     inp("point_pass", "通过测点数（节点2333）", ref_block=nid(2333), ref_rel="point_pass"),
+     inp("point_total", "测点总数（节点2333）", ref_block=nid(2333), ref_rel="point_total"),
      inp("pass", "测试通过标记=1", content="1")],
     [code_out("record_json", 2311)], pos=(1460, 450)))
 # 测试结果存储：仅测试通过（scene_failed==0，由节点2334判定）时写 node_name=test（最终态）；
 # 上线审批四环节硬门禁（config/spec/fee/test）依赖此最终态 test。
 s13f.append(plugin_node(2312, "测试结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=测试结论封包（pass=1 + test_report 报告全文 + 逐品 offers）；仅测试通过（scene_failed==0）时写入（门禁：由节点2334判定）；供上线审批四环节门禁与报告引用",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=测试结论封包（pass=1 + test_report 报告全文 + 逐品轻量摘要+计数，紧凑体，避免超 64KB 被拒）；仅测试通过（scene_failed==0）时写入（门禁：由节点2334判定）；供上线审批四环节门禁与报告引用",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
      inp("node_name", "环节名=test（自动测试，最终态）", content="test"),
-     inp("result_json", "环节结果JSON=测试结论封包（pass+test_report+offers）", ref_block=nid(2311), ref_rel="record_json"),
+     inp("result_json", "环节结果JSON=测试结论封包（pass+test_report+逐品摘要）", ref_block=nid(2311), ref_rel="record_json"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")], pos=(1600, 450)))
 # xsbot-panel 独立代码节点（终态结果分支 / 处理中分支 / 未通过分支各一）
