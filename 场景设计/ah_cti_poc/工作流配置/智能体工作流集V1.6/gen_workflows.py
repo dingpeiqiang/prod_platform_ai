@@ -3105,6 +3105,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "            'work_order_count': str(info.get('work_order_count') or '0'),\n"
     "            'first_offer_id': str(first.get('offer_id') or ''),\n"
     "            'first_offer_name': str(first.get('offer_name') or ''),\n"
+    "            'reasoning_chain': json.dumps(info.get('reasoning_chain') or [], ensure_ascii=False),\n"
     "            'offers': json.dumps(offers, ensure_ascii=False),\n"
     "        }\n"
     "        return ret\n"
@@ -3115,15 +3116,31 @@ CODE_OP_MONITOR_ANALYZE = (
     "                   'error_count': str(p.get('error_count') or '0')}]\n"
     "    any_ab = False\n"
     "    lines = []\n"
+    "    reasoning = []\n"
     "    first = {}\n"
     "    for o in offers:\n"
     "        ec = _num(o.get('error_count'))\n"
+    "        fee = _num(o.get('fee_error_rate'))\n"
     "        ab = ec != 0\n"
+    "        level = 'P0' if (fee >= 0.05 or ec >= 10) else ('P1' if (fee >= 0.01 or ec >= 1) else '正常')\n"
     "        if ab and not first:\n"
     "            first = o\n"
     "        if ab:\n"
     "            any_ab = True\n"
     "        nm = str(o.get('offer_name') or o.get('offer_id') or '')\n"
+    "        for rid, cond, concl in (\n"
+    "                ('R-E00', '监控指标已采集：异常量 %s，计费差错率 %s' % (ec, fee),\n"
+    "                 '命中 → 触发告警评估' if ab else '未命中 → 指标正常'),\n"
+    "                ('R-E01', '异常量 %s ≥ 10 或计费差错率 %s ≥ 0.05' % (ec, fee),\n"
+    "                 '命中 → 判为 P0 严重告警' if level == 'P0' else '未命中 → 未达 P0'),\n"
+    "                ('R-E02', '异常量 %s ≥ 1 或计费差错率 %s ≥ 0.01' % (ec, fee),\n"
+    "                 '命中 → 判为 P1 重要告警' if level == 'P1' else '未命中 → 未达 P1'),\n"
+    "                ('R-E03', '指标趋势劣化（订单量下降/异常量上升/计费差错率上升）',\n"
+    "                 '命中 → 判为 P2 提示告警' if (ab and level == '正常') else '未命中 → 趋势平稳'),\n"
+    "                ('R-E04', 'P0/P1 强制建单，P2 观察即可',\n"
+    "                 '命中 → 需建处置工单' if level in ('P0', 'P1') else '未命中 → 无需建单')):\n"
+    "            reasoning.append({'offer_id': str(o.get('offer_id') or ''), 'offer_name': nm,\n"
+    "                              'ruleId': rid, 'condition': cond, 'conclusion': concl})\n"
     "        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s，等级 %s'\n"
     "                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n"
     "                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n"
@@ -3138,6 +3155,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "        'work_order_count': '0',\n"
     "        'first_offer_id': str(first.get('offer_id') or ''),\n"
     "        'first_offer_name': str(first.get('offer_name') or ''),\n"
+    "        'reasoning_chain': json.dumps(reasoning, ensure_ascii=False),\n"
     "        'offers': json.dumps(offers, ensure_ascii=False),\n"
     "    }\n"
     "    return ret\n"
@@ -3184,7 +3202,7 @@ s7f.append(code_node(703, "监控聚合分析", CODE_OP_MONITOR_ANALYZE,
     [code_out("any_abnormal", 703), code_out("monitor_lines", 703), code_out("summary", 703),
      code_out("alert_count", 703), code_out("work_order_count", 703),
      code_out("first_offer_id", 703), code_out("first_offer_name", 703),
-     code_out("offers", 703)]))
+     code_out("reasoning_chain", 703), code_out("offers", 703)]))
 s7f.append(selector_node2(704, "异常判定",
     [dep_node(703, "监控聚合分析", ["any_abnormal"])],
     [(-1, [cond_item(cond_ref(703, "any_abnormal", "监控聚合分析"), 1, cond_str("true"))])]))
@@ -3194,26 +3212,30 @@ s7f.append(llm_node(705, "异常处置报告",
     "输出结构：\n"
     "1. 一句总述（发现异常商品数、已推送告警数、已建工单数）。\n"
     "2. 【逐品告警与处置】逐行引用 monitor_lines（含商品、指标、等级 P0/P1/P2、告警单号、工单号），P0 置顶。\n"
-    "3. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 为准。\n"
-    "4. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
+    "3. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n"
+    "4. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 与本体推理依据为准。\n"
+    "5. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
     "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n"
     "输出要求：仅输出报告正文（对应出参 alert_report）。",
     [inp("any_abnormal", "是否异常（节点703）", ref_block=nid(703), ref_rel="any_abnormal"),
      inp("alert_count", "已推送告警数（节点703）", ref_block=nid(703), ref_rel="alert_count"),
      inp("work_order_count", "已建工单数（节点703）", ref_block=nid(703), ref_rel="work_order_count"),
      inp("monitor_lines", "逐品监控分析明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
-     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary")],
+     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
+     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain")],
     [out("alert_report", "异常处置报告正文")]))
 # ---- 正常分支 ----
 s7f.append(llm_node(706, "运营摘要生成(正常分支)",
     "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}。\n"
     "格式要求：\n"
     "1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n"
-    "2. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
-    "3. 禁止原样拼接值串，禁止残留 { 占位符。\n"
+    "2. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n"
+    "3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
+    "4. 禁止原样拼接值串，禁止残留 { 占位符。\n"
     "输出要求：仅输出运营摘要正文（对应出参 ops_summary）。",
     [inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
-     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary")],
+     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
+     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain")],
     [out("ops_summary", "运营摘要正文")]))
 # xsbot-panel 独立代码节点（异常分支）
 s7f.append(panel_code_node(707, "构建页面地址面板(异常)", "07",

@@ -47,6 +47,32 @@
     return '';
   }
 
+  // 从某销售品（配置环节 offer 或名册项）解析身份与资源字段，缺失即留空由调用方回填
+  function buildOfferFields(off, roster){
+    off = off || {};
+    var plan = parseJson(off.plan_json) || off.plan_json || {};
+    var opt = plan.optionalInfo || {};
+    var base = plan.baseInfo || {};
+    var name = String(off.name || '').trim() || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']);
+    var code = pick(off, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']);
+    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']);
+    var flow = pick(opt, ['billGprsCfg.theshold']);
+    var flowUnit = pick(opt, ['billGprsCfg.unit']) || 'GB';
+    var voice = pick(opt, ['billVoiceCfg.theshold']);
+    var sms = pick(opt, ['billSmsCfg.theshold']);
+    // 资源可能为合并串（如「120GB国内流量,1000分钟语音」），据此兜底补齐流量/语音/短信
+    var res = pick(opt, ['printContent.containResource']);
+    if (res && (!flow || !voice)){
+      var mFlow = res.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
+      var mVoice = res.match(/(\d+(?:\.\d+)?)\s*分钟/);
+      var mSms = res.match(/(\d+(?:\.\d+)?)\s*条/);
+      if (!flow && mFlow){ flow = mFlow[1]; flowUnit = mFlow[2].toUpperCase(); }
+      if (!voice && mVoice) voice = mVoice[1];
+      if (!sms && mSms) sms = mSms[1];
+    }
+    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, quantity: (off.quantity !== undefined && off.quantity !== null && off.quantity !== '') ? off.quantity : '' };
+  }
+
   // 从节点结果列表（各环节 result_json）解析商品实例：逐字段取，取不到即留空（由调用方回填）
   function buildProductFromNodeResults(list){
     var byNode = {};
@@ -85,82 +111,118 @@
       });
       return offers;
     }
-    mergeRoster(normalizeOffers(cfg));
+    // 配置环节逐品明细（按 offer_seq 索引），供多商品逐品补全身份/资源
+    var cfgOffers = normalizeOffers(cfg);
+    mergeRoster(cfgOffers);
+    var cfgBySeq = {};
+    cfgOffers.forEach(function(o){ cfgBySeq[String(o.offer_seq)] = o; });
 
-    // 名称优先级：权威需求提报单 name 最高，其次配置环节，再回落计划/相似产品字段
-    var name = pick(reqReport, ['name'])
-      || (roster[0] && roster[0].name)
-      || pick(cfg, ['offer_name'])
-      || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName'])
-      || pick(base, ['prodPrcName'])
-      || pick(requirement, ['baseInfo.prodPrcName']);
-    // 数量：权威名册首品数量，其次配置环节透传值
-    var qty = (roster[0] && roster[0].quantity !== undefined && roster[0].quantity !== null && roster[0].quantity !== '') ? roster[0].quantity
-      : (pick(cfg, ['quantity']) || '');
-    var code = pick(cfg, ['offer_id', 'offerId'])
-      || pick(base, ['prodPrcId', 'prodId'])
-      || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId'])
-      || pick(reqReport, ['offer_id']);
-    var fee = pick(cfg, ['in_fee.档位'])
-      || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee'])
-      || pick(reqReport, ['price']);
-    var flow = pick(opt, ['billGprsCfg.theshold']);
-    var flowUnit = pick(opt, ['billGprsCfg.unit']) || 'GB';
-    var voice = pick(opt, ['billVoiceCfg.theshold']);
-    var sms = pick(opt, ['billSmsCfg.theshold']);
-    // 资源可能为合并串（如「120GB国内流量,1000分钟语音」），据此兜底补齐流量/语音
-    var res = pick(opt, ['printContent.containResource']) || pick(reqReport, ['resources']);
-    if (res && (!flow || !voice)){
-      var mFlow = res.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
-      var mVoice = res.match(/(\d+(?:\.\d+)?)\s*分钟/);
-      var mSms = res.match(/(\d+(?:\.\d+)?)\s*条/);
-      if (!flow && mFlow){ flow = mFlow[1]; flowUnit = mFlow[2].toUpperCase(); }
-      if (!voice && mVoice) voice = mVoice[1];
-      if (!sms && mSms) sms = mSms[1];
+    // ---------- 商品列表：多品时逐品展开为独立商品（头部可切换），单品时一项 ----------
+    // 逐品字段：优先取配置环节同 offer_seq 明细，其次名册/需求提报单兜底
+    var offerProducts = roster.map(function(o){
+      var merged = {};
+      var detail = cfgBySeq[String(o.offer_seq)] || {};
+      Object.keys(detail).forEach(function(k){ merged[k] = detail[k]; });
+      if (!String(merged.name || '').trim() && o.name) merged.name = o.name;
+      if (merged.quantity === undefined || merged.quantity === null || merged.quantity === '') merged.quantity = o.quantity;
+      var f = buildOfferFields(merged, roster);
+      // 单品时允许回落计划/需求提报单整体字段，保证信息最全
+      if (roster.length <= 1){
+        f.name = f.name || pick(cfg, ['offer_name']) || pick(reqReport, ['name']) || pick(opt, ['SmsInstCfg.SvcName']) || pick(base, ['prodPrcName']) || f.name;
+        f.code = f.code || pick(base, ['prodPrcId', 'prodId']) || pick(reqReport, ['offer_id']);
+        f.fee = f.fee || pick(reqReport, ['price']);
+        var r0 = pick(opt, ['printContent.containResource']) || pick(reqReport, ['resources']);
+        if (r0 && (!f.flow || !f.voice)){
+          var mf = r0.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
+          var mv = r0.match(/(\d+(?:\.\d+)?)\s*分钟/);
+          var ms = r0.match(/(\d+(?:\.\d+)?)\s*条/);
+          if (!f.flow && mf){ f.flow = mf[1]; f.flowUnit = mf[2].toUpperCase(); }
+          if (!f.voice && mv) f.voice = mv[1];
+          if (!f.sms && ms) f.sms = ms[1];
+        }
+      }
+      return f;
+    }).filter(function(f){ return f.name || f.code; });
+
+    // 兜底：名册为空但存在单商品整体字段时，仍构造一项，避免空列表
+    if (!offerProducts.length){
+      var single = buildOfferFields(cfg, roster);
+      single.name = single.name || pick(cfg, ['offer_name']) || pick(reqReport, ['name']) || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']) || pick(requirement, ['baseInfo.prodPrcName']);
+      single.code = single.code || pick(cfg, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']) || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId']) || pick(reqReport, ['offer_id']);
+      single.fee = single.fee || pick(cfg, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(reqReport, ['price']);
+      single.quantity = (single.quantity !== '' ) ? single.quantity : (pick(cfg, ['quantity']) || '');
+      if (single.name || single.code) offerProducts.push(single);
     }
-    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, quantity: qty, offers: roster, offerCount: roster.length, plan: plan, raw: cfg, nodeResults: byNode };
+
+    // 主商品 = 首品（或 URL 指定 offer_id 命中的那一品），字段取首品，offers 保留完整名册
+    var primary = offerProducts[0] || {};
+    return {
+      name: primary.name || '', code: primary.code || '', fee: primary.fee || '',
+      flow: primary.flow || '', flowUnit: primary.flowUnit || 'GB', voice: primary.voice || '', sms: primary.sms || '',
+      quantity: primary.quantity || '', offers: roster, offerCount: roster.length,
+      products: offerProducts, plan: plan, raw: cfg, nodeResults: byNode
+    };
   }
 
-  // 将接口解析结果写入/追加为当前商品（全量联动各页签）
+  // 将接口解析结果写入/追加为商品列表（多品逐品入列，并选中 URL 指定/首品）
   function applyResolvedProduct(resolved){
     if (!resolved) return false;
-    var haveAny = resolved.name || resolved.code || resolved.fee || resolved.flow || resolved.voice || resolved.sms;
+    var haveAny = resolved.name || resolved.code || resolved.fee || resolved.flow || resolved.voice || resolved.sms
+      || (resolved.products && resolved.products.length);
     if (!haveAny) return false;
-    var id = 'req-' + (resolved.code || resolved.name || Date.now());
-    var product = {
-      id: id,
-      name: resolved.name || '',
-      code: resolved.code || '',
-      fee: resolved.fee || '',
-      flow: resolved.flow || '',
-      flowUnit: resolved.flowUnit || 'GB',
-      voice: resolved.voice || '',
-      sms: resolved.sms || '',
-      quantity: (resolved.quantity !== undefined && resolved.quantity !== null) ? resolved.quantity : '',
-      offers: resolved.offers || [],
-      offerCount: resolved.offerCount || (resolved.offers ? resolved.offers.length : 0),
-      status: '在售中',
-      templateLabel: '',
-      category: 'req_id商品'
-    };
-    var existed = PRODUCTS.filter(function(p){ return p.id === id; })[0];
-    if (existed){
-      Object.keys(product).forEach(function(k){ existed[k] = product[k]; });
-      window.__WB_PRODUCT = existed;
-    } else {
-      PRODUCTS.unshift(product);
-      window.__WB_PRODUCT = product;
-    }
-    // 同步 URL 上下文与全局实例，供运营视图等独立模块读取
+
     var q = window.__WB_QUERY || (window.__WB_QUERY = {});
-    q.offer_id = product.code || '';
-    q.name = product.name || '';
-    window.__WB_INSTANCE = { name: product.name, code: product.code };
-    // 标题随解析结果更新，并通知独立模块（运营视图）刷新
-    if (product.name || product.code) {
-      document.title = (product.name || product.code) + ' · 配置工作台';
+    var wantedOfferId = String(q.offer_id || q.offerId || '').trim();
+
+    var list = (resolved.products && resolved.products.length) ? resolved.products : [resolved];
+    var created = [];
+    list.forEach(function(res){
+      var id = 'req-' + (res.code || res.name || Date.now());
+      var product = {
+        id: id,
+        name: res.name || '',
+        code: res.code || '',
+        fee: res.fee || '',
+        flow: res.flow || '',
+        flowUnit: res.flowUnit || 'GB',
+        voice: res.voice || '',
+        sms: res.sms || '',
+        quantity: (res.quantity !== undefined && res.quantity !== null) ? res.quantity : '',
+        offers: resolved.offers || [],
+        offerCount: resolved.offerCount || (resolved.offers ? resolved.offers.length : 0),
+        status: '在售中',
+        templateLabel: '',
+        category: 'req_id商品'
+      };
+      var existed = PRODUCTS.filter(function(p){ return p.id === id; })[0];
+      if (existed){
+        Object.keys(product).forEach(function(k){ existed[k] = product[k]; });
+        created.push(existed);
+      } else {
+        PRODUCTS.push(product);
+        created.push(product);
+      }
+    });
+    if (!created.length) return false;
+
+    // 接口解析成功：移除仅由 URL 构造的临时占位商品，避免与真实逐品重复
+    for (var i = PRODUCTS.length - 1; i >= 0; i--){
+      if (PRODUCTS[i] && PRODUCTS[i].category === '外链商品') PRODUCTS.splice(i, 1);
     }
-    try { window.dispatchEvent(new CustomEvent('wb-product-change', { detail: product })); } catch (e) {}
+
+    // 选中：URL 指定 offer_id 命中优先，否则首品
+    var active = (wantedOfferId && created.filter(function(p){ return p.code === wantedOfferId; })[0]) || created[0];
+    window.__WB_PRODUCT = active;
+
+    // 同步 URL 上下文与全局实例，供运营视图等独立模块读取
+    q.offer_id = active.code || '';
+    q.name = active.name || '';
+    window.__WB_INSTANCE = { name: active.name, code: active.code };
+    // 标题随解析结果更新，并通知独立模块（运营视图）刷新
+    if (active.name || active.code) {
+      document.title = (active.name || active.code) + ' · 配置工作台';
+    }
+    try { window.dispatchEvent(new CustomEvent('wb-product-change', { detail: active, products: PRODUCTS })); } catch (e) {}
     return true;
   }
 

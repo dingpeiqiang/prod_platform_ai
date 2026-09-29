@@ -1411,7 +1411,25 @@ public class OfferSimV16Service {
             }
         }
         collectPayloadFeeValues(castMap(castMap(plan.get("payload")).get("optionalInfo")), values);
+        collectPayloadBaseValues(castMap(plan.get("payload")), values);
         return values;
+    }
+
+    /**
+     * 嵌套 payload.baseInfo 主信息叶子 → 平面字段（仅补齐未出现键）：
+     * prodPrcName（配置报文口径的套餐名）与 name 回退到「套餐名称」，
+     * 修复需求/配置 plan 无 fields[套餐名称] 时 offer_name 兜底成"新增销售品&lt;id&gt;"的根因。
+     */
+    private void collectPayloadBaseValues(Map<String, Object> payload, Map<String, String> values) {
+        if (payload.isEmpty()) {
+            return;
+        }
+        Map<String, Object> baseInfo = castMap(payload.get("baseInfo"));
+        if (baseInfo.isEmpty()) {
+            return;
+        }
+        putIfAbsentVal(values, "套餐名称", blankIfPlaceholder(baseInfo.get("prodPrcName")));
+        putIfAbsentVal(values, "套餐名称", blankIfPlaceholder(baseInfo.get("name")));
     }
 
     /** 嵌套 payload.optionalInfo 计费叶子 → 平面字段（仅补齐未出现键，键名对齐本体注册表口径） */
@@ -2596,11 +2614,27 @@ public class OfferSimV16Service {
     }
 
     /**
+     * 套餐名兜底：从 plan 的 baseInfo（顶层或 payload 内嵌）直取 prodPrcName/name，
+     * 覆盖 planFieldValues 未收录 baseInfo 键的历史形态；仍无则返回空串。
+     */
+    private String baseInfoNameOf(Map<String, Object> plan) {
+        for (Map<String, Object> baseInfo : List.of(castMap(plan.get("baseInfo")),
+                castMap(castMap(plan.get("payload")).get("baseInfo")))) {
+            String v = firstNonEmptyText(blankIfPlaceholder(baseInfo.get("prodPrcName")),
+                    blankIfPlaceholder(baseInfo.get("name")));
+            if (!v.isBlank()) {
+                return v;
+            }
+        }
+        return "";
+    }
+
+    /**
      * 新增销售品档案构造（与种子记录同构）：业务值全部来自 plan_json（需求分析生成的完整落地报文），
      * 缺省按本体注册表默认口径补全；禁止回退种子数据。
      */
     private Map<String, Object> buildOfferProfile(Map<String, Object> plan, String offerId) {
-        String name = firstNonEmptyText(fieldOf(plan, "套餐名称"), "新增销售品" + offerId);
+        String name = firstNonEmptyText(fieldOf(plan, "套餐名称"), baseInfoNameOf(plan), "新增销售品" + offerId);
         String tier = fieldOf(plan, "套餐档位");
         double monthlyFee = parseFeeYuanOf(tier);
         Map<String, Object> inFee = new LinkedHashMap<>();

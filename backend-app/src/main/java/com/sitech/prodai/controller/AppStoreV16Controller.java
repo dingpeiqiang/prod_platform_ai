@@ -577,6 +577,7 @@ public class AppStoreV16Controller {
 
         List<Map<String, Object>> results = new java.util.ArrayList<>();
         List<String> lines = new java.util.ArrayList<>();
+        List<Map<String, Object>> reasoningAll = new java.util.ArrayList<>();
         boolean anyAbnormal = false;
         int alertCount = 0;
         int woCount = 0;
@@ -600,6 +601,16 @@ public class AppStoreV16Controller {
             row.put("sla_minutes", grade.slaMinutes());
             row.put("grade_reasons", String.join("；", grade.reasons()));
             row.put("fired_rules", String.join(",", grade.firedRules()));
+            // 告警分级本体推理链（product-alert.ttl R-E00~E04）：逐品 ruleId/condition/conclusion，
+            // 供 wf_sub_07 LLM 节点「本体推理依据」逐字引用（对齐 wf_sub_05 reasoning_chain 做法）。
+            List<Map<String, Object>> reasoning = alertReasoningRows(grade, facts);
+            row.put("reasoning_chain", reasoning);
+            for (Map<String, Object> r : reasoning) {
+                Map<String, Object> tagged = new java.util.LinkedHashMap<>(r);
+                tagged.put("offer_id", offerId);
+                tagged.put("offer_name", offerName);
+                reasoningAll.add(tagged);
+            }
 
             if (grade.alerted()) {
                 anyAbnormal = true;
@@ -644,6 +655,7 @@ public class AppStoreV16Controller {
         out.put("work_order_count", String.valueOf(woCount));
         out.put("offers", results);
         out.put("monitor_lines", String.join("\n", lines));
+        out.put("reasoning_chain", reasoningAll);
         out.put("summary", anyAbnormal
                 ? "监控完成：发现异常商品，已按 SWRL 分级推送告警并闭环建单"
                 : "监控完成：各商品运行正常");
@@ -657,6 +669,38 @@ public class AppStoreV16Controller {
                 + "；订单量 " + MapOps.str(facts.get("order_count")) + "，异常量 " + MapOps.str(facts.get("error_count"))
                 + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate"))
                 + "；SLA " + grade.slaMinutes() + " 分钟";
+    }
+
+    /**
+     * 告警分级推理链行（product-alert.ttl R-E00~E04，逐品）：
+     * 命中规则给出条件与结论；未命中规则补「已评估→未命中」行（带实际取值与阈值），
+     * 使正常商品同样具备规则维度推理过程，供 wf_sub_07 报告「本体推理依据」逐字引用。
+     */
+    private List<Map<String, Object>> alertReasoningRows(OpsSwrlReasoner.SwrlAlertResult grade,
+                                                         Map<String, Object> facts) {
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        String err = MapOps.str(facts.get("error_count"));
+        String fee = MapOps.str(facts.get("fee_error_rate"));
+        java.util.Set<String> fired = new java.util.LinkedHashSet<>(grade.firedRules());
+        rows.add(reasonRow("R-E00", "监控指标已采集：异常量 " + err + "，计费差错率 " + fee,
+                fired.contains("R-E00") ? "命中 → 触发告警评估" : "未命中 → 指标正常"));
+        rows.add(reasonRow("R-E01", "异常量 " + err + " ≥ 10 或计费差错率 " + fee + " ≥ 0.05",
+                fired.contains("R-E01") ? "命中 → 判为 P0 严重告警" : "未命中 → 未达 P0"));
+        rows.add(reasonRow("R-E02", "异常量 " + err + " ≥ 1 或计费差错率 " + fee + " ≥ 0.01",
+                fired.contains("R-E02") ? "命中 → 判为 P1 重要告警" : "未命中 → 未达 P1"));
+        rows.add(reasonRow("R-E03", "指标趋势劣化（订单量下降/异常量上升/计费差错率上升）",
+                fired.contains("R-E03") ? "命中 → 判为 P2 提示告警" : "未命中 → 趋势平稳"));
+        rows.add(reasonRow("R-E04", "P0/P1 强制建单，P2 观察即可",
+                fired.contains("R-E04") ? "命中 → 已建处置工单" : "未命中 → 无需建单"));
+        return rows;
+    }
+
+    private Map<String, Object> reasonRow(String ruleId, String condition, String conclusion) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("ruleId", ruleId);
+        row.put("condition", condition);
+        row.put("conclusion", conclusion);
+        return row;
     }
 
     private String gradeToAlarmLevel(String level) {

@@ -37,14 +37,49 @@
     }
   };
 
+  // 多商品：以 window.__WB_PRODUCTS 为数据源；外部解析（wb-products.js）完成或变更时同步，
+  // 头部商品下拉/切换由此驱动，切换商品即更新当前商品实例并通知工作台重填。
   const App = {
     components: { NavBar, ConfigWorkbench: window.ConfigWorkbench },
+    data(){
+      return { products: (window.__WB_PRODUCTS || []).slice(), activeProductId: (window.__WB_PRODUCT && window.__WB_PRODUCT.id) || '' };
+    },
     template: `
       <NavBar />
       <div class="page-body">
-        <ConfigWorkbench />
+        <ConfigWorkbench
+          :products="products"
+          :active-product-id="activeProductId"
+          @select-product="onSelectProduct"
+        />
       </div>
     `,
+    methods: {
+      syncProducts(){
+        const list = window.__WB_PRODUCTS || [];
+        this.products = list.slice();
+        const cur = window.__WB_PRODUCT || {};
+        this.activeProductId = cur.id || '';
+      },
+      onSelectProduct(p){
+        if (!p || p.id === this.activeProductId) return;
+        // 切换当前商品实例：全局 __WB_PRODUCT 为各页签派生数据的唯一来源
+        window.__WB_PRODUCT = p;
+        const q = window.__WB_QUERY || (window.__WB_QUERY = {});
+        q.offer_id = p.code || '';
+        q.name = p.name || '';
+        this.activeProductId = p.id;
+        if (p.name || p.code) document.title = (p.name || p.code) + ' · 配置工作台';
+        try { window.dispatchEvent(new CustomEvent('wb-product-change', { detail: p })); } catch (e) {}
+      },
+    },
+    mounted(){
+      this._onProductsChange = () => this.syncProducts();
+      window.addEventListener('wb-product-change', this._onProductsChange);
+    },
+    unmounted(){
+      if (this._onProductsChange) window.removeEventListener('wb-product-change', this._onProductsChange);
+    },
   };
 
   function mount(){
@@ -53,9 +88,19 @@
     if (el.children.length) el.innerHTML = '';
     createApp(App).mount(el);
   }
+
+  // 首屏等待商品解析完成（req_id 拉取节点结果），避免挂载后商品列表为空再补刷
+  function whenReady(){
+    const ready = window.__WB_DATA_READY;
+    if (ready && typeof ready.then === 'function') {
+      ready.then(mount).catch(mount);
+    } else {
+      mount();
+    }
+  }
   if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', mount);
+    window.addEventListener('DOMContentLoaded', whenReady);
   } else {
-    mount();
+    whenReady();
   }
 })();

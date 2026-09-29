@@ -419,6 +419,13 @@ const emptyValue = (field) => {
 }
 initFormData()
 
+// 多商品切换：activeProductId 变化时以新商品实例（window.__WB_PRODUCT）重新回填身份/资源字段，实现各页签联动。
+watch(() => props.activeProductId, () => {
+  ;['prodName', 'prodPrcName', 'prodCode', 'monthlyFee', 'flowAmount', 'flowUnit', 'voiceAmount', 'smsAmount'].forEach((k) => { if (k in formData) formData[k] = '' })
+  applyProductSeed()
+  snapshotPrevValues()
+})
+
 // 字段标签：优先"用户已解析；对话式配置场景下无原套餐可复用，其余字段统一标"AI推荐"，"
 // 只读档案（存量快照）为历史归档数据，不显示 AI推荐/复用标签；否则按"AI补全/原配置标签"
 const fieldTag = (field) => {

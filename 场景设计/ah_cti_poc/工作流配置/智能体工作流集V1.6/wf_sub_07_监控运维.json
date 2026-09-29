@@ -286,12 +286,17 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain",
+            "name": "reasoning_chain",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000000703,offers",
             "name": "offers",
             "type": "string"
           }
         ],
-        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nANALYZE_URL = 'http://10.86.13.201:31281/api/v1/appstore/product/monitor/analyze'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _num(v):\n    try:\n        return float(str(v).strip() or 0)\n    except Exception:\n        return 0.0\n\ndef _fetch(req_id, offer_id, date_range):\n    body = json.dumps({'req_id': req_id, 'offer_id': offer_id, 'date_range': date_range}).encode('utf-8')\n    req = urllib.request.Request(ANALYZE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    req_id = str(p.get('req_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    date_range = str(p.get('date_range') or '')\n    try:\n        info = _fetch(req_id, offer_id, date_range)\n    except Exception:\n        info = None\n    if info and info.get('offers'):\n        offers = info.get('offers') or []\n        first = next((o for o in offers if str(o.get('alert_level') or 'NONE') != 'NONE'),\n                     offers[0] if offers else {})\n        ret: Output = {\n            'any_abnormal': str(info.get('any_abnormal') or 'false'),\n            'monitor_lines': str(info.get('monitor_lines') or ''),\n            'summary': str(info.get('summary') or ''),\n            'alert_count': str(info.get('alert_count') or '0'),\n            'work_order_count': str(info.get('work_order_count') or '0'),\n            'first_offer_id': str(first.get('offer_id') or ''),\n            'first_offer_name': str(first.get('offer_name') or ''),\n            'offers': json.dumps(offers, ensure_ascii=False),\n        }\n        return ret\n    # ---- 本地兜底聚合（接口不可达）----\n    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n    if not offers and offer_id:\n        offers = [{'offer_id': offer_id, 'offer_name': str(p.get('offer_name') or ''),\n                   'error_count': str(p.get('error_count') or '0')}]\n    any_ab = False\n    lines = []\n    first = {}\n    for o in offers:\n        ec = _num(o.get('error_count'))\n        ab = ec != 0\n        if ab and not first:\n            first = o\n        if ab:\n            any_ab = True\n        nm = str(o.get('offer_name') or o.get('offer_id') or '')\n        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s，等级 %s'\n                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n                        str(o.get('fee_error_rate') or ''), '异常' if ab else '正常'))\n    if not first and offers:\n        first = offers[0]\n    ret: Output = {\n        'any_abnormal': 'true' if any_ab else 'false',\n        'monitor_lines': chr(10).join(lines),\n        'summary': '监控完成（本地兜底聚合，聚合分析接口不可达）',\n        'alert_count': '0',\n        'work_order_count': '0',\n        'first_offer_id': str(first.get('offer_id') or ''),\n        'first_offer_name': str(first.get('offer_name') or ''),\n        'offers': json.dumps(offers, ensure_ascii=False),\n    }\n    return ret\n\n",
+        "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nANALYZE_URL = 'http://10.86.13.201:31281/api/v1/appstore/product/monitor/analyze'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _num(v):\n    try:\n        return float(str(v).strip() or 0)\n    except Exception:\n        return 0.0\n\ndef _fetch(req_id, offer_id, date_range):\n    body = json.dumps({'req_id': req_id, 'offer_id': offer_id, 'date_range': date_range}).encode('utf-8')\n    req = urllib.request.Request(ANALYZE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    req_id = str(p.get('req_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    date_range = str(p.get('date_range') or '')\n    try:\n        info = _fetch(req_id, offer_id, date_range)\n    except Exception:\n        info = None\n    if info and info.get('offers'):\n        offers = info.get('offers') or []\n        first = next((o for o in offers if str(o.get('alert_level') or 'NONE') != 'NONE'),\n                     offers[0] if offers else {})\n        ret: Output = {\n            'any_abnormal': str(info.get('any_abnormal') or 'false'),\n            'monitor_lines': str(info.get('monitor_lines') or ''),\n            'summary': str(info.get('summary') or ''),\n            'alert_count': str(info.get('alert_count') or '0'),\n            'work_order_count': str(info.get('work_order_count') or '0'),\n            'first_offer_id': str(first.get('offer_id') or ''),\n            'first_offer_name': str(first.get('offer_name') or ''),\n            'reasoning_chain': json.dumps(info.get('reasoning_chain') or [], ensure_ascii=False),\n            'offers': json.dumps(offers, ensure_ascii=False),\n        }\n        return ret\n    # ---- 本地兜底聚合（接口不可达）----\n    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n    if not offers and offer_id:\n        offers = [{'offer_id': offer_id, 'offer_name': str(p.get('offer_name') or ''),\n                   'error_count': str(p.get('error_count') or '0')}]\n    any_ab = False\n    lines = []\n    reasoning = []\n    first = {}\n    for o in offers:\n        ec = _num(o.get('error_count'))\n        fee = _num(o.get('fee_error_rate'))\n        ab = ec != 0\n        level = 'P0' if (fee >= 0.05 or ec >= 10) else ('P1' if (fee >= 0.01 or ec >= 1) else '正常')\n        if ab and not first:\n            first = o\n        if ab:\n            any_ab = True\n        nm = str(o.get('offer_name') or o.get('offer_id') or '')\n        for rid, cond, concl in (\n                ('R-E00', '监控指标已采集：异常量 %s，计费差错率 %s' % (ec, fee),\n                 '命中 → 触发告警评估' if ab else '未命中 → 指标正常'),\n                ('R-E01', '异常量 %s ≥ 10 或计费差错率 %s ≥ 0.05' % (ec, fee),\n                 '命中 → 判为 P0 严重告警' if level == 'P0' else '未命中 → 未达 P0'),\n                ('R-E02', '异常量 %s ≥ 1 或计费差错率 %s ≥ 0.01' % (ec, fee),\n                 '命中 → 判为 P1 重要告警' if level == 'P1' else '未命中 → 未达 P1'),\n                ('R-E03', '指标趋势劣化（订单量下降/异常量上升/计费差错率上升）',\n                 '命中 → 判为 P2 提示告警' if (ab and level == '正常') else '未命中 → 趋势平稳'),\n                ('R-E04', 'P0/P1 强制建单，P2 观察即可',\n                 '命中 → 需建处置工单' if level in ('P0', 'P1') else '未命中 → 无需建单')):\n            reasoning.append({'offer_id': str(o.get('offer_id') or ''), 'offer_name': nm,\n                              'ruleId': rid, 'condition': cond, 'conclusion': concl})\n        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s，等级 %s'\n                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n                        str(o.get('fee_error_rate') or ''), '异常' if ab else '正常'))\n    if not first and offers:\n        first = offers[0]\n    ret: Output = {\n        'any_abnormal': 'true' if any_ab else 'false',\n        'monitor_lines': chr(10).join(lines),\n        'summary': '监控完成（本地兜底聚合，聚合分析接口不可达）',\n        'alert_count': '0',\n        'work_order_count': '0',\n        'first_offer_id': str(first.get('offer_id') or ''),\n        'first_offer_name': str(first.get('offer_name') or ''),\n        'reasoning_chain': json.dumps(reasoning, ensure_ascii=False),\n        'offers': json.dumps(offers, ensure_ascii=False),\n    }\n    return ret\n\n",
         "flowJson": null,
         "inputs": [
           {
@@ -520,7 +525,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}。\n输出结构：\n1. 一句总述（发现异常商品数、已推送告警数、已建工单数）。\n2. 【逐品告警与处置】逐行引用 monitor_lines（含商品、指标、等级 P0/P1/P2、告警单号、工单号），P0 置顶。\n3. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 为准。\n4. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n输出要求：仅输出报告正文（对应出参 alert_report）。"
+              "content": "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}。\n输出结构：\n1. 一句总述（发现异常商品数、已推送告警数、已建工单数）。\n2. 【逐品告警与处置】逐行引用 monitor_lines（含商品、指标、等级 P0/P1/P2、告警单号、工单号），P0 置顶。\n3. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n4. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 与本体推理依据为准。\n5. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n输出要求：仅输出报告正文（对应出参 alert_report）。"
             }
           ],
           "inputParameters": [
@@ -593,6 +598,20 @@
                 "a1b2c3d4-0000-4000-8000-000000000703,summary"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000703,summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "reasoning_chain",
+              "name": "reasoning_chain",
+              "description": "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
             }
           ]
         },
@@ -629,7 +648,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}。\n格式要求：\n1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n2. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n3. 禁止原样拼接值串，禁止残留 { 占位符。\n输出要求：仅输出运营摘要正文（对应出参 ops_summary）。"
+              "content": "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}。\n格式要求：\n1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n2. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n4. 禁止原样拼接值串，禁止残留 { 占位符。\n输出要求：仅输出运营摘要正文（对应出参 ops_summary）。"
             }
           ],
           "inputParameters": [
@@ -660,6 +679,20 @@
                 "a1b2c3d4-0000-4000-8000-000000000703,summary"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000703,summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "reasoning_chain",
+              "name": "reasoning_chain",
+              "description": "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
             }
           ]
         },
