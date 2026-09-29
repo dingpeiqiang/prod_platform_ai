@@ -10,7 +10,7 @@
    定位不到则补最小字段项（expireSms 短信场景）。
 3. defaultsByCategory → 各品类模板 message_projection.defaults（报文侧默认值归模板单源）。
 4. template.schema.json：message_projection 增加 defaults 属性。
-5. product-config.ttl：品类个体块加 GENERATED 标记（供生成器替换）。
+5. product.ttl：品类个体块加 GENERATED 标记（供生成器替换）。
 
 运行一次即完成迁移；迁移后 config_message_projection.json 可由 ProjectionConfigGenerator 再生。
 """
@@ -22,7 +22,7 @@ import re
 BASE = os.path.join(os.path.dirname(__file__), '..', 'backend-app', 'src', 'main', 'resources')
 TPL_DIR = os.path.join(BASE, 'ontologies', 'templates')
 CFG_PATH = os.path.join(BASE, 'ontology', 'config_message_projection.json')
-TTL_PATH = os.path.join(BASE, 'ontology', 'product-config.ttl')
+TTL_PATH = os.path.join(BASE, 'ontology', 'product.ttl')
 
 cfg = json.load(open(CFG_PATH, encoding='utf-8'))
 templates = {}
@@ -139,7 +139,7 @@ if 'GENERATED: category-individuals' not in ttl:
                       '# END GENERATED: category-individuals\n\n' + end_marker, 1)
     with open(TTL_PATH, 'w', encoding='utf-8') as fh:
         fh.write(ttl)
-    changed.append('ontology/product-config.ttl')
+    changed.append('ontology/product.ttl')
 
 print('变更文件数:', len(changed))
 for c in sorted(set(changed)):

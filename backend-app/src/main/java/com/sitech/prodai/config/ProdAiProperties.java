@@ -231,7 +231,7 @@ public class ProdAiProperties {
          */
         private String opsGraphPath = "";
         private String rulesPath = "classpath:ontology/ops_rules.json";
-        private String productOpsOwlPath = "classpath:ontology/product-ops.ttl";
+        private String productOpsOwlPath = "classpath:ontology/product.ttl";
         private boolean swrlEnabled = true;
         /** 产商品中心基址（data-source=http）。 */
         private String productCenterBaseUrl = "";

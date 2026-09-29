@@ -105,7 +105,7 @@ prodai:
     # 引擎失败自动回退 Java；应急回退纯 Java 引擎时置 false
     shacl-authoritative: ${ONTOLOGY_SHACL_AUTHORITATIVE:true}
     rules-path: classpath:ontology/ops_rules.json
-    product-ops-owl-path: classpath:ontology/product-ops.ttl
+    product-ops-owl-path: classpath:ontology/product.ttl
     swrl-enabled: true
     base-iri: ${ONTOLOGY_BASE_IRI:http://example.org/}
     # 空=不灌 RDF；演示 profile 指向 rdf_seed.json

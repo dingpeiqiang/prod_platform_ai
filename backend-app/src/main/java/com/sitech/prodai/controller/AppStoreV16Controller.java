@@ -1,6 +1,8 @@
 package com.sitech.prodai.controller;
 
 import com.sitech.prodai.config.AppStoreInterfaceProperties;
+import com.sitech.prodai.service.OpsRulesService;
+import com.sitech.prodai.service.OpsSwrlReasoner;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.appstore.AuditExcelGenerator;
 import com.sitech.prodai.service.appstore.AuditRequirementSource;
@@ -48,6 +50,8 @@ public class AppStoreV16Controller {
     private final AuditRequirementSource auditRequirementSource;
     private final InterfaceFacade interfaceFacade;
     private final AppStoreInterfaceProperties interfaceProperties;
+    private final OpsRulesService opsRules;
+    private final OpsSwrlReasoner opsSwrlReasoner;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
@@ -58,7 +62,9 @@ public class AppStoreV16Controller {
                                  AuditExcelGenerator auditExcelGenerator,
                                  AuditRequirementSource auditRequirementSource,
                                  InterfaceFacade interfaceFacade,
-                                 AppStoreInterfaceProperties interfaceProperties) {
+                                 AppStoreInterfaceProperties interfaceProperties,
+                                 OpsRulesService opsRules,
+                                 OpsSwrlReasoner opsSwrlReasoner) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
@@ -70,6 +76,8 @@ public class AppStoreV16Controller {
         this.auditRequirementSource = auditRequirementSource;
         this.interfaceFacade = interfaceFacade;
         this.interfaceProperties = interfaceProperties;
+        this.opsRules = opsRules;
+        this.opsSwrlReasoner = opsSwrlReasoner;
     }
 
     /* ================= 模板 schema 下发 get_template_schema ================= */
@@ -535,6 +543,149 @@ public class AppStoreV16Controller {
         sim.injectMonitorError(offerId, enable);
         return Map.of("resultCode", "000000", "resultMsg", "ok",
                 "offer_id", offerId, "error_count_injected", String.valueOf(enable));
+    }
+
+    /**
+     * 监控运维一站式聚合（wf_sub_07 节点702 用）：监控查询 → 逐品 SWRL 告警分级(R-E00~E04)
+     * → 命中即推送告警 → P0/P1 建工单闭环 → 根因推理。重逻辑下沉后端，前端工作流仅 1 个 HTTP 节点。
+     * <p>
+     * POST JSON {req_id, offer_id?, date_range?}。offer_id 缺省时后端按 req_id 关联解析全部商品。
+     * 返回 {req_id, status, any_abnormal, offers:[逐品 分级/告警/工单/根因], monitor_lines, summary}。
+     */
+    @Operation(summary = "监控运维聚合分析", description = "监控查询+SWRL告警分级+告警推送+建工单+根因，供 wf_sub_07 单节点调用")
+    @PostMapping("/product/monitor/analyze")
+    public Map<String, Object> monitorAnalyze(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        Map<String, Object> batch = sim.productMonitorBatch(safe);
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(batch.get("offers"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("req_id", MapOps.str(safe.get("req_id")));
+        if (offers.isEmpty()) {
+            out.put("status", "fail");
+            out.put("any_abnormal", "false");
+            out.put("offers", List.of());
+            out.put("monitor_lines", "");
+            out.put("summary", MapOps.str(batch.getOrDefault("resultMsg", "未查询到商品")));
+            return out;
+        }
+
+        Map<String, Object> alertDefaults = opsRules.alertDefaults();
+        Map<String, Object> e01 = opsRules.alertRule("R-E01");
+        Map<String, Object> e02 = opsRules.alertRule("R-E02");
+        Map<String, Object> e03 = opsRules.alertRule("R-E03");
+        Map<String, Object> e04 = opsRules.alertRule("R-E04");
+
+        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        List<String> lines = new java.util.ArrayList<>();
+        boolean anyAbnormal = false;
+        int alertCount = 0;
+        int woCount = 0;
+        for (Map<String, Object> offer : offers) {
+            String offerId = MapOps.str(offer.get("offer_id"));
+            String offerName = MapOps.str(offer.get("offer_name"));
+            Map<String, Object> facts = new java.util.LinkedHashMap<>();
+            facts.put("order_count", offer.get("order_count"));
+            facts.put("order_trend", offer.get("order_trend"));
+            facts.put("error_count", offer.get("error_count"));
+            facts.put("error_trend", offer.get("error_trend"));
+            facts.put("fee_error_rate", offer.get("fee_error_rate"));
+            facts.put("fee_trend", offer.get("fee_trend"));
+
+            OpsSwrlReasoner.SwrlAlertResult grade =
+                    opsSwrlReasoner.gradeAlert(offerId, facts, e01, e02, e03, e04, alertDefaults);
+
+            Map<String, Object> row = new java.util.LinkedHashMap<>(offer);
+            row.put("alert_level", grade.level());
+            row.put("need_work_order", grade.needWorkOrder());
+            row.put("sla_minutes", grade.slaMinutes());
+            row.put("grade_reasons", String.join("；", grade.reasons()));
+            row.put("fired_rules", String.join(",", grade.firedRules()));
+
+            if (grade.alerted()) {
+                anyAbnormal = true;
+                String content = buildAlertContent(offerName, offerId, grade, facts);
+                Map<String, Object> alertReq = new java.util.LinkedHashMap<>();
+                alertReq.put("offer_id", offerId);
+                alertReq.put("alarm_level", gradeToAlarmLevel(grade.level()));
+                alertReq.put("content", content);
+                Map<String, Object> alertResp = sim.sendAlert(alertReq);
+                row.put("alert_id", alertResp.get("alert_id"));
+                if (!MapOps.empty(alertResp.get("alert_id"))) {
+                    alertCount++;
+                }
+
+                if (grade.needWorkOrder()) {
+                    Map<String, Object> wo = productOntologyService.createWorkOrder(
+                            Map.of("offeringId", offerId, "source", "workflow_alert"));
+                    String woId = extractWorkOrderId(wo);
+                    row.put("work_order_id", woId);
+                    row.put("wo_note", MapOps.str(wo.getOrDefault("message", "")));
+                    if (!woId.isEmpty()) {
+                        woCount++;
+                    }
+                }
+
+                Map<String, Object> rc = productOntologyService.analyzeRootCause(offerId, null);
+                row.put("root_cause_paths", rc.get("paths"));
+                row.put("root_cause_action", rc.get("actionList"));
+                row.put("root_cause_engine", rc.getOrDefault("reasonEngine", ""));
+                row.put("root_cause_pending", Boolean.TRUE.equals(rc.get("success")) ? "0" : "1");
+
+                lines.add(formatLine(row));
+            } else {
+                lines.add(formatLine(row));
+            }
+            results.add(row);
+        }
+
+        out.put("status", "success");
+        out.put("any_abnormal", anyAbnormal ? "true" : "false");
+        out.put("alert_count", String.valueOf(alertCount));
+        out.put("work_order_count", String.valueOf(woCount));
+        out.put("offers", results);
+        out.put("monitor_lines", String.join("\n", lines));
+        out.put("summary", anyAbnormal
+                ? "监控完成：发现异常商品，已按 SWRL 分级推送告警并闭环建单"
+                : "监控完成：各商品运行正常");
+        return out;
+    }
+
+    private String buildAlertContent(String offerName, String offerId, OpsSwrlReasoner.SwrlAlertResult grade,
+                                     Map<String, Object> facts) {
+        return "【" + grade.level() + " 告警】" + (offerName.isEmpty() ? offerId : offerName)
+                + " 异常：" + String.join("；", grade.reasons())
+                + "；订单量 " + MapOps.str(facts.get("order_count")) + "，异常量 " + MapOps.str(facts.get("error_count"))
+                + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate"))
+                + "；SLA " + grade.slaMinutes() + " 分钟";
+    }
+
+    private String gradeToAlarmLevel(String level) {
+        if ("P0".equals(level)) return "high";
+        if ("P1".equals(level)) return "middle";
+        return "low";
+    }
+
+    private String formatLine(Map<String, Object> row) {
+        String level = MapOps.str(row.get("alert_level"));
+        return "- " + (MapOps.str(row.get("offer_name")).isEmpty() ? MapOps.str(row.get("offer_id"))
+                : MapOps.str(row.get("offer_name")))
+                + "：订单量 " + MapOps.str(row.get("order_count")) + "（" + MapOps.str(row.get("order_trend")) + "）"
+                + "，异常量 " + MapOps.str(row.get("error_count")) + "（" + MapOps.str(row.get("error_trend")) + "）"
+                + "，计费差错率 " + MapOps.str(row.get("fee_error_rate"))
+                + "，等级 " + ("NONE".equals(level) ? "正常" : level)
+                + (MapOps.empty(row.get("alert_id")) ? "" : "，告警单 " + MapOps.str(row.get("alert_id")))
+                + (MapOps.empty(row.get("work_order_id")) ? "" : "，工单 " + MapOps.str(row.get("work_order_id")));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractWorkOrderId(Map<String, Object> wo) {
+        Object raw = wo.get("workOrder");
+        if (raw instanceof Map<?, ?> m) {
+            Object wid = m.get("workOrderId");
+            return wid == null ? "" : String.valueOf(wid);
+        }
+        Object flat = wo.get("work_order_id");
+        return flat == null ? "" : String.valueOf(flat);
     }
 
     /* ================= 接口12：异常告警 send_alert ================= */

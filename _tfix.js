@@ -1,0 +1,10 @@
+const { resolve } = require('./_resolve.js');
+const s = "'<span>月同比\u0002/span>'";
+console.log(JSON.stringify(resolve(s)));
+const fs = require('fs');
+const t = fs.readFileSync('frontend/public/ops-web/js/ops-view.js.bak.recon', 'utf8');
+const i = t.indexOf('月同比\u0002/span>');
+console.log('recon ctx', JSON.stringify(t.slice(i - 3, i + 14)));
+const r = resolve(t);
+const j = r.indexOf('月同比');
+console.log('resolved ctx', JSON.stringify(r.slice(j - 3, j + 14)));

@@ -1564,6 +1564,8 @@ s5f.append(plugin_node(402, "计费校验", "check_billing_rule",
     [("pass", "整批结论 1通过/0不通过", "string"), ("status", "整批状态 SUCCESS/PARTIAL/FAIL", "string"),
      ("risk_list", "整批风险清单（逐品聚合）", "array"),
      ("compare_list", "整批资费比对明细（逐品聚合，融合组行含 member_role）", "array"),
+     ("reasoning_chain", "SWRL 资费校验推理链（逐规则 ruleId/condition/conclusion）", "array"),
+     ("engine", "校验引擎标识（openllet-swrl/java-rules）", "string"),
      ("offers", "逐品校验结果数组JSON（[{offer_seq,pass,risk_list,compare_list}]）", "string")]))
 # 资费校准商品列表：以 config 环节 offers[]（名称/ID）为准、按 offer_seq 关联节点402校验结论，
 # 确定性渲染「资费校准商品列表」markdown（序号/销售品名称/销售品ID/校准结论），供结束节点回显与 LLM 分组命名。
@@ -1645,12 +1647,14 @@ s5f.append(llm_node(403, "风险解读",
     "1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
     "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
     "3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
+    "3.5）推理依据（取该商品所属 reasoning_chain={reasoning_chain}，行内含 ruleId/condition/conclusion）：「**推理依据：**」+ 将该品 reasoning_chain 逐规则以「规则 ruleId：condition → conclusion」短句列出（仅引用，禁止编造/增删规则）；reasoning_chain 为空时按整批列出，省略本段。\n"
     "4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
     "5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n"
     "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n"
     "输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。",
     [inp("risk_list", "引用节点402风险清单（逐品聚合）", ref_block=nid(402), ref_rel="risk_list"),
      inp("compare_list", "引用节点402资费比对明细（逐品聚合，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list"),
+     inp("reasoning_chain", "引用节点402 SWRL 推理链（逐规则 ruleId/condition/conclusion）", ref_block=nid(402), ref_rel="reasoning_chain"),
      inp("offer_list_text", "资费校准商品列表文本（节点414确定性渲染）", ref_block=nid(414), ref_rel="offer_list_text")],
     [out("risk_summary", "风险解读（多商品按 offer_seq 分组；商品列表由结束节点输出，此处不重复）")]))
 # 计费校验结论聚合：插件仅逐品返回 offers[].pass，顶层 pass/risk_list/compare_list 为空；
@@ -3042,13 +3046,114 @@ files6f = workflow(
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
      edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,618), edge(618,619), edge(619,616)])
 
+# ---------------- CODE_OP_MONITOR_ANALYZE（wf_sub_07 节点703 监控聚合分析，重逻辑下沉后端） ----------------
+# 调后端聚合端点 /api/v1/appstore/product/monitor/analyze：逐品 SWRL 告警分级(R-E00~E04)+推送告警+建工单+根因，一次返回。
+# 接口不可达时按入参 offers/单体指标本地兜底聚合，保证工作流仍可产出摘要。
+# 输出：any_abnormal/monitor_lines/summary/alert_count/work_order_count/first_offer_id/first_offer_name/offers。
+CODE_OP_MONITOR_ANALYZE = (
+    "import json, urllib.request\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "ANALYZE_URL = 'BASE_URL/api/v1/appstore/product/monitor/analyze'\n"
+    "\n"
+    "def _load(v):\n"
+    "    if isinstance(v, list):\n"
+    "        return v\n"
+    "    if isinstance(v, dict):\n"
+    "        return [v]\n"
+    "    if not isinstance(v, str) or not v.strip():\n"
+    "        return []\n"
+    "    try:\n"
+    "        obj = json.loads(v)\n"
+    "        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n"
+    "            return obj['offers']\n"
+    "        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n"
+    "    except Exception:\n"
+    "        return []\n"
+    "\n"
+    "def _num(v):\n"
+    "    try:\n"
+    "        return float(str(v).strip() or 0)\n"
+    "    except Exception:\n"
+    "        return 0.0\n"
+    "\n"
+    "def _fetch(req_id, offer_id, date_range):\n"
+    "    body = json.dumps({'req_id': req_id, 'offer_id': offer_id, 'date_range': date_range}).encode('utf-8')\n"
+    "    req = urllib.request.Request(ANALYZE_URL, data=body, method='POST',\n"
+    "                                 headers={'Content-Type': 'application/json'})\n"
+    "    with urllib.request.urlopen(req, timeout=30) as resp:\n"
+    "        return json.loads(resp.read().decode('utf-8'))\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    req_id = str(p.get('req_id') or '')\n"
+    "    offer_id = str(p.get('offer_id') or '')\n"
+    "    date_range = str(p.get('date_range') or '')\n"
+    "    try:\n"
+    "        info = _fetch(req_id, offer_id, date_range)\n"
+    "    except Exception:\n"
+    "        info = None\n"
+    "    if info and info.get('offers'):\n"
+    "        offers = info.get('offers') or []\n"
+    "        first = next((o for o in offers if str(o.get('alert_level') or 'NONE') != 'NONE'),\n"
+    "                     offers[0] if offers else {})\n"
+    "        ret: Output = {\n"
+    "            'any_abnormal': str(info.get('any_abnormal') or 'false'),\n"
+    "            'monitor_lines': str(info.get('monitor_lines') or ''),\n"
+    "            'summary': str(info.get('summary') or ''),\n"
+    "            'alert_count': str(info.get('alert_count') or '0'),\n"
+    "            'work_order_count': str(info.get('work_order_count') or '0'),\n"
+    "            'first_offer_id': str(first.get('offer_id') or ''),\n"
+    "            'first_offer_name': str(first.get('offer_name') or ''),\n"
+    "            'offers': json.dumps(offers, ensure_ascii=False),\n"
+    "        }\n"
+    "        return ret\n"
+    "    # ---- 本地兜底聚合（接口不可达）----\n"
+    "    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n"
+    "    if not offers and offer_id:\n"
+    "        offers = [{'offer_id': offer_id, 'offer_name': str(p.get('offer_name') or ''),\n"
+    "                   'error_count': str(p.get('error_count') or '0')}]\n"
+    "    any_ab = False\n"
+    "    lines = []\n"
+    "    first = {}\n"
+    "    for o in offers:\n"
+    "        ec = _num(o.get('error_count'))\n"
+    "        ab = ec != 0\n"
+    "        if ab and not first:\n"
+    "            first = o\n"
+    "        if ab:\n"
+    "            any_ab = True\n"
+    "        nm = str(o.get('offer_name') or o.get('offer_id') or '')\n"
+    "        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s，等级 %s'\n"
+    "                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n"
+    "                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n"
+    "                        str(o.get('fee_error_rate') or ''), '异常' if ab else '正常'))\n"
+    "    if not first and offers:\n"
+    "        first = offers[0]\n"
+    "    ret: Output = {\n"
+    "        'any_abnormal': 'true' if any_ab else 'false',\n"
+    "        'monitor_lines': chr(10).join(lines),\n"
+    "        'summary': '监控完成（本地兜底聚合，聚合分析接口不可达）',\n"
+    "        'alert_count': '0',\n"
+    "        'work_order_count': '0',\n"
+    "        'first_offer_id': str(first.get('offer_id') or ''),\n"
+    "        'first_offer_name': str(first.get('offer_name') or ''),\n"
+    "        'offers': json.dumps(offers, ensure_ascii=False),\n"
+    "    }\n"
+    "    return ret\n"
+    ")\n"
+    "\n"
+)
+CODE_OP_MONITOR_ANALYZE = CODE_OP_MONITOR_ANALYZE.replace("BASE_URL", BASE_URL)
 # ============================================================
-# wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
-#   开始(req_id, chat_id, offer_id 非必填) → query_product_monitor → 异常判定(error_count≠0) →
-#     异常分支：告警文案→send_alert→ops_root_cause(待后端占位)→LLM 根因推理链+优化方案→create_work_order(占位)→结束(异常闭环)
-#     正常分支：LLM 运营摘要 → 结束(正常)
-#   两分支结束节点输出环节9标题头 + 摘要/结论 + xsbot-panel + 环节9 收尾固定块
-#   offer_id 缺省时后端按 req_id 关联解析（监控接口 req_id 兜底）
+# wf_sub_07 监控运维（阶段5 重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze；
+#   工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL（product-alert.ttl, R-E00~E04）推理）
+#   开始(req_id/chat_id 必填，offer_id/date_range 非必填) → 监控查询(query_product_monitor) →
+#   监控聚合分析(CODE_OP_MONITOR_ANALYZE 调 /product/monitor/analyze：逐品 SWRL 分级+告警推送+建工单+根因)
+#   → 异常判定(any_abnormal) →
+#     异常分支：LLM 处置报告(分级/根因/工单/SLA) → 面板 → 结束(异常)
+#     正常分支：LLM 运营摘要 → 面板 → 结束(正常)
+#   offer_id 缺省时后端按 req_id 关联解析全部商品。
 # ============================================================
 s7f = []
 s7f.append(start_node(701, [
@@ -3058,7 +3163,7 @@ s7f.append(start_node(701, [
     inp("date_range", "统计周期（非必填；缺省默认最近七天）", required=False, content="最近七天"),
 ]))
 s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
-    "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告与异常判定；offer_id 缺省时按 req_id 关联解析全部商品，返回 offers[] 逐品指标",
+    "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表）；offer_id 缺省时按 req_id 关联解析全部商品，返回 offers[] 逐品指标",
     BASE_URL + "/api/v1/appstore/product/monitor",
     [inp("offer_id", "销售品ID（非必填）", ref_block=nid(701), ref_rel="offer_id"),
      inp("req_id", "需求单号（offer_id 缺省时兜底解析）", ref_block=nid(701), ref_rel="req_id"),
@@ -3070,135 +3175,85 @@ s7f.append(plugin_node(702, "监控查询", "query_product_monitor",
      ("fee_error_rate", "计费差错率", "string"), ("fee_trend", "计费差错率趋势", "string"),
      ("alarm_list", "告警列表", "array"), ("offers", "逐品监控明细（多商品批量）", "string")],
     method="get"))
-s7f.append(code_node(714, "监控聚合", CODE_OP_MONITOR_AGG,
-    [inp("offers", "逐品监控明细（节点702）", ref_block=nid(702), ref_rel="offers"),
-     inp("offer_id", "销售品ID（单品兜底，节点702）", ref_block=nid(702), ref_rel="offer_id"),
-     inp("offer_name", "产品名称（单品兜底，节点702）", ref_block=nid(702), ref_rel="offer_name"),
-     inp("order_count", "订单量（单品兜底，节点702）", ref_block=nid(702), ref_rel="order_count"),
-     inp("order_trend", "订单量趋势（单品兜底，节点702）", ref_block=nid(702), ref_rel="order_trend"),
-     inp("error_count", "异常量（单品兜底，节点702）", ref_block=nid(702), ref_rel="error_count"),
-     inp("error_trend", "异常量趋势（单品兜底，节点702）", ref_block=nid(702), ref_rel="error_trend"),
-     inp("fee_error_rate", "计费差错率（单品兜底，节点702）", ref_block=nid(702), ref_rel="fee_error_rate"),
-     inp("fee_trend", "计费差错率趋势（单品兜底，节点702）", ref_block=nid(702), ref_rel="fee_trend"),
-     inp("alarm_list", "告警列表（单品兜底，节点702）", ref_block=nid(702), ref_rel="alarm_list")],
-    [code_out("error_count", 714), code_out("any_abnormal", 714),
-     code_out("first_offer_id", 714), code_out("first_offer_name", 714),
-     code_out("first_order_count", 714), code_out("first_order_trend", 714),
-     code_out("first_error_count", 714), code_out("first_error_trend", 714),
-     code_out("first_fee_error_rate", 714), code_out("first_fee_trend", 714),
-     code_out("first_alarm_list", 714), code_out("offers", 714),
-     code_out("monitor_lines", 714)]))
-s7f.append(selector_node2(703, "异常判定",
-    [dep_node(714, "监控聚合", ["error_count", "any_abnormal"])],
-    [(-1, [cond_item(cond_ref(714, "any_abnormal", "监控聚合"), 1, cond_str("true"))])]))
-# ---- 异常分支 ----
-s7f.append(llm_node(704, "告警文案生成",
-    "基于监控异常数据生成告警文案（含产品、异常摘要、建议）。输入：offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
-    "输出要求：仅输出告警文案内容（对应出参 alert_content，需包含产品名称、异常摘要、处置建议三部分），不输出其他多余文字。",
-    [inp("offer_name", "产品名称（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_name"),
-     inp("order_count", "订单量（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_order_count"),
-     inp("error_count", "异常量（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_error_count"),
-     inp("fee_error_rate", "计费差错率（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_fee_error_rate"),
-     inp("alarm_list", "告警列表（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_alarm_list")],
-    [out("alert_content", "告警文案")]))
-s7f.append(plugin_node(705, "异常告警", "send_alert",
-    "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）；单体：仅对首个异常商品告警（send_alert 暂未批量化）",
-    BASE_URL + "/api/v1/appstore/alert/send",
-    [inp("offer_id", "销售品ID（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_id"),
-     inp("alarm_level", "告警级别（按异常程度 high/middle/low）", content="high"),
-     inp("content", "告警文案（节点704输出）", ref_block=nid(704), ref_rel="alert_content")],
-    [("alert_id", "告警单号", "string"), ("status", "推送状态", "string")]))
-s7f.append(code_node(706, "异动根因推理", CODE_OP_ROOT_CAUSE,
-    [inp("offer_id", "销售品ID（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_id")],
-    [code_out("backend_pending", 706), code_out("reason_engine", 706), code_out("anomalies", 706), code_out("paths", 706), code_out("evidence_triples", 706), code_out("swrl_fired", 706), code_out("applied_rules", 706), code_out("action_list", 706), code_out("note", 706)]))
-s7f.append(llm_node(707, "根因推理链+优化方案",
-    "你是产销品运维归因智能体。基于监控异常数据与 ops_root_cause 出参（backend_pending={backend_pending}，anomalies={anomalies}，paths={paths}，reason_engine={reason_engine}，action_list={action_list}，note={note}），按 flow-D D-2 第6步模板输出根因推理链与优化方案：\n"
-    "**异动根因推理链路（{reason_engine，占位时省略}）**\n- 异动确认：{anomalies 摘要：指标 code、delta、message，逐字引用}\n- 归因路径（按 paths 排名）：| 排名 | 根因类型 | 对象 | 权重 | 规则 | 证据 |\n（逐行展开 topN；paths 为空 → 照实引用出参 message\"已确认异动但未命中归因规则\"，禁止编造根因）\n- 命中规则：{swrl_fired / applied_rules，逗号分隔，空则照实省略}\n- 证据三元组：{evidence_triples 逐字摘要}\n\n"
-    "**优化方案（规则驱动）**\n{action_list 逐条引用；无则引用出参 message，禁止编造}\n"
-    "约束：本服务当前 backend_pending={backend_pending}（根因本体推理 ops_root_cause 待后端接入，阶段1.1），此时 output 归因段落须以占位说明（{note}）呈现，禁止自行编造根因/证据/优化方案。\n"
-    "**输出纪律**：所有字段引用必须替换为实际数据；字段为空时该行省略或写「无」，**严禁原样输出 `{...}` 形式的模板占位符**，**严禁输出「逐字引用/逐条引用」等提示词指令文字**。\n"
-    "输出要求：仅输出根因推理链+优化方案正文（对应出参 root_cause_report），不输出其他多余文字。",
-    [inp("backend_pending", "根因插件占位标记（节点706）", ref_block=nid(706), ref_rel="backend_pending"),
-     inp("reason_engine", "推理引擎（节点706）", ref_block=nid(706), ref_rel="reason_engine"),
-     inp("anomalies", "异动确认（节点706）", ref_block=nid(706), ref_rel="anomalies"),
-     inp("paths", "归因路径（节点706）", ref_block=nid(706), ref_rel="paths"),
-     inp("swrl_fired", "命中规则（节点706）", ref_block=nid(706), ref_rel="swrl_fired"),
-     inp("evidence_triples", "证据三元组（节点706）", ref_block=nid(706), ref_rel="evidence_triples"),
-     inp("action_list", "优化建议（节点706）", ref_block=nid(706), ref_rel="action_list"),
-     inp("note", "占位说明（节点706）", ref_block=nid(706), ref_rel="note")],
-    [out("root_cause_report", "根因推理链+优化方案正文")]))
-s7f.append(code_node(708, "建工单闭环", CODE_OP_CREATE_WO,
-    [inp("offer_id", "销售品ID（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_id")],
-    [code_out("backend_pending", 708), code_out("work_order_id", 708), code_out("note", 708)]))
-# xsbot-panel 独立代码节点（异常分支；产品名/offer_id 取首个异常商品，req_id 取自开始节点）
-s7f.append(panel_code_node(712, "构建页面地址面板(异常闭环)", "07",
-    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701, offers_seq=714),
-    biz_title="单品运营看板"))
-s7f.append(end_node(709, "结束(异常-已告警并闭环)",
-    [inp("offer_name", "产品名称（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_name"),
-     inp("offer_id", "销售品ID（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_id"),
+s7f.append(code_node(703, "监控聚合分析", CODE_OP_MONITOR_ANALYZE,
+    [inp("req_id", "需求单号", ref_block=nid(701), ref_rel="req_id"),
+     inp("offer_id", "销售品ID（非必填）", ref_block=nid(701), ref_rel="offer_id"),
      inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
-     inp("order_count", "订单量（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_order_count"),
-     inp("order_trend", "订单量趋势（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_order_trend"),
-     inp("error_count", "异常量（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_error_count"),
-     inp("error_trend", "异常量趋势（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_error_trend"),
-     inp("fee_error_rate", "计费差错率（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_fee_error_rate"),
-     inp("fee_trend", "计费差错率趋势（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_fee_trend"),
-     inp("alarm_list", "告警列表（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_alarm_list"),
-     inp("monitor_lines", "逐品监控自然语言明细（节点714）", ref_block=nid(714), ref_rel="monitor_lines"),
-     inp("offers", "逐品监控明细（节点714）", ref_block=nid(714), ref_rel="offers"),
-     inp("alert_id", "告警单号", ref_block=nid(705), ref_rel="alert_id"),
-     inp("root_cause_report", "根因推理链+优化方案", ref_block=nid(707), ref_rel="root_cause_report"),
-     inp("work_order_id", "工单号", ref_block=nid(708), ref_rel="work_order_id"),
-     inp("wo_note", "建单占位说明", ref_block=nid(708), ref_rel="note"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(712), ref_rel="panel")],
+     inp("offers", "逐品监控明细（节点702；接口不可达时本地兜底聚合）", ref_block=nid(702), ref_rel="offers"),
+     inp("error_count", "异常量（单体兜底，节点702）", ref_block=nid(702), ref_rel="error_count"),
+     inp("offer_name", "产品名称（单体兜底，节点702）", ref_block=nid(702), ref_rel="offer_name")],
+    [code_out("any_abnormal", 703), code_out("monitor_lines", 703), code_out("summary", 703),
+     code_out("alert_count", 703), code_out("work_order_count", 703),
+     code_out("first_offer_id", 703), code_out("first_offer_name", 703),
+     code_out("offers", 703)]))
+s7f.append(selector_node2(704, "异常判定",
+    [dep_node(703, "监控聚合分析", ["any_abnormal"])],
+    [(-1, [cond_item(cond_ref(703, "any_abnormal", "监控聚合分析"), 1, cond_str("true"))])]))
+# ---- 异常分支 ----
+s7f.append(llm_node(705, "异常处置报告",
+    "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}。\n"
+    "输出结构：\n"
+    "1. 一句总述（发现异常商品数、已推送告警数、已建工单数）。\n"
+    "2. 【逐品告警与处置】逐行引用 monitor_lines（含商品、指标、等级 P0/P1/P2、告警单号、工单号），P0 置顶。\n"
+    "3. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 为准。\n"
+    "4. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
+    "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n"
+    "输出要求：仅输出报告正文（对应出参 alert_report）。",
+    [inp("any_abnormal", "是否异常（节点703）", ref_block=nid(703), ref_rel="any_abnormal"),
+     inp("alert_count", "已推送告警数（节点703）", ref_block=nid(703), ref_rel="alert_count"),
+     inp("work_order_count", "已建工单数（节点703）", ref_block=nid(703), ref_rel="work_order_count"),
+     inp("monitor_lines", "逐品监控分析明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
+     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary")],
+    [out("alert_report", "异常处置报告正文")]))
+# ---- 正常分支 ----
+s7f.append(llm_node(706, "运营摘要生成(正常分支)",
+    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}。\n"
+    "格式要求：\n"
+    "1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n"
+    "2. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
+    "3. 禁止原样拼接值串，禁止残留 { 占位符。\n"
+    "输出要求：仅输出运营摘要正文（对应出参 ops_summary）。",
+    [inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
+     inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary")],
+    [out("ops_summary", "运营摘要正文")]))
+# xsbot-panel 独立代码节点（异常分支）
+s7f.append(panel_code_node(707, "构建页面地址面板(异常)", "07",
+    panel_inputs(701, off_seq=703, off_rel="first_offer_id", name_seq=703, name_rel="first_offer_name",
+                 req_seq=701, offers_seq=703),
+    biz_title="单品运营看板"))
+# xsbot-panel 独立代码节点（正常分支）
+s7f.append(panel_code_node(708, "构建页面地址面板(正常)", "07",
+    panel_inputs(701, off_seq=703, off_rel="first_offer_id", name_seq=703, name_rel="first_offer_name",
+                 req_seq=701, offers_seq=703),
+    biz_title="单品运营看板"))
+s7f.append(end_node(709, "结束(异常-已分级处置)",
+    [inp("offer_name", "产品名称（首个异常商品，节点703）", ref_block=nid(703), ref_rel="first_offer_name"),
+     inp("offer_id", "销售品ID（首个异常商品，节点703）", ref_block=nid(703), ref_rel="first_offer_id"),
+     inp("date_range", "统计周期", ref_block=nid(701), ref_rel="date_range"),
+     inp("monitor_lines", "逐品监控分析明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
+     inp("alert_count", "已推送告警数（节点703）", ref_block=nid(703), ref_rel="alert_count"),
+     inp("work_order_count", "已建工单数（节点703）", ref_block=nid(703), ref_rel="work_order_count"),
+     inp("alert_report", "异常处置报告", ref_block=nid(705), ref_rel="alert_report"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(707), ref_rel="panel")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "【销售品运行监控】{offer_id}（{date_range}）\n"
-    "- 产品名称：{offer_name}\n"
-    "- 订单量：{order_count}（{order_trend}）　异常量：{error_count}（{error_trend}）　计费差错率：{fee_error_rate}（{fee_trend}）\n"
-    "已推送告警，告警单号 {alert_id}\n\n"
-    "【逐品运行监控明细】\n{monitor_lines}\n\n"
-     "{root_cause_report}\n"
-     "**处置工单已建立（持续闭环）**：工单号 {work_order_id}｜（建单服务占位说明：{wo_note}）\n\n"
-     "> **建议处理：** 已推送告警并建立处置工单 {work_order_id}，建议按优化方案执行后回复【查询监控】回检工单状态（工单号 {work_order_id} 已在会话中留存）；建单服务暂不可用时{wo_note}\n\n"
-     "{panel}"))
-# ---- 正常分支 ----
-s7f.append(llm_node(710, "运营摘要生成(正常分支)",
-    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：offers={offers}，offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
-    "格式要求：\n"
-    "1. 逐品各一行，每行形如「产品名称：订单量 X（趋势），异常量 Y（趋势），计费差错率 Z（趋势），无告警」；计费差错率以百分比呈现（如 0.0020 → 0.20%）。\n"
-    "2. alarm_list 为空或 [] 时写「无告警」，非空时列出告警内容。\n"
-    "3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
-    "4. 禁止将入参按其出现顺序斜杠/逗号原样拼接成值串（如「产品名/287/0/0.0020/[]」）；禁止内嵌原始 JSON；禁止残留任何 { 占位符或「为空显示…」一类括注指令。\n"
-    "输出要求：仅输出运营摘要正文（对应出参 ops_summary），不输出其他多余文字。",
-    [inp("offers", "逐品监控明细（节点714）", ref_block=nid(714), ref_rel="offers"),
-     inp("offer_name", "产品名称（首个商品，节点714）", ref_block=nid(714), ref_rel="first_offer_name"),
-     inp("order_count", "订单量（首个商品，节点714）", ref_block=nid(714), ref_rel="first_order_count"),
-     inp("order_trend", "订单量趋势（首个商品，节点714）", ref_block=nid(714), ref_rel="first_order_trend"),
-     inp("error_count", "异常量（首个商品，节点714）", ref_block=nid(714), ref_rel="first_error_count"),
-     inp("fee_error_rate", "计费差错率（首个商品，节点714）", ref_block=nid(714), ref_rel="first_fee_error_rate"),
-     inp("alarm_list", "告警列表（首个商品，节点714）", ref_block=nid(714), ref_rel="first_alarm_list")],
-    [out("ops_summary", "运营摘要正文")]))
-s7f.append(end_node(711, "结束(正常-运营报告)",
-    [inp("ops_summary", "运营摘要", ref_block=nid(710), ref_rel="ops_summary"),
-     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(713), ref_rel="panel")],
+    "- 首个异常商品：{offer_name}　已推送告警 {alert_count} 条　已建工单 {work_order_count} 个\n\n"
+    "{alert_report}\n\n"
+    "> **建议处理：** 已按 SWRL 分级推送告警并闭环建单，建议按工单执行后回复【查询监控】回检。\n\n"
+    "{panel}"))
+s7f.append(end_node(710, "结束(正常-运营报告)",
+    [inp("ops_summary", "运营摘要", ref_block=nid(706), ref_rel="ops_summary"),
+     inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(708), ref_rel="panel")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "{ops_summary}\n\n"
-     "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】\n\n{panel}"))
-# xsbot-panel 独立代码节点（正常分支；产品名/offer_id 取首品，req_id 取自开始节点）
-s7f.append(panel_code_node(713, "构建页面地址面板(正常)", "07",
-    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701, offers_seq=714),
-    biz_title="单品运营看板"))
+    "【逐品运行监控明细】\n{monitor_lines}\n\n"
+    "> **建议处理：** 运行指标正常，无需人工干预；如需刷新可回复【查询监控】\n\n{panel}"))
 files7f = workflow(
-    "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；V3.12 多商品：监控查询返回 offers[]，节点714 聚合异常判定；异常分支对首个异常商品追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析全部商品）→监控聚合（聚合异常量/首个异常商品；error_count≠0 或任一品 fee_error_rate>0.1 走异常分支）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。告警/根因/建单保持单体（首个异常商品）；根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
-    [edge(701,702), edge(702,714), edge(714,703), edge(703,710,0), edge(703,704,-1),
-     edge(704,705), edge(705,706), edge(706,707), edge(707,708), edge(708,712), edge(712,709),
-     edge(710,713), edge(713,711)])
+    "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze，工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL product-alert.ttl(R-E00~E04) 推理，逐品分级+告警推送+建工单+根因一次返回）。query_product_monitor（自研模拟）→监控聚合分析（POST /product/monitor/analyze；接口不可达时按 702 出参本地兜底；输出 any_abnormal/monitor_lines/summary/告警与工单计数）→异常判定→异常分支：LLM 处置报告→面板→结束；正常分支：LLM 运营摘要→面板→结束。", "wf_sub_07", s7f,
+    [edge(701,702), edge(702,703), edge(703,704), edge(704,706,0), edge(704,705,-1),
+     edge(705,707), edge(707,709), edge(706,708), edge(708,710)])
 
-# ============================================================
-# wf_sub_08 审批工单查询（入参仅 req_id + chat_id：req_id 为审批工单关联主键，常态按此反查；按 approval_type 区分双轨回显+审批矩阵+收尾块）
-#   开始(req_id, chat_id) → query_approval_status(req_id 关联主键/chat_id 会话入参) → LLM 工单摘要归纳(区分需求工单/上线审批 + 审批矩阵 + 收尾块) → 结束
-# ============================================================
 s8f = []
 s8f.append(start_node(801, [
     inp("req_id", "需求单号（必填，审批工单关联主键：按此反查审批工单信息）", required=True),

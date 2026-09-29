@@ -1,6 +1,6 @@
-/* ===== 澶栭摼涓婁笅鏂囪В鏋愶紙宸ヤ綔娴佺粨鏉熻妭鐐?xsbot-panel 浼犲叆锛?====
-   URL 褰㈠锛歝onfig-workbench.html?offer_id=xxx&name=xxx&chatId=xxx&req_id=xxx&stage=N&view=stage
-   瑙ｆ瀽鍚庢毚闇插埌 window.__WB_QUERY锛屼緵椤甸潰鍐呭鑸繘搴?/ 榛樿 Tab / 閰嶇疆瀵硅薄 / 鏍囬鎸夐渶鍙栫敤銆?*/
+/* ===== 外链上下文解析（工作流结束节点?xsbot-panel 传入，?====
+   URL 形如：config-workbench.html?offer_id=xxx&name=xxx&chatId=xxx&req_id=xxx&stage=N&view=stage
+   解析后暴露到 window.__WB_QUERY，供页面内导航进度?/ 默认 Tab / 配置对象 / 标题按需取用 */
 (function(){
   var q = {};
   try {
@@ -18,9 +18,9 @@
   document.documentElement.setAttribute('data-wb-stage', stage);
   document.documentElement.setAttribute('data-wb-view', view);
   if (name || offerId) {
-    document.title = (name || offerId) + ' 路 閰嶇疆宸ヤ綔鍙?;
+    document.title = (name || offerId) + ' · 配置工作台';
   }
-  // 涓庢棦鏈夋紨绀烘暟鎹鎺ワ細鎶婂閾鹃€忎紶鐨勪笂涓嬫枃骞跺叆鍏ㄥ眬閰嶇疆锛岄〉闈㈠唴璇诲彇 window.__CFG 鍗冲彲鎰熺煡
+  // 与既有演示数据对接：把外链透传的上下文并入全局配置，页面内读取 window.__CFG 即可感知
   // stage -> view metadata: from stage-map.json (window.__WB_STAGE_MAP) when present, else empty
   var stageMap = window.__WB_STAGE_MAP || {};
   window.__WB_STAGE_META = (stageMap.stages || {})[stage] || null;

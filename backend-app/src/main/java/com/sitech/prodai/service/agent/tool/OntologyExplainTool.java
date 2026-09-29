@@ -23,15 +23,15 @@ import java.util.Map;
  * 手册 online-check/root-cause 的 explain 收尾步骤语义不变（概念解释收尾）。
  * <p>
  * TBox 访问经 OntologyService.sparqlQuery（RDF4J 只读），数据源为
- * product-config.ttl（v2.2，rdfs:label/rdfs:comment 已中文建模）。
+ * product.ttl（v3.0，rdfs:label/rdfs:comment 已中文建模）。
  */
 @Component
 public class OntologyExplainTool implements AgentTool {
 
     private static final Logger log = LoggerFactory.getLogger(OntologyExplainTool.class);
 
-    /** 本体命名空间（product-config.ttl @base，本地名匹配前缀）。 */
-    private static final String NS = "http://www.telecom-ontology.org/prod-config#";
+    /** 本体命名空间（product.ttl @base，本地名匹配前缀）。 */
+    private static final String NS = "http://prodai.sitech.com/ontology/product#";
 
     private final OntologyService ontologyService;
 
@@ -281,7 +281,7 @@ public class OntologyExplainTool implements AgentTool {
         if (props != null && !props.isEmpty()) {
             sb.append("，关联属性 ").append(props.size()).append(" 个");
         }
-        sb.append("（建模口径见 product-config 本体）。");
+        sb.append("（建模口径见 product 本体）。");
         return sb.toString();
     }
 

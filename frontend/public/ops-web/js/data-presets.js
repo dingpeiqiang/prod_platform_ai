@@ -2,224 +2,224 @@
   const { reactive } = global.Vue;
   /* ===== launchOptimizeData ===== */
   /**
- * 绗?杞?- 鍚姩浜у搧浼樺寲
- * AI鍔╂墜纭鏂规A鍚庯紝璋冪敤浜у搧鐮斿彂鍔╂墜鑷姩鎵撳紑閰嶇疆椤甸潰
- * 棰勫～鏁版嵁鍩轰簬鏂规A锛氱晠浜?9鍏冮潚鏄ョ増锛堝師鐣呬韩59鍏冨椁愪紭鍖栧崌绾э級
+ * 第一步 - 启动产品优化
+ * AI助手确认方案A后，调用产品研发助手自动打开配置页面
+ * 预填数据基于方案A：畅享59元青春版（原畅享59元套餐优化升级）
  *
- * 瀛楁鏍囩瑙勫垯锛?
- * - tag: 'ai'     鈫?AI鎺ㄨ崘锛堟柊澧炵敓鎴愭垨鍩轰簬鏂规淇敼鐨勫€硷紝闄?tagReason 璇存槑鎺ㄨ崘鍘熷洜锛?
- * - tag: 'reuse'  鈫?澶嶇敤锛堜粠鍘熷椁愮户鎵匡紝鏈仛鍙樻洿鐨勫€硷級
- * - tag: null     鈫?鏃犳爣绛撅紙甯歌瀛楁锛?
+ * 字段标签规则，
+ * - tag: 'ai'     → AI推荐（新增生成或基于方案修改的值，限 tagReason 说明推荐原因，
+ * - tag: 'reuse'  → 复用（从原套餐继承，未做变更的值）
+ * - tag: null     → 无标签（常规字段，
  */
 
-// ============ 鏂规A棰勫～鐨勪骇鍝侀厤缃暟鎹?============
+// ============ 方案A预填的产品配置数据============
 const launchProductConfig = {
-  // 鍟嗗搧鍩烘湰淇℃伅
+  // 商品基本信息
   productInfo: reactive({
     workOrderId: 'WO20260812001',
-    prodPrcName: '鐣呬韩59鍏冮潚鏄ョ増',
+    prodPrcName: '畅享59元青春版',
     template: 'personMainPrc',
-    templateLabel: '涓汉涓昏祫璐?,
+    templateLabel: '个人主资费',
     status: 'draft',
     auditStatus: 'pending',
   }),
 
-  // 鍩虹淇℃伅 Tab 鈥斺€?瀛楁鎽樿嚜鏅哄鍖?鍩烘湰淇℃伅"妯″潡锛屼繚鎸丄I宸ヤ綔鍙版帓鐗堜笌AI鎺ㄨ崘/澶嶇敤鏍囩鏈哄埗
+  // 基础信息 Tab —— 字段摘自智家包"基本信息"模块，保持AI工作台排版与AI推荐/复用标签机制
   baseInfo: {
     prodAttr: {
       value: 'personMainPrc',
       tag: 'ai',
-      tagReason: '鏂规A瀹氫綅涓汉涓昏祫璐癸紝娌跨敤鍘熷椁愬晢鍝佸睘鎬у垎绫?,
+      tagReason: '方案A定位个人主资费，沿用原套餐商品属性分类',
       required: true,
-      label: '鍟嗗搧灞炴€?,
+      label: '商品属性',
       options: [
-        { value: 'personMainPrc', label: '涓汉涓昏祫璐? },
-        { value: 'personOptionalPrc', label: '涓汉鍙€夊寘' },
-        { value: 'familyMainPrc', label: '瀹跺涵涓昏祫璐? },
-        { value: 'enterprisePrc', label: '鏀夸紒璧勮垂' },
+        { value: 'personMainPrc', label: '个人主资费' },
+        { value: 'personOptionalPrc', label: '个人可选包' },
+        { value: 'familyMainPrc', label: '家庭主资费' },
+        { value: 'enterprisePrc', label: '政企资费' },
       ],
     },
     prodCode: {
       value: 'SP20240590Q',
       tag: 'ai',
-      tagReason: '鍩轰簬鍘熷晢鍝丼P-2024-0590鍏宠仈鐢熸垚鏂板晢鍝佺紪鐮?,
-      label: '鍟嗗搧缂栫爜',
+      tagReason: '基于原商品SP-2024-0590关联生成新商品编码',
+      label: '商品编码',
     },
     prodName: {
-      value: '鐣呬韩59鍏冮潚鏄ョ増',
+      value: '畅享59元青春版',
       tag: 'ai',
-      tagReason: '鍩轰簬鏂规A鍛藉悕绛栫暐锛氫繚鐣?鐣呬韩59鍏?鍝佺墝寤剁画鎬э紝"闈掓槬鐗?瀹氫綅骞磋交瀹㈢兢锛岄厤鍚堝弻瑙嗛鏉冪泭+澶ф祦閲忕瓥鐣?,
+      tagReason: '基于方案A命名策略：保畅"畅享59元"品牌延续性，"青春版"定位年轻客群，配合双视频权益+大流量策畅',
       required: true,
-      label: '鍟嗗搧鍚嶇О',
+      label: '商品名称',
     },
     onlineDate: {
       value: '20260901000000',
       tag: 'ai',
-      tagReason: '鏂规A璁″垝9鏈?鏃ヤ笂绾匡紝閬垮紑鏆戞湡淇冮攢楂樺嘲锛岄厤鍚堢瀛ｅ紑瀛﹀鑾峰',
+      tagReason: '方案A计划9月1日上线，避开暑期促销高峰，配合秋季开学季获客',
       required: true,
-      label: '涓婄嚎鏃ユ湡',
+      label: '上线日期',
     },
     offlineDate: {
       value: '20991231235959',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愰暱鏈熼攢鍞瓥鐣?,
+      tagReason: '复用原套餐长期销售策畅',
       required: true,
-      label: '涓嬬嚎鏃ユ湡',
+      label: '下线日期',
     },
     effRule: {
       value: 'immediate',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愮敓鏁堣鍒欙細鏂板叆缃戠珛鍗崇敓鏁?,
+      tagReason: '复用原套餐生效规则：新入网立即生效',
       required: true,
-      label: '鐢熸晥瑙勫垯',
+      label: '生效规则',
       options: [
-        { value: 'immediate', label: '鏂板叆缃戠珛鍗?鍙樻洿娆℃湀/缁害鎸囧畾鏃ユ湡' },
-        { value: 'nextMonth', label: '娆℃湀鐢熸晥' },
-        { value: 'appoint', label: '棰勭害鎸囧畾鏃ユ湡鐢熸晥' },
+        { value: 'immediate', label: '新入网立单"变更次月/续约指定日期' },
+        { value: 'nextMonth', label: '次月生效' },
+        { value: 'appoint', label: '预约指定日期生效' },
       ],
     },
     validity: {
       value: 'longTerm',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愰暱鏈熸湁鏁堢瓥鐣?,
+      tagReason: '复用原套餐长期有效策畅',
       required: true,
-      label: '鍟嗗搧鏈夋晥鏈?,
+      label: '商品有效月',
       options: [
-        { value: 'longTerm', label: '闀挎湡鏈夋晥' },
-        { value: '12m', label: '12涓湀' },
-        { value: '24m', label: '24涓湀' },
-        { value: '36m', label: '36涓湀' },
+        { value: 'longTerm', label: '长期有效' },
+        { value: '12m', label: '12个月' },
+        { value: '24m', label: '24个月' },
+        { value: '36m', label: '36个月' },
       ],
     },
     displayCycle: {
       value: '3',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愬睍绀哄懆鏈?骞?,
+      tagReason: '复用原套餐展示周月/年',
       required: true,
-      label: '灞曠ず鍛ㄦ湡',
-      unit: '骞?,
+      label: '展示周期',
+      unit: '年',
     },
     cancelRule: {
       value: 'immediate',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愰€€璁㈢敓鏁堣鍒?,
+      tagReason: '复用原套餐退订生效规则',
       required: true,
-      label: '閫€璁㈢敓鏁堣鍒?,
+      label: '退订生效规则',
       options: [
-        { value: 'immediate', label: '绔嬪嵆澶辨晥' },
-        { value: 'monthEnd', label: '鏈堢粓澶辨晥' },
-        { value: 'nextMonth', label: '娆℃湀澶辨晥' },
+        { value: 'immediate', label: '立即失效' },
+        { value: 'monthEnd', label: '月终失效' },
+        { value: 'nextMonth', label: '次月失效' },
       ],
     },
     refProduct: {
       value: 'SP-2024-0590',
       tag: 'reuse',
-      tagReason: '鍙傝€冨師鐣呬韩59鍏冨椁愶紝渚夸簬瀵规瘮涓庣户鎵块厤缃?,
-      label: '鍙傝€冨晢鍝?,
+      tagReason: '参考原畅享59元套餐，便于对比与继承配置',
+      label: '参考商品',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'SP-2024-0590', label: '鐣呬韩59鍏冨椁?(SP-2024-0590)' },
+        { value: '', label: '请选择' },
+        { value: 'SP-2024-0590', label: '畅享59元套餐 (SP-2024-0590)' },
       ],
     },
     orderTimes: {
       value: '1',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愬悓鏃惰璐鏁伴檺鍒?,
+      tagReason: '复用原套餐同时订购次数限制',
       required: true,
-      label: '鍚屾椂璁㈣喘娆℃暟',
+      label: '同时订购次数',
     },
     totalOrderTimes: {
       value: '',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愮疮璁¤璐鏁扮瓥鐣?,
-      label: '绱璁㈣喘娆℃暟',
-      unit: '涓湀鍐呴檺璁?娆?,
+      tagReason: '复用原套餐累计订购次数策畅',
+      label: '累计订购次数',
+      unit: '个月内限订1次',
     },
     uploadYijing: {
       value: 'no',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愭槸鍚︿笂浼犱竴缁忕瓥鐣?,
-      label: '鏄惁涓婁紶涓€缁?,
+      tagReason: '复用原套餐是否上传一经策畅',
+      label: '是否上传一结',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
     l1ProdCode: {
       value: 'APAP00590',
       tag: 'ai',
-      tagReason: '浠庝骇鍝佸簱鏌ュ埌鐨勫彲鐢ㄤ竴绾т骇鍝佺紪鐮侊紝鍩轰簬鍘熷晢鍝佸叧鑱旂敓鎴?,
-      label: '涓€绾т骇鍝佺紪鐮?,
+      tagReason: '从产品库查到的可用一级产品编码，基于原商品关联生成',
+      label: '一级产品编码',
     },
     isComm: {
       value: 'yes',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愰€氫俊绫诲睘鎬?,
+      tagReason: '复用原套餐通信类属性',
       required: true,
-      label: '鏄惁閫氫俊绫?,
+      label: '是否通信类',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
     applyBasis: {
-      value: '鐪佸叕鍙?026骞寸089鍙锋枃',
+      value: '省公发2026年第089号文',
       tag: 'ai',
-      tagReason: '鏂规A鐢虫姤渚濇嵁锛氱渷鍏徃鍏充簬闈掓槬鐗堝椁愪笂绾跨殑鎵瑰鏂囦欢',
-      label: '鐢宠渚濇嵁',
+      tagReason: '方案A申报依据：省公司关于青春版套餐上线的批复文件',
+      label: '申请依据',
     },
     allowChannel: {
       value: 'yes',
       tag: 'reuse',
-      tagReason: '澶嶇敤鍘熷椁愬厑璁告笭閬撳彈鐞嗙瓥鐣?,
+      tagReason: '复用原套餐允许渠道受理策畅',
       required: true,
-      label: '鏄惁鍏佽鍙楃悊娓犻亾',
+      label: '是否允许受理渠道',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
   },
 
-  // 璧勬簮閰嶇疆 Tab 鈥斺€?娴侀噺/璇煶/鐭俊璧勬簮閰嶇疆锛堜粠鍘熷彲閫夐厤缃縼鍏ワ級
+  // 资源配置 Tab —— 流量/语音/短信资源配置（从原可选配置迁入）
   resourceSections: [
     {
       key: 'flow-resource',
-      title: '娴侀噺璧勬簮閰嶇疆',
+      title: '流量资源配置',
       icon: 'fa-mobile-screen',
       fields: [
         {
           key: 'flowType',
-          label: '娴侀噺绫诲瀷',
+          label: '流量类型',
           value: 'general',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愰€氱敤娴侀噺绫诲瀷',
+          tagReason: '复用原套餐通用流量类型',
           options: [
-            { value: 'general', label: '閫氱敤娴侀噺' },
-            { value: '瀹氬悜', label: '瀹氬悜娴侀噺' },
-            { value: '涓撳睘', label: '涓撳睘娴侀噺' },
+            { value: 'general', label: '通用流量' },
+            { value: '定向', label: '定向流量' },
+            { value: '专属', label: '专属流量' },
           ],
         },
         {
           key: 'flowAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '40',
           type: 'number',
           highlight: true,
           tag: 'ai',
-          tagReason: '鏂规A鏍稿績鍙樻洿锛?0GB鈫?0GB锛岃拷骞崇珵鍝丄锛堝姩鎰熼潚鏄ョ増40GB锛夛紝娑堥櫎娴侀噺棰濆害鍔ｅ娍锛堟牴鍥犺础鐚害50%锛?,
+          tagReason: '方案A核心变更，0GB→0GB，追平竞品A（动感青春版40GB），消除流量额度劣势（根因贡献度50%，',
         },
         {
           key: 'flowUnit',
-          label: '娴侀噺鍗曚綅',
+          label: '流量单位',
           value: 'GB',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭祦閲忓崟浣?,
+          tagReason: '复用原套餐流量单位',
           options: [
             { value: 'GB', label: 'GB' },
             { value: 'MB', label: 'MB' },
@@ -227,382 +227,382 @@ const launchProductConfig = {
         },
         {
           key: 'flowOvercharge',
-          label: '濂楀璁¤垂鏍囧噯',
-          value: '0.29鍏?MB',
+          label: '套外计费标准',
+          value: '0.29元/MB',
           type: 'text',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愬澶栬璐规爣鍑?,
+          tagReason: '复用原套餐套外计费标准',
         },
         {
           key: 'flowCarryover',
-          label: '鏄惁缁撹浆鍒版鏈?,
+          label: '是否结转到次月',
           value: 'yes',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭祦閲忕粨杞瓥鐣?,
+          tagReason: '复用原套餐流量结转策畅',
           options: [
-            { value: 'yes', label: '鏄? },
-            { value: 'no', label: '鍚? },
+            { value: 'yes', label: '是' },
+            { value: 'no', label: '同' },
           ],
         },
       ],
     },
     {
       key: 'voice-resource',
-      title: '璇煶璧勬簮閰嶇疆',
+      title: '语音资源配置',
       icon: 'fa-phone',
       fields: [
         {
           key: 'voiceType',
-          label: '璧勬簮绫诲瀷',
+          label: '资源类型',
           value: 'local',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭湰鍦拌闊崇被鍨?,
+          tagReason: '复用原套餐本地语音类型',
           options: [
-            { value: 'local', label: '鏈湴璇煶' },
-            { value: 'longdistance', label: '闀块€旇闊? },
+            { value: 'local', label: '本地语音' },
+            { value: 'longdistance', label: '长途语音' },
           ],
         },
         {
           key: 'voiceAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '100',
           type: 'number',
-          unit: '鍒嗛挓',
+          unit: '分钟',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁?00鍒嗛挓璇煶閰嶇疆锛岄潪鏈浼樺寲閲嶇偣',
+          tagReason: '复用原套餐100分钟语音配置，非本次优化重点',
         },
         {
           key: 'voiceOvercharge',
-          label: '濂楀璁¤垂璐圭巼',
-          value: '0.15鍏?鍒嗛挓',
+          label: '套外计费费率',
+          value: '0.15元/分钟',
           type: 'text',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愯闊冲澶栬垂鐜?,
+          tagReason: '复用原套餐语音套外费率',
         },
       ],
     },
     {
       key: 'sms-resource',
-      title: '鐭俊璧勬簮閰嶇疆',
+      title: '短信资源配置',
       icon: 'fa-comment-dots',
       fields: [
         {
           key: 'smsAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '100',
           type: 'number',
-          unit: '鏉?,
+          unit: '权',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁?00鏉＄煭淇￠厤缃?,
+          tagReason: '复用原套餐100条短信配置',
         },
         {
           key: 'smsOvercharge',
-          label: '濂楀璁¤垂璐圭巼',
-          value: '0.1鍏?鏉?,
+          label: '套外计费费率',
+          value: '0.1元/权',
           type: 'text',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愮煭淇″澶栬垂鐜?,
+          tagReason: '复用原套餐短信套外费率',
         },
       ],
     },
     {
       key: 'rights-resource',
-      title: '鏉冪泭璧勬簮閰嶇疆',
+      title: '权益资源配置',
       icon: 'fa-gift',
       fields: [
         {
           key: 'rightsTable',
-          label: '鏉冪泭鍒楄〃',
+          label: '权益列表',
           type: 'table',
           tag: 'reuse',
-          tagReason: '鏉冪泭鎸夋ā鏉块粯璁ら厤缃紝棰嗗彇鏂瑰紡鍙墜鍔ㄨ皟鏁?,
+          tagReason: '权益按模板默认配置，领取方式可手动调效',
           columns: [
             {
               key: 'rightName',
-              label: '鏉冪泭鍚嶇О',
+              label: '权益名称',
               type: 'text',
-              placeholder: '璇疯緭鍏ユ潈鐩婂悕绉?,
+              placeholder: '请输入权益名称',
             },
             {
               key: 'obtainType',
-              label: '棰嗗彇鏂瑰紡',
+              label: '领取方式',
               type: 'select',
               options: [
-                { value: 'manual', label: '鎵嬪姩棰嗗彇' },
-                { value: 'auto', label: '鑷姩鍙戞斁' },
+                { value: 'manual', label: '手动领取' },
+                { value: 'auto', label: '自动发放' },
               ],
             },
           ],
           rows: [
-            { rightName: '瑙嗛浼氬憳鏈堝崱', obtainType: 'auto' },
-            { rightName: '瀹氬悜鍏嶆祦鏉冪泭鍖?, obtainType: 'manual' },
-            { rightName: '褰╅搩鍔熻兘', obtainType: 'auto' },
+            { rightName: '视频会员月卡', obtainType: 'auto' },
+            { rightName: '定向免流权益包', obtainType: 'manual' },
+            { rightName: '彩铃功能', obtainType: 'auto' },
           ],
         },
       ],
     },
   ],
 
-  // 钀ラ攢璧勬簮 Tab 鈥斺€?鍙繚鐣欐湀绉熴€佽处鍔′紭鎯犮€佷繚搴?
+  // 营销资源 Tab —— 只保留月租、账务优惠、保底。
   marketingSections: [
     {
       key: 'monthly',
-      title: '鏈堢',
+      title: '月租',
       icon: 'fa-yen-sign',
       fields: [
         {
           key: 'chargeType',
-          label: '鏀惰垂鏂瑰紡',
+          label: '收费方式',
           value: 'monthly',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭湀浠樻柟寮?,
+          tagReason: '复用原套餐月付方式',
           options: [
-            { value: 'monthly', label: '鏈堜粯' },
-            { value: 'quarterly', label: '瀛ｄ粯' },
-            { value: 'yearly', label: '骞翠粯' },
+            { value: 'monthly', label: '月付' },
+            { value: 'quarterly', label: '季付' },
+            { value: 'yearly', label: '年付' },
           ],
         },
-        { key: 'monthlyFee', label: '濂楅鍥哄畾璐?, value: '59.00', type: 'number', unit: '鍏?, tag: 'reuse', tagReason: '鏂规A淇濇寔鏈堣垂59鍏冧笉鍙? },
+        { key: 'monthlyFee', label: '套餐固定费', value: '59.00', type: 'number', unit: '元', tag: 'reuse', tagReason: '方案A保持月费59元不发' },
         {
           key: 'feeSubject',
-          label: '鏀惰垂绉戠洰',
+          label: '收费科目',
           value: '001',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愰€氳璐圭鐩?,
+          tagReason: '复用原套餐通讯费科益',
           options: [
-            { value: '001', label: '閫氳璐? },
-            { value: '002', label: '澧炲€间笟鍔¤垂' },
-            { value: '003', label: '浠ｆ敹璐? },
+            { value: '001', label: '通讯费' },
+            { value: '002', label: '增值业务费' },
+            { value: '003', label: '代收费' },
           ],
         },
-        { key: 'taxRate', label: '绋庣巼', value: '6', type: 'number', unit: '%', tag: 'reuse', tagReason: '澶嶇敤鍘熷椁愮◣鐜? },
+        { key: 'taxRate', label: '税率', value: '6', type: 'number', unit: '%', tag: 'reuse', tagReason: '复用原套餐税率' },
       ],
     },
     {
       key: 'discount',
-      title: '璐﹀姟浼樻儬',
+      title: '账务优惠',
       icon: 'fa-tags',
       fields: [
         {
           key: 'discountCondition',
-          label: '浼樻儬鏉′欢',
-          value: '鏂扮敤鎴烽鏈堝崐浠?,
+          label: '优惠条件',
+          value: '新用户首月半价',
           type: 'text',
           tag: 'ai',
-          tagReason: '鏂板浼樻儬绛栫暐锛氶鏈堝崐浠峰鍐茬珵鍝佷績閿€锛岄拡瀵瑰勾杞绘柊瀹㈤檷浣庡皾椴滈棬妲?,
+          tagReason: '新增优惠策略：首月半价对冲竞品促销，针对年轻新客降低尝鲜门槛',
         },
         {
           key: 'discountType',
-          label: '浼樻儬绫诲瀷',
+          label: '优惠类型',
           value: 'cash',
           type: 'select',
           tag: 'ai',
-          tagReason: '閫夋嫨鐜伴噾鐩村噺锛岀敤鎴锋劅鐭ユ渶鐩存帴锛岃浆鍖栨晥鏋滀紭浜庝紭鎯犲埜',
+          tagReason: '选择现金直减，用户感知最直接，转化效果优于优惠券',
           options: [
-            { value: 'cash', label: '鐜伴噾鐩村噺' },
-            { value: 'coupon', label: '浼樻儬鍒? },
-            { value: 'gift', label: '璧犲搧' },
+            { value: 'cash', label: '现金直减' },
+            { value: 'coupon', label: '优惠分' },
+            { value: 'gift', label: '赠品' },
           ],
         },
-        { key: 'discountAmount', label: '浼樻儬璐圭敤', value: '29.50', type: 'number', unit: '鍏?, tag: 'ai', tagReason: '棣栨湀鍗婁环=59/2=29.50鍏? },
+        { key: 'discountAmount', label: '优惠费用', value: '29.50', type: 'number', unit: '元', tag: 'ai', tagReason: '首月半价=59/2=29.50元' },
       ],
     },
     {
       key: 'min-consume',
-      title: '淇濆簳',
+      title: '保底',
       icon: 'fa-arrow-down-wide-short',
       fields: [
         {
           key: 'minConsumeType',
-          label: '淇濆簳鏂瑰紡',
+          label: '保底方式',
           value: 'none',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭棤淇濆簳绛栫暐',
+          tagReason: '复用原套餐无保底策略',
           options: [
-            { value: 'none', label: '鏃犱繚搴? },
-            { value: 'monthly', label: '鏈堜繚搴? },
-            { value: 'total', label: '鎬婚淇濆簳' },
+            { value: 'none', label: '无保底' },
+            { value: 'monthly', label: '月保底' },
+            { value: 'total', label: '总额保底' },
           ],
         },
       ],
     },
   ],
 
-   // 閿€鍞鍒?Tab 鈥斺€?鎽樿嚜鏅哄鍖咃細閿€鍞鍒欍€佸墠椤归檺鍒躲€佸悗椤归檺鍒?
+   // 销售规则 Tab —— 摘自智家包：销售规则、前项限制、后项限制。
   salesSections: [
     {
       key: 'sales-rule',
-      title: '閿€鍞鍒?,
+      title: '销售规则',
       icon: 'fa-shield-halved',
       fields: [
         {
           key: 'channelType',
-          label: '娓犻亾绫诲瀷',
+          label: '渠道类型',
           value: 'offline',
           type: 'checkbox-group',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愮嚎涓嬭惀涓氬巺涓绘笭閬撶瓥鐣?,
+          tagReason: '复用原套餐线下营业厅主渠道策畅',
           options: [
-            { value: 'offline', label: '绾夸笅钀ヤ笟鍘? },
-            { value: 'online', label: '涓浗绉诲姩鍦ㄧ嚎娓犻亾' },
-            { value: 'local-online', label: '鐪佺Щ鍔ㄧ嚎涓婃笭閬? },
-            { value: 'cmcc-online', label: '涓浗绉诲姩绾夸笂娓犻亾' },
-            { value: 'tv', label: '鐢佃钀ヤ笟鍘? },
-            { value: 'accelerator', label: '鍔犻€熷钩鍙? },
-            { value: 'points', label: '绉垎鍟嗗煄' },
-            { value: 'meter', label: '涓€绾х數琛? },
+            { value: 'offline', label: '线下营业原' },
+            { value: 'online', label: '中国移动在线渠道' },
+            { value: 'local-online', label: '省移动线上渠道' },
+            { value: 'cmcc-online', label: '中国移动线上渠道' },
+            { value: 'tv', label: '电视营业原' },
+            { value: 'accelerator', label: '加速平发' },
+            { value: 'points', label: '积分商城' },
+            { value: 'meter', label: '一级电表' },
           ],
         },
         {
           key: 'applicableArea',
-          label: '閫傜敤鍦板尯',
+          label: '适用地区',
           value: 'sc',
           type: 'checkbox-group',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愬洓宸濈渷閫傜敤鑼冨洿',
+          tagReason: '复用原套餐四川省适用范围',
           options: [
-            { value: 'sc', label: '鍥涘窛鍏ㄧ渷' },
-            { value: 'cd', label: '鎴愰兘' },
-            { value: 'my', label: '缁甸槼' },
-            { value: 'dy', label: '寰烽槼' },
-            { value: 'nc', label: '鍗楀厖' },
-            { value: 'yb', label: '瀹滃' },
-            { value: 'lz', label: '娉稿窞' },
-            { value: 'ls', label: '涔愬北' },
+            { value: 'sc', label: '四川全省' },
+            { value: 'cd', label: '成都' },
+            { value: 'my', label: '绵阳' },
+            { value: 'dy', label: '德阳' },
+            { value: 'nc', label: '南充' },
+            { value: 'yb', label: '宜宾' },
+            { value: 'lz', label: '泸州' },
+            { value: 'ls', label: '乐山' },
           ],
         },
         {
           key: 'otherFee',
-          label: '鍏朵粬璐圭敤',
+          label: '其他费用',
           value: '0',
           type: 'text',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭棤鍏朵粬璐圭敤',
+          tagReason: '复用原套餐无其他费用',
         },
         {
           key: 'breachLiability',
-          label: '杩濈害璐ｄ换',
+          label: '违约责任',
           value: 'none',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愭棤杩濈害璐ｄ换绾︽潫',
+          tagReason: '复用原套餐无违约责任约束',
           options: [
-            { value: 'none', label: '鏃? },
-            { value: 'compensate', label: '鎸夌害瀹氳ˉ鍋块噾' },
+            { value: 'none', label: '日' },
+            { value: 'compensate', label: '按约定补偿金' },
           ],
         },
         {
           key: 'renewMethod',
-          label: '缁鏂瑰紡',
+          label: '续订方式',
           value: 'auto',
           type: 'select',
           tag: 'reuse',
-          tagReason: '澶嶇敤鍘熷椁愯嚜鍔ㄧ画璁㈢瓥鐣?,
+          tagReason: '复用原套餐自动续订策畅',
           options: [
-            { value: 'auto', label: '鑷姩缁' },
-            { value: 'manual', label: '鎵嬪姩缁' },
-            { value: 'no', label: '涓嶇画璁? },
+            { value: 'auto', label: '自动续订' },
+            { value: 'manual', label: '手动续订' },
+            { value: 'no', label: '不续订' },
           ],
         },
       ],
     },
     {
       key: 'pre-limit',
-      title: '鍓嶉」闄愬埗',
+      title: '前项限制',
       icon: 'fa-circle-arrow-left',
       fields: [
         {
           key: 'preLimitRelation',
-          label: '闄愬埗闂村叧绯?,
+          label: '限制间关系',
           value: 'and',
           type: 'select',
           tag: 'ai',
-          tagReason: '鏂规A锛氫笌鍓嶉」鍟嗗搧"涓?鍏崇郴浜掓枼锛岀‘淇濇柊瀹㈡湭璁㈣喘鍏朵粬闈掓槬鐗堝椁?,
+          tagReason: '方案A：与前项商品"一"关系互斥，确保新客未订购其他青春版套餐',
           options: [
-            { value: 'and', label: '涓旓紙鍏ㄩ儴婊¤冻锛? },
-            { value: 'or', label: '鎴栵紙浠讳竴婊¤冻锛? },
+            { value: 'and', label: '且（全部满足，' },
+            { value: 'or', label: '或（任一满足，' },
           ],
         },
         {
           key: 'preLimitTable',
-          label: '闄愬埗鍒楄〃',
+          label: '限制列表',
           type: 'table',
           tag: 'ai',
-          tagReason: '鏂板鍓嶉」闄愬埗锛氶檺鍒跺勾榫?鍏ㄧ悆閫氱瓑绾?鍩虹濂楅鏈堣垂鏉′欢锛岀‘淇濈洰鏍囧缇ょ簿鍑?,
+          tagReason: '新增前项限制：限制年龄"全球通等线"基础套餐月费条件，确保目标客群精出',
           columns: [
-            { key: 'label', label: '鏍囩', type: 'select', options: [
-              { value: 'age', label: '骞撮緞' },
-              { value: 'globalLevel', label: '鍏ㄧ悆閫氱瓑绾? },
-              { value: 'baseMonthlyFee', label: '鍩虹濂楅鏈堣垂' },
-              { value: 'targetGroup', label: '鐩爣瀹㈢兢' },
-              { value: 'studentOnly', label: '闈㈠悜鍦ㄦ牎澶у鐢? },
-              { value: 'studentCert', label: '闇€涓婁紶瀛︾敓璇佽璇? },
-              { value: 'realName', label: '浠呴檺鏈汉瀹炲悕鍔炵悊' },
-              { value: 'limitToSelf', label: '浠呴檺鏈汉鍔炵悊' },
+            { key: 'label', label: '标签', type: 'select', options: [
+              { value: 'age', label: '年龄' },
+              { value: 'globalLevel', label: '全球通等线' },
+              { value: 'baseMonthlyFee', label: '基础套餐月费' },
+              { value: 'targetGroup', label: '目标客群' },
+              { value: 'studentOnly', label: '面向在校大学用' },
+              { value: 'studentCert', label: '需上传学生证认语' },
+              { value: 'realName', label: '仅限本人实名办理' },
+              { value: 'limitToSelf', label: '仅限本人办理' },
             ] },
-            { key: 'ruleType', label: '瑙勫垯绫诲瀷', type: 'select', options: [
-              { value: 'gt', label: '锛? },
-              { value: 'lt', label: '锛? },
-              { value: 'ge', label: '鈮? },
-              { value: 'le', label: '鈮? },
-              { value: 'eq', label: '锛? },
+            { key: 'ruleType', label: '规则类型', type: 'select', options: [
+              { value: 'gt', label: '，' },
+              { value: 'lt', label: '，' },
+              { value: 'ge', label: '≥' },
+              { value: 'le', label: '≥' },
+              { value: 'eq', label: '，' },
             ] },
-            { key: 'limitValue', label: '闄愬畾鍊?, type: 'text', placeholder: '璇疯緭鍏ラ檺瀹氬€? },
-            { key: 'limitType', label: '闄愬畾绫诲瀷', type: 'select', options: [
-              { value: 'allow', label: '鍏佽鍔炵悊' },
-              { value: 'disallow', label: '涓嶅厑璁稿姙鐞? },
+            { key: 'limitValue', label: '限定值', type: 'text', placeholder: '请输入限定值' },
+            { key: 'limitType', label: '限定类型', type: 'select', options: [
+              { value: 'allow', label: '允许办理' },
+              { value: 'disallow', label: '不允许办理' },
             ] },
-            { key: 'tipMsg', label: '鎻愮ず璇?, type: 'auto', placeholder: '鏍规嵁鏉′欢鑷姩鐢熸垚' },
+            { key: 'tipMsg', label: '提示语', type: 'auto', placeholder: '根据条件自动生成' },
           ],
           rows: [
-            { label: 'age', ruleType: 'lt', limitValue: '16', limitType: 'disallow', tipMsg: '骞撮緞锛?6宀佺殑涓嶅厑璁稿姙鐞嗘湰濂楅' },
-            { label: 'baseMonthlyFee', ruleType: 'ge', limitValue: '59', limitType: 'allow', tipMsg: '鍩虹濂楅鏈堣垂鈮?9鍏冪殑鍏佽鍔炵悊鏈椁? },
+            { label: 'age', ruleType: 'lt', limitValue: '16', limitType: 'disallow', tipMsg: '年龄，6岁的不允许办理本套餐' },
+            { label: 'baseMonthlyFee', ruleType: 'ge', limitValue: '59', limitType: 'allow', tipMsg: '基础套餐月费≥9元的允许办理本套餐' },
           ],
         },
       ],
     },
     {
       key: 'post-limit',
-      title: '鍚庨」闄愬埗',
+      title: '后项限制',
       icon: 'fa-circle-arrow-right',
       fields: [
         {
           key: 'postLimitTable',
-          label: '鍚庨」闄愬埗',
+          label: '后项限制',
           type: 'table',
           tag: 'ai',
-          tagReason: '鏂板鍚庨」闄愬埗锛氳璐湰濂楅鍚庨檺鍒堕檷妗?閫€璁?鍋滄満淇濆彿/閿€鎴?鎼哄彿杞綉/杩囨埛绛夋搷浣?,
+          tagReason: '新增后项限制：订购本套餐后限制降案"退订"停机保号/销户"携号转网/过户等操作',
           columns: [
-            { key: 'ruleType', label: '瑙勫垯绫诲瀷', type: 'select', options: [
-              { value: 'product', label: '鍟嗗搧闄愬埗' },
-              { value: 'business', label: '涓氬姟闄愬埗' },
+            { key: 'ruleType', label: '规则类型', type: 'select', options: [
+              { value: 'product', label: '商品限制' },
+              { value: 'business', label: '业务限制' },
             ] },
-            { key: 'bizName', label: '涓氬姟鍚嶇О', type: 'select', dynamicOptions: true, options: {
+            { key: 'bizName', label: '业务名称', type: 'select', dynamicOptions: true, options: {
               product: [
-                { value: 'downgrade', label: '闄嶆。' },
-                { value: 'unsubscribe', label: '閫€璁? },
+                { value: 'downgrade', label: '降档' },
+                { value: 'unsubscribe', label: '退订' },
               ],
               business: [
-                { value: 'suspend', label: '鍋滄満淇濆彿' },
-                { value: 'cancel', label: '閿€鎴? },
-                { value: 'mnp', label: '鎼哄彿杞綉' },
-                { value: 'transfer', label: '杩囨埛' },
+                { value: 'suspend', label: '停机保号' },
+                { value: 'cancel', label: '销户' },
+                { value: 'mnp', label: '携号转网' },
+                { value: 'transfer', label: '过户' },
               ],
             } },
-            { key: 'limitType', label: '闄愬埗绫诲瀷', type: 'select', options: [
-              { value: 'disallow', label: '涓嶅厑璁? },
-              { value: 'allow', label: '鍏佽' },
+            { key: 'limitType', label: '限制类型', type: 'select', options: [
+              { value: 'disallow', label: '不允订' },
+              { value: 'allow', label: '允许' },
             ] },
-            { key: 'limitTime', label: '闄愬埗鏃堕棿', type: 'select', options: [
-              { value: '12', label: '12涓湀' },
-              { value: '24', label: '24涓湀' },
-              { value: '36', label: '36涓湀' },
-              { value: '48', label: '48涓湀' },
+            { key: 'limitTime', label: '限制时间', type: 'select', options: [
+              { value: '12', label: '12个月' },
+              { value: '24', label: '24个月' },
+              { value: '36', label: '36个月' },
+              { value: '48', label: '48个月' },
             ] },
           ],
           rows: [
@@ -614,177 +614,177 @@ const launchProductConfig = {
     },
   ],
 
-  // 鍙€夐厤缃?Tab 鈥斺€?鍏煎鏃у紩鐢紝宸叉媶鍒嗗埌resourceSections/marketingSections/salesSections
+  // 可选配置/Tab —— 兼容旧引用，已拆分到resourceSections/marketingSections/salesSections
   optionalSections: [],
 
-  // 淇℃伅棰勮 Tab 鈥斺€?鐢ㄦ埛鍙楃悊杩囩▼鐩稿叧淇℃伅 + 鍏嶅～鍗?
+  // 信息预览 Tab —— 用户受理过程相关信息 + 免填单。
   previewSections: [
     {
       key: 'user-facing',
-      title: '鐢ㄦ埛鍙楃悊淇℃伅',
+      title: '用户受理信息',
       icon: 'fa-user',
-      description: '鐢ㄦ埛鍦ㄥ姙鐞嗚繃绋嬩腑鐪嬪埌鐨勫叧閿俊鎭?,
+      description: '用户在办理过程中看到的关键信息',
       items: [
-        { label: '鍟嗗搧鍚嶇О', value: '鐣呬韩59鍏冮潚鏄ョ増', highlight: true },
-        { label: '鏈堣垂', value: '59鍏?鏈? },
-        { label: '鍖呭惈娴侀噺', value: '40GB閫氱敤娴侀噺锛堝彲缁撹浆娆℃湀锛?, highlight: true },
-        { label: '鍖呭惈璇煶', value: '100鍒嗛挓鏈湴璇煶' },
-        { label: '瑙嗛鏉冪泭', value: '鑵捐瑙嗛鏈堝崱 + 鐖卞鑹烘湀鍗?, highlight: true },
-        { label: '鍏朵粬鏉冪泭', value: '鐢熸棩鐗规潈銆佹祦閲忕粨杞? },
-        { label: '濂楀娴侀噺璐?, value: '0.29鍏?MB' },
-        { label: '濂楀璇煶璐?, value: '0.15鍏?鍒嗛挓' },
-        { label: '鏂扮敤鎴蜂紭鎯?, value: '棣栨湀鍗婁环锛堜粎闇€29.50鍏冿級', highlight: true },
-        { label: '鐢熸晥鏂瑰紡', value: '绔嬪嵆鐢熸晥' },
-        { label: '閫€璁㈡柟寮?, value: '绔嬪嵆澶辨晥' },
-        { label: '浣跨敤鑼冨洿', value: '鍥涘窛鐪佽寖鍥村唴' },
+        { label: '商品名称', value: '畅享59元青春版', highlight: true },
+        { label: '月费', value: '59元/月' },
+        { label: '包含流量', value: '40GB通用流量（可结转次月，', highlight: true },
+        { label: '包含语音', value: '100分钟本地语音' },
+        { label: '视频权益', value: '腾讯视频月卡 + 爱奇艺月单', highlight: true },
+        { label: '其他权益', value: '生日特权、流量结转' },
+        { label: '套外流量费', value: '0.29元/MB' },
+        { label: '套外语音费', value: '0.15元/分钟' },
+        { label: '新用户优惠', value: '首月半价（仅需29.50元）', highlight: true },
+        { label: '生效方式', value: '立即生效' },
+        { label: '退订方式', value: '立即失效' },
+        { label: '使用范围', value: '四川省范围内' },
       ],
     },
     {
       key: 'free-fill-preview',
-      title: '鍏嶅～鍗?,
+      title: '免填单',
       icon: 'fa-file-alt',
-      description: '钀ヤ笟鍛樺彈鐞嗘椂鍏嶅～鐨勮嚜鍔ㄥ甫鍑轰俊鎭?,
+      description: '营业员受理时免填的自动带出信息',
       items: [
-        { label: '璧勮垂鍚嶇О', value: '鐣呬韩59鍏冮潚鏄ョ増' },
-        { label: '濂楅鏈堣垂', value: '59鍏?鏈? },
-        { label: '鍖呭惈璧勬簮', value: '40G娴侀噺+100鍒嗛挓璇煶+鑵捐瑙嗛+鐖卞鑹?, highlight: true },
-        { label: '瓒呭鏀惰垂鏍囧噯', value: '0.29鍏?MB' },
-        { label: '闄愬畾鏉′欢', value: '鍥涘窛鐪佽寖鍥村唴浣跨敤锛屾柊鑰佸晢鍝佷簰鏂? },
-        { label: '鍏朵粬鏉冪泭', value: '鐢熸棩鐗规潈銆佹祦閲忕粨杞€佽吘璁棰戞湀鍗°€佺埍濂囪壓鏈堝崱', highlight: true },
-        { label: '鏀惰垂鏂瑰紡', value: '鏈堜粯' },
-        { label: '濂楅鍥哄畾璐?, value: '59.00鍏? },
-        { label: '绋庣巼', value: '6%' },
-        { label: '浼樻儬鏉′欢', value: '鏂扮敤鎴烽鏈堝崐浠? },
-        { label: '浼樻儬绫诲瀷', value: '鐜伴噾鐩村噺' },
-        { label: '浼樻儬璐圭敤', value: '29.50鍏? },
+        { label: '资费名称', value: '畅享59元青春版' },
+        { label: '套餐月费', value: '59元/月' },
+        { label: '包含资源', value: '40G流量+100分钟语音+腾讯视频+爱奇艺', highlight: true },
+        { label: '超套收费标准', value: '0.29元/MB' },
+        { label: '限定条件', value: '四川省范围内使用，新老商品互新' },
+        { label: '其他权益', value: '生日特权、流量结转、腾讯视频月卡、爱奇艺月卡', highlight: true },
+        { label: '收费方式', value: '月付' },
+        { label: '套餐固定费', value: '59.00元' },
+        { label: '税率', value: '6%' },
+        { label: '优惠条件', value: '新用户首月半价' },
+        { label: '优惠类型', value: '现金直减' },
+        { label: '优惠费用', value: '29.50元' },
       ],
     },
     {
       key: 'sms-preview',
-      title: '鐭俊妯℃澘棰勮',
+      title: '短信模板预览',
       icon: 'fa-comment-sms',
-      description: '鍚勮Е鐐逛笅鍙戠殑鐭俊鍐呭棰勮',
+      description: '各触点下发的短信内容预览',
       items: [
-        { label: '鍔炵悊鎴愬姛鐭俊', value: '鎭枩鎮ㄦ垚鍔熷姙鐞嗙晠浜?9鍏冮潚鏄ョ増锛屾湀璐?9鍏冿紝鍚?0G娴侀噺鍜?00鍒嗛挓璇煶锛屽惈鑵捐瑙嗛+鐖卞鑹哄弻鏉冪泭锛屾劅璋㈡偍鐨勬敮鎸侊紒' },
-        { label: '棰勭害鐢熸晥鐭俊', value: '鎮ㄧ殑鐣呬韩59鍏冮潚鏄ョ増宸茬敓鏁堬紝鏈堣垂59鍏冿紝鐢熸晥褰撴湀璧蜂韩鍙楀椁愭潈鐩娿€? },
-        { label: '鍓嶅彴浜岀‘鐭俊', value: '灏婃暚鐨勫鎴凤紝鎮ㄦ鍦ㄥ姙鐞嗙晠浜?9鍏冮潚鏄ョ増锛屾湀璐?9鍏冿紝鏄惁纭鍔炵悊锛? },
-        { label: '閫€璁㈢煭淇?, value: '鎮ㄥソ锛屾偍鐨勭晠浜?9鍏冮潚鏄ョ増宸查€€璁紝濡傛湁鐤戦棶璇疯嚧鐢?0086銆? },
+        { label: '办理成功短信', value: '恭喜您成功办理畅享59元青春版，月费59元，同0G流量和00分钟语音，含腾讯视频+爱奇艺双权益，感谢您的支持！' },
+        { label: '预约生效短信', value: '您的畅享59元青春版已生效，月费59元，生效当月起享受套餐权益、' },
+        { label: '前台二确短信', value: '尊敬的客户，您正在办理畅享59元青春版，月费59元，是否确认办理，' },
+        { label: '退订短信', value: '您好，您的畅享59元青春版已退订，如有疑问请致用0086、' },
       ],
     },
   ],
 }
 
-// ============ 娣卞害鎬濊€冩楠?============
+// ============ 深度思考步验============
 const launchThinkingSteps = [
-  '瑙ｆ瀽鐢ㄦ埛鎸囦护锛氬惎鍔ㄤ骇鍝佷紭鍖栵紝纭鏂规A',
-  '璋冪敤浜у搧鏌ヨ鍔╂墜锛屾绱㈢晠浜?9鍏冨椁愶紙SP-2024-0590锛夊叏閲忕敾鍍忊€?,
-  '浜у搧鏌ヨ鍔╂墜杩斿洖锛氬湪缃?6涓囩敤鎴枫€佹湀鏀跺叆5,046涓囥€佸悎绾︾敤鎴?1.2涓?,
-  '鏍￠獙浜掓枼瑙勫垯锛氭柊鍟嗗搧"鐣呬韩59鍏冮潚鏄ョ増"涓庣幇鏈夊晢鍝丼P-2024-0590浜掓枼锛屽彲骞惰閿€鍞?鉁?,
-  '璋冪敤浜у搧鐮斿彂鍔╂墜锛屾媺鍙栧晢鍝侀厤缃鍒欎笌璧勮垂瀹℃壒妯℃澘鈥?,
-  '浜у搧鐮斿彂鍔╂墜锛氬尮閰嶄笟鍔℃ā鏉裤€屼釜浜轰富璧勮垂銆嶏紝鍔犺浇閰嶇疆瀛楁锛?涓猅ab銆?0涓猻ection锛?,
-  '鏍规嵁鏂规A棰勫～閰嶇疆锛氭祦閲?0GB鈫?0GB銆佽棰戞潈鐩?鈫?锛堣吘璁?鐖卞鑹猴級锛屾湭鍙樺瓧娈垫爣璁?澶嶇敤"',
-  '鐢熸垚宸ュ崟缂栧彿锛歐O20260812001',
-  '娴嬬畻鏉冪泭鎴愭湰锛?.0鍏冣啋5.8鍏?鎴?鏈堬紝ROI=5.75锛堣揪鏍囷級',
-  '鑷姩鎵撳紑鏂板椁愰厤缃伐浣滃彴',
+  '解析用户指令：启动产品优化，确认方案A',
+  '调用产品查询助手，检索畅享59元套餐（SP-2024-0590）全量画像—',
+  '产品查询助手返回：在置86万用户、月收入5,046万、合约用户1.2一',
+  '校验互斥规则：新商品"畅享59元青春版"与现有商品SP-2024-0590互斥，可并行销售"，',
+  '调用产品研发助手，拉取商品配置规则与资费审批模板—',
+  '产品研发助手：匹配业务模板「个人主资费」，加载配置字段，"个Tab、0个section，',
+  '根据方案A预填配置：流量0GB→0GB、视频权益"→"（腾订"爱奇艺），未变字段标订"复用"',
+  '生成工单编号：WO20260812001',
+  '测算权益成本，/.0元→5.8元/户"月，ROI=5.75（达标）',
+  '自动打开新套餐配置工作台',
 ]
 
-// ============ 绗?杞姪鎵嬪洖澶嶆枃妗?============
+// ============ 第1轮助手回复文案============
 function buildLaunchSummary() {
   return [
-    '### 宸插惎鍔ㄤ骇鍝佷紭鍖?路 鏂规A',
+    '### 已启动产品优化"· 方案A',
     '',
-    '> 鏀跺埌鎸囦护锛屾鍦ㄦ墽琛屾柟妗圓锛堟柊鍟嗗搧绛栧垝锛夈€傚凡璋冪敤浜у搧鏌ヨ鍔╂墜鍜屼骇鍝佺爺鍙戝姪鎵嬪畬鎴愬墠鏈熷噯澶囷紝閰嶇疆宸ヤ綔鍙板凡鑷姩鎵撳紑銆?,
+    '> 收到指令，正在执行方案A（新商品策划）。已调用产品查询助手和产品研发助手完成前期准备，配置工作台已自动打开、',
     '',
-    '**鎵ц鎽樿**',
+    '**执行摘要**',
     '',
-    '| 姝ラ | 鍔ㄤ綔 | 缁撴灉 |',
+    '| 步骤 | 动作 | 结果 |',
     '| ---- | ---- | ---- |',
-    '| 1 | 璋冪敤浜у搧鏌ヨ鍔╂墜 | 妫€绱㈢晠浜?9鍏冨椁愬叏閲忕敾鍍忥細鍦ㄧ綉86涓囩敤鎴枫€佹湀鏀跺叆5,046涓囥€佸悎绾︾敤鎴?1.2涓?鉁?|',
-    '| 2 | 鏍￠獙浜掓枼瑙勫垯 | 鏂板晢鍝?鐣呬韩59鍏冮潚鏄ョ増"涓嶴P-2024-0590浜掓枼锛屽彲骞惰閿€鍞紝瀛橀噺鐢ㄦ埛涓嶅彈褰卞搷 鉁?|',
-    '| 3 | 璋冪敤浜у搧鐮斿彂鍔╂墜 | 鍖归厤涓氬姟妯℃澘銆屼釜浜轰富璧勮垂銆嶏紝鍔犺浇5涓猅ab銆?0涓猻ection閰嶇疆瀛楁 鉁?|',
-    '| 4 | 棰勫～鏂规A閰嶇疆 | 娴侀噺30GB鈫?*40GB**銆佽棰戞潈鐩?鈫?*2**锛堣吘璁?鐖卞鑹猴級銆佹湀璐?9鍏冧笉鍙?鉁?|',
-    '| 5 | 鐢熸垚宸ュ崟 | WO20260812001锛屾柊鍟嗗搧鍚嶇О"鐣呬韩59鍏冮潚鏄ョ増" 鉁?|',
-    '| 6 | 鏉冪泭鎴愭湰娴嬬畻 | 3.0鍏冣啋5.8鍏?鎴?鏈堬紝ROI=5.75锛?3.0闂ㄦ锛岃揪鏍囷級鉁?|',
+    '| 1 | 调用产品查询助手 | 检索畅享59元套餐全量画像：在网86万用户、月收入5,046万、合约用户1.2一"， |',
+    '| 2 | 校验互斥规则 | 新商品"畅享59元青春版"与SP-2024-0590互斥，可并行销售，存量用户不受影响 ， |',
+    '| 3 | 调用产品研发助手 | 匹配业务模板「个人主资费」，加载5个Tab、0个section配置字段 ， |',
+    '| 4 | 预填方案A配置 | 流量30GB→"*40GB**、视频权益"→"*2**（腾订"爱奇艺）、月费59元不发"， |',
+    '| 5 | 生成工单 | WO20260812001，新商品名称"畅享59元青春版" ， |',
+    '| 6 | 权益成本测算 | 3.0元→5.8元/户"月，ROI=5.75，3.0门槛，达标）， |',
     '',
-    '**宸查濉殑鍏抽敭鍙樻洿瀛楁**',
-    '- 璧勮垂鍚嶇О锛氱晠浜?9鍏冨椁?鈫?**鐣呬韩59鍏冮潚鏄ョ増**',
-    '- 娴侀噺璧勬簮锛?0GB 鈫?**40GB**锛堥€氱敤娴侀噺锛屽彲缁撹浆娆℃湀锛?,
-    '- 鍖呭惈璧勬簮锛?0G娴侀噺+100鍒嗛挓璇煶+鑵捐瑙嗛 鈫?**40G娴侀噺+100鍒嗛挓璇煶+鑵捐瑙嗛+鐖卞鑹?*',
-    '- 鍏朵粬鏉冪泭锛氱敓鏃ョ壒鏉冦€佹祦閲忕粨杞€佽吘璁棰戞湀鍗?鈫?**+鐖卞鑹烘湀鍗?*',
-    '- 鏈堢鍥哄畾璐癸細59.00鍏冿紙涓嶅彉锛?,
-    '- 浼樻儬绛栫暐锛氭柊鐢ㄦ埛棣栨湀鍗婁环锛?9.50鍏冿級',
+    '**已预填的关键变更字段**',
+    '- 资费名称：畅享59元套餐"→"**畅享59元青春版**',
+    '- 流量资源，0GB →"**40GB**（通用流量，可结转次月，',
+    '- 包含资源，0G流量+100分钟语音+腾讯视频 →"**40G流量+100分钟语音+腾讯视频+爱奇艺"*',
+    '- 其他权益：生日特权、流量结转、腾讯视频月单"→"**+爱奇艺月单"*',
+    '- 月租固定费：59.00元（不变，',
+    '- 优惠策略：新用户首月半价，9.50元）',
     '',
-    '> 鍙充晶宸ヤ綔鍙板凡鎵撳紑銆傚瓧娈垫爣绛捐鏄庯細**AI鎺ㄨ崘**=鍩轰簬鏂规鏂板鎴栦慨鏀圭殑鍊硷紙鎮诞鍙煡鐪嬫帹鑽愬師鍥狅級锛?*澶嶇敤**=浠庡師濂楅缁ф壙鏈彉鏇寸殑鍊笺€?,
+    '> 右侧工作台已打开。字段标签说明：**AI推荐**=基于方案新增或修改的值（悬浮可查看推荐原因），"*复用**=从原套餐继承未变更的值、',
     '',
-    '璇锋鏌ラ濉唴瀹瑰苟瀹屾垚閰嶇疆銆傚彲鐐瑰嚮銆屾櫤鑳界ń鏍搞€嶈繘琛屾彁浜ゅ墠鏍￠獙銆?,
+    '请检查预填内容并完成配置。可点击「智能稽核」进行提交前校验、',
   ].join('\n')
 }
 
-// ============ 娴嬭瘯鎶ュ憡鏁版嵁锛堟祴璇曚汉鍛樹笂浼犲悗鑷姩瑙ｆ瀽锛?============
-// 鍒濆 uploaded=false锛岃〃绀烘祴璇曚汉鍛樺皻鏈笂浼狅紱涓婁紶鍚庣疆涓?true锛岄厤缃汉鍛樺嵆鍙煡鐪?
+// ============ 测试报告数据（测试人员上传后自动解析，============
+// 初始 uploaded=false，表示测试人员尚未上传；上传后置一 true，配置人员即可查看。
 const testReport = reactive({
   uploaded: false,
   uploadedAt: null,
   reportId: 'TR20260813001',
   workOrderId: 'WO20260812001',
-  productName: '鐣呬韩59鍏冮潚鏄ョ増',
-  tester: '寮犳槑',
+  productName: '畅享59元青春版',
+  tester: '张明',
   testDate: '2026-08-13',
   status: 'passed', // passed | failed
-  testMethod: '鏂颁笟鍔℃祴璇曪紙鍚浐璐规牳鏌ャ€佽璐规牳鏌ャ€佹彁閱掓牳鏌ャ€佸伐鍗曟牳鏌ワ級',
+  testMethod: '新业务测试（含固费核查、计费核查、提醒核查、工单核查）',
   acceptNumber: '13920260813',
   sections: [
     {
       key: 'fixedFee',
-      title: '鍥鸿垂鏍告煡',
+      title: '固费核查',
       status: 'passed',
       items: [
-        { label: '鏈堢鍥哄畾璐?, expected: '59.00鍏?, actual: '59.00鍏?, result: 'pass' },
-        { label: '棣栨湀浼樻儬璐?, expected: '29.50鍏冿紙鏂扮敤鎴烽鏈堝崐浠凤級', actual: '29.50鍏?, result: 'pass' },
-        { label: '鍥哄畾璐圭敓鏁堟椂闂?, expected: '璁㈣喘娆℃湀1鏃ョ敓鏁?, actual: '娆℃湀1鏃ョ敓鏁?, result: 'pass' },
+        { label: '月租固定费', expected: '59.00元', actual: '59.00元', result: 'pass' },
+        { label: '首月优惠费', expected: '29.50元（新用户首月半价）', actual: '29.50元', result: 'pass' },
+        { label: '固定费生效时间', expected: '订购次月1日生效', actual: '次月1日生效', result: 'pass' },
       ],
     },
     {
       key: 'billing',
-      title: '璁¤垂鏍告煡',
+      title: '计费核查',
       status: 'passed',
       items: [
-        { label: '娴侀噺璁¤垂', expected: '40GB鍐呬笉棰濆璁¤垂锛岃秴鍑哄悗1鍏?GB鑷姩鍙犲姞', actual: '40GB鍐呮甯革紝瓒呭嚭鎸?鍏?GB鍙犲姞', result: 'pass' },
-        { label: '璇煶璁¤垂', expected: '100鍒嗛挓鍐呭厤璐癸紝瓒呭嚭0.15鍏?鍒嗛挓', actual: '100鍒嗛挓鍐呭厤璐癸紝瓒呭嚭0.15鍏?鍒嗛挓', result: 'pass' },
-        { label: '鏉冪泭璁¤垂', expected: '鑵捐瑙嗛+鐖卞鑹烘湀鍗★紝涓嶉澶栨墸璐?, actual: '鏉冪泭姝ｅ父涓嬪彂锛屾棤棰濆鎵ｈ垂', result: 'pass' },
-        { label: '娴侀噺缁撹浆', expected: '褰撴湀鍓╀綑娴侀噺缁撹浆鑷虫鏈堬紝娆℃湀搴曟竻闆?, actual: '缁撹浆瑙勫垯姝ｇ‘', result: 'pass' },
+        { label: '流量计费', expected: '40GB内不额外计费，超出后1元/GB自动叠加', actual: '40GB内正常，超出按"元/GB叠加', result: 'pass' },
+        { label: '语音计费', expected: '100分钟内免费，超出0.15元/分钟', actual: '100分钟内免费，超出0.15元/分钟', result: 'pass' },
+        { label: '权益计费', expected: '腾讯视频+爱奇艺月卡，不额外扣费', actual: '权益正常下发，无额外扣费', result: 'pass' },
+        { label: '流量结转', expected: '当月剩余流量结转至次月，次月底清雀', actual: '结转规则正确', result: 'pass' },
       ],
     },
     {
       key: 'reminder',
-      title: '鎻愰啋鏍告煡',
+      title: '提醒核查',
       status: 'passed',
       items: [
-        { label: '娴侀噺浣跨敤鎻愰啋', expected: '浣跨敤杈?0%銆?5%鏃朵笅鍙戠煭淇℃彁閱?, actual: '80%鍜?5%鍧囨甯镐笅鍙?, result: 'pass' },
-        { label: '濂楅璁㈣喘鎻愰啋', expected: '璁㈣喘鎴愬姛鍚庝笅鍙戞杩庣煭淇?, actual: '娆㈣繋鐭俊姝ｅ父涓嬪彂', result: 'pass' },
-        { label: '鏉冪泭棰嗗彇鎻愰啋', expected: '鏉冪泭鍒拌处鍚庝笅鍙戦鍙栭€氱煡', actual: '閫氱煡姝ｅ父涓嬪彂', result: 'pass' },
+        { label: '流量使用提醒', expected: '使用达0%、5%时下发短信提醒', actual: '80%和5%均正常下发', result: 'pass' },
+        { label: '套餐订购提醒', expected: '订购成功后下发欢迎短信', actual: '欢迎短信正常下发', result: 'pass' },
+        { label: '权益领取提醒', expected: '权益到账后下发领取通知', actual: '通知正常下发', result: 'pass' },
       ],
     },
     {
       key: 'workOrder',
-      title: '宸ュ崟鏍告煡',
+      title: '工单核查',
       status: 'passed',
       items: [
-        { label: '璁㈣喘宸ュ崟', expected: '鐢熸垚璁㈣喘宸ュ崟锛岀姸鎬佹甯告祦杞?, actual: '宸ュ崟鐢熸垚涓旂姸鎬佹纭?, result: 'pass' },
-        { label: '鍙樻洿宸ュ崟', expected: '鑰佺敤鎴峰彉鏇村悗鐢熸垚鍙樻洿宸ュ崟', actual: '鍙樻洿宸ュ崟姝ｅ父', result: 'pass' },
-        { label: '閫€璁㈠伐鍗?, expected: '閫€璁㈢敓鎴愰€€璁㈠伐鍗曪紝娆℃湀鐢熸晥', actual: '閫€璁㈠伐鍗曟纭紝娆℃湀鐢熸晥', result: 'pass' },
+        { label: '订购工单', expected: '生成订购工单，状态正常流转', actual: '工单生成且状态正础', result: 'pass' },
+        { label: '变更工单', expected: '老用户变更后生成变更工单', actual: '变更工单正常', result: 'pass' },
+        { label: '退订工单', expected: '退订生成退订工单，次月生效', actual: '退订工单正确，次月生效', result: 'pass' },
       ],
     },
   ],
-  conclusion: '閫氳繃',
-  conclusionDesc: '璇ヨ祫璐规柟妗堝悇椤规牳鏌ュ潎绗﹀悎棰勬湡锛屾祴璇曢€氳繃锛屽彲杩涘叆澶囨鍏ず鐜妭銆?,
+  conclusion: '通过',
+  conclusionDesc: '该资费方案各项核查均符合预期，测试通过，可进入备案公示环节、',
 })
 
 /**
- * 澶囨鍏ず鏁版嵁
+ * 备案公示数据
  *
- * started: 鏄惁宸插彂璧峰妗堝叕绀猴紙鐐瑰嚮"鍙戣捣澶囨鍏ず"鍚庝负 true锛?
- * submitted: 鏄惁宸叉彁浜ゅ妗堬紙鐐瑰嚮"鎻愪氦澶囨"鍚庝负 true锛屾彁浜ゅ悗澶囨閫氳繃 鈫?鍙笂鏋堕攢鍞級
+ * started: 是否已发起备案公示（点击"发起备案公示"后为 true，
+ * submitted: 是否已提交备案（点击"提交备案"后为 true，提交后备案通过 → 可上架销售）
  */
 const filing = reactive({
   started: false,
@@ -793,362 +793,362 @@ const filing = reactive({
   approvedAt: null,
   filingId: 'FL20260814001',
   workOrderId: 'WO20260812001',
-  productName: '鐣呬韩59鍏冮潚鏄ョ増',
-  template: '涓汉涓昏祫璐?,
+  productName: '畅享59元青春版',
+  template: '个人主资费',
   productCode: 'SP20240590Q',
-  applicant: '浜у搧閰嶇疆涓撳憳',
+  applicant: '产品配置专员',
   applyDate: '2026-08-14',
-  // 澶囨淇℃伅
+  // 备案信息
   info: {
-    filingOrg: '浜у搧鐮斿彂涓績',
-    filingOfficer: '鏉庤姵',
+    filingOrg: '产品研发中心',
+    filingOfficer: '李芳',
     filingDate: '2026-08-14',
     effectiveDate: '2026-09-01',
-    expireDate: '闀挎湡鏈夋晥',
+    expireDate: '长期有效',
   },
-  // 澶囨鏍告煡椤?
+  // 备案核查项。
   checks: [
-    { label: '璧勮垂鍚堣鎬?, status: 'passed', desc: '绗﹀悎銆婅祫璐圭鐞嗗姙娉曘€嬬浉鍏宠瀹氾紝鏃犺繚瑙勯」' },
-    { label: '鍏ず鍐呭瀹屾暣鎬?, status: 'passed', desc: '璧勮垂鍚嶇О銆佽祫璐规爣鍑嗐€佺敓鏁堟椂闂寸瓑鍏ず淇℃伅瀹屾暣' },
-    { label: '娴嬭瘯鎶ュ憡鏍搁攢', status: 'passed', desc: '娴嬭瘯鎶ュ憡 TR20260813001 宸查€氳繃锛屽厑璁稿妗? },
-    { label: '瀹℃壒閾惧畬鏁存€?, status: 'passed', desc: '棰勮瀹℃壒銆佹祴璇曞鏍稿鎵归摼瀹屾暣' },
+    { label: '资费合规态', status: 'passed', desc: '符合《资费管理办法》相关规定，无违规项' },
+    { label: '公示内容完整态', status: 'passed', desc: '资费名称、资费标准、生效时间等公示信息完整' },
+    { label: '测试报告核销', status: 'passed', desc: '测试报告 TR20260813001 已通过，允许备案' },
+    { label: '审批链完整态', status: 'passed', desc: '预览审批、测试审核审批链完整' },
   ],
-  // 鍏ず棰勮
+  // 公示预览
   notice: {
-    title: '鍏充簬"鐣呬韩59鍏冮潚鏄ョ増"璧勮垂鏂规澶囨鍏ず',
-    target: '鍏ㄤ綋鐢ㄦ埛',
-    content: '鐜板皢"鐣呬韩59鍏冮潚鏄ョ増"璧勮垂鏂规锛堣祫璐逛唬鐮侊細SP20240590Q锛変簣浠ュ妗堝叕绀恒€傚叕绀烘湡婊′笖鏃犲紓璁悗锛岃璧勮垂鏂规灏嗘寮忎笂鏋堕攢鍞€?,
-    notifyChannels: '钀ヤ笟鍘呭叕绀烘爮銆佺綉涓婅惀涓氬巺銆佹帉涓婅惀涓氬巺',
+    title: '关于"畅享59元青春版"资费方案备案公示',
+    target: '全体用户',
+    content: '现将"畅享59元青春版"资费方案（资费代码：SP20240590Q）予以备案公示。公示期满且无异议后，该资费方案将正式上架销售、',
+    notifyChannels: '营业厅公示栏、网上营业厅、掌上营业厅',
     startDate: '2026-08-15',
     endDate: '2026-08-29',
-    duration: '15澶?,
+    duration: '15复',
   },
-  // 鍏ㄩ噺瑙嗗浘瀛楁锛坈ategory: common=鍏辨湁 / filing=澶囨鐗规湁 / public=鍏ず鐗规湁锛?
+  // 全量视图字段（category: common=共有 / filing=备案特有 / public=公示特有，
   sections: [
     {
-      title: '澶囨鍩烘湰淇℃伅',
+      title: '备案基本信息',
       previewOnly: true,
       fields: [
-        { label: '澶囨鍏ず娴佺▼', value: '鍏堝妗堝啀鍏ず', category: 'filing' },
-        { label: '鍏ず绯诲垪ID', value: '璧勮垂ID', category: 'filing' },
-        { label: '鍏ず绯诲垪鍚嶇О', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
-        { label: '鏂规缂栧彿', value: 'XNBP0001', category: 'filing' },
+        { label: '备案公示流程', value: '先备案再公示', category: 'filing' },
+        { label: '公示系列ID', value: '资费ID', category: 'filing' },
+        { label: '公示系列名称', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '方案编号', value: 'XNBP0001', category: 'filing' },
       ],
     },
     {
-      title: '濂楅鍩烘湰淇℃伅',
+      title: '套餐基本信息',
       previewOnly: false,
       fields: [
         { label: 'BOSSID', value: launchProductConfig.baseInfo.prodCode.value, category: 'filing' },
-        { label: '涓€绾у垎绫?, value: '鍏紬', category: 'filing' },
-        { label: '浜岀骇鍒嗙被', value: '濂楅', category: 'filing' },
-        { label: '鍚嶇О', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
-        { label: '璧勮垂灞炴€?, value: '鐪佸唴', category: 'filing' },
-        { label: '鏄惁鑷€夊椁?, value: '鏄?, category: 'filing' },
-        { label: '妯＄粍鍒嗙被鍚嶇О', value: '鏃?, category: 'filing' },
-        { label: '鏄惁閫氫俊绫?, value: launchProductConfig.baseInfo.isComm.value === 'yes' ? '鏄? : '鍚?, category: 'filing' },
-        { label: '鏄惁涓绘暟鎹?, value: '鍚?, category: 'filing' },
-        { label: '灞曠ず椤哄簭鏉冮噸', value: '100', category: 'filing' },
-        { label: '閫傜敤鑼冨洿', value: '閫氳繃鍓嶉」闄愬埗鐢熸垚', category: 'common' },
-        { label: '璐拱閾炬帴', value: 'https://xxx.com/buy', category: 'filing' },
-        { label: '璧勮垂鍗曚綅', value: '鍏?鏈?, category: 'filing' },
+        { label: '一级分类', value: '公众', category: 'filing' },
+        { label: '二级分类', value: '套餐', category: 'filing' },
+        { label: '名称', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '资费属性', value: '省内', category: 'filing' },
+        { label: '是否自选套餐', value: '是', category: 'filing' },
+        { label: '模组分类名称', value: '日', category: 'filing' },
+        { label: '是否通信类', value: launchProductConfig.baseInfo.isComm.value === 'yes' ? '是' : '同', category: 'filing' },
+        { label: '是否主数据', value: '同', category: 'filing' },
+        { label: '展示顺序权重', value: '100', category: 'filing' },
+        { label: '适用范围', value: '通过前项限制生成', category: 'common' },
+        { label: '购买链接', value: 'https://xxx.com/buy', category: 'filing' },
+        { label: '资费单位', value: '元/月', category: 'filing' },
       ],
     },
     {
-      title: '鍩虹淇℃伅',
+      title: '基础信息',
       previewOnly: false,
       fields: [
-        { label: '璧勮垂鏍囧噯', value: '59鍏?鏈?, category: 'common' },
-        { label: '璧勮垂绫诲瀷', value: '濂楅', category: 'public' },
-        { label: '鏂规缂栧彿', value: 'AI203935', category: 'public' },
-        { label: '涓婄嚎鏃ユ湡', value: '20260901', category: 'common' },
-        { label: '涓嬬嚎鏃ユ湡', value: '20991231', category: 'common' },
-        { label: '鏈夋晥鏈熼檺', value: '36涓湀', category: 'common' },
-        { label: '鍚堢害鏈?鍦ㄧ綉瑕佹眰)', value: '12涓湀', category: 'common' },
-        { label: '閫傜敤鍦板尯', value: '鍏ㄧ渷锛堝畨寰斤級', category: 'common' },
-        { label: '閿€鍞笭閬?, value: '鑷湁钀ヤ笟鍘?缃戜笂钀ヤ笟鍘?, category: 'common' },
-        { label: '閫€璁㈡柟寮?, value: '绾夸笅钀ヤ笟鍘?, category: 'common' },
-        { label: '杩濈害璐ｄ换', value: '鍚堢害鏈熷唴閫€璁㈤渶缂寸撼杩濈害閲?, category: 'common' },
+        { label: '资费标准', value: '59元/月', category: 'common' },
+        { label: '资费类型', value: '套餐', category: 'public' },
+        { label: '方案编号', value: 'AI203935', category: 'public' },
+        { label: '上线日期', value: '20260901', category: 'common' },
+        { label: '下线日期', value: '20991231', category: 'common' },
+        { label: '有效期限', value: '36个月', category: 'common' },
+        { label: '合约月"在网要求)', value: '12个月', category: 'common' },
+        { label: '适用地区', value: '全省（安徽）', category: 'common' },
+        { label: '销售渠道', value: '自有营业原"网上营业原', category: 'common' },
+        { label: '退订方式', value: '线下营业原', category: 'common' },
+        { label: '违约责任', value: '合约期内退订需缴纳违约量', category: 'common' },
       ],
     },
     {
-      title: '璧勬簮淇℃伅',
+      title: '资源信息',
       previewOnly: false,
       fields: [
-        { label: '鍥藉唴閫氳瘽', value: '100鍒嗛挓', category: 'common' },
-        { label: '鍥藉唴閫氱敤娴侀噺', value: '40GB', category: 'common' },
-        { label: '瀹氬悜娴侀噺', value: '100GB', category: 'common' },
-        { label: '鐭俊', value: '100鏉?, category: 'common' },
-        { label: '鍥介檯閫氳瘽(鍥介檯闀块€旈€氳瘽閲?', value: '0鍒嗛挓', category: 'common' },
-        { label: '娓境鍙版祦閲?, value: '0GB', category: 'filing' },
-        { label: 'IPTV(绉诲姩楂樻竻)', value: '鏃?, category: 'common' },
-        { label: '瀹藉甫', value: '鏃?, category: 'common' },
-        { label: '鏉冪泭', value: '鑵捐瑙嗛+鐖卞鑹烘湀鍗?, category: 'common' },
+        { label: '国内通话', value: '100分钟', category: 'common' },
+        { label: '国内通用流量', value: '40GB', category: 'common' },
+        { label: '定向流量', value: '100GB', category: 'common' },
+        { label: '短信', value: '100权', category: 'common' },
+        { label: '国际通话(国际长途通话量', value: '0分钟', category: 'common' },
+        { label: '港澳台流量', value: '0GB', category: 'filing' },
+        { label: 'IPTV(移动高清)', value: '日', category: 'common' },
+        { label: '宽带', value: '日', category: 'common' },
+        { label: '权益', value: '腾讯视频+爱奇艺月单', category: 'common' },
       ],
     },
     {
-      title: '璇存槑淇℃伅',
+      title: '说明信息',
       previewOnly: false,
       fields: [
-        { label: '瓒呭嚭璧勮垂璇存槑', value: '鍥藉唴閫氳瘽瓒呭嚭鍚?.15鍏?鍒嗛挓锛屾祦閲忔寜0.29鍏?MB', category: 'common' },
-        { label: '鍏朵粬鏈嶅姟鍐呭', value: '鍚潵鐢垫樉绀恒€佸僵閾冪瓑鍩虹鏈嶅姟', category: 'common' },
-        { label: '鍏朵粬璧勮垂璇存槑', value: '鏃?, category: 'public' },
-        { label: '鍏朵粬璇存槑', value: '鏃?, category: 'common' },
+        { label: '超出资费说明', value: '国内通话超出同/.15元/分钟，流量按0.29元/MB', category: 'common' },
+        { label: '其他服务内容', value: '含来电显示、彩铃等基础服务', category: 'common' },
+        { label: '其他资费说明', value: '日', category: 'public' },
+        { label: '其他说明', value: '日', category: 'common' },
       ],
     },
   ],
 })
 
 /**
- * 閿€鍞笭閬?store 鏁版嵁
+ * 销售渠道 store 数据
  */
 const salesChannel = reactive({
-  // 鏄惁宸茶繘鍏ユ笭閬撻€夋嫨闃舵锛堝妗堥€氳繃鍚庝负 true锛?
+  // 是否已进入渠道选择阶段（备案通过后为 true，
   available: false,
-  // 娓犻亾閫夋嫨鏄惁宸叉彁浜わ紙鎻愪氦鍚庢祦绋嬭繘鍏ヤ笂鏋堕攢鍞級
+  // 渠道选择是否已提交（提交后流程进入上架销售）
   submitted: false,
-  // 鍙敤娓犻亾鍒楄〃
+  // 可用渠道列表
   list: [
-    { key: 'own_offline', label: '鑷湁钀ヤ笟鍘?, desc: '瀹炰綋钀ヤ笟鍘呯嚎涓嬪彈鐞? },
-    { key: 'own_online', label: '缃戜笂钀ヤ笟鍘?, desc: '瀹樻柟缃戜笂钀ヤ笟鍘呭湪绾胯璐? },
-    { key: 'app', label: '鎺屼笂钀ヤ笟鍘匒PP', desc: '鎵嬫満钀ヤ笟鍘呭鎴风' },
-    { key: 'customer_service', label: '10086瀹㈡湇鐑嚎', desc: '鐢佃瘽瀹㈡湇浜哄憳鍙楃悊' },
-    { key: 'channel_coop', label: '绀句細鍚堜綔娓犻亾', desc: '绗笁鏂瑰悎浣滀唬鐞嗗晢' },
+    { key: 'own_offline', label: '自有营业原', desc: '实体营业厅线下受理' },
+    { key: 'own_online', label: '网上营业原', desc: '官方网上营业厅在线订费' },
+    { key: 'app', label: '掌上营业厅APP', desc: '手机营业厅客户端' },
+    { key: 'customer_service', label: '10086客服热线', desc: '电话客服人员受理' },
+    { key: 'channel_coop', label: '社会合作渠道', desc: '第三方合作代理商' },
   ],
-  // 宸查€夋笭閬?
+  // 已选渠道。
   selected: [],
-  // 榛樿鍕鹃€夛紙鎺ㄨ崘锛?
+  // 默认勾选（推荐，
   defaultSelected: ['own_online', 'app'],
 })
 
   /* ===== campusDraftData ===== */
   /**
- * campusDraftData - 鐣呬韩鏍″洯鍗?路 瀵硅瘽寮忛厤缃暟鎹?
+ * campusDraftData - 畅享校园单 · 对话式配置数据。
  *
- * 鍦烘櫙锛氭柊寤轰竴妗ｅ叏鏂板椁愩€岀晠浜牎鍥崱59鍏冨椁愩€嶏紝**鏃犱换浣曞師濂楅鍙弬鑰?*銆?
- * 鍥犳鏈満鏅墍鏈夊瓧娈电殑 AI 鎺ㄨ崘鐞嗙敱鍧囧熀浜庛€岀敤鎴烽渶姹?+ 涓氬姟妯℃澘銆嶇敓鎴愶紝
- * 鍒绘剰瑙勯伩"娌跨敤鍘熷椁愬晢鍝佸睘鎬у垎绫?/ 澶嶇敤鍘熷椁怷X"绛夎〃杩?鈥斺€?杩欑被琛ㄨ堪鍙湁鍦?
- * 銆屽瓨閲忓晢鍝佸鍒堕厤缃?/ 鍚姩浜у搧浼樺寲銆嶈繖绫荤‘鏈夊師濂楅鍙傝€冪殑鍦烘櫙鎵嶅悎閫傘€?
+ * 场景：新建一档全新套餐「畅享校园卡59元套餐」，**无任何原套餐可参考**。
+ * 因此本场景所有字段的 AI 推荐理由均基于「用户需求 + 业务模板」生成，
+ * 刻意规避"沿用原套餐商品属性分类"/ 复用原套餐XX"等表述 —— 这类表述只有在
+ * 「存量商品复制配置/ 启动产品优化」这类确有原套餐参考的场景才合适。
  *
- * 瀛楁鏍囩瑙勫垯锛堜笌 launchOptimizeData.js 涓€鑷达級锛?
- * - tag: 'ai'     鈫?AI鎺ㄨ崘锛堜緷鎹敤鎴烽渶姹傛垨涓氬姟妯℃澘鐢熸垚锛岄檮 tagReason 璇存槑鎺ㄨ崘鍘熷洜锛?
- * - tag: 'reuse'  鈫?寤鸿鐢?AI 鎸変笟鍔℃ā鏉跨洿鎺ヨˉ鍏紙瀵硅瘽寮?鎵归噺鍦烘櫙涓嬫覆鏌撲负"AI鎺ㄨ崘"锛屼笉鏄剧ず"澶嶇敤"锛?
- * - tag: null     鈫?鏃犳爣绛撅紙甯歌瀛楁锛?
+ * 字段标签规则（与 launchOptimizeData.js 一致），
+ * - tag: 'ai'     → AI推荐（依据用户需求或业务模板生成，附 tagReason 说明推荐原因，
+ * - tag: 'reuse'  → 建议用 AI 按业务模板直接补全（对话式批量场景下渲染为"AI推荐"，不显示"复用"，
+ * - tag: null     → 无标签（常规字段，
  *
- * 缁撴瀯瀵归綈 launchOptimizeData锛歱roductInfo / baseInfo / resourceSections /
- * marketingSections / salesSections / previewSections銆?
+ * 结构对齐 launchOptimizeData：productInfo / baseInfo / resourceSections /
+ * marketingSections / salesSections / previewSections。
  *
- * 娉細鎵撳紑鏌愪釜鎵归噺鍟嗗搧宸ヤ綔鍙版椂锛岃〃鍗曞€间互璇ュ晢鍝?parsedFields 涓哄噯锛屾湰 schema 鐨勯粯璁ゅ€间粎浣?
- * 鍏滃簳/AI鎺ㄨ崘寤鸿灞曠ず锛堟澶勪互鏂版柟妗堝叆闂ㄦ。 59 鍏冧负鍑嗭級銆?
+ * 注：打开某个批量商品工作台时，表单值以该商品 parsedFields 为准，本 schema 的默认值仅作。
+ * 兜底/AI推荐建议展示（此处以新方案入门档 59 元为准）。
  */
 
-// ============ 鐣呬韩鏍″洯鍗?路 瀵硅瘽寮忛厤缃殑浜у搧閰嶇疆鏁版嵁 ============
+// ============ 畅享校园单 · 对话式配置的产品配置数据 ============
 const campusProductConfig = {
-  // 鍟嗗搧鍩烘湰淇℃伅
+  // 商品基本信息
   productInfo: reactive({
     workOrderId: '',
-    prodPrcName: '鐣呬韩鏍″洯鍗?9鍏冨椁?,
+    prodPrcName: '畅享校园单9元套餐',
     template: 'personMainPrc',
-    templateLabel: '涓汉涓昏祫璐?,
+    templateLabel: '个人主资费',
     status: 'draft',
     auditStatus: 'pending',
   }),
 
-  // 鍩虹淇℃伅 Tab
+  // 基础信息 Tab
   baseInfo: {
     prodAttr: {
       value: 'personMainPrc',
       tag: 'ai',
-      tagReason: '渚濇嵁浜у搧瀹氫綅鍒ゅ畾涓洪潰鍚戝鐢熶釜浜虹殑涓昏祫璐瑰晢鍝侊紝閫夋嫨"涓汉涓昏祫璐?灞炴€?,
+      tagReason: '依据产品定位判定为面向学生个人的主资费商品，选择"个人主资费"属性',
       required: true,
-      label: '鍟嗗搧灞炴€?,
+      label: '商品属性',
       options: [
-        { value: 'personMainPrc', label: '涓汉涓昏祫璐? },
-        { value: 'personOptionalPrc', label: '涓汉鍙€夊寘' },
-        { value: 'familyMainPrc', label: '瀹跺涵涓昏祫璐? },
-        { value: 'enterprisePrc', label: '鏀夸紒璧勮垂' },
+        { value: 'personMainPrc', label: '个人主资费' },
+        { value: 'personOptionalPrc', label: '个人可选包' },
+        { value: 'familyMainPrc', label: '家庭主资费' },
+        { value: 'enterprisePrc', label: '政企资费' },
       ],
     },
     prodCode: {
       value: 'SP20260828001',
       tag: 'ai',
-      tagReason: '鎸夊晢鍝佺紪鐮佽鍒欎负鏂板晢鍝佺敓鎴愬敮涓€缂栫爜',
-      label: '鍟嗗搧缂栫爜',
+      tagReason: '按商品编码规则为新商品生成唯一编码',
+      label: '商品编码',
     },
     prodName: {
-      value: '鐣呬韩鏍″洯鍗?9鍏冨椁?,
+      value: '畅享校园单9元套餐',
       tag: 'ai',
-      tagReason: '渚濇嵁鐢ㄦ埛鍛藉悕娌跨敤"鐣呬韩鏍″洯鍗?9鍏冨椁?浣滀负鍟嗗搧鍚嶇О锛岃创鍚堝鐢熷缇ゅ叆闂ㄦ。瀹氫綅',
+      tagReason: '依据用户命名沿用"畅享校园单9元套餐"作为商品名称，贴合学生客群入门档定位',
       required: true,
-      label: '鍟嗗搧鍚嶇О',
+      label: '商品名称',
     },
     onlineDate: {
       value: '20260901000000',
       tag: 'ai',
-      tagReason: '寤鸿9鏈?鏃ュ紑瀛﹀涓婄嚎锛屽鍚堝湪鏍″ぇ瀛︾敓鏂板鑾峰鑺傚',
+      tagReason: '建议9月1日开学季上线，契合在校大学生新客获客节奏',
       required: true,
-      label: '涓婄嚎鏃ユ湡',
+      label: '上线日期',
     },
     offlineDate: {
       value: '20991231235959',
       tag: 'ai',
-      tagReason: '鍟嗗搧闀挎湡鏈夋晥锛屾棤鍥哄畾涓嬬嚎鏃堕棿',
+      tagReason: '商品长期有效，无固定下线时间',
       required: true,
-      label: '涓嬬嚎鏃ユ湡',
+      label: '下线日期',
     },
     effRule: {
       value: 'immediate',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁わ細鏂板叆缃戠珛鍗崇敓鏁堬紝渚夸簬瀛︾敓寮€鍗″嵆鐢?,
+      tagReason: '按业务模板默认：新入网立即生效，便于学生开卡即用',
       required: true,
-      label: '鐢熸晥瑙勫垯',
+      label: '生效规则',
       options: [
-        { value: 'immediate', label: '鏂板叆缃戠珛鍗?鍙樻洿娆℃湀/缁害鎸囧畾鏃ユ湡' },
-        { value: 'nextMonth', label: '娆℃湀鐢熸晥' },
-        { value: 'appoint', label: '棰勭害鎸囧畾鏃ユ湡鐢熸晥' },
+        { value: 'immediate', label: '新入网立单"变更次月/续约指定日期' },
+        { value: 'nextMonth', label: '次月生效' },
+        { value: 'appoint', label: '预约指定日期生效' },
       ],
     },
     validity: {
       value: 'longTerm',
       tag: 'ai',
-      tagReason: '渚濇嵁鐢ㄦ埛闇€姹?鍟嗗搧闀挎湡鏈夋晥"锛岃缃负闀挎湡鏈夋晥',
+      tagReason: '依据用户需求"商品长期有效"，设置为长期有效',
       required: true,
-      label: '鍟嗗搧鏈夋晥鏈?,
+      label: '商品有效月',
       options: [
-        { value: 'longTerm', label: '闀挎湡鏈夋晥' },
-        { value: '12m', label: '12涓湀' },
-        { value: '24m', label: '24涓湀' },
-        { value: '36m', label: '36涓湀' },
+        { value: 'longTerm', label: '长期有效' },
+        { value: '12m', label: '12个月' },
+        { value: '24m', label: '24个月' },
+        { value: '36m', label: '36个月' },
       ],
     },
     displayCycle: {
       value: '3',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁ゅ睍绀哄懆鏈?骞?,
+      tagReason: '按业务模板默认展示周月/年',
       required: true,
-      label: '灞曠ず鍛ㄦ湡',
-      unit: '骞?,
+      label: '展示周期',
+      unit: '年',
     },
     cancelRule: {
       value: 'immediate',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁ら€€璁㈢珛鍗冲け鏁?,
+      tagReason: '按业务模板默认退订立即失效',
       required: true,
-      label: '閫€璁㈢敓鏁堣鍒?,
+      label: '退订生效规则',
       options: [
-        { value: 'immediate', label: '绔嬪嵆澶辨晥' },
-        { value: 'monthEnd', label: '鏈堢粓澶辨晥' },
-        { value: 'nextMonth', label: '娆℃湀澶辨晥' },
+        { value: 'immediate', label: '立即失效' },
+        { value: 'monthEnd', label: '月终失效' },
+        { value: 'nextMonth', label: '次月失效' },
       ],
     },
     refProduct: {
       value: '',
       tag: 'ai',
-      tagReason: '鏈。涓烘柊鍟嗗搧锛屾棤鍙傝€冨晢鍝?,
-      label: '鍙傝€冨晢鍝?,
+      tagReason: '本档为新商品，无参考商品',
+      label: '参考商品',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
+        { value: '', label: '请选择' },
       ],
     },
     orderTimes: {
       value: '1',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁ゆ瘡浣嶅鐢熼檺鍔?寮狅紝鍚屾椂璁㈣喘娆℃暟涓?',
+      tagReason: '按业务模板默认每位学生限动"张，同时订购次数一',
       required: true,
-      label: '鍚屾椂璁㈣喘娆℃暟',
+      label: '同时订购次数',
     },
     totalOrderTimes: {
       value: '',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁や笉闄愬埗绱璁㈣喘娆℃暟',
-      label: '绱璁㈣喘娆℃暟',
-      unit: '涓湀鍐呴檺璁?娆?,
+      tagReason: '按业务模板默认不限制累计订购次数',
+      label: '累计订购次数',
+      unit: '个月内限订1次',
     },
     uploadYijing: {
       value: 'no',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉块粯璁や笉涓婁紶涓€缁?,
-      label: '鏄惁涓婁紶涓€缁?,
+      tagReason: '按业务模板默认不上传一结',
+      label: '是否上传一结',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
     l1ProdCode: {
       value: 'APAP202608',
       tag: 'ai',
-      tagReason: '浠庝骇鍝佸簱鎸夊晢鍝佸睘鎬у尮閰嶅埌鍙敤涓€绾т骇鍝佺紪鐮?,
-      label: '涓€绾т骇鍝佺紪鐮?,
+      tagReason: '从产品库按商品属性匹配到可用一级产品编码',
+      label: '一级产品编码',
     },
     isComm: {
       value: 'yes',
       tag: 'ai',
-      tagReason: '鏈晢鍝佷负閫氫俊绫昏祫璐瑰晢鍝?,
+      tagReason: '本商品为通信类资费商品',
       required: true,
-      label: '鏄惁閫氫俊绫?,
+      label: '是否通信类',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
     applyBasis: {
-      value: '闈㈠悜鍦ㄦ牎澶у鐢熺殑鏍″洯涓撲韩璧勮垂鏂规',
+      value: '面向在校大学生的校园专享资费方案',
       tag: 'ai',
-      tagReason: '鐢虫姤渚濇嵁锛氭牎鍥缇や笓椤硅祫璐规柟妗?,
-      label: '鐢宠渚濇嵁',
+      tagReason: '申报依据：校园客群专项资费方案',
+      label: '申请依据',
     },
     allowChannel: {
       value: 'yes',
       tag: 'ai',
-      tagReason: '鎸変笟鍔℃ā鏉垮厑璁稿彈鐞嗘笭閬撳姙鐞?,
+      tagReason: '按业务模板允许受理渠道办理',
       required: true,
-      label: '鏄惁鍏佽鍙楃悊娓犻亾',
+      label: '是否允许受理渠道',
       options: [
-        { value: '', label: '璇烽€夋嫨' },
-        { value: 'yes', label: '鏄? },
-        { value: 'no', label: '鍚? },
+        { value: '', label: '请选择' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '同' },
       ],
     },
   },
 
-  // 璧勬簮閰嶇疆 Tab
+  // 资源配置 Tab
   resourceSections: [
     {
       key: 'flow-resource',
-      title: '娴侀噺璧勬簮閰嶇疆',
+      title: '流量资源配置',
       icon: 'fa-mobile-screen',
       fields: [
         {
           key: 'flowType',
-          label: '娴侀噺绫诲瀷',
+          label: '流量类型',
           value: 'general',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹?閫氱敤娴侀噺20GB"锛屾祦閲忕被鍨嬩负閫氱敤娴侀噺',
+          tagReason: '依据用户需求"通用流量20GB"，流量类型为通用流量',
           options: [
-            { value: 'general', label: '閫氱敤娴侀噺' },
-            { value: '瀹氬悜', label: '瀹氬悜娴侀噺' },
-            { value: '涓撳睘', label: '涓撳睘娴侀噺' },
+            { value: 'general', label: '通用流量' },
+            { value: '定向', label: '定向流量' },
+            { value: '专属', label: '专属流量' },
           ],
         },
         {
           key: 'flowAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '20',
           type: 'number',
           highlight: true,
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細閫氱敤娴侀噺20GB',
+          tagReason: '依据用户需求：通用流量20GB',
         },
         {
           key: 'flowUnit',
-          label: '娴侀噺鍗曚綅',
+          label: '流量单位',
           value: 'GB',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹備互GB涓哄崟浣嶈璐?,
+          tagReason: '依据用户需求以GB为单位计费',
           options: [
             { value: 'GB', label: 'GB' },
             { value: 'MB', label: 'MB' },
@@ -1156,381 +1156,381 @@ const campusProductConfig = {
         },
         {
           key: 'flowOvercharge',
-          label: '濂楀璁¤垂鏍囧噯',
-          value: '0.29鍏?MB',
+          label: '套外计费标准',
+          value: '0.29元/MB',
           type: 'text',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細瓒呭鍚?.29鍏?MB鎸夐噺璁¤垂',
+          tagReason: '依据用户需求：超套同/.29元/MB按量计费',
         },
         {
           key: 'flowCarryover',
-          label: '鏄惁缁撹浆鍒版鏈?,
+          label: '是否结转到次月',
           value: 'no',
           type: 'select',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉块粯璁ゅ綋鏈堟祦閲忎笉缁撹浆',
+          tagReason: '按业务模板默认当月流量不结转',
           options: [
-            { value: 'yes', label: '鏄? },
-            { value: 'no', label: '鍚? },
+            { value: 'yes', label: '是' },
+            { value: 'no', label: '同' },
           ],
         },
       ],
     },
     {
       key: 'voice-resource',
-      title: '璇煶璧勬簮閰嶇疆',
+      title: '语音资源配置',
       icon: 'fa-phone',
       fields: [
         {
           key: 'voiceType',
-          label: '璧勬簮绫诲瀷',
+          label: '资源类型',
           value: 'local',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹?鍥藉唴璇煶200鍒嗛挓"锛岃祫婧愮被鍨嬩负鏈湴璇煶',
+          tagReason: '依据用户需求"国内语音200分钟"，资源类型为本地语音',
           options: [
-            { value: 'local', label: '鏈湴璇煶' },
-            { value: 'longdistance', label: '闀块€旇闊? },
+            { value: 'local', label: '本地语音' },
+            { value: 'longdistance', label: '长途语音' },
           ],
         },
         {
           key: 'voiceAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '200',
           type: 'number',
-          unit: '鍒嗛挓',
+          unit: '分钟',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細鍥藉唴璇煶200鍒嗛挓',
+          tagReason: '依据用户需求：国内语音200分钟',
         },
         {
           key: 'voiceOvercharge',
-          label: '濂楀璁¤垂璐圭巼',
-          value: '0.15鍏?鍒嗛挓',
+          label: '套外计费费率',
+          value: '0.15元/分钟',
           type: 'text',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細濂楀璇煶0.15鍏?鍒嗛挓',
+          tagReason: '依据用户需求：套外语音0.15元/分钟',
         },
       ],
     },
     {
       key: 'sms-resource',
-      title: '鐭俊璧勬簮閰嶇疆',
+      title: '短信资源配置',
       icon: 'fa-comment-dots',
       fields: [
         {
           key: 'smsAmount',
-          label: '璧勬簮閲?,
+          label: '资源量',
           value: '30',
           type: 'number',
-          unit: '鏉?,
+          unit: '权',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細鐭俊30鏉?,
+          tagReason: '依据用户需求：短信30权',
         },
         {
           key: 'smsOvercharge',
-          label: '濂楀璁¤垂璐圭巼',
-          value: '0.1鍏?鏉?,
+          label: '套外计费费率',
+          value: '0.1元/权',
           type: 'text',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細濂楀鐭俊0.1鍏?鏉?,
+          tagReason: '依据用户需求：套外短信0.1元/权',
         },
       ],
     },
     {
       key: 'rights-resource',
-      title: '鏉冪泭璧勬簮閰嶇疆',
+      title: '权益资源配置',
       icon: 'fa-gift',
       fields: [
         {
           key: 'rightsTable',
-          label: '鏉冪泭鍒楄〃',
+          label: '权益列表',
           type: 'table',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傚惈"鐢熸棩鐗规潈銆佹祦閲忕粨杞?锛屽苟鍙寜妗ｄ綅琛ュ厖瑙嗛浼氬憳鏈堝崱/瀛ｅ崱绛夋潈鐩?,
+          tagReason: '依据用户需求含"生日特权、流量结转"，并可按档位补充视频会员月卡/季卡等权益',
           columns: [
             {
               key: 'rightName',
-              label: '鏉冪泭鍚嶇О',
+              label: '权益名称',
               type: 'text',
-              placeholder: '璇疯緭鍏ユ潈鐩婂悕绉?,
+              placeholder: '请输入权益名称',
             },
             {
               key: 'obtainType',
-              label: '棰嗗彇鏂瑰紡',
+              label: '领取方式',
               type: 'select',
               options: [
-                { value: 'manual', label: '鎵嬪姩棰嗗彇' },
-                { value: 'auto', label: '鑷姩鍙戞斁' },
+                { value: 'manual', label: '手动领取' },
+                { value: 'auto', label: '自动发放' },
               ],
             },
           ],
           rows: [
-            { rightName: '鐢熸棩鐗规潈', obtainType: 'auto' },
-            { rightName: '娴侀噺缁撹浆', obtainType: 'auto' },
+            { rightName: '生日特权', obtainType: 'auto' },
+            { rightName: '流量结转', obtainType: 'auto' },
           ],
         },
       ],
     },
   ],
 
-  // 钀ラ攢璧勬簮 Tab
+  // 营销资源 Tab
   marketingSections: [
     {
       key: 'monthly',
-      title: '鏈堢',
+      title: '月租',
       icon: 'fa-yen-sign',
       fields: [
         {
           key: 'chargeType',
-          label: '鏀惰垂鏂瑰紡',
+          label: '收费方式',
           value: 'monthly',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹?濂楅鍥哄畾璐?9鍏?鏈?锛屾敹璐规柟寮忎负鏈堜粯',
+          tagReason: '依据用户需求"套餐固定费59元/月"，收费方式为月付',
           options: [
-            { value: 'monthly', label: '鏈堜粯' },
-            { value: 'quarterly', label: '瀛ｄ粯' },
-            { value: 'yearly', label: '骞翠粯' },
+            { value: 'monthly', label: '月付' },
+            { value: 'quarterly', label: '季付' },
+            { value: 'yearly', label: '年付' },
           ],
         },
-        { key: 'monthlyFee', label: '濂楅鍥哄畾璐?, value: '59', type: 'number', unit: '鍏?, tag: 'ai', tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細濂楅鍥哄畾璐?9鍏?鏈? },
+        { key: 'monthlyFee', label: '套餐固定费', value: '59', type: 'number', unit: '元', tag: 'ai', tagReason: '依据用户需求：套餐固定费59元/月' },
         {
           key: 'feeSubject',
-          label: '鏀惰垂绉戠洰',
+          label: '收费科目',
           value: '001',
           type: 'select',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉垮綊涓洪€氳璐圭鐩?,
+          tagReason: '按业务模板归为通讯费科益',
           options: [
-            { value: '001', label: '閫氳璐? },
-            { value: '002', label: '澧炲€间笟鍔¤垂' },
-            { value: '003', label: '浠ｆ敹璐? },
+            { value: '001', label: '通讯费' },
+            { value: '002', label: '增值业务费' },
+            { value: '003', label: '代收费' },
           ],
         },
-        { key: 'taxRate', label: '绋庣巼', value: '6', type: 'number', unit: '%', tag: 'ai', tagReason: '鎸変笟鍔℃ā鏉块噰鐢?%绋庣巼' },
+        { key: 'taxRate', label: '税率', value: '6', type: 'number', unit: '%', tag: 'ai', tagReason: '按业务模板采用(%税率' },
       ],
     },
     {
       key: 'discount',
-      title: '璐﹀姟浼樻儬',
+      title: '账务优惠',
       icon: 'fa-tags',
       fields: [
         {
           key: 'discountCondition',
-          label: '浼樻儬鏉′欢',
+          label: '优惠条件',
           value: '',
           type: 'text',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉胯鍟嗗搧鏆傛棤璐﹀姟浼樻儬',
+          tagReason: '按业务模板该商品暂无账务优惠',
         },
         {
           key: 'discountType',
-          label: '浼樻儬绫诲瀷',
+          label: '优惠类型',
           value: 'cash',
           type: 'select',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉块粯璁ゆ棤浼樻儬绫诲瀷',
+          tagReason: '按业务模板默认无优惠类型',
           options: [
-            { value: 'cash', label: '鐜伴噾鐩村噺' },
-            { value: 'coupon', label: '浼樻儬鍒? },
-            { value: 'gift', label: '璧犲搧' },
+            { value: 'cash', label: '现金直减' },
+            { value: 'coupon', label: '优惠分' },
+            { value: 'gift', label: '赠品' },
           ],
         },
-        { key: 'discountAmount', label: '浼樻儬璐圭敤', value: '', type: 'number', unit: '鍏?, tag: 'ai', tagReason: '鎸変笟鍔℃ā鏉挎殏鏃犱紭鎯犺垂鐢? },
+        { key: 'discountAmount', label: '优惠费用', value: '', type: 'number', unit: '元', tag: 'ai', tagReason: '按业务模板暂无优惠费用' },
       ],
     },
     {
       key: 'min-consume',
-      title: '淇濆簳',
+      title: '保底',
       icon: 'fa-arrow-down-wide-short',
       fields: [
         {
           key: 'minConsumeType',
-          label: '淇濆簳鏂瑰紡',
+          label: '保底方式',
           value: 'none',
           type: 'select',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉胯鍟嗗搧鏃犱繚搴?,
+          tagReason: '按业务模板该商品无保底',
           options: [
-            { value: 'none', label: '鏃犱繚搴? },
-            { value: 'monthly', label: '鏈堜繚搴? },
-            { value: 'total', label: '鎬婚淇濆簳' },
+            { value: 'none', label: '无保底' },
+            { value: 'monthly', label: '月保底' },
+            { value: 'total', label: '总额保底' },
           ],
         },
       ],
     },
   ],
 
-  // 閿€鍞鍒?Tab
+  // 销售规则 Tab
   salesSections: [
     {
       key: 'sales-rule',
-      title: '閿€鍞鍒?,
+      title: '销售规则',
       icon: 'fa-shield-halved',
       fields: [
         {
           key: 'channelType',
-          label: '娓犻亾绫诲瀷',
+          label: '渠道类型',
           value: 'offline',
           type: 'checkbox-group',
           tag: 'ai',
-          tagReason: '渚濇嵁涓氬姟妯℃澘榛樿鍚嚎涓嬩笌绾夸笂娓犻亾',
+          tagReason: '依据业务模板默认含线下与线上渠道',
           options: [
-            { value: 'offline', label: '绾夸笅钀ヤ笟鍘? },
-            { value: 'online', label: '涓浗绉诲姩鍦ㄧ嚎娓犻亾' },
-            { value: 'local-online', label: '鐪佺Щ鍔ㄧ嚎涓婃笭閬? },
-            { value: 'cmcc-online', label: '涓浗绉诲姩绾夸笂娓犻亾' },
-            { value: 'tv', label: '鐢佃钀ヤ笟鍘? },
-            { value: 'accelerator', label: '鍔犻€熷钩鍙? },
-            { value: 'points', label: '绉垎鍟嗗煄' },
-            { value: 'meter', label: '涓€绾х數琛? },
+            { value: 'offline', label: '线下营业原' },
+            { value: 'online', label: '中国移动在线渠道' },
+            { value: 'local-online', label: '省移动线上渠道' },
+            { value: 'cmcc-online', label: '中国移动线上渠道' },
+            { value: 'tv', label: '电视营业原' },
+            { value: 'accelerator', label: '加速平发' },
+            { value: 'points', label: '积分商城' },
+            { value: 'meter', label: '一级电表' },
           ],
         },
         {
           key: 'applicableArea',
-          label: '閫傜敤鍦板尯',
+          label: '适用地区',
           value: 'sc',
           type: 'checkbox-group',
           tag: 'ai',
-          tagReason: '渚濇嵁涓氬姟妯℃澘榛樿闈㈠悜鍏ㄧ渷鑼冨洿',
+          tagReason: '依据业务模板默认面向全省范围',
           options: [
-            { value: 'sc', label: '鍥涘窛鍏ㄧ渷' },
-            { value: 'cd', label: '鎴愰兘' },
-            { value: 'my', label: '缁甸槼' },
-            { value: 'dy', label: '寰烽槼' },
-            { value: 'nc', label: '鍗楀厖' },
-            { value: 'yb', label: '瀹滃' },
-            { value: 'lz', label: '娉稿窞' },
-            { value: 'ls', label: '涔愬北' },
+            { value: 'sc', label: '四川全省' },
+            { value: 'cd', label: '成都' },
+            { value: 'my', label: '绵阳' },
+            { value: 'dy', label: '德阳' },
+            { value: 'nc', label: '南充' },
+            { value: 'yb', label: '宜宾' },
+            { value: 'lz', label: '泸州' },
+            { value: 'ls', label: '乐山' },
           ],
         },
         {
           key: 'otherFee',
-          label: '鍏朵粬璐圭敤',
+          label: '其他费用',
           value: '0',
           type: 'text',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉挎湰鍟嗗搧鏃犲叾浠栬垂鐢?,
+          tagReason: '按业务模板本商品无其他费用',
         },
         {
           key: 'breachLiability',
-          label: '杩濈害璐ｄ换',
+          label: '违约责任',
           value: 'none',
           type: 'select',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉挎湰鍟嗗搧鏃犺繚绾﹁矗浠荤害鏉?,
+          tagReason: '按业务模板本商品无违约责任约权',
           options: [
-            { value: 'none', label: '鏃? },
-            { value: 'compensate', label: '鎸夌害瀹氳ˉ鍋块噾' },
+            { value: 'none', label: '日' },
+            { value: 'compensate', label: '按约定补偿金' },
           ],
         },
         {
           key: 'renewMethod',
-          label: '缁鏂瑰紡',
+          label: '续订方式',
           value: 'auto',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹?鏀寔鏈堟湯鑷姩缁"锛岀画璁㈡柟寮忎负鑷姩缁',
+          tagReason: '依据用户需求"支持月末自动续订"，续订方式为自动续订',
           options: [
-            { value: 'auto', label: '鑷姩缁' },
-            { value: 'manual', label: '鎵嬪姩缁' },
-            { value: 'no', label: '涓嶇画璁? },
+            { value: 'auto', label: '自动续订' },
+            { value: 'manual', label: '手动续订' },
+            { value: 'no', label: '不续订' },
           ],
         },
       ],
     },
     {
       key: 'pre-limit',
-      title: '鍓嶉」闄愬埗',
+      title: '前项限制',
       icon: 'fa-circle-arrow-left',
       fields: [
         {
           key: 'preLimitRelation',
-          label: '闄愬埗闂村叧绯?,
+          label: '限制间关系',
           value: 'and',
           type: 'select',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傚椤硅祫鏍兼潯浠堕渶鍚屾椂婊¤冻锛岄噰鐢?涓?鍏崇郴',
+          tagReason: '依据用户需求多项资格条件需同时满足，采用"一"关系',
           options: [
-            { value: 'and', label: '涓旓紙鍏ㄩ儴婊¤冻锛? },
-            { value: 'or', label: '鎴栵紙浠讳竴婊¤冻锛? },
+            { value: 'and', label: '且（全部满足，' },
+            { value: 'or', label: '或（任一满足，' },
           ],
         },
         {
           key: 'preLimitTable',
-          label: '闄愬埗鍒楄〃',
+          label: '限制列表',
           type: 'table',
           tag: 'ai',
-          tagReason: '渚濇嵁鐢ㄦ埛闇€姹傦細浠呴檺鍥涘窛鍦ㄦ牎澶у鐢熷姙鐞嗐€侀渶涓婁紶瀛︾敓璇佽璇?,
+          tagReason: '依据用户需求：仅限四川在校大学生办理、需上传学生证认语',
           columns: [
-            { key: 'label', label: '鏍囩', type: 'select', options: [
-              { value: 'age', label: '骞撮緞' },
-              { value: 'globalLevel', label: '鍏ㄧ悆閫氱瓑绾? },
-              { value: 'baseMonthlyFee', label: '鍩虹濂楅鏈堣垂' },
-              { value: 'targetGroup', label: '鐩爣瀹㈢兢' },
-              { value: 'studentOnly', label: '闈㈠悜鍦ㄦ牎澶у鐢? },
-              { value: 'studentCert', label: '闇€涓婁紶瀛︾敓璇佽璇? },
-              { value: 'realName', label: '浠呴檺鏈汉瀹炲悕鍔炵悊' },
-              { value: 'limitToSelf', label: '浠呴檺鏈汉鍔炵悊' },
+            { key: 'label', label: '标签', type: 'select', options: [
+              { value: 'age', label: '年龄' },
+              { value: 'globalLevel', label: '全球通等线' },
+              { value: 'baseMonthlyFee', label: '基础套餐月费' },
+              { value: 'targetGroup', label: '目标客群' },
+              { value: 'studentOnly', label: '面向在校大学用' },
+              { value: 'studentCert', label: '需上传学生证认语' },
+              { value: 'realName', label: '仅限本人实名办理' },
+              { value: 'limitToSelf', label: '仅限本人办理' },
             ] },
-            { key: 'ruleType', label: '瑙勫垯绫诲瀷', type: 'select', options: [
-              { value: 'gt', label: '锛? },
-              { value: 'lt', label: '锛? },
-              { value: 'ge', label: '鈮? },
-              { value: 'le', label: '鈮? },
-              { value: 'eq', label: '锛? },
+            { key: 'ruleType', label: '规则类型', type: 'select', options: [
+              { value: 'gt', label: '，' },
+              { value: 'lt', label: '，' },
+              { value: 'ge', label: '≥' },
+              { value: 'le', label: '≥' },
+              { value: 'eq', label: '，' },
             ] },
-            { key: 'limitValue', label: '闄愬畾鍊?, type: 'text', placeholder: '璇疯緭鍏ラ檺瀹氬€? },
-            { key: 'limitType', label: '闄愬畾绫诲瀷', type: 'select', options: [
-              { value: 'allow', label: '鍏佽鍔炵悊' },
-              { value: 'disallow', label: '涓嶅厑璁稿姙鐞? },
+            { key: 'limitValue', label: '限定值', type: 'text', placeholder: '请输入限定值' },
+            { key: 'limitType', label: '限定类型', type: 'select', options: [
+              { value: 'allow', label: '允许办理' },
+              { value: 'disallow', label: '不允许办理' },
             ] },
-            { key: 'tipMsg', label: '鎻愮ず璇?, type: 'auto', placeholder: '鏍规嵁鏉′欢鑷姩鐢熸垚' },
+            { key: 'tipMsg', label: '提示语', type: 'auto', placeholder: '根据条件自动生成' },
           ],
           rows: [
-            { label: 'targetGroup', ruleType: 'eq', limitValue: '鍥涘窛鍦ㄦ牎澶у鐢?, limitType: 'allow', tipMsg: '鐩爣瀹㈢兢涓哄洓宸濆湪鏍″ぇ瀛︾敓锛屽厑璁稿姙鐞? },
-            { label: 'studentCert', ruleType: 'eq', limitValue: '闇€涓婁紶瀛︾敓璇佽璇?, limitType: 'allow', tipMsg: '闈㈠悜鍥涘窛鍦ㄦ牎澶у鐢燂紝闇€瀛︾敓璇佽璇佸悗鍔炵悊' },
+            { label: 'targetGroup', ruleType: 'eq', limitValue: '四川在校大学用', limitType: 'allow', tipMsg: '目标客群为四川在校大学生，允许办理' },
+            { label: 'studentCert', ruleType: 'eq', limitValue: '需上传学生证认语', limitType: 'allow', tipMsg: '面向四川在校大学生，需学生证认证后办理' },
           ],
         },
       ],
     },
     {
       key: 'post-limit',
-      title: '鍚庨」闄愬埗',
+      title: '后项限制',
       icon: 'fa-circle-arrow-right',
       fields: [
         {
           key: 'postLimitTable',
-          label: '鍚庨」闄愬埗',
+          label: '后项限制',
           type: 'table',
           tag: 'ai',
-          tagReason: '鎸変笟鍔℃ā鏉夸负瀛︾敓涓撲韩鍗¤缃€€璁笌闄嶆。闄愬埗',
+          tagReason: '按业务模板为学生专享卡设置退订与降档限制',
           columns: [
-            { key: 'ruleType', label: '瑙勫垯绫诲瀷', type: 'select', options: [
-              { value: 'product', label: '鍟嗗搧闄愬埗' },
-              { value: 'business', label: '涓氬姟闄愬埗' },
+            { key: 'ruleType', label: '规则类型', type: 'select', options: [
+              { value: 'product', label: '商品限制' },
+              { value: 'business', label: '业务限制' },
             ] },
-            { key: 'bizName', label: '涓氬姟鍚嶇О', type: 'select', dynamicOptions: true, options: {
+            { key: 'bizName', label: '业务名称', type: 'select', dynamicOptions: true, options: {
               product: [
-                { value: 'downgrade', label: '闄嶆。' },
-                { value: 'unsubscribe', label: '閫€璁? },
+                { value: 'downgrade', label: '降档' },
+                { value: 'unsubscribe', label: '退订' },
               ],
               business: [
-                { value: 'suspend', label: '鍋滄満淇濆彿' },
-                { value: 'cancel', label: '閿€鎴? },
-                { value: 'mnp', label: '鎼哄彿杞綉' },
-                { value: 'transfer', label: '杩囨埛' },
+                { value: 'suspend', label: '停机保号' },
+                { value: 'cancel', label: '销户' },
+                { value: 'mnp', label: '携号转网' },
+                { value: 'transfer', label: '过户' },
               ],
             } },
-            { key: 'limitType', label: '闄愬埗绫诲瀷', type: 'select', options: [
-              { value: 'disallow', label: '涓嶅厑璁? },
-              { value: 'allow', label: '鍏佽' },
+            { key: 'limitType', label: '限制类型', type: 'select', options: [
+              { value: 'disallow', label: '不允订' },
+              { value: 'allow', label: '允许' },
             ] },
-            { key: 'limitTime', label: '闄愬埗鏃堕棿', type: 'select', options: [
-              { value: '12', label: '12涓湀' },
-              { value: '24', label: '24涓湀' },
-              { value: '36', label: '36涓湀' },
-              { value: '48', label: '48涓湀' },
+            { key: 'limitTime', label: '限制时间', type: 'select', options: [
+              { value: '12', label: '12个月' },
+              { value: '24', label: '24个月' },
+              { value: '36', label: '36个月' },
+              { value: '48', label: '48个月' },
             ] },
           ],
           rows: [
@@ -1542,134 +1542,134 @@ const campusProductConfig = {
     },
   ],
 
-  // 淇℃伅棰勮 Tab
+  // 信息预览 Tab
   previewSections: [
     {
       key: 'user-facing',
-      title: '鐢ㄦ埛鍙楃悊淇℃伅',
+      title: '用户受理信息',
       icon: 'fa-user',
-      description: '鐢ㄦ埛鍦ㄥ姙鐞嗚繃绋嬩腑鐪嬪埌鐨勫叧閿俊鎭?,
+      description: '用户在办理过程中看到的关键信息',
       items: [
-        { label: '鍟嗗搧鍚嶇О', value: '鐣呬韩鏍″洯鍗?9鍏冨椁?, highlight: true },
-        { label: '鏈堣垂', value: '59鍏?鏈? },
-        { label: '鍖呭惈娴侀噺', value: '20GB閫氱敤娴侀噺', highlight: true },
-        { label: '鍖呭惈璇煶', value: '200鍒嗛挓鍥藉唴璇煶' },
-        { label: '鍖呭惈鐭俊', value: '30鏉? },
-        { label: '闄愬畾鏉′欢', value: '浠呴檺鍥涘窛鍦ㄦ牎澶у鐢燂紝闇€瀛︾敓璇佽璇?, highlight: true },
-        { label: '濂楀娴侀噺璐?, value: '0.29鍏?MB' },
-        { label: '濂楀璇煶璐?, value: '0.15鍏?鍒嗛挓' },
-        { label: '鐢熸晥鏂瑰紡', value: '绔嬪嵆鐢熸晥' },
-        { label: '閫€璁㈡柟寮?, value: '绔嬪嵆澶辨晥' },
-        { label: '浣跨敤鑼冨洿', value: '鍥涘窛鐪佽寖鍥村唴' },
+        { label: '商品名称', value: '畅享校园单9元套餐', highlight: true },
+        { label: '月费', value: '59元/月' },
+        { label: '包含流量', value: '20GB通用流量', highlight: true },
+        { label: '包含语音', value: '200分钟国内语音' },
+        { label: '包含短信', value: '30权' },
+        { label: '限定条件', value: '仅限四川在校大学生，需学生证认语', highlight: true },
+        { label: '套外流量费', value: '0.29元/MB' },
+        { label: '套外语音费', value: '0.15元/分钟' },
+        { label: '生效方式', value: '立即生效' },
+        { label: '退订方式', value: '立即失效' },
+        { label: '使用范围', value: '四川省范围内' },
       ],
     },
     {
       key: 'free-fill-preview',
-      title: '鍏嶅～鍗?,
+      title: '免填单',
       icon: 'fa-file-alt',
-      description: '钀ヤ笟鍛樺彈鐞嗘椂鍏嶅～鐨勮嚜鍔ㄥ甫鍑轰俊鎭?,
+      description: '营业员受理时免填的自动带出信息',
       items: [
-        { label: '璧勮垂鍚嶇О', value: '鐣呬韩鏍″洯鍗?9鍏冨椁? },
-        { label: '濂楅鏈堣垂', value: '59鍏?鏈? },
-        { label: '鍖呭惈璧勬簮', value: '20G娴侀噺+200鍒嗛挓璇煶+30鏉＄煭淇?, highlight: true },
-        { label: '瓒呭鏀惰垂鏍囧噯', value: '娴侀噺0.29鍏?MB銆佽闊?.15鍏?鍒嗛挓' },
-        { label: '闄愬畾鏉′欢', value: '浠呴檺鍥涘窛鍦ㄦ牎澶у鐢熴€侀渶瀛︾敓璇佽璇? },
-        { label: '鍏朵粬鏉冪泭', value: '鐢熸棩鐗规潈銆佹祦閲忕粨杞?, highlight: true },
-        { label: '鏀惰垂鏂瑰紡', value: '鏈堜粯' },
-        { label: '濂楅鍥哄畾璐?, value: '59.00鍏? },
-        { label: '绋庣巼', value: '6%' },
-        { label: '缁鏂瑰紡', value: '鑷姩缁' },
+        { label: '资费名称', value: '畅享校园单9元套餐' },
+        { label: '套餐月费', value: '59元/月' },
+        { label: '包含资源', value: '20G流量+200分钟语音+30条短信', highlight: true },
+        { label: '超套收费标准', value: '流量0.29元/MB、语音/.15元/分钟' },
+        { label: '限定条件', value: '仅限四川在校大学生、需学生证认语' },
+        { label: '其他权益', value: '生日特权、流量结转', highlight: true },
+        { label: '收费方式', value: '月付' },
+        { label: '套餐固定费', value: '59.00元' },
+        { label: '税率', value: '6%' },
+        { label: '续订方式', value: '自动续订' },
       ],
     },
     {
       key: 'sms-preview',
-      title: '鐭俊妯℃澘棰勮',
+      title: '短信模板预览',
       icon: 'fa-comment-sms',
-      description: '鍚勮Е鐐逛笅鍙戠殑鐭俊鍐呭棰勮',
+      description: '各触点下发的短信内容预览',
       items: [
-        { label: '鍔炵悊鎴愬姛鐭俊', value: '鎭枩鎮ㄦ垚鍔熷姙鐞嗙晠浜牎鍥崱59鍏冨椁愶紝鏈堣垂59鍏冿紝鍚?0G娴侀噺銆?00鍒嗛挓璇煶鍜?0鏉＄煭淇★紝鍚鐢熶笓浜潈鐩婏紝鎰熻阿鎮ㄧ殑鏀寔锛? },
-        { label: '棰勭害鐢熸晥鐭俊', value: '鎮ㄧ殑鐣呬韩鏍″洯鍗?9鍏冨椁愬凡鐢熸晥锛屾湀璐?9鍏冿紝鐢熸晥褰撴湀璧蜂韩鍙楀椁愭潈鐩娿€? },
-        { label: '鍓嶅彴浜岀‘鐭俊', value: '灏婃暚鐨勫鎴凤紝鎮ㄦ鍦ㄥ姙鐞嗙晠浜牎鍥崱59鍏冨椁愶紝鏈堣垂59鍏冿紝鏄惁纭鍔炵悊锛? },
-        { label: '閫€璁㈢煭淇?, value: '鎮ㄥソ锛屾偍鐨勭晠浜牎鍥崱59鍏冨椁愬凡閫€璁紝濡傛湁鐤戦棶璇疯嚧鐢?0086銆? },
+        { label: '办理成功短信', value: '恭喜您成功办理畅享校园卡59元套餐，月费59元，同0G流量、00分钟语音和0条短信，含学生专享权益，感谢您的支持，' },
+        { label: '预约生效短信', value: '您的畅享校园单9元套餐已生效，月费59元，生效当月起享受套餐权益、' },
+        { label: '前台二确短信', value: '尊敬的客户，您正在办理畅享校园卡59元套餐，月费59元，是否确认办理，' },
+        { label: '退订短信', value: '您好，您的畅享校园卡59元套餐已退订，如有疑问请致用0086、' },
       ],
     },
   ],
 }
 
-  // ===== 闇€姹傝鏍间功鍐呭鏁寸悊锛氬悎骞朵笖鎸?5G-A濂楅199鍏?濉厖 =====
+  // ===== 需求规格书内容整理：合并且按05G-A套餐199元"填充 =====
   ;(function(restructure){
     var cfg = restructure.launchProductConfig;
     if (!cfg) return;
-    var R = function(){ return { tag: 'ai', tagReason: '鍙傝€冪浉浼间骇鍝? 900102308 5G-A濂楅199鍏? }; };
-    var P = function(){ return { tag: 'parsed', tagReason: '鍘熷闇€姹傛彁鍙? }; };
-    var A = function(){ return { tag: 'ai', tagReason: '榛樿鍊? }; };
+    var R = function(){ return { tag: 'ai', tagReason: '参考相似产品" 900102308 5G-A套餐199元' }; };
+    var P = function(){ return { tag: 'parsed', tagReason: '原始需求提发' }; };
+    var A = function(){ return { tag: 'ai', tagReason: '默认值' }; };
     var selOpts = function(){ return function(vals){ return vals.map(function(v){ return { value: v, label: v }; }); }; }();
 
-    // ---- 浜у搧澶撮儴锛堥厤缃伐浣滃彴椤堕儴鏂规鍚?/ 淇℃伅棰勮 APP 鍚嶇О锛?---
-    cfg.productInfo.prodPrcName = '5G-A濂楅199鍏?;
-    cfg.productInfo.templateLabel = '5G-A涓昏祫璐?;
+    // ---- 产品头部（配置工作台顶部方案同/信息预览 APP 名称， ---
+    cfg.productInfo.prodPrcName = '5G-A套餐199元';
+    cfg.productInfo.templateLabel = '5G-A主资费';
 
-    // ---- 鍩虹淇℃伅妯″潡锛氫粎淇濈暀 8 涓瓧娈碉紙璧勮垂鍚嶇О/璁㈣喘鐢熸晥鏂瑰紡/閫€璁㈢敓鏁堟柟寮?閿€鍞紑濮嬫棩鏈?閿€鍞粓姝㈡棩鏈?鍙戝竷娓犻亾/鍙戝竷鍦板競/鍙戝竷鍦板競鏄庣粏锛?---
+    // ---- 基础信息模块：仅保留 8 个字段（资费名称/订购生效方式/退订生效方式销售开始日月销售终止日月发布渠道/发布地市/发布地市明细， ---
     cfg.baseInfo = {
-      prodPrcName: Object.assign({ value: '5G-A濂楅199鍏?, required: true, label: '璧勮垂鍚嶇О' }, P()),
-      orderEffRule: Object.assign({ value: '绔嬪嵆鐢熸晥', required: true, label: '璁㈣喘鐢熸晥鏂瑰紡', type: 'select', options: selOpts(['绔嬪嵆鐢熸晥', '棰勭害鐢熸晥']) }, R()),
-      cancelEffRule: Object.assign({ value: '棰勭害鐢熸晥', required: true, label: '閫€璁㈢敓鏁堟柟寮?, type: 'select', options: selOpts(['棰勭害鐢熸晥', '绔嬪嵆鐢熸晥']) }, R()),
-      saleStartDate: Object.assign({ value: '2026-09-18', required: true, label: '閿€鍞紑濮嬫棩鏈?, type: 'text' }, A()),
-      saleEndDate: Object.assign({ value: '2099-12-31', required: true, label: '閿€鍞粓姝㈡棩鏈?, type: 'text' }, A()),
-      pubChannel: Object.assign({ value: '钀ヤ笟鍘呫€丄PP', required: true, label: '鍙戝竷娓犻亾' }, P()),
-      pubCity: Object.assign({ value: '鍏ㄧ渷', required: true, label: '鍙戝竷鍦板競', type: 'select', options: selOpts(['鍏ㄧ渷', '闈炲叏鐪?]) }, R()),
-      pubCityDetail: Object.assign({ value: '22涓湴甯?, required: true, label: '鍙戝竷鍦板競鏄庣粏' }, R()),
+      prodPrcName: Object.assign({ value: '5G-A套餐199元', required: true, label: '资费名称' }, P()),
+      orderEffRule: Object.assign({ value: '立即生效', required: true, label: '订购生效方式', type: 'select', options: selOpts(['立即生效', '预约生效']) }, R()),
+      cancelEffRule: Object.assign({ value: '预约生效', required: true, label: '退订生效方式', type: 'select', options: selOpts(['预约生效', '立即生效']) }, R()),
+      saleStartDate: Object.assign({ value: '2026-09-18', required: true, label: '销售开始日月', type: 'text' }, A()),
+      saleEndDate: Object.assign({ value: '2099-12-31', required: true, label: '销售终止日月', type: 'text' }, A()),
+      pubChannel: Object.assign({ value: '营业厅、APP', required: true, label: '发布渠道' }, P()),
+      pubCity: Object.assign({ value: '全省', required: true, label: '发布地市', type: 'select', options: selOpts(['全省', '非全省']) }, R()),
+      pubCityDetail: Object.assign({ value: '22个地市', required: true, label: '发布地市明细' }, R()),
     };
 
-    // ---- 璧勬簮閰嶇疆妯″潡锛氫粎淇濈暀 璇煶/娴侀噺/鐭俊锛屾寜 璇煶鈫掓祦閲忊啋鐭俊 鎺掑簭 ----
+    // ---- 资源配置模块：仅保留 语音/流量/短信，按 语音→流量→短信 排序 ----
     var resByKey = {};
     cfg.resourceSections.forEach(function(s){ resByKey[s.key] = s; });
     cfg.resourceSections = [];
     function addRes(key, title, fields){ var s = resByKey[key] || { key: key, icon: '' }; s.title = title; s.fields = fields; cfg.resourceSections.push(s); }
-    // 璇煶璧勬簮
-    addRes('voice-resource', '璇煶璧勬簮', [
-      Object.assign({ key: 'voiceType', value: '鍥藉唴涓诲彨', label: '璧勬簮绫诲瀷', type: 'select', options: selOpts(['鍥藉唴涓诲彨', '鏈湴涓诲彨', '闀块€斾富鍙?]) }, R()),
-      Object.assign({ key: 'voiceAmount', value: '1000', label: '璧勬簮閲?, type: 'number', unit: '鍒嗛挓' }, R()),
-      Object.assign({ key: 'voiceFirstMonth', value: '鍏ㄩ璧犻€佹祦閲?, label: '棣栨湀璧勬簮璧犻€佹柟寮?, type: 'select', options: selOpts(['鍏ㄩ璧犻€佹祦閲?, '鎸夊ぉ鎶樼畻']) }, R()),
-      Object.assign({ key: 'voiceOvercharge', value: '0.15', label: '濂楀璁¤垂璐圭巼', type: 'text' }, R()),
-      Object.assign({ key: 'voiceRemind', value: '鍚?, label: '鏄惁鎻愰啋', type: 'select', options: selOpts(['鏄?, '鍚?]) }, R()),
+    // 语音资源
+    addRes('voice-resource', '语音资源', [
+      Object.assign({ key: 'voiceType', value: '国内主叫', label: '资源类型', type: 'select', options: selOpts(['国内主叫', '本地主叫', '长途主发']) }, R()),
+      Object.assign({ key: 'voiceAmount', value: '1000', label: '资源量', type: 'number', unit: '分钟' }, R()),
+      Object.assign({ key: 'voiceFirstMonth', value: '全额赠送流量', label: '首月资源赠送方式', type: 'select', options: selOpts(['全额赠送流量', '按天折算']) }, R()),
+      Object.assign({ key: 'voiceOvercharge', value: '0.15', label: '套外计费费率', type: 'text' }, R()),
+      Object.assign({ key: 'voiceRemind', value: '同', label: '是否提醒', type: 'select', options: selOpts(['是', '同']) }, R()),
     ]);
-    // 娴侀噺璧勬簮
-    addRes('flow-resource', '娴侀噺璧勬簮', [
-      Object.assign({ key: 'flowType', value: '鍥藉唴-閫氱敤-鍗曟湀', label: '娴侀噺绫诲瀷', type: 'select', options: selOpts(['鍥藉唴-閫氱敤-鍗曟湀', '鍥藉唴-閫氱敤-鍗婂勾鍖?, '瀹氬悜娴侀噺']) }, R()),
-      Object.assign({ key: 'flowAmount', value: '120', label: '璧勬簮閲?, type: 'number', unit: 'GB', highlight: true }, R()),
-      Object.assign({ key: 'flowUnit', value: 'GB', label: '娴侀噺鍗曚綅', type: 'select', options: selOpts(['GB', 'MB']) }, R()),
-      Object.assign({ key: 'flowFirstMonth', value: '鍏ㄩ璧犻€佹祦閲?, label: '棣栨湀璧勬簮璧犻€佹柟寮?, type: 'select', options: selOpts(['鍏ㄩ璧犻€佹祦閲?, '鎸夊ぉ鎶樼畻']) }, R()),
-      Object.assign({ key: 'flowCarryover', value: '鏄?, label: '鏄惁缁撹浆鍒版鏈?, type: 'select', options: selOpts(['鏄?, '鍚?]) }, R()),
-      Object.assign({ key: 'flowOvercharge', value: '3鍏?GB', label: '濂楀璁¤垂鏍囧噯', type: 'text' }, R()),
-      Object.assign({ key: 'flowRemind', value: '鎻愰啋', label: '娴侀噺鎻愰啋', type: 'select', options: selOpts(['鎻愰啋', '涓嶆彁閱?]) }, R()),
+    // 流量资源
+    addRes('flow-resource', '流量资源', [
+      Object.assign({ key: 'flowType', value: '国内-通用-单月', label: '流量类型', type: 'select', options: selOpts(['国内-通用-单月', '国内-通用-半年包', '定向流量']) }, R()),
+      Object.assign({ key: 'flowAmount', value: '120', label: '资源量', type: 'number', unit: 'GB', highlight: true }, R()),
+      Object.assign({ key: 'flowUnit', value: 'GB', label: '流量单位', type: 'select', options: selOpts(['GB', 'MB']) }, R()),
+      Object.assign({ key: 'flowFirstMonth', value: '全额赠送流量', label: '首月资源赠送方式', type: 'select', options: selOpts(['全额赠送流量', '按天折算']) }, R()),
+      Object.assign({ key: 'flowCarryover', value: '是', label: '是否结转到次月', type: 'select', options: selOpts(['是', '同']) }, R()),
+      Object.assign({ key: 'flowOvercharge', value: '3元/GB', label: '套外计费标准', type: 'text' }, R()),
+      Object.assign({ key: 'flowRemind', value: '提醒', label: '流量提醒', type: 'select', options: selOpts(['提醒', '不提醒']) }, R()),
     ]);
-    // 鐭俊璧勬簮
-    addRes('sms-resource', '鐭俊璧勬簮', [
-      Object.assign({ key: 'smsType', value: '鐭俊', label: '璧勬簮绫诲瀷', type: 'text' }, R()),
-      Object.assign({ key: 'smsOvercharge', value: '0.1', label: '濂楀璁¤垂璐圭巼', type: 'text' }, R()),
-      Object.assign({ key: 'smsRemind', value: '鍚?, label: '鏄惁鎻愰啋', type: 'select', options: selOpts(['鏄?, '鍚?]) }, R()),
+    // 短信资源
+    addRes('sms-resource', '短信资源', [
+      Object.assign({ key: 'smsType', value: '短信', label: '资源类型', type: 'text' }, R()),
+      Object.assign({ key: 'smsOvercharge', value: '0.1', label: '套外计费费率', type: 'text' }, R()),
+      Object.assign({ key: 'smsRemind', value: '同', label: '是否提醒', type: 'select', options: selOpts(['是', '同']) }, R()),
     ]);
 
-    // ---- 钀ラ攢璧勬簮妯″潡锛氫粎淇濈暀 鏈堢锛堝幓鎺夎处鍔′紭鎯?淇濆簳锛?---
+    // ---- 营销资源模块：仅保留 月租（去掉账务优惠保底， ---
     cfg.marketingSections = [];
     cfg.marketingSections.push({
       key: 'monthly',
-      title: '鏈堢',
+      title: '月租',
       icon: 'fa-yen-sign',
       fields: [
-        Object.assign({ key: 'chargeType', value: '棣栨湀鎸夊ぉ鎶樼畻涓€娆℃€ф敹鍙栨鏈堟寜鏈堟敹鍙?, label: '鏀惰垂鏂瑰紡', type: 'select', options: selOpts(['棣栨湀鎸夊ぉ鎶樼畻涓€娆℃€ф敹鍙栨鏈堟寜鏈堟敹鍙?, '鎸夋湀鏀跺彇', '鎸夊鏀跺彇']) }, R()),
-        Object.assign({ key: 'monthlyFee', value: '199', label: '濂楅鍥哄畾璐?, type: 'number', unit: '鍏? }, R()),
-        Object.assign({ key: 'feeSubject', value: '鏈堢璐?, label: '鏀惰垂绉戠洰', type: 'select', options: selOpts(['鏈堢璐?, '閫氳璐?, '澧炲€间笟鍔¤垂']) }, R()),
-        Object.assign({ key: 'taxRate', value: '浣跨敤榛樿绋庣巼', label: '绋庣巼', type: 'select', options: selOpts(['浣跨敤榛樿绋庣巼', '6%', '9%']) }, R()),
-        Object.assign({ key: 'monthValidity', value: '闀挎湡鏈夋晥', label: '鏈堢鏈夋晥鏈?, type: 'select', options: selOpts(['闀挎湡鏈夋晥', '24涓湀']) }, R()),
+        Object.assign({ key: 'chargeType', value: '首月按天折算一次性收取次月按月收取', label: '收费方式', type: 'select', options: selOpts(['首月按天折算一次性收取次月按月收取', '按月收取', '按季收取']) }, R()),
+        Object.assign({ key: 'monthlyFee', value: '199', label: '套餐固定费', type: 'number', unit: '元' }, R()),
+        Object.assign({ key: 'feeSubject', value: '月租费', label: '收费科目', type: 'select', options: selOpts(['月租费', '通讯费', '增值业务费']) }, R()),
+        Object.assign({ key: 'taxRate', value: '使用默认税率', label: '税率', type: 'select', options: selOpts(['使用默认税率', '6%', '9%']) }, R()),
+        Object.assign({ key: 'monthValidity', value: '长期有效', label: '月租有效月', type: 'select', options: selOpts(['长期有效', '24个月']) }, R()),
       ]
     });
 
-    // ---- 閿€鍞鍒欐ā鍧楋細浠呬繚鐣?鍓嶉」闄愬埗 + 鍚庨」闄愬埗锛堝幓鎺?sales-rule 妯″潡锛?---
+    // ---- 销售规则模块：仅保畅前项限制 + 后项限制（去推 sales-rule 模块， ---
     cfg.salesSections = cfg.salesSections.filter(function(s){ return s.key === 'pre-limit' || s.key === 'post-limit'; });
     cfg.salesSections.forEach(function(s){ if (s.title) s.title = s.title; });
-    // 鍓嶉」闄愬埗锛氬熀纭€濂楅鏈堣垂闂ㄦ 59鍏?鈫?199鍏冿紙涓?5G-A濂楅199鍏?淇濇寔涓€鑷达級
+    // 前项限制：基础套餐月费门槛 59元"→ 199元（一05G-A套餐199元"保持一致）
     cfg.salesSections.forEach(function(s){
       if (s.fields) s.fields.forEach(function(f){
         if (f.rows) f.rows.forEach(function(r){
@@ -1681,21 +1681,21 @@ const campusProductConfig = {
       });
     });
 
-    // ---- 淇℃伅棰勮 Tab锛氬厤濉崟鍐呭锛堜笌閰嶇疆淇℃伅鍚屾锛?---
+    // ---- 信息预览 Tab：免填单内容（与配置信息同步， ---
     cfg.previewSections = (cfg.previewSections || []).map(function(s){
       if (s.key === 'free-fill-preview') {
         s.items = [
-          { label: '濂楅鏈堣垂', value: '199', highlight: true },
-          { label: '鍖呭惈璧勬簮', value: '鍥藉唴閫氱敤娴侀噺120GB銆佸浗鍐呴€氳瘽1000鍒嗛挓', highlight: true },
-          { label: '瓒呭鏀惰垂鏍囧噯', value: '濂楀娴侀噺鍓?00MB鎸?.03鍏?MB鏀惰垂锛岃揪鍒?00MB锛?鍏冿級鏃堕澶栬禒閫?24MB锛堝嵆3鍏?1GB锛夛紝娴侀噺瓒呰繃1GB鎸夋瘡瓒呭嚭1GB 3鍏冩敹璐癸紱濂楀璇煶鍥藉唴0.15鍏?鍒嗛挓锛涘澶栫煭褰╀俊0.1鍏?鏉★紱濂楀鍗槦鎷ㄦ墦鍥藉唴鐢佃瘽9鍏?鍒嗛挓锛屾嫧鎵撳浗闄呴暱閫?0鍏?鍒嗛挓锛屾嫧鎵撳浗闄呭崼鏄熺數璇?0鍏?鍒嗛挓锛屽浗鍐呮帴鍚?鍏?鍒嗛挓锛屽彂閫佺煭淇?鍏?鏉? },
-          { label: '闄愬畾鏉′欢', value: '鍥藉唴閫氱敤娴侀噺浠呴檺涓浗鍐呭湴锛堜笉鍚腐婢冲彴鍜屽浗闄咃級浣跨敤锛屼笉鍚玏LAN锛涘椁愬唴璇煶浠呴檺涓浗鍐呭湴浣跨敤锛?G-A缃戠粶鏉冪泭闇€缁堢鏀寔涓斿湪5G-A缃戠粶瑕嗙洊鑹ソ鐜涓嬩韩鍙? },
+          { label: '套餐月费', value: '199', highlight: true },
+          { label: '包含资源', value: '国内通用流量120GB、国内通话1000分钟', highlight: true },
+          { label: '超套收费标准', value: '套外流量前00MB按/.03元/MB收费，达分00MB，"元）时额外赠通24MB（即3元1GB），流量超过1GB按每超出1GB 3元收费；套外语音国内0.15元/分钟；套外短彩信0.1元/条；套外卫星拨打国内电话9元/分钟，拨打国际长通0元/分钟，拨打国际卫星电语0元/分钟，国内接同"元/分钟，发送短信"元/权' },
+          { label: '限定条件', value: '国内通用流量仅限中国内地（不含港澳台和国际）使用，不含WLAN；套餐内语音仅限中国内地使用，"G-A网络权益需终端支持且在5G-A网络覆盖良好环境下享发' },
         ];
       } else if (s.key === 'sms-preview') {
         s.items = [
-          { label: '鍔炵悊鎴愬姛鐭俊', value: '鎭枩鎮ㄦ垚鍔熷姙鐞?G-A濂楅199鍏冿紝濂楅鏈堣垂199鍏冿紝鍚?20GB鍥藉唴閫氱敤娴侀噺鍜?000鍒嗛挓鍥藉唴閫氳瘽锛屾劅璋㈡偍鐨勬敮鎸侊紒' },
-          { label: '棰勭害鐢熸晥鐭俊', value: '鎮ㄧ殑5G-A濂楅199鍏冨凡棰勭害鐢熸晥锛屾湀璐?99鍏冿紝鐢熸晥褰撴湀璧蜂韩鍙楀椁愭潈鐩娿€? },
-          { label: '鍓嶅彴浜岀‘鐭俊', value: '灏婃暚鐨勫鎴凤紝鎮ㄦ鍦ㄥ姙鐞?G-A濂楅199鍏冿紝鏈堣垂199鍏冿紝鏄惁纭鍔炵悊锛? },
-          { label: '閫€璁㈢煭淇?, value: '鎮ㄥソ锛屾偍鐨?G-A濂楅199鍏冨凡閫€璁紝濡傛湁鐤戦棶璇疯嚧鐢?0086銆? },
+          { label: '办理成功短信', value: '恭喜您成功办理"G-A套餐199元，套餐月费199元，同20GB国内通用流量和000分钟国内通话，感谢您的支持！' },
+          { label: '预约生效短信', value: '您的5G-A套餐199元已预约生效，月费599元，生效当月起享受套餐权益、' },
+          { label: '前台二确短信', value: '尊敬的客户，您正在办理"G-A套餐199元，月费199元，是否确认办理，' },
+          { label: '退订短信', value: '您好，您的"G-A套餐199元已退订，如有疑问请致用0086、' },
         ];
       }
       return s;
@@ -1711,145 +1711,145 @@ const campusProductConfig = {
 })(window);
 (function(global){
   /**
-   * @deprecated 鍚勬姤鍛婇〉绛惧凡鏀逛负鐢?ConfigWorkbench 鍐呯殑 productInstance/demandView/schemeView
-   * 绛夊搷搴斿紡鏁版嵁婧愬姩鎬佹淳鐢燂紙瑙?setup 灏鹃儴锛夛紝闅忓晢鍝佸疄渚嬫暟鎹仈鍔ㄣ€傛湰闈欐€佹紨绀哄璞′粎浣滃巻鍙叉暟鎹繚鐣欙紝
-   * 涓嶅啀琚伐浣滃彴椤电娑堣垂锛屽悗缁凯浠ｅ彲鏁翠綋鍒犻櫎銆?
+   * @deprecated 各报告页签已改为用 ConfigWorkbench 内的 productInstance/demandView/schemeView
+   * 等响应式数据源动态派生（规 setup 尾部），随商品实例数据联动。本静态演示对象仅作历史数据保留，
+   * 不再被工作台页签消费，后续迭代可整体删除。
    */
   global.__VIEWS = {
     demand: {
       no: 'XQ-20260918-001',
-      name: '5G-A濂楅199鍏?,
-      applicant: '鐜嬫晱',
-      department: '浜ч攢鍝佸煙 / 浜у晢鍝佷腑蹇?,
+      name: '5G-A套餐199元',
+      applicant: '王敏',
+      department: '产销品域 / 产商品中心',
       date: '2026-09-18',
-      target: '闈㈠悜楂樻祦閲忎釜浜哄鎴凤紝涓绘墦5G-A缃戠粶鏋佽嚧閫熺巼涓庤秴澶ф祦閲忎綋楠?,
-      require: '鎺ㄥ嚭鏈堣垂199鍏?G-A涓诲椁愶紝鍚浗鍐呴€氱敤娴侀噺120GB锛堝彲缁撹浆锛夈€佸浗鍐呴€氳瘽1000鍒嗛挓锛涢鏈堟寜澶╂姌绠楋紝娆℃湀璧锋寜鏈堟敹鍙栵紱鏀拺钀ヤ笟鍘?APP娓犻亾閿€鍞紝瑕嗙洊鍏ㄧ渷22涓湴甯傘€?,
+      target: '面向高流量个人客户，主打5G-A网络极致速率与超大流量体验',
+      require: '推出月费199元/G-A主套餐，含国内通用流量120GB（可结转）、国内通话1000分钟；首月按天折算，次月起按月收取；支撑营业原"APP渠道销售，覆盖全省22个地市、',
       effective: '2026-10-01',
-      channels: ['钀ヤ笟鍘?, 'APP']
+      channels: ['营业原', 'APP']
     },
     scheme: {
       no: 'SCH-20260918',
       requireNo: 'XQ-20260918-001',
       version: 'V1.0',
-      name: '5G-A濂楅199鍏冨姞杞芥柟妗?,
-      author: '浜у晢鍝佷腑蹇冿紙CRM_POS锛?,
-      status: '宸茬‘璁?,
+      name: '5G-A套餐199元加载方案',
+      author: '产商品中心（CRM_POS，',
+      status: '已确订',
       summary: [
-        ['璧勮垂鍚嶇О', '5G-A濂楅199鍏?],
-        ['鏈堢', '199鍏?鏈堬紙棣栨湀鎸夊ぉ鎶樼畻锛屾鏈堣捣鎸夋湀鏀跺彇锛?],
-        ['鍖呭惈璧勬簮', '鍥藉唴閫氱敤娴侀噺120GB锛堝綋鏈堟湭鐢ㄧ粨杞級銆佸浗鍐呴€氳瘽1000鍒嗛挓'],
-        ['濂楀鏍囧噯', '娴侀噺3鍏?GB銆佽闊?.15鍏?鍒嗛挓銆佺煭淇?.1鍏?鏉?],
-        ['鐢熸晥鏂瑰紡', '璁㈣喘绔嬪嵆鐢熸晥 / 閫€璁㈤绾︾敓鏁?],
-        ['鍙戝竷鑼冨洿', '鍏ㄧ渷22涓湴甯傦紝钀ヤ笟鍘呫€丄PP娓犻亾']
+        ['资费名称', '5G-A套餐199元'],
+        ['月租', '199元/月（首月按天折算，次月起按月收取，'],
+        ['包含资源', '国内通用流量120GB（当月未用结转）、国内通话1000分钟'],
+        ['套外标准', '流量3元/GB、语音/.15元/分钟、短信/.1元/权'],
+        ['生效方式', '订购立即生效 / 退订预约生效'],
+        ['发布范围', '全省22个地市，营业厅、APP渠道']
       ],
-      items: ['鍩虹淇℃伅', '鏈堢', '璇煶璧勬簮', '娴侀噺璧勬簮', '鐭俊璧勬簮', '鍓嶉」闄愬埗', '鍚庨」闄愬埗']
+      items: ['基础信息', '月租', '语音资源', '流量资源', '短信资源', '前项限制', '后项限制']
     },
     audit: {
       object: 'offer_id = 970946234',
-      status: '閫氳繃',
+      status: '通过',
       time: '2026-09-18',
-      conclusion: '绋芥牳閫氳繃锛氶厤缃鍚堟湰娆¤惤鍦伴攢鍞搧 鏂板閿€鍞搧970946234 瑙勫垯銆?,
+      conclusion: '稽核通过：配置符合本次落地销售品 新增销售品970946234 规则、',
       checks: [
-        ['鍩虹淇℃伅瀹屾暣鎬?, '閫氳繃'],
-        ['璧勬簮閰嶇疆瀹屾暣鎬?, '閫氳繃'],
-        ['濂楀璧勮垂瀹屾暣鎬?, '閫氳繃'],
-        ['瀛楁鏍煎紡瑙勮寖鎬?, '閫氳繃'],
-        ['瀛楁鏋氫妇鍚堟硶鎬?, '閫氳繃'],
-        ['閰嶇疆椤瑰叧鑱斾竴鑷存€?, '閫氳繃'],
-        ['涓氬姟瑙勫垯瀹屾暣鎬?, '閫氳繃']
+        ['基础信息完整态', '通过'],
+        ['资源配置完整态', '通过'],
+        ['套外资费完整态', '通过'],
+        ['字段格式规范态', '通过'],
+        ['字段枚举合法态', '通过'],
+        ['配置项关联一致态', '通过'],
+        ['业务规则完整态', '通过']
       ]
     },
     calibrate: {
       object: '970946234',
-      status: '閫氳繃',
+      status: '通过',
       time: '2026-09-18',
-      conclusion: '璧勮垂鏍″噯閫氳繃锛氳璐归厤缃笌鏂规闇€姹備繚鎸佷竴鑷达紝鏈彂鐜板彔鍔?浜掓枼鍐茬獊銆?,
+      conclusion: '资费校准通过：计费配置与方案需求保持一致，未发现叠动"互斥冲突、',
       rows: [
-        ['濂楅鍥哄畾璐?, '199鍏?, '199鍏?鏈?, '涓€鑷?],
-        ['鍥藉唴閫氱敤娴侀噺', '120GB', '120GB', '涓€鑷?],
-        ['鍥藉唴閫氳瘽', '1000鍒嗛挓', '1000鍒嗛挓', '涓€鑷?],
-        ['濂楀娴侀噺鏍囧噯', '3鍏?GB', '3鍏?GB', '涓€鑷?],
-        ['濂楀璇煶璐圭巼', '0.15鍏?鍒嗛挓', '0.15鍏?鍒嗛挓', '涓€鑷?],
-        ['濂楀鐭俊璐圭巼', '0.1鍏?鏉?, '0.1鍏?鏉?, '涓€鑷?]
+        ['套餐固定费', '199元', '199元/月', '一致'],
+        ['国内通用流量', '120GB', '120GB', '一致'],
+        ['国内通话', '1000分钟', '1000分钟', '一致'],
+        ['套外流量标准', '3元/GB', '3元/GB', '一致'],
+        ['套外语音费率', '0.15元/分钟', '0.15元/分钟', '一致'],
+        ['套外短信费率', '0.1元/权', '0.1元/权', '一致']
       ]
     },
     testRep: {
       no: 'TEST-REP-20260918-199',
-      name: '5G-A濂楅199鍏?,
+      name: '5G-A套餐199元',
       total: 30,
       pass: 30,
       rate: '100%',
-      conclusion: '寤鸿涓婄嚎',
+      conclusion: '建议上线',
       dims: [
-        ['鍙楃悊楠岃瘉 (ACC)', '10', '10', '閫氳繃'],
-        ['璁¤垂楠岃瘉 (BILL)', '10', '10', '閫氳繃'],
-        ['瀹㈡湇楠岃瘉 (CUST)', '10', '10', '閫氳繃']
+        ['受理验证 (ACC)', '10', '10', '通过'],
+        ['计费验证 (BILL)', '10', '10', '通过'],
+        ['客服验证 (CUST)', '10', '10', '通过']
       ],
       cases: [
-        ['ACC-001', '閿€鍞搧鍩虹鍑嗗叆瑙勫垯鏍￠獙', 'P0', '閫氳繃'],
-        ['ACC-004', '璁㈣喘鎿嶄綔鑳藉姏鏍￠獙', 'P0', '閫氳繃'],
-        ['ACC-011', '妯℃嫙璁㈣喘鎺ュ彛棰勬祴璇?, 'P0', '閫氳繃'],
-        ['BILL-001', '鍩虹璧勮垂閲戦鍚堟硶鎬ф牎楠?, 'P0', '閫氳繃'],
-        ['BILL-004', '璧勬簮鎵ｅ噺瑙勫垯鏍￠獙', 'P0', '閫氳繃'],
-        ['BILL-010', '璧勮垂鐢熸晥澶辨晥鑱斿姩鏍￠獙', 'P0', '閫氳繃'],
-        ['CUST-001', '瀹㈡湇浜у搧鍩虹瑙嗗浘瀹屾暣鎬?, 'P0', '閫氳繃'],
-        ['CUST-004', '浜у搧璧勮垂瀵瑰璇存槑璇濇湳鏍￠獙', 'P0', '閫氳繃'],
-        ['CUST-008', '瀵瑰灞曠ず淇℃伅鍚堣鏍￠獙', 'P0', '閫氳繃']
+        ['ACC-001', '销售品基础准入规则校验', 'P0', '通过'],
+        ['ACC-004', '订购操作能力校验', 'P0', '通过'],
+        ['ACC-011', '模拟订购接口预测试', 'P0', '通过'],
+        ['BILL-001', '基础资费金额合法性校验', 'P0', '通过'],
+        ['BILL-004', '资源扣减规则校验', 'P0', '通过'],
+        ['BILL-010', '资费生效失效联动校验', 'P0', '通过'],
+        ['CUST-001', '客服产品基础视图完整态', 'P0', '通过'],
+        ['CUST-004', '产品资费对外说明话术校验', 'P0', '通过'],
+        ['CUST-008', '对外展示信息合规校验', 'P0', '通过']
       ]
     },
     verify: {
       orderId: 'ORD20260918151923',
       offerInstId: 'OI20260918151923',
-      status: '閫氳繃',
+      status: '通过',
       time: '2026-09-18',
       scenes: [
-        ['濂楅鏂拌 (S_O_TC)', '閫氳繃'],
-        ['鍓崱鍔犺 (S_ADD_CARD)', '閫氳繃'],
-        ['濂楅閫€璁?(S_U_TC)', '閫氳繃']
+        ['套餐新装 (S_O_TC)', '通过'],
+        ['副卡加装 (S_ADD_CARD)', '通过'],
+        ['套餐退订 (S_U_TC)', '通过']
       ],
       points: [
-        ['P_EFF_DATE 鐢熸晥鏃堕棿', '閫氳繃'],
-        ['P_EXP_DATE 澶辨晥鏃堕棿', '閫氳繃'],
-        ['P_STATUS 瀹炰緥鐘舵€?, '閫氳繃'],
-        ['P_ORD_CNT 璁㈣喘鏁伴噺', '閫氳繃']
+        ['P_EFF_DATE 生效时间', '通过'],
+        ['P_EXP_DATE 失效时间', '通过'],
+        ['P_STATUS 实例状态', '通过'],
+        ['P_ORD_CNT 订购数量', '通过']
       ]
     },
     approval: {
       no: 'SP-20260918-005',
-      name: '5G-A濂楅199鍏?,
-      status: '宸查€氳繃',
+      name: '5G-A套餐199元',
+      status: '已通过',
       nodes: [
-        ['浜у搧缁忕悊瀹℃牳', '浜у搧缁忕悊', '宸查€氳繃', '瀹℃牳閫氳繃锛屽悓鎰忎笂鏋?, '2026-09-18 15:32:30'],
-        ['璧勮垂涓荤瀹℃牳', '璧勮垂涓荤', '宸查€氳繃', '瀹℃牳閫氳繃锛屽悓鎰忎笂鏋?, '2026-09-18 15:32:30'],
-        ['杩愯惀瀹℃牳', '杩愯惀涓撳憳', '宸查€氳繃', '瀹℃牳閫氳繃锛屽悓鎰忎笂鏋?, '2026-09-18 15:32:30'],
-        ['涓婄嚎瀹℃壒', 'IT鏀拺', '宸查€氳繃', '瀹℃牳閫氳繃锛屽悓鎰忎笂鏋?, '2026-09-18 15:32:30']
+        ['产品经理审核', '产品经理', '已通过', '审核通过，同意上枀', '2026-09-18 15:32:30'],
+        ['资费主管审核', '资费主管', '已通过', '审核通过，同意上枀', '2026-09-18 15:32:30'],
+        ['运营审核', '运营专员', '已通过', '审核通过，同意上枀', '2026-09-18 15:32:30'],
+        ['上线审批', 'IT支撑', '已通过', '审核通过，同意上枀', '2026-09-18 15:32:30']
       ],
-      note: '瀹℃壒宸查€氳繃锛岄攢鍞搧涓婃灦瀹屾垚 鉁咃紙瀹℃壒閫氳繃鍗宠涓洪攢鍞搧宸茶嚜鍔ㄤ笂绾匡紝鏃犻渶浜屾纭锛夈€?
+      note: '审批已通过，销售品上架完成 ✅（审批通过即视为销售品已自动上线，无需二次确认）、'
     },
     monitor: {
       single: {
-        name: '5G-A濂楅199鍏?,
-        status: '鍦ㄥ敭涓?,
+        name: '5G-A套餐199元',
+        status: '在售一',
         cards: [
-          ['绱璁㈣喘閲?, '3,842', '鎴?],
-          ['鏈湀鏂板', '1,206', '鎴?],
-          ['鏈湀閫€璁?, '86', '鎴?],
-          ['鍑€澧?, '1,120', '鎴?],
-          ['鍦ㄥ敭鏀跺叆', '76.4', '涓囧厓'],
-          ['璧勬簮鍒╃敤鐜?, '68%', '鈥?]
+          ['累计订购量', '3,842', '户'],
+          ['本月新增', '1,206', '户'],
+          ['本月退订', '86', '户'],
+          ['净增', '1,120', '户'],
+          ['在售收入', '76.4', '万元'],
+          ['资源利用率', '68%', '—']
         ],
-        warn: '褰撳墠鏃犲紓甯稿憡璀︼紱閫氱敤娴侀噺璧勬簮鍒╃敤鐜囨帴杩戦槇鍊硷紝寤鸿鍏虫敞鍚庣画瓒嬪娍銆?
+        warn: '当前无异常告警；通用流量资源利用率接近阈值，建议关注后续趋势、'
       },
       total: {
         cards: [
-          ['鍦ㄥ敭閿€鍞搧', '48', '涓?],
-          ['鏈湀鏂板璁㈣喘', '2.4涓?, '鎴?],
-          ['鎬诲湪鍞敹鍏?, '1,820', '涓囧厓'],
-          ['鏁翠綋鍋ュ悍搴?, '鑹ソ', '鈥?]
+          ['在售销售品', '48', '一'],
+          ['本月新增订购', '2.4一', '户'],
+          ['总在售收入', '1,820', '万元'],
+          ['整体健康度', '良好', '—']
         ],
         risks: [
-          ['娴侀噺璧勬簮鍒╃敤鐜囧亸楂?, '涓?, '澶氭閿€鍞搧鍐呴€氱敤娴侀噺鍖呴鍙戞斁杈冮泦涓?],
-          ['閮ㄥ垎鑰佸椁愰€€璁笂鍗?, '浣?, '闇€鍏虫敞鍚?G-A绛夋柊濂楅鐨勮縼绉诲紩瀵?]
+          ['流量资源利用率偏高', '一', '多款销售品内通用流量包额发放较集一'],
+          ['部分老套餐退订上单', '使', '需关注同"G-A等新套餐的迁移引对']
         ]
       }
     }

@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * 模板 TTL 生成器（R4-Step3）：从模板 {@code category_meta}（品类元数据 SSOT）
- * 生成 product-config.ttl 的品类个体块。
+ * 生成 product.ttl 的品类个体块。
  * <p>生成范围：{@code # BEGIN GENERATED: category-individuals} 标记区
  * （品类个体 owl:NamedIndividual/ProductCategory 断言）。
  * TTL 其余部分（TBox 类/属性骨架、示例 ABox）为手维区：属性 IRI 存在业务重命名与
@@ -82,7 +82,7 @@ public final class TemplateTtlGenerator {
     /** CLI：从 backend-app 运行，再生 TTL 品类块并回写。 */
     public static void main(String[] args) throws IOException {
         Path templateDir = Paths.get("src", "main", "resources", "ontologies", "templates");
-        Path ttlPath = Paths.get("src", "main", "resources", "ontology", "product-config.ttl");
+        Path ttlPath = Paths.get("src", "main", "resources", "ontology", "product.ttl");
         Map<String, Map<String, Object>> templates = new LinkedHashMap<>();
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         try (var files = Files.list(templateDir)) {

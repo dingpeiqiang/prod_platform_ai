@@ -1,6 +1,8 @@
 package com.sitech.prodai.service.appstore;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.OpsRulesService;
+import com.sitech.prodai.service.OpsSwrlReasoner;
 import com.sitech.prodai.service.common.MapOps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +15,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -43,6 +46,9 @@ public class OfferSimV16Service {
     private final OfferSeedService seed;
     private final OfferGroupSeedService groupSeed;
     private final NodeResultService nodeResult;
+    /** 配置合规 SWRL 推理（wf_sub_05 资费校准推理链；R-C09 固费区间 + R-C03/C05/C07 资费冲突） */
+    private final OpsSwrlReasoner swrlReasoner;
+    private final OpsRulesService opsRules;
 
     /** 配置落地档案：offer_id -> 落地配置（工具7 写入，工具2/8 读取） */
     private final Map<String, Map<String, Object>> savedConfigs = new ConcurrentHashMap<>();
@@ -95,11 +101,14 @@ public class OfferSimV16Service {
     private final java.util.Set<String> monitorErrorInjection = ConcurrentHashMap.newKeySet();
 
     public OfferSimV16Service(ObjectMapper objectMapper, OfferSeedService seed,
-                              OfferGroupSeedService groupSeed, NodeResultService nodeResult) {
+                              OfferGroupSeedService groupSeed, NodeResultService nodeResult,
+                              OpsSwrlReasoner swrlReasoner, OpsRulesService opsRules) {
         this.objectMapper = objectMapper;
         this.seed = seed;
         this.groupSeed = groupSeed;
         this.nodeResult = nodeResult;
+        this.swrlReasoner = swrlReasoner;
+        this.opsRules = opsRules;
         seedApprovals();
     }
 
@@ -1059,9 +1068,15 @@ public class OfferSimV16Service {
         // V2.0 融合商品扩展：组级叠加校验（成员价格缺失/跨成员照搬检测）入 risk_list；
         // 单品无组级风险项（行为零变化）。
         riskList.addAll(groupFeeRisks(config));
+        // SWRL 资费校验转正（R-C09 固费区间 + R-C03/C05/C07 资费冲突）：以 product.ttl 规则为准，
+        // 命中风险并入 risk_list，并产出可读推理链供 wf_sub_05 展示推理逻辑。
+        SwrlBillingOutcome swrl = swrlBillingReasoning(config, offerId);
+        riskList.addAll(swrl.risks);
         Map<String, Object> body = ok();
         body.put("pass", riskList.isEmpty() ? "1" : "0");
         body.put("risk_list", riskList);
+        body.put("reasoning_chain", swrl.reasoning);
+        body.put("engine", swrl.engine);
         // V2.6：8 项资费比对明细（套餐月租/流量/语音/短信赠送量/三项套外资费/商品有效期），
         // 需求侧取落地配置 plan_json 原文值，系统侧取种子销售品计费规则（含折算规则括注），
         // 供环节3 输出模板逐行引用（禁止模板自行拼装）
@@ -1086,6 +1101,94 @@ public class OfferSimV16Service {
     /** 组结构 plan 判定：含 member_offers 键（与脚本 _is_group_input 同构，脚本侧另含 main_offer 键） */
     private boolean isGroupPlan(Map<String, Object> plan) {
         return plan.get("member_offers") instanceof List<?> list && !list.isEmpty();
+    }
+
+    /** 资费校验 SWRL 结果载体：风险项（并入 risk_list）+ 推理链 + 引擎标识。 */
+    private record SwrlBillingOutcome(List<Map<String, Object>> risks,
+                                      List<Map<String, Object>> reasoning, String engine) {
+        static SwrlBillingOutcome fallback() {
+            return new SwrlBillingOutcome(List.of(), List.of(), "java-rules");
+        }
+    }
+
+    /**
+     * wf_sub_05 资费校准 SWRL 推理（R-C09 固费区间 + R-C03/C05/C07 资费冲突）：
+     * 将需求侧 config 映射为合规草稿（固费/折扣/赠费/互斥），复用 {@link OpsSwrlReasoner#reasonConfigCompliance}
+     * 产出风险项与推理链；SWRL 关闭/失败时回退（不中断资费校准链路）。
+     */
+    private SwrlBillingOutcome swrlBillingReasoning(Map<String, Object> config, String offerId) {
+        if (swrlReasoner == null || opsRules == null
+                || !opsRules.preferSwrlAny("R-C03", "R-C05", "R-C07", "R-C09")) {
+            return SwrlBillingOutcome.fallback();
+        }
+        try {
+            Map<String, Object> draft = billingDraft(config, offerId);
+            double minFee = opsRules.configDefaultNum("monthlyFeeMin", 9);
+            double maxFee = opsRules.configDefaultNum("monthlyFeeMax", 599);
+            OpsSwrlReasoner.ConfigComplianceResult result = swrlReasoner.reasonConfigCompliance(
+                    draft, Map.of(),
+                    opsRules.configRule("R-C03"), opsRules.configRule("R-C04"), opsRules.configRule("R-C05"),
+                    opsRules.configRule("R-C06"), opsRules.configRule("R-C07"), opsRules.configRule("R-C08"),
+                    opsRules.configRule("R-C09"), minFee, maxFee);
+            if (!result.success()) {
+                return SwrlBillingOutcome.fallback();
+            }
+            // wf_sub_05 口径：仅资费相关规则（R-C03/C05/C07/C09）纳入风险清单；
+            // R-C06 必填缺失/ R-C04 附加依赖属配置合规，不重复报。
+            Set<String> billingRules = Set.of("R-C03", "R-C05", "R-C07", "R-C09");
+            List<Map<String, Object>> risks = new ArrayList<>();
+            List<Map<String, Object>> reasoning = new ArrayList<>();
+            for (Map<String, Object> v : result.violations()) {
+                if (!billingRules.contains(MapOps.str(v.get("ruleId")))) {
+                    continue;
+                }
+                Map<String, Object> risk = new LinkedHashMap<>();
+                risk.put("risk_type", MapOps.str(v.get("ruleId")));
+                risk.put("risk_desc", MapOps.str(v.get("label")) + "（SWRL 命中：" + v.get("ruleId") + "）");
+                risk.put("suggest", "按规则 " + MapOps.str(v.get("ruleId")) + " 复核并修正 " + MapOps.str(v.get("field")));
+                risks.add(risk);
+            }
+            for (Map<String, Object> r : result.reasoning()) {
+                String rid = MapOps.str(r.get("ruleId"));
+                if (billingRules.contains(rid) || "R-C08".equals(rid)) {
+                    reasoning.add(r);
+                }
+            }
+            return new SwrlBillingOutcome(risks, reasoning, "openllet-swrl");
+        } catch (Exception e) {
+            log.warn("[资费校准] SWRL 推理异常，回退 Java: {}", e.getMessage());
+            return SwrlBillingOutcome.fallback();
+        }
+    }
+
+    /**
+     * 资费校验 config → 合规草稿映射：仅取 SWRL 资费规则（R-C03/C05/C07/C09）所需字段，
+     * 固费/折扣从 plan_json 档位与优惠字段解析（缺失取 0，不虚构）。
+     */
+    private Map<String, Object> billingDraft(Map<String, Object> config, String offerId) {
+        Map<String, Object> plan = planOrSelf(config);
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("offeringId", MapOps.firstNonEmpty(offerId, config.get("offer_id"), config.get("similarOfferId")));
+        draft.put("offeringName", MapOps.firstNonEmpty(config.get("offer_name"), fieldOf(plan, "套餐名称")));
+        draft.put("messageRootKey", MapOps.firstNonEmpty(config.get("messageRootKey"), fieldOf(plan, "套餐属性")));
+        draft.put("channelScope", MapOps.firstNonEmpty(config.get("channelScope"), "全渠道"));
+        draft.put("fixedFeeAmount", billingMonthlyFee(config, plan));
+        draft.put("discountPercent", MapOps.firstNonEmpty(config.get("discountPercent"),
+                config.get("prefDiscount"), "100".equals(MapOps.str(config.get("discountType"))) ? 100 : null));
+        draft.put("freeFeeAmount", MapOps.firstNonEmpty(config.get("freeFeeAmount"),
+                config.get("giftFee"), config.get("prefFee")));
+        draft.put("repeatable", MapOps.firstNonEmpty(config.get("repeatable"), config.get("repeatChargeFlag")));
+        return draft;
+    }
+
+    /** 需求侧月固费（元）：优先 config.monthly_fee，回退 plan 套餐档位解析；失败取 0。 */
+    private double billingMonthlyFee(Map<String, Object> config, Map<String, Object> plan) {
+        Object monthly = MapOps.firstNonEmpty(config.get("monthly_fee"),
+                MapOps.castMap(config.get("chargePlan")).get("fixedFeeAmount"));
+        if (monthly != null) {
+            return MapOps.num(monthly, 0);
+        }
+        return parseFeeYuanOf(fieldOf(plan, "套餐档位"));
     }
 
     /**
@@ -2353,6 +2456,11 @@ public class OfferSimV16Service {
      * 新增销售品档案兜底：跨 req_id 扫描已持久化的 config 环节结果，按 offer_id 命中后
      * 依据其 plan_json 重建产品档案并写入内存缓存，使重启后仍可直接用配置数据发起测试。
      *
+     * <p>config 环节结果既可能是单品平面对象（顶层含 offer_id），也可能是 V3.12 多商品
+     * 批量信封（{@code {req_id, offers:[{offer_seq, offer_id, product_config}]}}，顶层不带
+     * offer_id）；两种形态都要能按 offer_id 命中（多商品遍历 offers[] 逐品匹配），
+     * 否则重启/多实例下新增品永远重建失败 → 测试发起报「销售品未收录」。
+     *
      * @return 重建成功返回档案；未命中返回 null
      */
     private Map<String, Object> recoverNewProductProfile(String offerId) {
@@ -2361,17 +2469,64 @@ public class OfferSimV16Service {
             if (json == null || json.isEmpty()) {
                 continue;
             }
-            String recOfferId = MapOps.str(MapOps.firstNonEmpty(json.get("offer_id"), json.get("offerId"))).trim();
-            if (!offerId.equals(recOfferId)) {
-                continue;
+            // 单品形态：顶层 offer_id（或 offerId）直接命中
+            if (offerId.equals(offerIdOf(json))) {
+                return cacheRecoveredProfile(offerId, planOfConfig(json));
             }
-            Map<String, Object> plan = parseConfig(MapOps.str(json.get("plan_json")));
-            Map<String, Object> rebuilt = buildOfferProfile(plan == null || plan.isEmpty() ? json : plan, offerId);
-            newProductArchive.put(offerId, rebuilt);
-            log.info("[OfferSimV16] 新增销售品档案自持久化 config 环节结果重建: offer_id={}", offerId);
-            return rebuilt;
+            // 多商品信封：遍历 offers[] 逐品匹配 offer_id，命中后取其内嵌 plan
+            for (Map<String, Object> o : MapOps.castListOfMaps(json.get("offers"))) {
+                if (!offerId.equals(offerIdOf(o))) {
+                    continue;
+                }
+                return cacheRecoveredProfile(offerId, planOfConfig(o));
+            }
         }
         return null;
+    }
+
+    /** 从配置记录（顶层或 offers[] 元素）提取 offer_id（兼容 offerId 别名）。 */
+    private String offerIdOf(Map<String, Object> node) {
+        Map<String, Object> inner = configInner(node);
+        return MapOps.str(MapOps.firstNonEmpty(inner.get("offer_id"), inner.get("offerId"))).trim();
+    }
+
+    /**
+     * 配置记录（顶层或 offers[] 元素）中定位 plan 原文：优先元素内嵌 product_config.plan_json
+     * （buildSavedConfig 落地结构），回退顶层 plan_json。product_config 既可能是嵌套 Map，
+     * 也可能是序列化 JSON 字符串（平台出参 string 约定），统一解析。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> planOfConfig(Map<String, Object> node) {
+        Map<String, Object> inner = configInner(node);
+        Map<String, Object> productConfig = parseConfig(MapOps.str(inner.get("product_config")));
+        if (productConfig != null && !productConfig.isEmpty()) {
+            Map<String, Object> plan = parseConfig(MapOps.str(productConfig.get("plan_json")));
+            if (plan != null && !plan.isEmpty()) {
+                return plan;
+            }
+        }
+        Map<String, Object> plan = parseConfig(MapOps.str(inner.get("plan_json")));
+        if (plan != null && !plan.isEmpty()) {
+            return plan;
+        }
+        return inner;
+    }
+
+    /** 元素自身若含内层 product_config 包装则取内层，否则取元素本身。 */
+    private Map<String, Object> configInner(Map<String, Object> node) {
+        if (node.get("product_config") instanceof Map<?, ?> pc) {
+            return castMap(pc);
+        }
+        return node;
+    }
+
+    /** 依 plan 重建产品档案并写入内存缓存；plan 为空时严谨回退 config 记录自身。 */
+    private Map<String, Object> cacheRecoveredProfile(String offerId, Map<String, Object> plan) {
+        Map<String, Object> rebuilt = buildOfferProfile(plan == null || plan.isEmpty()
+                ? Map.of("offer_id", offerId) : plan, offerId);
+        newProductArchive.put(offerId, rebuilt);
+        log.info("[OfferSimV16] 新增销售品档案自持久化 config 环节结果重建: offer_id={}", offerId);
+        return rebuilt;
     }
 
     /** plan 字段值提取：按字段名取首个非空 value（键名对齐本体注册表 24 字段；兼容 fields/flat_fields/payload 三形态，V2.8） */
@@ -2742,6 +2897,7 @@ public class OfferSimV16Service {
             return offersMissing();
         }
         List<Map<String, Object>> items = new ArrayList<>();
+        List<Map<String, Object>> reasoningAll = new ArrayList<>();
         for (Map<String, Object> offer : offers) {
             Map<String, Object> one = elementRequest(req, offer);
             if (MapOps.empty(one.get("config_json"))) {
@@ -2751,14 +2907,23 @@ public class OfferSimV16Service {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("offer_seq", offer.get("offer_seq"));
             item.put("status", "0".equals(MapOps.str(r.get("pass"))) ? "fail" : "success");
-            for (String k : List.of("pass", "risk_list", "compare_list", "resultCode", "resultMsg")) {
+            for (String k : List.of("pass", "risk_list", "compare_list", "reasoning_chain", "engine", "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
             }
             items.add(item);
+            if (r.get("reasoning_chain") instanceof List<?> rc) {
+                for (Object o : rc) {
+                    if (o instanceof Map<?, ?> m && !reasoningAll.contains(m)) {
+                        reasoningAll.add(castMap(m));
+                    }
+                }
+            }
         }
-        return batchBody(req, items);
+        Map<String, Object> body = batchBody(req, items);
+        body.put("reasoning_chain", reasoningAll);
+        return body;
     }
 
     /* ---- 上线审批批量 ---- */

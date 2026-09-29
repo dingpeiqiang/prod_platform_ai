@@ -1,0 +1,10 @@
+const fs = require('fs');
+let src = fs.readFileSync('_resolve.js', 'utf8');
+src = src.replace('module.exports = { resolve };', 'module.exports = { resolve, resolveLine };');
+fs.writeFileSync('_resolve_dbg.js', src, 'utf8');
+const R = require('./_resolve_dbg.js');
+const txt = fs.readFileSync('frontend/public/ops-web/js/ops-view.js.bak.recon', 'utf8');
+const line = txt.split('\n')[2];
+const out = R.resolveLine(line, true);
+const i = out.indexOf('months');
+console.log(JSON.stringify(out.slice(i - 5, i + 120)));

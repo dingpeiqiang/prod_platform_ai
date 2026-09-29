@@ -1,0 +1,16 @@
+const fs = require('fs');
+let src = fs.readFileSync('_resolve.js', 'utf8');
+src = src.replace('module.exports = { resolve };', 'module.exports = { resolve, resolveLine };');
+fs.writeFileSync('_resolve_dbg.js', src, 'utf8');
+const R = require('./_resolve_dbg.js');
+const txt = fs.readFileSync('frontend/public/ops-web/js/ops-view.js.bak.recon', 'utf8');
+const line = txt.split('\n')[2];
+const out = R.resolveLine(line, true);
+const i = out.indexOf('months');
+const seg = out.slice(i, i + 20);
+console.log('resolveLine:', [...seg].map(c => c.codePointAt(0).toString(16)).join(' '));
+const out2 = R.resolve(line);
+const i2 = out2.indexOf('months');
+const seg2 = out2.slice(i2, i2 + 20);
+console.log('resolve    :', [...seg2].map(c => c.codePointAt(0).toString(16)).join(' '));
+console.log('embedded test:', /^\s*(window\.__OPS_JS|ConfigWorkbench\.template)\s*=\s*"/.test(line));

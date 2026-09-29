@@ -1,11 +1,15 @@
 package com.sitech.prodai.service;
 
 import com.sitech.prodai.config.ProdAiProperties;
+import com.sitech.prodai.service.common.MapOps;
 import openllet.owlapi.OpenlletReasoner;
 import openllet.owlapi.OpenlletReasonerFactory;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.AddAxiom;
+import org.semanticweb.owlapi.model.AxiomType;
 import org.semanticweb.owlapi.model.IRI;
+import org.semanticweb.owlapi.model.OWLAnnotation;
+import org.semanticweb.owlapi.model.OWLAxiom;
 import org.semanticweb.owlapi.model.OWLClass;
 import org.semanticweb.owlapi.model.OWLDataFactory;
 import org.semanticweb.owlapi.model.OWLDataProperty;
@@ -16,10 +20,8 @@ import org.semanticweb.owlapi.model.OWLObjectProperty;
 import org.semanticweb.owlapi.model.OWLObjectPropertyAssertionAxiom;
 import org.semanticweb.owlapi.model.OWLOntology;
 import org.semanticweb.owlapi.model.OWLOntologyManager;
-import org.semanticweb.owlapi.model.SWRLAtom;
-import org.semanticweb.owlapi.model.SWRLDArgument;
+import org.semanticweb.owlapi.model.RemoveAxiom;
 import org.semanticweb.owlapi.model.SWRLRule;
-import org.semanticweb.owlapi.model.SWRLVariable;
 import org.semanticweb.owlapi.reasoner.NodeSet;
 import org.semanticweb.owlapi.vocab.OWL2Datatype;
 import org.slf4j.Logger;
@@ -41,18 +43,19 @@ import java.util.Set;
  * <ul>
  *   <li>异动归因 R-A01~A05</li>
  *   <li>风险稽核 R-B01~B05（白名单/分位等预计算布尔由调用方断言）</li>
+ *   <li>运行告警分级 R-E00~E04</li>
  * </ul>
- * 阈值与启用开关来自 {@link OpsRulesService}（ops_rules.json）。
+ * 规则骨架内置于 product.ttl（swrl:Imp + :thresholdValue 命名阈值个体），
+ * 运行时按 ops_rules.json / ops_rules.alertGrading 覆写阈值个体并关闭未启用规则，
+ * 规则本体无需重建；阈值与启用开关来自 {@link OpsRulesService}。
  */
 @Service
 public class OpsSwrlReasoner {
 
     private static final Logger log = LoggerFactory.getLogger(OpsSwrlReasoner.class);
-    private static final String NS = "http://prodai.sitech.com/ontology/product-ops#";
-    private static final IRI SWRLB_LTE = IRI.create("http://www.w3.org/2003/11/swrlb#lessThanOrEqual");
-    private static final IRI SWRLB_GTE = IRI.create("http://www.w3.org/2003/11/swrlb#greaterThanOrEqual");
-    private static final IRI SWRLB_GT = IRI.create("http://www.w3.org/2003/11/swrlb#greaterThan");
-    private static final IRI SWRLB_EQ = IRI.create("http://www.w3.org/2003/11/swrlb#equal");
+    private static final String NS = "http://prodai.sitech.com/ontology/product#";
+    private static final String ALERT_NS = NS;
+    private static final String ALERT_OWL_PATH = "classpath:ontology/product.ttl";
 
     private final ResourceLoader resourceLoader;
     private final ProdAiProperties properties;
@@ -100,9 +103,6 @@ public class OpsSwrlReasoner {
         }
     }
 
-    /**
-     * 对单个产商品 opsGraph 节点执行 R-A01~A05 SWRL 推理。
-     */
     public SwrlFireResult reasonRootCause(
             String offeringId,
             String offeringName,
@@ -168,24 +168,38 @@ public class OpsSwrlReasoner {
             double penetGt = ruleNum(a04, "penetrationDeltaPpGt", 0);
             double minWeight = ruleNum(a05, "minWeightHint", 0.08);
 
+            Map<String, Double> thresholds = new LinkedHashMap<>();
             if (a01Enabled) {
-                add(manager, ontology, buildRa01DeltaRule(df, metricDeltaLte));
-                if (honorFlag) {
-                    add(manager, ontology, buildRa01FlagRule(df));
-                }
+                thresholds.put("th_RA01_metricDeltaLte", metricDeltaLte);
             }
             if (a02Enabled) {
-                add(manager, ontology, buildRa02Rule(df, orderDeltaLte, contribGte));
+                thresholds.put("th_RA02_orderDeltaLte", orderDeltaLte);
+                thresholds.put("th_RA02_contribRatioGte", contribGte);
             }
             if (a03Enabled) {
-                add(manager, ontology, buildRa03Rule(df, daysLte, drivenGte));
+                thresholds.put("th_RA03_daysToExpireLte", daysLte);
+                thresholds.put("th_RA03_drivenOrderRatioGte", drivenGte);
             }
             if (a04Enabled) {
-                add(manager, ontology, buildRa04Rule(df, gapGte, penetGt));
+                thresholds.put("th_RA04_priceGapRatioGte", gapGte);
+                thresholds.put("th_RA04_penetrationDeltaPpGt", penetGt);
             }
             if (a05Enabled) {
-                add(manager, ontology, buildRa05Rule(df, minWeight));
+                thresholds.put("th_RA05_minWeightHint", minWeight);
             }
+            applyThresholds(manager, ontology, df, thresholds);
+
+            Set<String> disabledRules = new LinkedHashSet<>();
+            if (!a01Enabled) {
+                disabledRules.add("R-A01");
+            } else if (!honorFlag) {
+                disabledRules.add("R-A01.flag");
+            }
+            if (!a02Enabled) disabledRules.add("R-A02");
+            if (!a03Enabled) disabledRules.add("R-A03");
+            if (!a04Enabled) disabledRules.add("R-A04");
+            if (!a05Enabled) disabledRules.add("R-A05");
+            disableRules(manager, ontology, disabledRules);
 
             OpenlletReasoner reasoner = OpenlletReasonerFactory.getInstance().createReasoner(ontology);
             reasoner.prepareReasoner();
@@ -288,7 +302,7 @@ public class OpsSwrlReasoner {
      *
      * @param offering 货架行
      * @param flags    预计算：inWhitelist, onShelf, lowEffCategoryFlag, lowRevenueFlag
-     * @param rules    R-B01~B05 配置 + defaults（zeroSalesShelfDays / highRiskReviewDays）
+     * @param b01~b05  R-B01~B05 配置 + defaults（zeroSalesShelfDays / highRiskReviewDays）
      */
     public SwrlRiskResult reasonRiskOffering(
             Map<String, Object> offering,
@@ -340,25 +354,28 @@ public class OpsSwrlReasoner {
             double zeroShelfDays = ruleNum(riskDefaults, "zeroSalesShelfDays", 180);
             double reviewDays = ruleNum(riskDefaults, "highRiskReviewDays", 30);
 
+            Map<String, Double> thresholds = new LinkedHashMap<>();
             if (enabled(b01)) {
-                add(manager, ontology, buildRb01ZeroFeeRule(df));
-                add(manager, ontology, buildRb01DiscountRule(df, fullDiscGte));
-            }
-            if (enabled(b02)) {
-                add(manager, ontology, buildRb02Rule(df));
+                thresholds.put("th_RB01_fullDiscountPercentGte", fullDiscGte);
             }
             if (enabled(b03)) {
-                add(manager, ontology, buildRb03Rule(df, zeroShelfDays));
+                thresholds.put("th_RB03_zeroSalesShelfDays", zeroShelfDays);
             }
-            if (enabled(b04)) {
-                add(manager, ontology, buildRb04Rule(df));
-            }
-            // HighRisk 归类：零元无合约 / 异常折扣
-            add(manager, ontology, buildHighRiskFromB02(df));
-            add(manager, ontology, buildHighRiskFromDiscount(df));
             if (enabled(b05)) {
-                add(manager, ontology, buildRb05Rule(df, reviewDays));
+                thresholds.put("th_RB05_highRiskReviewDays", reviewDays);
             }
+            applyThresholds(manager, ontology, df, thresholds);
+
+            Set<String> disabledRules = new LinkedHashSet<>();
+            if (!enabled(b01)) {
+                disabledRules.add("R-B01.zeroFee");
+                disabledRules.add("R-B01.discount");
+            }
+            if (!enabled(b02)) disabledRules.add("R-B02");
+            if (!enabled(b03)) disabledRules.add("R-B03");
+            if (!enabled(b04)) disabledRules.add("R-B04");
+            if (!enabled(b05)) disabledRules.add("R-B05");
+            disableRules(manager, ontology, disabledRules);
 
             OpenlletReasoner reasoner = OpenlletReasonerFactory.getInstance().createReasoner(ontology);
             reasoner.prepareReasoner();
@@ -410,6 +427,427 @@ public class OpsSwrlReasoner {
             log.warn("[OpsSwrlReasoner] 风险 SWRL 失败 offering={}: {}", offeringId, e.getMessage());
             return SwrlRiskResult.fail("fallback-java", "SWRL 失败: " + e.getMessage());
         }
+    }
+
+    // ---------- 配置合规（R-C03~C09） ----------
+
+    /**
+     * 配置合规 SWRL 结论。
+     *
+     * @param violations 逐条违规：{ruleId, conclusionClass, field, evidence}
+     * @param reasoning  推理链：{ruleId, condition, conclusion} 逐规则可读说明
+     */
+    public record ConfigComplianceResult(
+            boolean success,
+            String engine,
+            List<String> firedRules,
+            List<Map<String, Object>> violations,
+            List<Map<String, Object>> reasoning,
+            boolean compliant,
+            String message
+    ) {
+        public static ConfigComplianceResult fail(String engine, String message) {
+            return new ConfigComplianceResult(false, engine, List.of(), List.of(), List.of(), false, message);
+        }
+    }
+
+    /**
+     * 配置草稿合规推理（R-C03~C09），基于 product.ttl 本体 SWRL 规则。
+     * <p>
+     * 因 SWRL 无「缺失即假」的否定，调用方按 Java 语义预计算少量存在性/冲突布尔
+     * （c06Missing* / isAddonFlag / hasDependOn / sameMutexGroup / hasPreferredDiscount /
+     * hasGiftFee / inWhitelistFlag / internalTestFlag 等）作为事实断言；SWRL 承担
+     * 阈值比较、多条件合取与结论类归入，并回读 ConfigViolation 子类形成推理链。
+     *
+     * @param draft  配置草稿（已 applyCategoryDefaults）
+     * @param graph  事实图（取 esistWhitelist 等）
+     * @param c03~c09 ops_rules.config.rules 对应规则（enabled / 阈值）
+     */
+    public ConfigComplianceResult reasonConfigCompliance(
+            Map<String, Object> draft,
+            Map<String, Object> graph,
+            Map<String, Object> c03,
+            Map<String, Object> c04,
+            Map<String, Object> c05,
+            Map<String, Object> c06,
+            Map<String, Object> c07,
+            Map<String, Object> c08,
+            Map<String, Object> c09,
+            double feeMin,
+            double feeMax
+    ) {
+        if (!properties.getOntology().isSwrlEnabled()) {
+            return ConfigComplianceResult.fail("disabled", "SWRL 已关闭");
+        }
+        String offeringId = str(MapOps.str(firstNonEmpty(draft.get("offeringId"), "draft")));
+        try {
+            OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+            OWLDataFactory df = manager.getOWLDataFactory();
+            OWLOntology ontology = loadBaseOntology(manager);
+
+            OWLNamedIndividual ind = ind(df, "config/" + offeringId);
+            add(manager, ontology, df.getOWLClassAssertionAxiom(cls(df, "Offering"), ind));
+            add(manager, ontology, dataAssert(df, ind, "offeringId", offeringId));
+            add(manager, ontology, dataAssertFloat(df, ind, "fixedFeeAmount", num(MapOps.resolveFixedFee(draft))));            add(manager, ontology, dataAssertDecimal(df, ind, "oneTimeFee", num(draft.get("oneTimeFee"))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "hasContract", truthy(draft.get("hasContract"))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "repeatableOrderFlag",
+                    truthy(draft.get("repeatable")) || "是".equals(MapOps.str(draft.get("repeatChargeFlag")))));
+
+            double discount = normalizeDiscount(MapOps.num(
+                    firstNonEmpty(draft.get("discountPercent"), draft.get("prefDiscount")), -1));
+            add(manager, ontology, dataAssertDecimal(df, ind, "discountPercent", discount));
+
+            // R-C06 必填缺失（存在性由 Java 预计算）
+            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingName",
+                    empty(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingCategory", empty(draft.get("messageRootKey"))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingFee",
+                    empty(firstNonEmpty(draft.get("fixedFeeAmount"), draft.get("monthlyFee"),
+                            MapOps.castMap(draft.get("chargePlan")).get("fixedFeeAmount")))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingChannel",
+                    empty(firstNonEmpty(draft.get("channelScope"),
+                            MapOps.castMap(draft.get("releaseScope")).get("channelScope")))));
+
+            // R-C03 互斥冲突
+            add(manager, ontology, dataAssertBoolean(df, ind, "bindsExistingMainPkg", !empty(draft.get("bindExistingMainPkg"))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "sameMutexGroup", truthy(draft.get("_sameMutexGroup"))));
+            add(manager, ontology, dataAssertBoolean(df, ind, "hasPreferredDiscount", discount > 0));
+            add(manager, ontology, dataAssertBoolean(df, ind, "hasGiftFee",
+                    num(firstNonEmpty(draft.get("freeFeeAmount"), draft.get("giftFee"), draft.get("prefFee")), -1) > 0));
+
+            // R-C04 附加缺依赖
+            boolean isAddon = "addon".equals(MapOps.str(draft.get("offeringType")))
+                    || Boolean.FALSE.equals(draft.get("isMainOffer"))
+                    || "false".equalsIgnoreCase(MapOps.str(draft.get("isMainOffer")));
+            add(manager, ontology, dataAssertBoolean(df, ind, "isAddonFlag", isAddon));
+            add(manager, ontology, dataAssertBoolean(df, ind, "hasDependOn",
+                    !empty(draft.get("dependOn")) || !empty(draft.get("sourceOfferRef"))));
+
+            // R-C05 高风险零固费
+            String scenario = MapOps.str(draft.get("bizScenario"));
+            List<Object> whitelist = MapOps.castList(graph.get("equityGiftWhitelist"));
+            add(manager, ontology, dataAssertBoolean(df, ind, "inWhitelistFlag", whitelist.contains(scenario)));
+            add(manager, ontology, dataAssertBoolean(df, ind, "internalTestFlag",
+                    "内部验证".equals(MapOps.str(draft.get("channelScope")))));
+
+            // 阈值覆写（R-C07 / R-C09）
+            Map<String, Double> thresholds = new LinkedHashMap<>();
+            if (enabled(c07)) thresholds.put("th_RC07_discountFull", ruleNum(c07, "discountPercentGte", 100));
+            if (enabled(c09)) {
+                thresholds.put("th_RC09_feeMin", feeMin);
+                thresholds.put("th_RC09_feeMax", feeMax);
+            }
+            applyThresholds(manager, ontology, df, thresholds);
+
+            Set<String> disabledRules = new LinkedHashSet<>();
+            if (!enabled(c03)) {
+                disabledRules.add("R-C03.mutex");
+                disabledRules.add("R-C03.discountGift");
+            }
+            if (!enabled(c04)) disabledRules.add("R-C04");
+            if (!enabled(c05)) disabledRules.add("R-C05");
+            if (!enabled(c06)) {
+                disabledRules.add("R-C06.name");
+                disabledRules.add("R-C06.category");
+                disabledRules.add("R-C06.fee");
+                disabledRules.add("R-C06.channel");
+            }
+            if (!enabled(c07)) disabledRules.add("R-C07");
+            if (!enabled(c08)) disabledRules.add("R-C08");
+            if (!enabled(c09)) {
+                disabledRules.add("R-C09.below");
+                disabledRules.add("R-C09.above");
+            }
+            disableRules(manager, ontology, disabledRules);
+
+            // 第一轮：判定 ConfigViolation 子类（先以 hasViolation=false 占位）
+            add(manager, ontology, dataAssertBoolean(df, ind, "hasViolation", false));
+            OpenlletReasoner reasoner = reasonerFor(ontology);
+            reasoner.prepareReasoner();
+
+            List<Map<String, Object>> violations = new ArrayList<>();
+            List<Map<String, Object>> reasoning = new ArrayList<>();
+            List<String> fired = new ArrayList<>();
+            collectViolation(reasoner, df, ind, "R-C06", "C06MissingRequired", "必填缺失",
+                    c06, violations, reasoning, fired, fieldForC06(draft));
+            collectViolation(reasoner, df, ind, "R-C03", "C03MutualExclusiveConflict", "互斥/优惠冲突",
+                    c03, violations, reasoning, fired, !empty(draft.get("bindExistingMainPkg")) ? "mutexGroup" : "prefDiscount");
+            collectViolation(reasoner, df, ind, "R-C04", "C04OrphanAddon", "附加缺依赖",
+                    c04, violations, reasoning, fired, "dependOn");
+            collectViolation(reasoner, df, ind, "R-C05", "C05HighRiskZeroFee", "高风险零固费",
+                    c05, violations, reasoning, fired, "fixedFeeAmount");
+            collectViolation(reasoner, df, ind, "R-C07", "C07AbnormalDiscount", "异常优惠漏洞",
+                    c07, violations, reasoning, fired, "prefDiscount");
+            collectViolation(reasoner, df, ind, "R-C09", "C09FeeRangeViolation", "资费区间违规",
+                    c09, violations, reasoning, fired, "fixedFeeAmount");
+
+            // 第二轮：按是否命中违规断言 hasViolation，判定 R-C08 合规通过
+            reasoner.dispose();
+            if (enabled(c08)) {
+                OWLDataProperty hv = dataProp(df, "hasViolation");
+                for (OWLDataPropertyAssertionAxiom ax : ontology.dataPropertyAssertionAxioms(ind).toList()) {
+                    if (hv.equals(ax.getProperty().asOWLDataProperty())) {
+                        manager.applyChange(new RemoveAxiom(ontology, ax));
+                    }
+                }
+                add(manager, ontology, dataAssertBoolean(df, ind, "hasViolation", !violations.isEmpty()));
+                OpenlletReasoner reasoner2 = reasonerFor(ontology);
+                reasoner2.prepareReasoner();
+                if (reasoner2.getTypes(ind, true).containsEntity(cls(df, "C08Compliant"))) {
+                    fired.add("R-C08");
+                    reasoning.add(reasonRow("R-C08", "无 ConfigViolation 命中", "C08Compliant 合规通过"));
+                }
+                reasoner2.dispose();
+            }
+
+            boolean compliant = violations.stream().allMatch(v -> !"HIGH".equals(ruleLevel(v)));
+            return new ConfigComplianceResult(true, "openllet-swrl", fired, violations, reasoning, compliant,
+                    violations.isEmpty() ? "SWRL 合规推理：通过" : "SWRL 合规推理：命中 " + violations.size() + " 项");
+        } catch (Exception e) {
+            log.warn("[OpsSwrlReasoner] 配置合规 SWRL 失败 offering={}: {}", offeringId, e.getMessage());
+            return ConfigComplianceResult.fail("fallback-java", "SWRL 失败: " + e.getMessage());
+        }
+    }
+
+    private OpenlletReasoner reasonerFor(OWLOntology ontology) {
+        return OpenlletReasonerFactory.getInstance().createReasoner(ontology);
+    }
+
+    private void collectViolation(OpenlletReasoner reasoner, OWLDataFactory df, OWLNamedIndividual ind,
+                                  String ruleId, String conclusionClass, String label, Map<String, Object> rule,
+                                  List<Map<String, Object>> violations, List<Map<String, Object>> reasoning,
+                                  List<String> fired, String field) {
+        if (!enabled(rule)) return;
+        if (!reasoner.getTypes(ind, true).containsEntity(cls(df, conclusionClass))) return;
+        fired.add(ruleId);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("ruleId", ruleId);
+        row.put("conclusionClass", conclusionClass);
+        row.put("field", field);
+        row.put("label", label);
+        row.put("evidence", List.of(ruleId + " → " + conclusionClass));
+        violations.add(row);
+        reasoning.add(reasonRow(ruleId, str(rule.get("name")), conclusionClass + "（命中 " + label + "）"));
+    }
+
+    private Map<String, Object> reasonRow(String ruleId, String condition, String conclusion) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("ruleId", ruleId);
+        row.put("condition", condition);
+        row.put("conclusion", conclusion);
+        return row;
+    }
+
+    private String ruleLevel(Map<String, Object> violation) {
+        return "R-C06".equals(violation.get("ruleId")) ? "MEDIUM" : "HIGH";
+    }
+
+    private String fieldForC06(Map<String, Object> draft) {
+        if (empty(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")))) return "offeringName";
+        if (empty(draft.get("messageRootKey"))) return "messageRootKey";
+        if (empty(firstNonEmpty(draft.get("fixedFeeAmount"), draft.get("monthlyFee")))) return "fixedFeeAmount";
+        return "channelScope";
+    }
+
+    private double normalizeDiscount(double discount) {
+        if (discount > 0 && discount <= 1) return discount * 100;
+        return discount;
+    }
+
+    private Object firstNonEmpty(Object... values) {
+        for (Object v : values) {
+            if (v != null && !String.valueOf(v).isBlank()) return v;
+        }
+        return null;
+    }
+
+    private boolean empty(Object v) {
+        return v == null || String.valueOf(v).isBlank();
+    }
+
+    /**
+     * 单产商品告警分级结果（R-E00~E04）。
+     *
+     * @param level          P0/P1/P2/NONE
+     * @param needWorkOrder  是否需建单（P0/P1 强制，P2 不建单）
+     * @param slaMinutes     SLA 处置时限（分钟）
+     */
+    public record SwrlAlertResult(
+            boolean success,
+            String engine,
+            boolean alerted,
+            String level,
+            boolean needWorkOrder,
+            int slaMinutes,
+            List<String> firedRules,
+            List<String> reasons,
+            String message
+    ) {
+    }
+
+    /**
+     * 单产商品运行告警分级（R-E00~E04），基于 product.ttl 本体。
+     * <p>
+     * 断言监控事实（error_count / fee_error_rate / 趋势布尔），按 ops_rules.alertGrading 阈值
+     * 覆写本体阈值个体，推出 P0/P1/P2 等级与是否强制建单；无告警返回 level=NONE。
+     * 阈值全部外置；SWRL 失败回退 Java-rules（同阈值）。
+     *
+     * @param offeringId    产商品ID
+     * @param facts         监控事实：order_count/error_count/fee_error_rate/order_trend/error_trend/fee_trend
+     * @param e01~e04       ops_rules.alertGrading.rules 对应规则（阈值 + enabled）
+     * @param alertDefaults ops_rules.alertGrading.defaults（SLA 分钟）
+     */
+    public SwrlAlertResult gradeAlert(
+            String offeringId,
+            Map<String, Object> facts,
+            Map<String, Object> e01,
+            Map<String, Object> e02,
+            Map<String, Object> e03,
+            Map<String, Object> e04,
+            Map<String, Object> alertDefaults
+    ) {
+        double feeGte = ruleNum(e01, "feeErrorRateGte", 0.05);
+        double errGte = ruleNum(e01, "errorCountGte", 10);
+        double p1ErrGte = ruleNum(e02, "errorCountGte", 1);
+        double p1FeeGte = ruleNum(e02, "feeErrorRateGte", 0.01);
+        boolean requireTrend = e03 == null || e03.get("requireTrendWorse") == null
+                || truthy(e03.get("requireTrendWorse"));
+        int slaP0 = (int) ruleNum(alertDefaults, "slaP0Minutes", 30);
+        int slaP1 = (int) ruleNum(alertDefaults, "slaP1Minutes", 240);
+        int slaP2 = (int) ruleNum(alertDefaults, "slaP2Minutes", 1440);
+
+        if (!properties.getOntology().isSwrlEnabled()) {
+            return gradeByJava(offeringId, facts, e01, e02, e03, e04,
+                    feeGte, errGte, p1ErrGte, p1FeeGte, requireTrend, slaP0, slaP1, slaP2, "fallback-java", "SWRL 已关闭");
+        }
+        try {
+            OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+            OWLDataFactory df = manager.getOWLDataFactory();
+            OWLOntology ontology = loadAlertOntology(manager);
+
+            OWLNamedIndividual o = alertInd(df, offeringId);
+            add(manager, ontology, df.getOWLClassAssertionAxiom(alertCls(df, "Offering"), o));
+            add(manager, ontology, alertDataAssert(df, o, "offeringId", offeringId));
+            add(manager, ontology, alertDataAssertDecimal(df, o, "orderCount", num(facts.get("order_count"))));
+            add(manager, ontology, alertDataAssertDecimal(df, o, "errorCount", num(facts.get("error_count"))));
+            add(manager, ontology, alertDataAssertDecimal(df, o, "feeErrorRate", num(facts.get("fee_error_rate"))));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "orderTrendDown",
+                    "下降".equals(str(facts.get("order_trend")))));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "errorTrendUp",
+                    "上升".equals(str(facts.get("error_trend")))));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "feeTrendUp",
+                    "上升".equals(str(facts.get("fee_trend")))));
+
+            Map<String, Double> thresholds = new LinkedHashMap<>();
+            if (enabled(e01)) {
+                thresholds.put("th_RE01_feeErrorRateGte", feeGte);
+                thresholds.put("th_RE01_errorCountGte", errGte);
+            }
+            if (enabled(e02)) {
+                thresholds.put("th_RE02_errorCountGte", p1ErrGte);
+                thresholds.put("th_RE02_feeErrorRateGte", p1FeeGte);
+            }
+            applyThresholds(manager, ontology, df, thresholds);
+
+            Set<String> disabledRules = new LinkedHashSet<>();
+            if (!enabled(e01)) {
+                disabledRules.add("R-E01.fee");
+                disabledRules.add("R-E01.err");
+            }
+            if (!enabled(e02)) {
+                disabledRules.add("R-E02.err");
+                disabledRules.add("R-E02.fee");
+            }
+            if (!enabled(e03) || !requireTrend) {
+                disabledRules.add("R-E03.errTrend");
+                disabledRules.add("R-E03.feeTrend");
+                disabledRules.add("R-E03.orderTrend");
+            }
+            if (!enabled(e04)) {
+                disabledRules.add("R-E04.p0");
+                disabledRules.add("R-E04.p1");
+            }
+            disableRules(manager, ontology, disabledRules);
+
+            OpenlletReasoner reasoner = OpenlletReasonerFactory.getInstance().createReasoner(ontology);
+            reasoner.prepareReasoner();
+
+            boolean p0 = isAlertType(reasoner, o, df, "P0AlertOffering");
+            boolean p1 = isAlertType(reasoner, o, df, "P1AlertOffering");
+            boolean p2 = isAlertType(reasoner, o, df, "P2AlertOffering");
+            boolean needWo = isAlertType(reasoner, o, df, "NeedWorkOrderOffering");
+            reasoner.dispose();
+
+            List<String> fired = new ArrayList<>();
+            List<String> reasons = new ArrayList<>();
+            String level = "NONE";
+            if (p0) {
+                level = "P0";
+                fired.add("R-E01");
+                reasons.add("计费差错率≥" + feeGte + " 或异常量≥" + errGte);
+            } else if (p1) {
+                level = "P1";
+                fired.add("R-E02");
+                reasons.add("异常量≥" + p1ErrGte + " 或计费差错率≥" + p1FeeGte);
+            } else if (p2) {
+                level = "P2";
+                fired.add("R-E03");
+                reasons.add("指标趋势劣化（无实量异常）");
+            }
+            if (!"NONE".equals(level)) {
+                fired.add(0, "R-E00");
+            }
+            if (needWo) {
+                fired.add("R-E04");
+            }
+            int sla = "P0".equals(level) ? slaP0 : "P1".equals(level) ? slaP1 : "P2".equals(level) ? slaP2 : 0;
+            return new SwrlAlertResult(true, "openllet-swrl", !"NONE".equals(level), level, needWo, sla, fired, reasons,
+                    "SWRL 告警分级完成: " + level);
+        } catch (Exception e) {
+            log.warn("[OpsSwrlReasoner] 告警分级 SWRL 失败 offering={}: {}", offeringId, e.getMessage());
+            return gradeByJava(offeringId, facts, e01, e02, e03, e04,
+                    feeGte, errGte, p1ErrGte, p1FeeGte, requireTrend, slaP0, slaP1, slaP2,
+                    "fallback-java", "SWRL 失败: " + e.getMessage());
+        }
+    }
+
+    /** Java 回退分级（阈值与 SWRL 同源，保证引擎不可用时结果一致）。 */
+    private SwrlAlertResult gradeByJava(
+            String offeringId, Map<String, Object> facts,
+            Map<String, Object> e01, Map<String, Object> e02, Map<String, Object> e03, Map<String, Object> e04,
+            double feeGte, double errGte, double p1ErrGte, double p1FeeGte, boolean requireTrend,
+            int slaP0, int slaP1, int slaP2, String engine, String message
+    ) {
+        double err = num(facts.get("error_count"));
+        double fee = num(facts.get("fee_error_rate"));
+        boolean trendWorse = "下降".equals(str(facts.get("order_trend")))
+                || "上升".equals(str(facts.get("error_trend")))
+                || "上升".equals(str(facts.get("fee_trend")));
+        List<String> fired = new ArrayList<>();
+        List<String> reasons = new ArrayList<>();
+        String level = "NONE";
+        if (enabled(e01) && (fee >= feeGte || err >= errGte)) {
+            level = "P0";
+            fired.add("R-E01");
+            reasons.add("计费差错率≥" + feeGte + " 或异常量≥" + errGte);
+        } else if (enabled(e02) && (err >= p1ErrGte || fee >= p1FeeGte)) {
+            level = "P1";
+            fired.add("R-E02");
+            reasons.add("异常量≥" + p1ErrGte + " 或计费差错率≥" + p1FeeGte);
+        } else if (enabled(e03) && requireTrend && trendWorse) {
+            level = "P2";
+            fired.add("R-E03");
+            reasons.add("指标趋势劣化（无实量异常）");
+        }
+        if (!"NONE".equals(level)) {
+            fired.add(0, "R-E00");
+        }
+        boolean needWo = enabled(e04) && ("P0".equals(level) || "P1".equals(level));
+        if (needWo) {
+            fired.add("R-E04");
+        }
+        int sla = "P0".equals(level) ? slaP0 : "P1".equals(level) ? slaP1 : "P2".equals(level) ? slaP2 : 0;
+        return new SwrlAlertResult(true, engine, !"NONE".equals(level), level, needWo, sla, fired, reasons, message);
     }
 
     // ---------- ABox helpers ----------
@@ -612,187 +1050,49 @@ public class OpsSwrlReasoner {
         return row;
     }
 
-    // ---------- SWRL rules: root cause ----------
+    // ---------- SWRL 规则阈值/开关（规则骨架内置于 product.ttl，运行时覆写） ----------
 
-    private SWRLRule buildRa01DeltaRule(OWLDataFactory df, double metricDeltaLte) {
-        SWRLVariable o = var(df, "o");
-        SWRLVariable m = var(df, "m");
-        SWRLVariable d = var(df, "d");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "hasMetric"), o, m));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "metricDelta"), m, d));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_LTE, List.of(d, litArg(df, metricDeltaLte))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o)));
+    /**
+     * 将运行时阈值覆写到命名阈值个体（:th_*）的 :thresholdValue 断言：
+     * 先移除本体中既有断言，再按 ops_rules.json 注入新值，规则体经 ?t 绑定自动生效。
+     */
+    private void applyThresholds(
+            OWLOntologyManager manager, OWLOntology ontology, OWLDataFactory df, Map<String, Double> thresholds) {
+        if (thresholds.isEmpty()) return;
+        for (Map.Entry<String, Double> e : thresholds.entrySet()) {
+            OWLNamedIndividual th = ind(df, e.getKey());
+            for (OWLDataPropertyAssertionAxiom ax : ontology.dataPropertyAssertionAxioms(th).toList()) {
+                if (dataProp(df, "thresholdValue").equals(ax.getProperty().asOWLDataProperty())) {
+                    manager.applyChange(new RemoveAxiom(ontology, ax));
+                }
+            }
+            add(manager, ontology, dataAssertDecimal(df, th, "thresholdValue", e.getValue()));
+        }
     }
 
-    private SWRLRule buildRa01FlagRule(OWLDataFactory df) {
-        SWRLVariable o = var(df, "o2");
-        SWRLVariable m = var(df, "m2");
-        SWRLVariable f = var(df, "f2");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "hasMetric"), o, m));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "anomalyFlag"), m, f));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(f, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o)));
+    /**
+     * 按规则 ID（对应 SWRL 规则的 rdfs:label，如 "R-A01.flag"）关闭未启用规则：
+     * 从本体移除对应 SWRLRule 公理，剩余规则交由 Openllet 推理。
+     */
+    private void disableRules(OWLOntologyManager manager, OWLOntology ontology, Set<String> ruleIds) {
+        if (ruleIds.isEmpty()) return;
+        for (OWLAxiom axiom : ontology.axioms(AxiomType.SWRL_RULE).toList()) {
+            if (axiom instanceof SWRLRule rule) {
+                String label = ruleLabel(rule);
+                if (label != null && ruleIds.contains(label)) {
+                    manager.applyChange(new RemoveAxiom(ontology, axiom));
+                }
+            }
+        }
     }
 
-    private SWRLRule buildRa02Rule(OWLDataFactory df, double orderDeltaLte, double contribGte) {
-        SWRLVariable o = var(df, "o3");
-        SWRLVariable c = var(df, "c3");
-        SWRLVariable od = var(df, "od3");
-        SWRLVariable cr = var(df, "cr3");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "soldOn"), o, c));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "orderDelta"), c, od));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "contribRatio"), c, cr));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_LTE, List.of(od, litArg(df, orderDeltaLte))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GTE, List.of(cr, litArg(df, contribGte))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "ChannelRootCause"), c)));
-    }
-
-    private SWRLRule buildRa03Rule(OWLDataFactory df, double daysLte, double drivenGte) {
-        SWRLVariable o = var(df, "o4");
-        SWRLVariable p = var(df, "p4");
-        SWRLVariable d = var(df, "d4");
-        SWRLVariable r = var(df, "r4");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "participatesIn"), o, p));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "daysToExpire"), p, d));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "drivenOrderRatio"), p, r));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_LTE, List.of(d, litArg(df, daysLte))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GTE, List.of(r, litArg(df, drivenGte))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "PromotionRootCause"), p)));
-    }
-
-    private SWRLRule buildRa04Rule(OWLDataFactory df, double gapGte, double penetGt) {
-        SWRLVariable o = var(df, "o5");
-        SWRLVariable c = var(df, "c5");
-        SWRLVariable g = var(df, "g5");
-        SWRLVariable p = var(df, "p5");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "competesWith"), o, c));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "priceGapRatio"), c, g));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "penetrationDeltaPp"), c, p));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GTE, List.of(g, litArg(df, gapGte))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GT, List.of(p, litArg(df, penetGt))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "CompetitorRootCause"), c)));
-    }
-
-    private SWRLRule buildRa05Rule(OWLDataFactory df, double minWeight) {
-        SWRLVariable o = var(df, "o6");
-        SWRLVariable b = var(df, "b6");
-        SWRLVariable w = var(df, "w6");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "AnomalyOffering"), o));
-        body.add(df.getSWRLObjectPropertyAtom(objProp(df, "influencedBy"), o, b));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "weightHint"), b, w));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GTE, List.of(w, litArg(df, minWeight))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "BehaviorRootCause"), b)));
-    }
-
-    // ---------- SWRL rules: risk ----------
-
-    private SWRLRule buildRb01ZeroFeeRule(OWLDataFactory df) {
-        SWRLVariable o = var(df, "rb1o");
-        SWRLVariable mf = var(df, "rb1mf");
-        SWRLVariable ot = var(df, "rb1ot");
-        SWRLVariable wl = var(df, "rb1wl");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "monthlyFee"), o, mf));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "oneTimeFee"), o, ot));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "inWhitelist"), o, wl));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(mf, litArg(df, 0))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(ot, litArg(df, 0))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(wl, df.getSWRLLiteralArgument(df.getOWLLiteral(false)))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "ZeroFeeRiskOffering"), o)));
-    }
-
-    private SWRLRule buildRb01DiscountRule(OWLDataFactory df, double fullDiscGte) {
-        SWRLVariable o = var(df, "rb1do");
-        SWRLVariable d = var(df, "rb1dd");
-        SWRLVariable r = var(df, "rb1dr");
-        SWRLVariable e = var(df, "rb1de");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "discountPercent"), o, d));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "repeatableFlag"), o, r));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "emptyTargetGroup"), o, e));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GTE, List.of(d, litArg(df, fullDiscGte))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(r, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(e, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "AbnormalDiscountOffering"), o)));
-    }
-
-    private SWRLRule buildRb02Rule(OWLDataFactory df) {
-        SWRLVariable o = var(df, "rb2o");
-        SWRLVariable s = var(df, "rb2s");
-        SWRLVariable c = var(df, "rb2c");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "ZeroFeeRiskOffering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "onShelf"), o, s));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "hasContract"), o, c));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(s, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(c, df.getSWRLLiteralArgument(df.getOWLLiteral(false)))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "ZeroFeeNoContractOffering"), o)));
-    }
-
-    private SWRLRule buildRb03Rule(OWLDataFactory df, double zeroShelfDays) {
-        SWRLVariable o = var(df, "rb3o");
-        SWRLVariable sales = var(df, "rb3s");
-        SWRLVariable days = var(df, "rb3d");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "salesCnt30d"), o, sales));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "shelfDays"), o, days));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(sales, litArg(df, 0))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GT, List.of(days, litArg(df, zeroShelfDays))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "ZeroSalesOffering"), o)));
-    }
-
-    private SWRLRule buildRb04Rule(OWLDataFactory df) {
-        SWRLVariable o = var(df, "rb4o");
-        SWRLVariable lowCat = var(df, "rb4c");
-        SWRLVariable lowRev = var(df, "rb4r");
-        SWRLVariable strat = var(df, "rb4s");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "Offering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "lowEffCategoryFlag"), o, lowCat));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "lowRevenueFlag"), o, lowRev));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "strategicTagFlag"), o, strat));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(lowCat, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(lowRev, df.getSWRLLiteralArgument(df.getOWLLiteral(true)))));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_EQ, List.of(strat, df.getSWRLLiteralArgument(df.getOWLLiteral(false)))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "LowEffOffering"), o)));
-    }
-
-    private SWRLRule buildHighRiskFromB02(OWLDataFactory df) {
-        SWRLVariable o = var(df, "hr1");
-        return df.getSWRLRule(
-                Set.of(df.getSWRLClassAtom(cls(df, "ZeroFeeNoContractOffering"), o)),
-                Set.of(df.getSWRLClassAtom(cls(df, "HighRiskOffering"), o)));
-    }
-
-    private SWRLRule buildHighRiskFromDiscount(OWLDataFactory df) {
-        SWRLVariable o = var(df, "hr2");
-        return df.getSWRLRule(
-                Set.of(df.getSWRLClassAtom(cls(df, "AbnormalDiscountOffering"), o)),
-                Set.of(df.getSWRLClassAtom(cls(df, "HighRiskOffering"), o)));
-    }
-
-    private SWRLRule buildRb05Rule(OWLDataFactory df, double reviewDays) {
-        SWRLVariable o = var(df, "rb5o");
-        SWRLVariable days = var(df, "rb5d");
-        Set<SWRLAtom> body = new LinkedHashSet<>();
-        body.add(df.getSWRLClassAtom(cls(df, "HighRiskOffering"), o));
-        body.add(df.getSWRLDataPropertyAtom(dataProp(df, "shelfDays"), o, days));
-        body.add(df.getSWRLBuiltInAtom(SWRLB_GT, List.of(days, litArg(df, reviewDays))));
-        return df.getSWRLRule(body, Set.of(df.getSWRLClassAtom(cls(df, "UrgentReviewOffering"), o)));
+    private String ruleLabel(SWRLRule rule) {
+        for (OWLAnnotation ann : rule.getAnnotations()) {
+            if (ann.getProperty().isLabel()) {
+                return ann.getValue().asLiteral().map(OWLLiteral::getLiteral).orElse(null);
+            }
+        }
+        return null;
     }
 
     // ---------- OWL helpers ----------
@@ -804,7 +1104,7 @@ public class OpsSwrlReasoner {
         }
     }
 
-    private void add(OWLOntologyManager manager, OWLOntology ontology, org.semanticweb.owlapi.model.OWLAxiom axiom) {
+    private void add(OWLOntologyManager manager, OWLOntology ontology, OWLAxiom axiom) {
         manager.applyChange(new AddAxiom(ontology, axiom));
     }
 
@@ -822,20 +1122,31 @@ public class OpsSwrlReasoner {
         return reasoner.getTypes(ind, true).containsEntity(cls(df, classLocal));
     }
 
+    private boolean isAlertType(OpenlletReasoner reasoner, OWLNamedIndividual ind, OWLDataFactory df, String classLocal) {
+        return reasoner.getTypes(ind, true).containsEntity(alertCls(df, classLocal));
+    }
+
+    private OWLOntology loadAlertOntology(OWLOntologyManager manager) throws Exception {
+        Resource resource = resourceLoader.getResource(ALERT_OWL_PATH);
+        try (InputStream in = resource.getInputStream()) {
+            return manager.loadOntologyFromOntologyDocument(in);
+        }
+    }
+
     private OWLNamedIndividual ind(OWLDataFactory df, String local) {
         return df.getOWLNamedIndividual(IRI.create(NS + local));
     }
 
-    private SWRLVariable var(OWLDataFactory df, String name) {
-        return df.getSWRLVariable(IRI.create(NS + "var/" + name));
-    }
-
-    private SWRLDArgument litArg(OWLDataFactory df, double value) {
-        return df.getSWRLLiteralArgument(decimalLiteral(df, value));
+    private OWLNamedIndividual alertInd(OWLDataFactory df, String local) {
+        return df.getOWLNamedIndividual(IRI.create(ALERT_NS + local));
     }
 
     private OWLClass cls(OWLDataFactory df, String local) {
         return df.getOWLClass(IRI.create(NS + local));
+    }
+
+    private OWLClass alertCls(OWLDataFactory df, String local) {
+        return df.getOWLClass(IRI.create(ALERT_NS + local));
     }
 
     private OWLObjectProperty objProp(OWLDataFactory df, String local) {
@@ -844,6 +1155,10 @@ public class OpsSwrlReasoner {
 
     private OWLDataProperty dataProp(OWLDataFactory df, String local) {
         return df.getOWLDataProperty(IRI.create(NS + local));
+    }
+
+    private OWLDataProperty alertDataProp(OWLDataFactory df, String local) {
+        return df.getOWLDataProperty(IRI.create(ALERT_NS + local));
     }
 
     private OWLObjectPropertyAssertionAxiom objectAssert(
@@ -861,9 +1176,31 @@ public class OpsSwrlReasoner {
         return df.getOWLDataPropertyAssertionAxiom(dataProp(df, prop), s, decimalLiteral(df, value));
     }
 
+    private OWLDataPropertyAssertionAxiom dataAssertFloat(
+            OWLDataFactory df, OWLNamedIndividual s, String prop, double value) {
+        return df.getOWLDataPropertyAssertionAxiom(dataProp(df, prop), s,
+                df.getOWLLiteral(java.math.BigDecimal.valueOf(value).toPlainString(), OWL2Datatype.XSD_FLOAT));
+    }
+
     private OWLDataPropertyAssertionAxiom dataAssertBoolean(
             OWLDataFactory df, OWLNamedIndividual s, String prop, boolean value) {
         return df.getOWLDataPropertyAssertionAxiom(dataProp(df, prop), s, df.getOWLLiteral(value));
+    }
+
+    private OWLDataPropertyAssertionAxiom alertDataAssert(
+            OWLDataFactory df, OWLNamedIndividual s, String prop, String value) {
+        return df.getOWLDataPropertyAssertionAxiom(
+                alertDataProp(df, prop), s, df.getOWLLiteral(value == null ? "" : value, OWL2Datatype.XSD_STRING));
+    }
+
+    private OWLDataPropertyAssertionAxiom alertDataAssertDecimal(
+            OWLDataFactory df, OWLNamedIndividual s, String prop, double value) {
+        return df.getOWLDataPropertyAssertionAxiom(alertDataProp(df, prop), s, decimalLiteral(df, value));
+    }
+
+    private OWLDataPropertyAssertionAxiom alertDataAssertBoolean(
+            OWLDataFactory df, OWLNamedIndividual s, String prop, boolean value) {
+        return df.getOWLDataPropertyAssertionAxiom(alertDataProp(df, prop), s, df.getOWLLiteral(value));
     }
 
     private OWLLiteral decimalLiteral(OWLDataFactory df, double value) {

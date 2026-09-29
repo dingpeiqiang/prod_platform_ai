@@ -56,9 +56,13 @@ def main() -> None:
         if not is_target(src_file):
             continue
         content = replace_env(read_text(src_file))
-        with open(DST_DIR / src_file.name, "w", encoding="utf-8", newline="") as fp:
+        # 命名约定：子工作流落库文件加 -prod 后缀区分环境；headers/导出件保持原名
+        dst_name = src_file.name
+        if src_file.name.startswith("wf_sub_"):
+            dst_name = src_file.stem + "-prod" + src_file.suffix
+        with open(DST_DIR / dst_name, "w", encoding="utf-8", newline="") as fp:
             fp.write(content)
-        print(f"[复制+替换] {src_file.name}")
+        print(f"[复制+替换] {dst_name}")
 
     print("完成。")
 

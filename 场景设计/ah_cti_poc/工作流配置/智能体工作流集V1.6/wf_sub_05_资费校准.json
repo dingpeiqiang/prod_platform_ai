@@ -271,6 +271,20 @@
             "required": false
           },
           {
+            "name": "reasoning_chain",
+            "cname": "SWRL 资费校验推理链（逐规则 ruleId/condition/conclusion）",
+            "sechema": [],
+            "type": "array",
+            "required": false
+          },
+          {
+            "name": "engine",
+            "cname": "校验引擎标识（openllet-swrl/java-rules）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
             "name": "offers",
             "cname": "逐品校验结果数组JSON（[{offer_seq,pass,risk_list,compare_list}]）",
             "sechema": [],
@@ -414,7 +428,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）仅供取名，**商品列表回显由结束节点确定性输出、此处不重复输出**：\n0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。"
+              "content": "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）仅供取名，**商品列表回显由结束节点确定性输出、此处不重复输出**：\n0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n3.5）推理依据（取该商品所属 reasoning_chain={reasoning_chain}，行内含 ruleId/condition/conclusion）：「**推理依据：**」+ 将该品 reasoning_chain 逐规则以「规则 ruleId：condition → conclusion」短句列出（仅引用，禁止编造/增删规则）；reasoning_chain 为空时按整批列出，省略本段。\n4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -445,6 +459,20 @@
                 "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000402,compare_list"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+              "relName": "reasoning_chain",
+              "name": "reasoning_chain",
+              "description": "引用节点402 SWRL 推理链（逐规则 ruleId/condition/conclusion）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000402",
+                "a1b2c3d4-0000-4000-8000-000000000402,reasoning_chain"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000402,reasoning_chain"
             },
             {
               "blockID": "a1b2c3d4-0000-4000-8000-000000000414",

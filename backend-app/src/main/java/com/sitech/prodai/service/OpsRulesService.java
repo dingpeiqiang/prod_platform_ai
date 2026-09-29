@@ -144,6 +144,14 @@ public class OpsRulesService {
         return castMap(castMap(castMap(load().get("risk")).get("rules")).get(ruleId));
     }
 
+    public Map<String, Object> alertRule(String ruleId) {
+        return castMap(castMap(castMap(load().get("alertGrading")).get("rules")).get(ruleId));
+    }
+
+    public Map<String, Object> alertDefaults() {
+        return castMap(castMap(load().get("alertGrading")).get("defaults"));
+    }
+
     public Map<String, Object> configRule(String ruleId) {
         return castMap(castMap(castMap(load().get("config")).get("rules")).get(ruleId));
     }
@@ -198,6 +206,9 @@ public class OpsRulesService {
         }
         if (rule.isEmpty()) {
             rule = configRule(ruleId);
+        }
+        if (rule.isEmpty()) {
+            rule = alertRule(ruleId);
         }
         if (rule.isEmpty() || !isRuleEnabled(rule)) {
             return false;

@@ -117,6 +117,10 @@ public class ProductOntologyService {
         if (shaclDelegate != null) {
             this.complianceEngine.setShaclDelegate(shaclDelegate);
         }
+        // R8 配置合规 SWRL 转正：注入 Openllet 委托（R-C03~C09 走 product.ttl）
+        if (opsSwrlReasoner != null) {
+            this.complianceEngine.setSwrlReasoner(opsSwrlReasoner);
+        }
         this.chatConfigureService = new ChatConfigureService(
                 this::toObjectMapper, extractionService, deriveEngine, intentExtractor, sparqlDiscoverer,
                 messageProjector, configDraftService, configDocImportService, opsWorkOrderService, versionService,
@@ -795,6 +799,8 @@ public class ProductOntologyService {
             item.put("violations", violations);
             item.put("ruleIds", new ArrayList<>(ruleIds).stream().sorted().toList());
             item.put("resultCode", pass ? "PASS" : "FAIL");
+            item.put("engine", compliance.get("engine"));
+            item.put("reasoning_chain", compliance.get("reasoning_chain"));
             items.add(item);
         }
         body.put("success", true);
@@ -802,7 +808,36 @@ public class ProductOntologyService {
         body.put("passedCount", passed);
         body.put("failedCount", items.size() - passed);
         body.put("items", items);
+        // 推理链：按规则聚合命中次数与结论，供工作流/前端展示 SWRL 推理逻辑
+        body.put("reasoning_chain", aggregateReasoning(items));
         return body;
+    }
+
+    /** 聚合各存量产品推理链：规则 -> {命中数, 结论, 字段}。 */
+    private List<Map<String, Object>> aggregateReasoning(List<Map<String, Object>> items) {
+        Map<String, Map<String, Object>> agg = new LinkedHashMap<>();
+        for (Map<String, Object> item : items) {
+            if (!(item.get("violations") instanceof List<?> viols)) {
+                continue;
+            }
+            for (Object o : viols) {
+                if (!(o instanceof Map<?, ?> v)) {
+                    continue;
+                }
+                String ruleId = strOf(v.get("ruleId"));
+                Map<String, Object> row = agg.computeIfAbsent(ruleId, k -> {
+                    Map<String, Object> r = new LinkedHashMap<>();
+                    r.put("ruleId", ruleId);
+                    r.put("condition", v.get("issueType"));
+                    r.put("conclusion", v.get("message"));
+                    r.put("field", v.get("field"));
+                    r.put("hitCount", 0);
+                    return r;
+                });
+                row.put("hitCount", ((Number) row.get("hitCount")).intValue() + 1);
+            }
+        }
+        return new ArrayList<>(agg.values());
     }
 
     public Map<String, Object> evaluateHypothetical(List<Map<String, Object>> patches, String mode) {

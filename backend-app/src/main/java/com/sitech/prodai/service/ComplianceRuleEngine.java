@@ -54,6 +54,14 @@ public class ComplianceRuleEngine {
     /** SHACL 校验委托（R7 转正，可选依赖；setter 注入避免破坏既有装配）。 */
     private volatile ShaclValidationDelegate shaclDelegate;
 
+    /** 配置合规 SWRL 委托（R8 迁入 product.ttl；setter 注入避免破坏既有装配）。 */
+    private volatile OpsSwrlReasoner swrlReasoner;
+
+    /** 宿主注入配置合规 SWRL 委托（null 时合规链路退回纯 Java，行为不变）。 */
+    public void setSwrlReasoner(OpsSwrlReasoner swrlReasoner) {
+        this.swrlReasoner = swrlReasoner;
+    }
+
     public ComplianceRuleEngine(ObjectMapper objectMapper,
                                 ProdAiProperties properties,
                                 OpsRulesService opsRules,
@@ -221,6 +229,13 @@ public class ComplianceRuleEngine {
 
         issues = applyShaclAuthoritative(draft, graph, issues);
 
+        // R8：配置合规 SWRL 转正——R-C03~C09 命中以 Openllet 为准（Java 同规则结果被替换）；
+        // SWRL 关闭/失败时原样保留 Java 结果，永不中断合规链路。
+        SwrlOutcome swrl = applySwrlAuthoritative(draft, graph, issues);
+        if (swrl.applied) {
+            issues = swrl.issues;
+        }
+
         boolean hasHigh = issues.stream().anyMatch(i -> "HIGH".equals(i.get("issueLevel")));
         boolean requiredOk = issues.stream().noneMatch(i -> "R-C06".equals(i.get("ruleId")));
         boolean compliancePass = !hasHigh && requiredOk;
@@ -236,7 +251,96 @@ public class ComplianceRuleEngine {
         body.put("appliedRules", applied);
         body.put("canSubmit", compliancePass);
         body.put("messageRootKey", draft.get("messageRootKey"));
+        body.put("reasoning_chain", swrl.reasoning);
+        body.put("firedRules", swrl.firedRules);
+        body.put("engine", swrl.applied ? "openllet-swrl" : "java-rules");
         return body;
+    }
+
+    /** SWRL 转正结果载体（applied=false 时保留 Java issues）。 */
+    private record SwrlOutcome(boolean applied, List<Map<String, Object>> issues,
+                               List<Map<String, Object>> reasoning, List<String> firedRules) {
+        static SwrlOutcome fallback(List<Map<String, Object>> javaIssues) {
+            return new SwrlOutcome(false, javaIssues, List.of(), List.of());
+        }
+    }
+
+    /**
+     * 配置合规 SWRL 转正覆盖：SWRL 规则（R-C03~C09）命中替换 Java 同规则结论；
+     * R-C01/C02（模板补全）无对应 SWRL 规则，保留 Java。SWRL 失败回退 Java。
+     * <p>同步产出可读推理链（规则→条件→结论），供工作流与前端展示。
+     */
+    private SwrlOutcome applySwrlAuthoritative(Map<String, Object> draft,
+                                               Map<String, Object> graph,
+                                               List<Map<String, Object>> javaIssues) {
+        OpsSwrlReasoner reasoner = this.swrlReasoner;
+        if (reasoner == null || !properties.getOntology().isSwrlEnabled()
+                || !opsRules.preferSwrlAny("R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C09")) {
+            return SwrlOutcome.fallback(javaIssues);
+        }
+        double minFee = opsRules.configDefaultNum("monthlyFeeMin", 9);
+        double maxFee = opsRules.configDefaultNum("monthlyFeeMax", 599);
+        OpsSwrlReasoner.ConfigComplianceResult result;
+        try {
+            // sameMutexGroup 为 Java 侧预计算（依赖在架图，SWRL 无跨个体缺失比较）
+            Map<String, Object> enriched = new LinkedHashMap<>(draft);
+            enriched.put("_sameMutexGroup", computeSameMutexGroup(draft, graph));
+            result = reasoner.reasonConfigCompliance(enriched, graph,
+                    opsRules.configRule("R-C03"), opsRules.configRule("R-C04"), opsRules.configRule("R-C05"),
+                    opsRules.configRule("R-C06"), opsRules.configRule("R-C07"), opsRules.configRule("R-C08"),
+                    opsRules.configRule("R-C09"), minFee, maxFee);
+        } catch (Exception e) {
+            log.warn("[合规] 配置合规 SWRL 异常，回退 Java 结果: {}", e.getMessage());
+            return SwrlOutcome.fallback(javaIssues);
+        }
+        if (!result.success()) {
+            return SwrlOutcome.fallback(javaIssues);
+        }
+        Set<String> swrlRuleIds = Set.of("R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C09");
+        List<Map<String, Object>> merged = javaIssues.stream()
+                .filter(i -> !swrlRuleIds.contains(MapOps.str(i.get("ruleId"))))
+                .collect(Collectors.toCollection(ArrayList::new));
+        for (Map<String, Object> v : result.violations()) {
+            merged.add(issueFromSwrl(v));
+        }
+        // 推理链：SWRL 逐规则说明 + 字段/证据已并入 violations；违规优先排序
+        List<Map<String, Object>> reasoning = new ArrayList<>(result.reasoning());
+        log.debug("[合规] SWRL 转正生效: fired={}, violations={}, mergedCount={}",
+                result.firedRules(), result.violations().size(), merged.size());
+        return new SwrlOutcome(true, merged, reasoning, result.firedRules());
+    }
+
+    /** SWRL violation → Java issue 契约对齐（ruleId/issueType/level/field/message/evidence/alias）。 */
+    private Map<String, Object> issueFromSwrl(Map<String, Object> violation) {
+        String ruleId = MapOps.str(violation.get("ruleId"));
+        String field = MapOps.str(violation.get("field"));
+        String label = MapOps.str(violation.get("label"));
+        String level = "R-C06".equals(ruleId) ? "MEDIUM" : "HIGH";
+        String issueType = switch (ruleId) {
+            case "R-C06" -> "必填缺失";
+            case "R-C04" -> "规则漏洞";
+            case "R-C05" -> "高风险资费";
+            case "R-C07" -> "异常优惠漏洞";
+            case "R-C09" -> "资费区间违规";
+            default -> "资费/关系冲突";
+        };
+        return issue(ruleId, issueType, level, field, label + "（SWRL 命中：" + ruleId + "）",
+                List.of(ruleId + "→" + MapOps.str(violation.get("conclusionClass"))), null);
+    }
+
+    /** R-C03 互斥：草稿绑定的在架商品是否与草稿同互斥组。 */
+    private boolean computeSameMutexGroup(Map<String, Object> draft, Map<String, Object> graph) {
+        Object bindId = draft.get("bindExistingMainPkg");
+        if (MapOps.empty(bindId)) {
+            return false;
+        }
+        String mutexGroup = MapOps.str(MapOps.firstNonEmpty(draft.get("mutexGroup"), "MAIN_PKG"));
+        for (Map<String, Object> existing : MapOps.castListOfMaps(graph.get("shelfOfferings"))) {
+            if (MapOps.str(bindId).equals(MapOps.str(existing.get("offeringId")))) {
+                return mutexGroup.equals(MapOps.str(existing.get("mutexGroup")));
+            }
+        }
+        return false;
     }
 
     /**
