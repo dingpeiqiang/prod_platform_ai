@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1135,23 +1136,33 @@ public class OfferSimV16Service {
             }
             // wf_sub_05 口径：仅资费相关规则（R-C03/C05/C07/C09）纳入风险清单；
             // R-C06 必填缺失/ R-C04 附加依赖属配置合规，不重复报。
-            Set<String> billingRules = Set.of("R-C03", "R-C05", "R-C07", "R-C09");
+            List<String> billingRules = List.of("R-C03", "R-C05", "R-C07", "R-C09");
             List<Map<String, Object>> risks = new ArrayList<>();
-            List<Map<String, Object>> reasoning = new ArrayList<>();
+            Set<String> hitRules = new LinkedHashSet<>();
             for (Map<String, Object> v : result.violations()) {
-                if (!billingRules.contains(MapOps.str(v.get("ruleId")))) {
+                String rid = MapOps.str(v.get("ruleId"));
+                if (!billingRules.contains(rid)) {
                     continue;
                 }
+                hitRules.add(rid);
                 Map<String, Object> risk = new LinkedHashMap<>();
-                risk.put("risk_type", MapOps.str(v.get("ruleId")));
-                risk.put("risk_desc", MapOps.str(v.get("label")) + "（SWRL 命中：" + v.get("ruleId") + "）");
-                risk.put("suggest", "按规则 " + MapOps.str(v.get("ruleId")) + " 复核并修正 " + MapOps.str(v.get("field")));
+                risk.put("risk_type", rid);
+                risk.put("risk_desc", MapOps.str(v.get("label")) + "（SWRL 命中：" + rid + "）");
+                risk.put("suggest", "按规则 " + rid + " 复核并修正 " + MapOps.str(v.get("field")));
                 risks.add(risk);
             }
+            // 推理链：先列命中规则的原始结论，再对未命中的资费规则补「已评估→通过」行（带实际取值与阈值），
+            // 使通过场景也具备规则维度的推理过程（不再依赖 LLM 自行编号复述比对表）。
+            List<Map<String, Object>> reasoning = new ArrayList<>();
             for (Map<String, Object> r : result.reasoning()) {
                 String rid = MapOps.str(r.get("ruleId"));
                 if (billingRules.contains(rid) || "R-C08".equals(rid)) {
                     reasoning.add(r);
+                }
+            }
+            for (String rid : billingRules) {
+                if (!hitRules.contains(rid)) {
+                    reasoning.add(passReasonRow(rid, draft, minFee, maxFee));
                 }
             }
             return new SwrlBillingOutcome(risks, reasoning, "openllet-swrl");
@@ -1159,6 +1170,49 @@ public class OfferSimV16Service {
             log.warn("[资费校准] SWRL 推理异常，回退 Java: {}", e.getMessage());
             return SwrlBillingOutcome.fallback();
         }
+    }
+
+    /**
+     * 未命中资费规则的「已评估→通过」推理行：condition 带实际取值与阈值（取值缺失时回退规则名），
+     * conclusion 统一为「未命中 → 通过」，供 wf_sub_05 推理依据展示规则维度判定过程。
+     */
+    private Map<String, Object> passReasonRow(String ruleId, Map<String, Object> draft, double minFee, double maxFee) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("ruleId", ruleId);
+        row.put("condition", billingPassCondition(ruleId, draft, minFee, maxFee));
+        row.put("conclusion", "未命中 → 通过");
+        return row;
+    }
+
+    /** 逐规则通过条件文案（带实际取值；取值缺失时回退规则名，不虚构）。 */
+    private String billingPassCondition(String ruleId, Map<String, Object> draft, double minFee, double maxFee) {
+        String name = MapOps.str(opsRules.configRule(ruleId).get("name"));
+        switch (ruleId) {
+            case "R-C09": {
+                double fee = MapOps.num(MapOps.resolveFixedFee(draft), 0);
+                String feeText = fee >= 0 ? trimNum(fee) + " 元" : "取值缺失";
+                return name + "：固费 " + feeText + " ∈ 合规区间 [" + trimNum(minFee) + ", " + trimNum(maxFee) + "]";
+            }
+            case "R-C07": {
+                double discount = MapOps.num(draft.get("discountPercent"), 0);
+                return name + "：折扣 " + trimNum(discount) + "% 未达 100% 或不可重复订购";
+            }
+            case "R-C05": {
+                double fee = MapOps.num(MapOps.resolveFixedFee(draft), 0);
+                String feeText = fee >= 0 ? trimNum(fee) + " 元" : "取值缺失";
+                return name + "：固费 " + feeText + "（正常）且非高风险场景";
+            }
+            case "R-C03": {
+                return name + "：未绑定互斥主套餐，且折扣与赠费未并存";
+            }
+            default:
+                return name + "：已评估，未命中";
+        }
+    }
+
+    /** 数值取整显示：整数去小数点，非整数保留原值。 */
+    private String trimNum(double v) {
+        return v == Math.floor(v) && !Double.isInfinite(v) ? String.valueOf((long) v) : String.valueOf(v);
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.appstore;
 
 import com.sitech.prodai.ProdAiApplication;
+import com.sitech.prodai.service.common.MapOps;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class BillingRulesSwrlTest {
     }
 
     @Test
-    @DisplayName("固费在区间内（199）→ 无 R-C09 命中，pass=1，推理链含 R-C08 通过")
+    @DisplayName("固费在区间内（199）→ 无 R-C09 命中，pass=1，推理链含 R-C08 通过且逐规则补通过行")
     void feeWithinRangePass() {
         Map<String, Object> body = batchOf("{\"offer_id\":\"900117099\",\"offer_name\":\"测试套餐\",\"messageRootKey\":\"MAIN_PKG\",\"monthly_fee\":199,\"channelScope\":\"全渠道\"}");
         @SuppressWarnings("unchecked")
@@ -67,5 +68,13 @@ class BillingRulesSwrlTest {
         List<Map<String, Object>> reasoning = (List<Map<String, Object>>) item.get("reasoning_chain");
         Assertions.assertTrue(reasoning.stream().anyMatch(r -> "R-C08".equals(r.get("ruleId"))),
                 "合规通过时推理链应含 R-C08：" + reasoning);
+        for (String rid : List.of("R-C03", "R-C05", "R-C07", "R-C09")) {
+            Assertions.assertTrue(reasoning.stream().anyMatch(r -> rid.equals(r.get("ruleId"))),
+                    "通过场景推理链应补齐未命中规则 " + rid + " 的通过行：" + reasoning);
+        }
+        Assertions.assertTrue(reasoning.stream()
+                        .filter(r -> "R-C09".equals(r.get("ruleId")))
+                        .anyMatch(r -> MapOps.str(r.get("condition")).contains("199")),
+                "R-C09 通过行应带实际固费取值：" + reasoning);
     }
 }
