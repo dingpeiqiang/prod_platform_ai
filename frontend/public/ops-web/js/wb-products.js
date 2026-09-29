@@ -23,14 +23,18 @@
     try { return JSON.parse(s); } catch (e) { return null; }
   }
 
-  // 归一销售品列表：兼容 {offers:[...]} / [ ... ] / JSON 字符串；逐品补 offer_seq
+  // 归一销售品列表：兼容 {offers:[...]} / [ ... ] / JSON 字符串；逐品补 offer_seq；
+  // 需求提报单元素形如 {offer_seq, fields:{name,price,resources,...}}，"fields" 拉平到元素顶层便于统一取值。
   function normalizeOffers(raw){
     var obj = parseJson(raw);
     if (obj && !Array.isArray(obj) && Array.isArray(obj.offers)) obj = obj.offers;
     if (!Array.isArray(obj)) return [];
     return obj.filter(function(o){ return o && typeof o === 'object'; }).map(function(o, i){
       var one = {};
-      Object.keys(o).forEach(function(k){ one[k] = o[k]; });
+      Object.keys(o).forEach(function(k){ if (k !== 'fields') one[k] = o[k]; });
+      if (o.fields && typeof o.fields === 'object'){
+        Object.keys(o.fields).forEach(function(k){ if (one[k] === undefined) one[k] = o.fields[k]; });
+      }
       if (one.offer_seq === undefined || one.offer_seq === null || one.offer_seq === '') one.offer_seq = i + 1;
       return one;
     });
@@ -55,13 +59,13 @@
     var base = plan.baseInfo || {};
     var name = String(off.name || '').trim() || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']);
     var code = pick(off, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']);
-    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']);
+    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(off, ['price']);
     var flow = pick(opt, ['billGprsCfg.theshold']);
     var flowUnit = pick(opt, ['billGprsCfg.unit']) || 'GB';
     var voice = pick(opt, ['billVoiceCfg.theshold']);
     var sms = pick(opt, ['billSmsCfg.theshold']);
     // 资源可能为合并串（如「120GB国内流量,1000分钟语音」），据此兜底补齐流量/语音/短信
-    var res = pick(opt, ['printContent.containResource']);
+    var res = pick(opt, ['printContent.containResource']) || pick(off, ['resources']);
     if (res && (!flow || !voice)){
       var mFlow = res.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
       var mVoice = res.match(/(\d+(?:\.\d+)?)\s*分钟/);
@@ -118,28 +122,18 @@
     cfgOffers.forEach(function(o){ cfgBySeq[String(o.offer_seq)] = o; });
 
     // ---------- 商品列表：多品时逐品展开为独立商品（头部可切换），单品时一项 ----------
-    // 逐品字段：优先取配置环节同 offer_seq 明细，其次名册/需求提报单兜底
+    // 逐品字段：以名册项（需求提报单：name/price/resources）为底，配置环节同 offer_seq 明细补全身份/资源
     var offerProducts = roster.map(function(o){
       var merged = {};
+      // 名册项字段（含 fields 拉平后的 name/price/resources）先入底
+      Object.keys(o).forEach(function(k){ if (o[k] !== undefined && o[k] !== null && o[k] !== '') merged[k] = o[k]; });
       var detail = cfgBySeq[String(o.offer_seq)] || {};
-      Object.keys(detail).forEach(function(k){ merged[k] = detail[k]; });
-      if (!String(merged.name || '').trim() && o.name) merged.name = o.name;
-      if (merged.quantity === undefined || merged.quantity === null || merged.quantity === '') merged.quantity = o.quantity;
+      Object.keys(detail).forEach(function(k){ if (detail[k] !== undefined && detail[k] !== null && detail[k] !== '') merged[k] = detail[k]; });
       var f = buildOfferFields(merged, roster);
       // 单品时允许回落计划/需求提报单整体字段，保证信息最全
       if (roster.length <= 1){
-        f.name = f.name || pick(cfg, ['offer_name']) || pick(reqReport, ['name']) || pick(opt, ['SmsInstCfg.SvcName']) || pick(base, ['prodPrcName']) || f.name;
-        f.code = f.code || pick(base, ['prodPrcId', 'prodId']) || pick(reqReport, ['offer_id']);
-        f.fee = f.fee || pick(reqReport, ['price']);
-        var r0 = pick(opt, ['printContent.containResource']) || pick(reqReport, ['resources']);
-        if (r0 && (!f.flow || !f.voice)){
-          var mf = r0.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
-          var mv = r0.match(/(\d+(?:\.\d+)?)\s*分钟/);
-          var ms = r0.match(/(\d+(?:\.\d+)?)\s*条/);
-          if (!f.flow && mf){ f.flow = mf[1]; f.flowUnit = mf[2].toUpperCase(); }
-          if (!f.voice && mv) f.voice = mv[1];
-          if (!f.sms && ms) f.sms = ms[1];
-        }
+        f.name = f.name || pick(cfg, ['offer_name']) || pick(opt, ['SmsInstCfg.SvcName']) || pick(base, ['prodPrcName']);
+        f.code = f.code || pick(base, ['prodPrcId', 'prodId']);
       }
       return f;
     }).filter(function(f){ return f.name || f.code; });
@@ -147,9 +141,9 @@
     // 兜底：名册为空但存在单商品整体字段时，仍构造一项，避免空列表
     if (!offerProducts.length){
       var single = buildOfferFields(cfg, roster);
-      single.name = single.name || pick(cfg, ['offer_name']) || pick(reqReport, ['name']) || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']) || pick(requirement, ['baseInfo.prodPrcName']);
-      single.code = single.code || pick(cfg, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']) || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId']) || pick(reqReport, ['offer_id']);
-      single.fee = single.fee || pick(cfg, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(reqReport, ['price']);
+      single.name = single.name || pick(cfg, ['offer_name']) || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']) || pick(requirement, ['baseInfo.prodPrcName']);
+      single.code = single.code || pick(cfg, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']) || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId']);
+      single.fee = single.fee || pick(cfg, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']);
       single.quantity = (single.quantity !== '' ) ? single.quantity : (pick(cfg, ['quantity']) || '');
       if (single.name || single.code) offerProducts.push(single);
     }
