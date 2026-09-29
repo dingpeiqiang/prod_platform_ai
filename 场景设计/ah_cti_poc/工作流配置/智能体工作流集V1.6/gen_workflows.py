@@ -2457,10 +2457,36 @@ s13f.append(code_node(2333, "构建测试结果报告", CODE_RENDER_TEST_REPORT,
     [code_out("test_report", 2333), code_out("scene_count", 2333), code_out("scene_failed", 2333),
      code_out("point_pass", 2333), code_out("point_total", 2333)],
     pos=(1140, 300)))
-# xsbot-panel 独立代码节点（终态结果分支 / 处理中分支各一）
+# 2334 测试通过判定：终态后 scene_failed==0（无失败场景）视为通过 → 写 test；
+# 否则（存在失败场景）不写 test，仅展示报告，避免未通过的测试蒙混过上线审批四环节门禁。
+s13f.append(selector_node2(2334, "测试通过判定",
+    [dep_node(2333, "构建测试结果报告", ["scene_failed"])],
+    [(-1, [cond_item(cond_ref(2333, "scene_failed", "构建测试结果报告"), 1, cond_str("0"))])],
+    pos=(1300, 450)))
+# 测试结论封包（通过态）：把报告 Markdown 与归一 offers 封成 test 落库体（pass=1 + test_report）
+s13f.append(code_node(2311, "测试结论封包", CODE_PACK_RECORD,
+    [inp("offers", "逐品归一结果数组（节点2332出参 offers）", ref_block=nid(2332), ref_rel="offers"),
+     inp("req_id", "执行批次号（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
+     inp("md", "测试结果报告 Markdown（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
+     inp("md_key", "md 落库字段名", content="test_report"),
+     inp("pass", "测试通过标记=1", content="1")],
+    [code_out("record_json", 2311)], pos=(1460, 450)))
+# 测试结果存储：仅测试通过（scene_failed==0，由节点2334判定）时写 node_name=test（最终态）；
+# 上线审批四环节硬门禁（config/spec/fee/test）依赖此最终态 test。
+s13f.append(plugin_node(2312, "测试结果存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=测试结论封包（pass=1 + test_report 报告全文 + 逐品 offers）；仅测试通过（scene_failed==0）时写入（门禁：由节点2334判定）；供上线审批四环节门禁与报告引用",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(2301), ref_rel="req_id"),
+     inp("node_name", "环节名=test（自动测试，最终态）", content="test"),
+     inp("result_json", "环节结果JSON=测试结论封包（pass+test_report+offers）", ref_block=nid(2311), ref_rel="record_json"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [ ("record_id", "存储记录ID", "string")], pos=(1600, 450)))
+# xsbot-panel 独立代码节点（终态结果分支 / 处理中分支 / 未通过分支各一）
 s13f.append(panel_code_node(2309, "构建页面地址面板", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", name_seq=2303, name_rel="offer_name", req_seq=2301), biz_title="测试报告"))
 s13f.append(panel_code_node(2325, "构建页面地址面板(处理中)", "06",
+    panel_inputs(2301, off_seq=2303, off_rel="offer_id", name_seq=2303, name_rel="offer_name", req_seq=2301), biz_title="测试报告"))
+s13f.append(panel_code_node(2326, "构建页面地址面板(未通过)", "06",
     panel_inputs(2301, off_seq=2303, off_rel="offer_id", name_seq=2303, name_rel="offer_name", req_seq=2301), biz_title="测试报告"))
 # 2323 结束（未终态：进度仪表盘，不写 test，引导续查）
 s13f.append(end_node(2323, "结束(测试处理中-进度仪表盘)",
@@ -2473,20 +2499,35 @@ s13f.append(end_node(2323, "结束(测试处理中-进度仪表盘)",
     "测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
     "【下一步】请稍后回复\"查询测试结果\"续查；若持续无进展请联系人工核查测试发起（环节6a）。\n\n"
     "{panel}"))
-# 2310 结束（终态：结构化测试结果展示，不写 test）
+# 2310 结束（终态·通过：已写 test，结构化测试结果展示）
 s13f.append(end_node(2310, "结束(测试结果结构化展示)",
     [inp("test_report", "结构化测试结果报告（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
      inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
      inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2309), ref_rel="panel")],
-    "【环节6/8·自动测试】测试结果查询完成\n\n"
+    "【环节6/8·自动测试】测试结果查询完成（测试通过，已写入 test 最终态）\n\n"
     "{test_report}\n\n"
+    "■ 结论：全部场景通过，已写入自动测试最终态（test），可推进上线审批。\n\n"
+    "{panel}"))
+# 2327 结束（终态·未通过：有失败场景，不写 test，展示报告并引导整改）
+s13f.append(end_node(2327, "结束(测试未通过-未写test)",
+    [inp("scene_failed", "失败场景数（节点2333）", ref_block=nid(2333), ref_rel="scene_failed"),
+     inp("test_report", "结构化测试结果报告（节点2333）", ref_block=nid(2333), ref_rel="test_report"),
+     inp("offerId", "被测销售品ID（供面板）", ref_block=nid(2303), ref_rel="offer_id"),
+     inp("globalId", "测试流水号", ref_block=nid(2303), ref_rel="globalId"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2326), ref_rel="panel")],
+    "【环节6/8·自动测试】测试结果查询完成（测试未通过：失败场景 {scene_failed} 个）\n\n"
+    "{test_report}\n\n"
+    "■ 结论：存在失败场景，本次未写入测试最终态（test 仍为空），无法推进上线审批。\n"
+    "【下一步】请按上述 ❌ 明细整改配置后重新回复\"下一步\"发起测试（环节6a）。\n\n"
     "{panel}"))
 files13f = workflow(
-    "产销品-测试查询结果", "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告（逐场景 ✅/❌/⏳ + 逐测点明细表）→结束节点 Markdown 展示；未终态则输出「进度仪表盘」（进度条/步数/场景计数）并结束引导续查。全程不写 test（结构展示型子流）。", "wf_sub_13", s13f,
+    "产销品-测试查询结果", "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→未终态则输出「进度仪表盘」并结束引导续查；终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告→2334【通过判定】scene_failed==0 视为通过→通过则封包+save(node_name=test，最终态，供上线审批四环节门禁)→结束展示；未通过（存在失败场景）不写 test，展示报告并引导整改。", "wf_sub_13", s13f,
     [edge(2301,2302), edge(2302,2303), edge(2303,2304),
      edge(2304,2321), edge(2321,2305,-1), edge(2321,2325,0), edge(2325,2323),
-     edge(2305,2332), edge(2332,2333), edge(2333,2309), edge(2309,2310)])
+     edge(2305,2332), edge(2332,2333), edge(2333,2334),
+     edge(2334,2311,-1), edge(2311,2312), edge(2312,2309), edge(2309,2310),
+     edge(2334,2326,0), edge(2326,2327)])
 
 # ============================================================
 # 阶段 5：审批/监控/存量（wf_sub_06/07/08 重写 + 新增 09/10）
@@ -2938,15 +2979,10 @@ s6f.append(llm_node(613, "上线审批建议生成",
      inp("offer_id", "销售品ID（节点612）", ref_block=nid(612), ref_rel="offer_id"),
      inp("fusion_verification", "融合成员组合验证标记（节点612）", ref_block=nid(612), ref_rel="fusion_verification")],
     [out("approval_suggest", "《上线审批建议》正文（环节8标题头）")], pos=(690, 385)))
-# 写入门禁：契约§4——report 仅当全环节 all_pass（spec&fee&test 全品通过）才写入；
-# all_pass!=1 时跳过 report 写入，审批推送仍执行（后端另有四环节硬门禁）但提示待补齐。
-s6f.append(selector_node2(617, "报告写入门禁",
-    [dep_node(612, "合成结构化汇总", ["all_pass"])],
-    [(-1, [cond_item(cond_ref(612, "all_pass", "合成结构化汇总"), 1, cond_str("1"))])],
-    pos=(770, 560)))
-# 614 报告存储 node=report
+# 614 报告存储 node=report（V6.1：去掉 all_pass 写入门禁，审批建议无条件写入；
+# 平台单输入约束下 615 仅由 614 单线驱动，避免 if-else 分支汇聚产生的多输入线）
 s6f.append(plugin_node(614, "报告存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文；仅 all_pass==1（spec/fee/test 全品通过）时写入（门禁：由节点617判定）；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线审批建议），result_json=审批建议正文（无条件写入）；正式版测试报告(节点608自查 test 原文)按原样归档不在此改写",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(601), ref_rel="req_id"),
      inp("node_name", "环节名=report（上线审批建议）", content="report"),
@@ -2963,15 +2999,23 @@ s6f.append(plugin_node(615, "审批推送", "submit_release_approval",
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
      inp("approval_flow", "审批流默认standard", content="standard"),
      inp("approval_type", "审批类型=launch（上线审批）", content="launch")],
-    [("approval_id", "工单级审批单号（顶层单值，覆盖整批商品）", "string"), ("status", "整批提交状态 SUCCESS/PARTIAL/FAIL", "string"),
+    [("approval_id", "工单级审批单号（顶层单值，覆盖整批商品；被拒/门禁未通过时为空）", "string"),
+     ("status", "整批提交状态 SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED", "string"),
      ("approval_type", "审批类型", "string"),
+     ("reason", "提交被拒/门禁未通过原因（后端 reason，成功时为空）", "string"),
+     ("resultCode", "后端结果码（000000/0 成功，其余为参数或门禁失败）", "string"),
      ("offers", "逐品审批推送结果数组JSON（[{offer_seq,approval_type,status,approval_matrix}]，商品级状态；approval_id 已提升至顶层，元素不再重复携带）", "string")], pos=(990, 385)))
-# 618 格式化审批结果：从 615 出参 offers[] 取 approval_matrix 渲染 Markdown 表格；
-# 出参无 approval_matrix 时按单据级多节点审批流模拟生成一份（状态体现审批语义：已通过/审批中）
+# 618 格式化审批结果：从 615 出参 offers[] 取真实 approval_matrix 渲染 Markdown 表格；
+# 结合 615 的 approval_id/status/reason/resultCode 产出「提交成功/提交被拒」二选一的完整正文
+# 片段（approval_section）。无后端矩阵时不再伪造审批矩阵，避免误导。
 s6f.append(code_node(618, "格式化审批结果", CODE_FMT_APPROVAL,
     [inp("offers", "逐品审批推送结果数组（节点615出参）", ref_block=nid(615), ref_rel="offers"),
+     inp("approval_id", "工单级审批单号（节点615出参，空=未提交）", ref_block=nid(615), ref_rel="approval_id"),
+     inp("status", "整批提交状态（节点615出参）", ref_block=nid(615), ref_rel="status"),
+     inp("reason", "提交被拒原因（节点615出参）", ref_block=nid(615), ref_rel="reason"),
+     inp("resultCode", "后端结果码（节点615出参）", ref_block=nid(615), ref_rel="resultCode"),
      inp("approval_type", "审批类型（节点615出参，兜底 launch）", ref_block=nid(615), ref_rel="approval_type")],
-    [code_out("approval_matrix", 618), code_out("approval_type", 618)],
+    [code_out("approval_section", 618), code_out("approval_type", 618)],
     pos=(5595, 300)))
 # 619 xsbot-panel 独立代码节点（环节8 上线审批；offer_id/offers 取节点612，req_id 取自开始节点）
 s6f.append(panel_code_node(619, "构建页面地址面板", "04",
@@ -2979,27 +3023,17 @@ s6f.append(panel_code_node(619, "构建页面地址面板", "04",
     biz_title="上线审批"))
 # 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批状态由【查询审批进度】事后查询
 # （后端模拟自动流转：提交 10s 后"审批中"→"通过（上架完成）"，查询时惰性推进）
+# 正文由节点618 approval_section 按「提交成功/提交被拒」二选一渲染，避免占位符泄漏与伪造矩阵。
 s6f.append(end_node(616, "结束(审批已提交)",
-    [inp("approval_id", "工单级审批单号（顶层单值）", ref_block=nid(615), ref_rel="approval_id"),
-     inp("status", "整批提交状态（审批中，模拟约10s后自动通过）", ref_block=nid(615), ref_rel="status"),
-     inp("approval_type", "审批类型（launch=上线审批，节点618兜底）", ref_block=nid(618), ref_rel="approval_type"),
-     inp("approval_matrix", "审批矩阵 Markdown 表格（节点618）", ref_block=nid(618), ref_rel="approval_matrix"),
+    [inp("approval_section", "上线审批结果正文（节点618，含提交成功/被拒二选一）", ref_block=nid(618), ref_rel="approval_section"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(619), ref_rel="panel")],
-    "### 上线审批已提交\n\n"
-    "| 项 | 值 |\n| :--- | :--- |\n"
-    "| 工单级审批单号 | {approval_id} |\n"
-    "| 整批提交状态 | {status} |\n"
-    "| 审批类型 | {approval_type} |\n\n"
-    "**审批矩阵**\n\n{approval_matrix}\n\n"
-    "> 审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n"
-    ">\n"
-    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。\n\n"
+    "{approval_section}\n\n"
     "{panel}"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 格式化审批矩阵(出参无矩阵时模拟单据级多节点审批流)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 渲染审批结果正文(提交成功展示真实矩阵/被拒如实展示原因，不伪造矩阵)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
-     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,618), edge(618,619), edge(619,616)])
+     edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,618), edge(618,619), edge(619,616)])
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
