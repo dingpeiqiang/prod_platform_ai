@@ -13,13 +13,6 @@
 
   const NavBar = {
     template: `
-      <header class="page-topbar">
-        <div class="brand">
-          <div class="brand-title">销售品智能配置</div>
-          <div class="brand-sub">配置工作台 · 独立页面</div>
-        </div>
-        <button class="brand-action" @click="goTop">回到顶部</button>
-      </header>
       <nav class="biz-nav">
         <div class="stepper">
           <div class="stepper-track"></div>
@@ -41,8 +34,7 @@
         var st = this.stage || '';
         return map[st] !== undefined ? map[st] : 2;
       }
-    },
-    methods: { goTop(){ window.scrollTo({ top:0, behavior:'smooth' }) } }
+    }
   };
 
   const App = {

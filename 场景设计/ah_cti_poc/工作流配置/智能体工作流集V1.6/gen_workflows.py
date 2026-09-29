@@ -1647,7 +1647,7 @@ s5f.append(llm_node(403, "风险解读",
     "1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
     "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
     "3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
-    "3.5）推理依据（取该商品所属 reasoning_chain={reasoning_chain}，行内含 ruleId/condition/conclusion）：「**推理依据：**」+ 将该品 reasoning_chain **逐行原样**以「规则 ruleId：condition → conclusion」短句列出。**严格约束：只依据 reasoning_chain 行，禁止自行编号（不要编 R001/R002…）、禁止把 compare_list 的 8 项比对项当作规则复述、禁止增删规则**；reasoning_chain 为空时省略本段，非空但某品无对应行时该品省略本段。\n"
+    "3.5）推理依据（取该商品所属 reasoning_chain={reasoning_chain}，行内含 ruleId/condition/conclusion）：「**本体推理依据：**」+ 将该品 reasoning_chain **逐行原样**以「规则 ruleId：condition → conclusion」短句列出。**严格约束：只依据 reasoning_chain 行，禁止自行编号（不要编 R001/R002…）、禁止把 compare_list 的 8 项比对项当作规则复述、禁止增删规则**；reasoning_chain 为空时省略本段，非空但某品无对应行时该品省略本段。\n"
     "4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
     "5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n"
     "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n"
@@ -3141,7 +3141,6 @@ CODE_OP_MONITOR_ANALYZE = (
     "        'offers': json.dumps(offers, ensure_ascii=False),\n"
     "    }\n"
     "    return ret\n"
-    ")\n"
     "\n"
 )
 CODE_OP_MONITOR_ANALYZE = CODE_OP_MONITOR_ANALYZE.replace("BASE_URL", BASE_URL)
