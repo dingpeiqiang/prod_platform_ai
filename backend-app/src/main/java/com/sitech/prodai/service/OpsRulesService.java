@@ -152,6 +152,22 @@ public class OpsRulesService {
         return castMap(castMap(load().get("alertGrading")).get("defaults"));
     }
 
+    /** 指标异常判定配置（ops_rules.json / alertGrading.metricAnomaly：逐指标阈值 + ruleId）。 */
+    public Map<String, Object> metricAnomaly() {
+        return castMap(castMap(load().get("alertGrading")).get("metricAnomaly"));
+    }
+
+    /** 指标异常阈值：逐指标配置（metricAnomaly.metrics.<metric>）。 */
+    public Map<String, Object> metricAnomalyRule(String metric) {
+        return castMap(castMap(metricAnomaly().get("metrics")).get(metric));
+    }
+
+    /** 优化建议规则（ops_rules.json / alertGrading.suggestions.rules.<ruleId>）。 */
+    public Map<String, Object> suggestionRule(String ruleId) {
+        Map<String, Object> rules = castMap(castMap(castMap(load().get("alertGrading")).get("suggestions")).get("rules"));
+        return castMap(rules.get(ruleId));
+    }
+
     public Map<String, Object> configRule(String ruleId) {
         return castMap(castMap(castMap(load().get("config")).get("rules")).get(ruleId));
     }
@@ -235,6 +251,20 @@ public class OpsRulesService {
             return defaultValue;
         }
         return num(rule.get(key), defaultValue);
+    }
+
+    /** 静态便捷版：从规则 Map 取数值（供无 state 场景复用，如指标阈值读取）。 */
+    public static double ruleNumOr(Map<String, Object> rule, String key, double defaultValue) {
+        if (rule == null || !rule.containsKey(key) || rule.get(key) == null) {
+            return defaultValue;
+        }
+        Object v = rule.get(key);
+        if (v instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(v).replace("%", "").trim());
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 
     public Set<String> ruleStringSet(Map<String, Object> rule, String key, Set<String> defaultValue) {

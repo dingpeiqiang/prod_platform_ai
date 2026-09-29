@@ -578,6 +578,9 @@ public class AppStoreV16Controller {
         List<Map<String, Object>> results = new java.util.ArrayList<>();
         List<String> lines = new java.util.ArrayList<>();
         List<Map<String, Object>> reasoningAll = new java.util.ArrayList<>();
+        List<Map<String, Object>> metricAnomaliesAll = new java.util.ArrayList<>();
+        List<Map<String, Object>> alertHintsAll = new java.util.ArrayList<>();
+        List<Map<String, Object>> suggestionsAll = new java.util.ArrayList<>();
         boolean anyAbnormal = false;
         int alertCount = 0;
         int woCount = 0;
@@ -611,6 +614,44 @@ public class AppStoreV16Controller {
                 tagged.put("offer_name", offerName);
                 reasoningAll.add(tagged);
             }
+
+            // 指标异常（本体口径）：逐指标 value/trend/delta/anomaly；异常明细单独出口供 LLM 引用。
+            List<Map<String, Object>> metricAnomalies = MapOps.castListOfMaps(offer.get("metric_anomalies"));
+            List<Map<String, Object>> anomalies = new java.util.ArrayList<>();
+            for (Map<String, Object> m : metricAnomalies) {
+                Map<String, Object> a = new java.util.LinkedHashMap<>();
+                a.put("offer_id", offerId);
+                a.put("offer_name", offerName);
+                a.put("metric", m.get("metric"));
+                a.put("name", m.get("name"));
+                a.put("value", m.get("value"));
+                a.put("unit", m.get("unit"));
+                a.put("delta_pct", m.get("delta_pct"));
+                a.put("trend", m.get("trend"));
+                a.put("threshold_ref", m.get("threshold_ref"));
+                a.put("condition", "环比 " + MapOps.str(m.get("delta_pct")) + "（趋势" + MapOps.str(m.get("trend")) + "）"
+                        + "，越界阈值来自 ops_rules.metricAnomaly." + MapOps.str(m.get("metric")));
+                anomalies.add(a);
+                metricAnomaliesAll.add(a);
+            }
+            row.put("metric_anomalies", anomalies);
+
+            // 告警提示（本体 R-E 规则的面向用户提示语）：命中即给出可读提示，未命中给出「正常」提示。
+            List<Map<String, Object>> hints = alertHintRows(offerId, offerName, grade, facts);
+            row.put("alert_hints", hints);
+            alertHintsAll.addAll(hints);
+
+            // 优化建议：由本体 R-O01~R-O05 依据指标异常布尔 SWRL 推理给出（阈值/文案外置 ops_rules）。
+            Map<String, Boolean> flags = suggestionFlags(metricAnomalies);
+            Map<String, Map<String, Object>> sugRules = new java.util.LinkedHashMap<>();
+            for (String rid : List.of("R-O01", "R-O02", "R-O03", "R-O04", "R-O05")) {
+                sugRules.put(rid, opsRules.suggestionRule(rid));
+            }
+            OpsSwrlReasoner.SwrlSuggestionResult sug = opsSwrlReasoner.reasonSuggestions(offerId, flags, sugRules);
+            List<Map<String, Object>> suggestions = suggestionRows(offerId, offerName, sug);
+            row.put("suggestions", suggestions);
+            row.put("suggestion_engine", sug.engine());
+            suggestionsAll.addAll(suggestions);
 
             if (grade.alerted()) {
                 anyAbnormal = true;
@@ -656,6 +697,9 @@ public class AppStoreV16Controller {
         out.put("offers", results);
         out.put("monitor_lines", String.join("\n", lines));
         out.put("reasoning_chain", reasoningAll);
+        out.put("metric_anomalies", metricAnomaliesAll);
+        out.put("alert_hints", alertHintsAll);
+        out.put("suggestions", suggestionsAll);
         out.put("summary", anyAbnormal
                 ? "监控完成：发现异常商品，已按 SWRL 分级推送告警并闭环建单"
                 : "监控完成：各商品运行正常");
@@ -701,6 +745,99 @@ public class AppStoreV16Controller {
         row.put("condition", condition);
         row.put("conclusion", conclusion);
         return row;
+    }
+
+    /** 由指标异常明细映射为 R-O 建议所需布尔（revenueDrop/orderDrop/churnRise/attachDrop/arpuDrop/activeDrop）。 */
+    private Map<String, Boolean> suggestionFlags(List<Map<String, Object>> metricAnomalies) {
+        Map<String, Boolean> flags = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> m : metricAnomalies) {
+            String metric = MapOps.str(m.get("metric"));
+            String trend = MapOps.str(m.get("trend"));
+            switch (metric) {
+                case "revenue" -> flags.put("revenueDrop", "下降".equals(trend));
+                case "order_cnt" -> flags.put("orderDrop", "下降".equals(trend));
+                case "new_users" -> flags.put("newUsersDrop", "下降".equals(trend));
+                case "churn_users" -> flags.put("churnRise", "上升".equals(trend));
+                case "active_users" -> flags.put("activeDrop", "下降".equals(trend));
+                case "arpu" -> flags.put("arpuDrop", "下降".equals(trend));
+                case "attach_rate" -> flags.put("attachDrop", "下降".equals(trend));
+                default -> { }
+            }
+        }
+        return flags;
+    }
+
+    /**
+     * 告警提示行（面向用户的可读提示）：命中规则给出「提示语 + 依据指标 + 处置时限」，
+     * 未命中给出「正常」提示，使报告「告警提示」段有逐规则口径。
+     */
+    private List<Map<String, Object>> alertHintRows(String offerId, String offerName,
+                                                    OpsSwrlReasoner.SwrlAlertResult grade,
+                                                    Map<String, Object> facts) {
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        java.util.Set<String> fired = new java.util.LinkedHashSet<>(grade.firedRules());
+        if (fired.contains("R-E01")) {
+            rows.add(hintRow(offerId, offerName, "R-E01", "P0",
+                    "【P0 严重告警】异常量 " + MapOps.str(facts.get("error_count"))
+                            + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate"))
+                            + "；请立即介入，" + grade.slaMinutes() + " 分钟内响应"));
+        } else if (fired.contains("R-E02")) {
+            rows.add(hintRow(offerId, offerName, "R-E02", "P1",
+                    "【P1 重要告警】异常量 " + MapOps.str(facts.get("error_count"))
+                            + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate"))
+                            + "；请当日处理，" + grade.slaMinutes() + " 分钟内闭环"));
+        } else if (fired.contains("R-E03")) {
+            rows.add(hintRow(offerId, offerName, "R-E03", "P2",
+                    "【P2 提示告警】指标趋势劣化（无实量异常）；观察即可，处置时限 " + grade.slaMinutes() + " 分钟"));
+        } else {
+            rows.add(hintRow(offerId, offerName, "R-E00", "正常",
+                    "【运行正常】异常量 " + MapOps.str(facts.get("error_count"))
+                            + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate")) + "，未触发告警"));
+        }
+        return rows;
+    }
+
+    private Map<String, Object> hintRow(String offerId, String offerName, String ruleId, String level, String hint) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        row.put("offer_id", offerId);
+        row.put("offer_name", offerName);
+        row.put("ruleId", ruleId);
+        row.put("level", level);
+        row.put("hint", hint);
+        return row;
+    }
+
+    /**
+     * 优化建议行：由本体 R-O 推理结果 + ops_rules.suggestions 文案拼装（逐命中规则一行）。
+     * 无命中时给出「维持现有运营」占位行，保证报告建议段非空。
+     */
+    private List<Map<String, Object>> suggestionRows(String offerId, String offerName,
+                                                     OpsSwrlReasoner.SwrlSuggestionResult sug) {
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (String ruleId : sug.firedRules()) {
+            Map<String, Object> cfg = opsRules.suggestionRule(ruleId);
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("offer_id", offerId);
+            row.put("offer_name", offerName);
+            row.put("ruleId", ruleId);
+            row.put("name", MapOps.str(cfg.get("name")));
+            row.put("condition", MapOps.str(cfg.get("condition")));
+            row.put("advice", MapOps.str(cfg.get("advice")));
+            row.put("engine", sug.engine());
+            rows.add(row);
+        }
+        if (rows.isEmpty()) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("offer_id", offerId);
+            row.put("offer_name", offerName);
+            row.put("ruleId", "R-O00");
+            row.put("name", "维持运营");
+            row.put("condition", "各指标均在阈值内");
+            row.put("advice", "维持现有运营策略，保持指标监控");
+            row.put("engine", sug.engine());
+            rows.add(row);
+        }
+        return rows;
     }
 
     private String gradeToAlarmLevel(String level) {

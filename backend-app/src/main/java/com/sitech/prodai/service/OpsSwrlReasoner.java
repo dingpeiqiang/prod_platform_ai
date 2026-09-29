@@ -686,6 +686,21 @@ public class OpsSwrlReasoner {
     }
 
     /**
+     * 单产商品优化建议推理结果（R-O01~R-O05）。
+     *
+     * @param applicable  是否存在可给出优化建议的指标异常
+     * @param firedRules  命中的建议规则（如 R-O01/R-O02）
+     */
+    public record SwrlSuggestionResult(
+            boolean success,
+            String engine,
+            boolean applicable,
+            List<String> firedRules,
+            String message
+    ) {
+    }
+
+    /**
      * 单产商品运行告警分级（R-E00~E04），基于 product.ttl 本体。
      * <p>
      * 断言监控事实（error_count / fee_error_rate / 趋势布尔），按 ops_rules.alertGrading 阈值
@@ -848,6 +863,118 @@ public class OpsSwrlReasoner {
         }
         int sla = "P0".equals(level) ? slaP0 : "P1".equals(level) ? slaP1 : "P2".equals(level) ? slaP2 : 0;
         return new SwrlAlertResult(true, engine, !"NONE".equals(level), level, needWo, sla, fired, reasons, message);
+    }
+
+    /**
+     * 单产商品优化建议推理（R-O01~R-O05），基于 product.ttl 本体。
+     * <p>
+     * 断言逐指标异常布尔（由调用方按 metricAnomaly 阈值预计算），SWRL 推出建议分类个体
+     * （:ChannelPromotionOffering / :RetentionOffering / :BundleUpsellOffering /
+     * :PriceOptimizeOffering / :EngagementOffering），映射回 R-O 规则 ID；无异常返回 applicable=false。
+     * SWRL 不可用时回退 Java 判定（条件=异常布尔，与规则同源）。
+     *
+     * @param offeringId 产商品ID
+     * @param flags      指标异常布尔：revenueDrop/newUsersDrop/orderDrop/churnRise/activeDrop/arpuDrop/attachDrop
+     * @param rulesById  建议规则（R-O01~R-O05，含 enabled），控制开关
+     */
+    public SwrlSuggestionResult reasonSuggestions(
+            String offeringId,
+            Map<String, Boolean> flags,
+            Map<String, Map<String, Object>> rulesById
+    ) {
+        List<String> javaFired = suggestionFiredByJava(flags, rulesById);
+        if (!properties.getOntology().isSwrlEnabled()) {
+            return new SwrlSuggestionResult(true, "fallback-java", !javaFired.isEmpty(), javaFired, "SWRL 已关闭");
+        }
+        try {
+            OWLOntologyManager manager = OWLManager.createOWLOntologyManager();
+            OWLDataFactory df = manager.getOWLDataFactory();
+            OWLOntology ontology = loadAlertOntology(manager);
+
+            OWLNamedIndividual o = alertInd(df, offeringId);
+            add(manager, ontology, df.getOWLClassAssertionAxiom(alertCls(df, "Offering"), o));
+            add(manager, ontology, alertDataAssert(df, o, "offeringId", offeringId));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "revenueDropFlag", flag(flags, "revenueDrop")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "newUsersDropFlag", flag(flags, "newUsersDrop")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "orderDropFlag", flag(flags, "orderDrop")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "churnUsersRiseFlag", flag(flags, "churnRise")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "activeUsersDropFlag", flag(flags, "activeDrop")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "arpuDropFlag", flag(flags, "arpuDrop")));
+            add(manager, ontology, alertDataAssertBoolean(df, o, "attachRateDropFlag", flag(flags, "attachDrop")));
+
+            Set<String> disabled = new LinkedHashSet<>();
+            if (!enabled(rule(rulesById, "R-O01"))) {
+                disabled.add("R-O01.revenue");
+                disabled.add("R-O01.order");
+            }
+            if (!enabled(rule(rulesById, "R-O02"))) disabled.add("R-O02.churn");
+            if (!enabled(rule(rulesById, "R-O03"))) disabled.add("R-O03.attach");
+            if (!enabled(rule(rulesById, "R-O04"))) disabled.add("R-O04.arpu");
+            if (!enabled(rule(rulesById, "R-O05"))) disabled.add("R-O05.active");
+            disableRules(manager, ontology, disabled);
+
+            OpenlletReasoner reasoner = OpenlletReasonerFactory.getInstance().createReasoner(ontology);
+            reasoner.prepareReasoner();
+            List<String> fired = new ArrayList<>();
+            if (enabled(rule(rulesById, "R-O01"))
+                    && (isAlertType(reasoner, o, df, "ChannelPromotionOffering"))) {
+                fired.add("R-O01");
+            }
+            if (enabled(rule(rulesById, "R-O02"))
+                    && isAlertType(reasoner, o, df, "RetentionOffering")) {
+                fired.add("R-O02");
+            }
+            if (enabled(rule(rulesById, "R-O03"))
+                    && isAlertType(reasoner, o, df, "BundleUpsellOffering")) {
+                fired.add("R-O03");
+            }
+            if (enabled(rule(rulesById, "R-O04"))
+                    && isAlertType(reasoner, o, df, "PriceOptimizeOffering")) {
+                fired.add("R-O04");
+            }
+            if (enabled(rule(rulesById, "R-O05"))
+                    && isAlertType(reasoner, o, df, "EngagementOffering")) {
+                fired.add("R-O05");
+            }
+            reasoner.dispose();
+            return new SwrlSuggestionResult(true, "openllet-swrl", !fired.isEmpty(), fired,
+                    "SWRL 优化建议推理完成: " + String.join(",", fired));
+        } catch (Exception e) {
+            log.warn("[OpsSwrlReasoner] 优化建议 SWRL 失败 offering={}: {}", offeringId, e.getMessage());
+            return new SwrlSuggestionResult(true, "fallback-java", !javaFired.isEmpty(), javaFired,
+                    "SWRL 失败: " + e.getMessage());
+        }
+    }
+
+    /** Java 回退建议判定（条件=异常布尔，与 R-O 规则同源）。 */
+    private List<String> suggestionFiredByJava(
+            Map<String, Boolean> flags, Map<String, Map<String, Object>> rulesById) {
+        List<String> fired = new ArrayList<>();
+        if (enabled(rule(rulesById, "R-O01"))
+                && (flag(flags, "revenueDrop") || flag(flags, "orderDrop") || flag(flags, "newUsersDrop"))) {
+            fired.add("R-O01");
+        }
+        if (enabled(rule(rulesById, "R-O02")) && flag(flags, "churnRise")) {
+            fired.add("R-O02");
+        }
+        if (enabled(rule(rulesById, "R-O03")) && flag(flags, "attachDrop")) {
+            fired.add("R-O03");
+        }
+        if (enabled(rule(rulesById, "R-O04")) && flag(flags, "arpuDrop")) {
+            fired.add("R-O04");
+        }
+        if (enabled(rule(rulesById, "R-O05")) && flag(flags, "activeDrop")) {
+            fired.add("R-O05");
+        }
+        return fired;
+    }
+
+    private Map<String, Object> rule(Map<String, Map<String, Object>> rulesById, String ruleId) {
+        return rulesById == null ? null : rulesById.get(ruleId);
+    }
+
+    private boolean flag(Map<String, Boolean> flags, String key) {
+        return flags != null && Boolean.TRUE.equals(flags.get(key));
     }
 
     // ---------- ABox helpers ----------

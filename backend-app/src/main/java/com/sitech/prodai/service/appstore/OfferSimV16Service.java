@@ -1842,9 +1842,82 @@ public class OfferSimV16Service {
         body.put("error_trend", errorCount > 0 ? "上升" : "持平");
         body.put("fee_error_rate", String.format(java.util.Locale.ROOT, "%.4f", feeErrorRate));
         body.put("fee_trend", feeErrorRate > 0.01 ? "上升" : "持平");
+        // 指标概览：按 metrics_registry 口径补全多维指标（收入/新增/流失/活跃/ARPU/绑定率/净增），
+        // 逐指标带 环比 delta / 趋势 / 异常标记（阈值源自 ops_rules.metricAnomaly，异常驱动 R-O 建议推理）。
+        List<Map<String, Object>> metrics = monitorMetrics(offerId, seedNum, orderCount, errorCount, feeErrorRate);
+        body.put("metrics", metrics);
+        body.put("metric_anomalies", metrics.stream()
+                .filter(m -> Boolean.TRUE.equals(m.get("anomaly"))).toList());
         body.put("metric", MapOps.firstNonEmpty(params.get("metric"), "all"));
         body.put("alarm_list", alarmList);
         return body;
+    }
+
+    /** 指标概览项元数据（展示名/单位/归属建议规则；口径对齐 metrics_registry.json）。 */
+    private static final List<String[]>MONITOR_METRIC_META = List.of(
+            new String[]{"revenue", "收入", "元", "R-O01", "1"},
+            new String[]{"order_cnt", "订单量", "笔", "R-O01", "0"},
+            new String[]{"new_users", "新增用户", "户", "R-O01", "3"},
+            new String[]{"churn_users", "流失用户", "户", "R-O02", "2"},
+            new String[]{"active_users", "活跃用户", "户", "R-O05", "4"},
+            new String[]{"arpu", "ARPU", "元", "R-O04", "5"},
+            new String[]{"attach_rate", "绑定率", "%", "R-O03", "6"},
+            new String[]{"net_growth", "净增用户", "户", "R-O01", "7"});
+
+    /**
+     * 生成逐指标概览（模拟口径，确定性：同一 offer_id 结果稳定）。
+     * 每项含 value/unit/trend/delta_pct/anomaly/ruleId；异常由 ops_rules.metricAnomaly 阈值判定
+     * （delta_pct ≤ dropLte 或 ≥ riseGte）。注入监控异常时（errorCount&gt;0）放大劣化指标，保证可复现异常集。
+     */
+    private List<Map<String, Object>> monitorMetrics(
+            String offerId, int seedNum, int orderCount, int errorCount, double feeErrorRate) {
+        boolean degrade = errorCount > 0;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String[] meta : MONITOR_METRIC_META) {
+            String key = meta[0];
+            String name = meta[1];
+            String unit = meta[2];
+            String ruleId = meta[3];
+            int salt = Integer.parseInt(meta[4]);
+            int h = Math.abs((offerId + key).hashCode());
+            // 基准量：量纲化确定性取值，保证正数且数量级合理
+            double value = switch (key) {
+                case "revenue" -> 50000 + (seedNum + h) % 450000;
+                case "order_cnt" -> orderCount;
+                case "new_users" -> 200 + (seedNum + h) % 1800;
+                case "churn_users" -> 50 + (seedNum + h) % 450;
+                case "active_users" -> 8000 + (seedNum + h) % 52000;
+                case "arpu" -> 40 + (h % 600) / 10.0;
+                case "attach_rate" -> 20 + (h % 400) / 10.0;
+                case "net_growth" -> -200 + (seedNum + h) % 1600;
+                default -> 0.0;
+            };
+            // 环比 delta：确定性 + 劣化放大
+            double baseDelta = ((h + salt * 7) % 41 - 20) / 100.0;
+            double delta = degrade && isDegradeMetric(key) ? baseDelta - 0.08 : baseDelta;
+            delta = Math.round(delta * 10000) / 10000.0;
+            Map<String, Object> ruleCfg = opsRules.metricAnomalyRule(key);
+            double dropLte = OpsRulesService.ruleNumOr(ruleCfg, "dropLte", -0.10);
+            double riseGte = OpsRulesService.ruleNumOr(ruleCfg, "riseGte", 0.10);
+            boolean anomaly = delta <= dropLte || delta >= riseGte;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("metric", key);
+            m.put("name", name);
+            m.put("value", "arpu".equals(key) || "attach_rate".equals(key)
+                    ? String.format(java.util.Locale.ROOT, "%.1f", value)
+                    : String.valueOf((long) value));
+            m.put("unit", unit);
+            m.put("delta_pct", String.format(java.util.Locale.ROOT, "%.2f%%", delta * 100));
+            m.put("trend", delta > 0.005 ? "上升" : delta < -0.005 ? "下降" : "持平");
+            m.put("threshold_ref", ruleId);
+            m.put("anomaly", anomaly);
+            out.add(m);
+        }
+        return out;
+    }
+
+    private boolean isDegradeMetric(String key) {
+        return List.of("revenue", "order_cnt", "new_users", "active_users", "arpu", "attach_rate").contains(key);
     }
 
     /**
@@ -3099,7 +3172,8 @@ public class OfferSimV16Service {
             item.put("offer_id", MapOps.firstNonEmpty(r.get("offer_id"), offerId));
             item.put("status", r.containsKey("error_count") ? "success" : "fail");
             for (String k : List.of("offer_name", "order_count", "order_trend", "error_count", "error_trend",
-                    "fee_error_rate", "fee_trend", "metric", "alarm_list", "resultCode", "resultMsg")) {
+                    "fee_error_rate", "fee_trend", "metric", "metrics", "metric_anomalies", "alarm_list",
+                    "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
