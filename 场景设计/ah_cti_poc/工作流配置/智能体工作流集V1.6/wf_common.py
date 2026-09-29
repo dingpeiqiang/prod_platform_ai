@@ -14,6 +14,59 @@ import json, os, io, uuid, re, collections
 BASE = os.path.dirname(os.path.abspath(__file__))
 BASE_URL = "http://10.86.13.201:31281"
 
+# CODE_OFFER_ROSTER_HELPERS：销售品名册（权威 name/quantity）合并公共片段（V3.14 新增）。
+# 背景：wf_sub_00 需求提报的《销售品需求提报单》offers[] 是销售品「名称 name + 数量 quantity」
+#   的唯一权威来源；下游各环节（requirement/config/audit_pending/spec/test_pending/fee/report）
+#   的 offers[] 经工具落地/重建（save_product_config、get_test_scenes 等）会丢失 name/quantity，
+#   导致销售品文案前后不一。本片段提供按 offer_seq 合并名册的确定性工具函数，
+#   由各环节封包/聚合代码在返回前调用（roster 取自本环节可得的权威 offers）。
+# 用法：把本片段拼接到目标代码块 import 之后，roster 为 [{offer_seq,name,quantity}]，
+#   offers 为待增强的逐品数组；返回增强后的 offers（就地写回 name/quantity，不覆盖已有非空值）。
+# 注意：本常量须定义在所有引用它的代码块之前（模块加载时即做字符串拼接）。
+CODE_OFFER_ROSTER_HELPERS = (
+    "def _roster_map(raw):\n"
+    "    # 权威名册归一：入参可为 [{offer_seq,name,quantity}] / {offers:[...]} / JSON 字符串\n"
+    "    obj = raw\n"
+    "    if isinstance(obj, str):\n"
+    "        try:\n"
+    "            obj = json.loads(obj)\n"
+    "        except Exception:\n"
+    "            obj = None\n"
+    "    if isinstance(obj, dict):\n"
+    "        obj = obj.get('offers')\n"
+    "    if not isinstance(obj, list):\n"
+    "        return {}\n"
+    "    out = {}\n"
+    "    for i, o in enumerate(obj, start=1):\n"
+    "        if not isinstance(o, dict):\n"
+    "            continue\n"
+    "        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n"
+    "        name = str(o.get('name') or '').strip()\n"
+    "        qty = o.get('quantity')\n"
+    "        if name or qty not in (None, ''):\n"
+    "            out[seq] = {'name': name, 'quantity': qty}\n"
+    "    return out\n"
+    "\n"
+    "def _merge_roster(offers, raw):\n"
+    "    # 按 offer_seq 把权威名册的 name/quantity 合并进逐品元素（已有非空 name 不覆盖）\n"
+    "    roster = _roster_map(raw)\n"
+    "    if not roster or not isinstance(offers, list):\n"
+    "        return offers\n"
+    "    for i, o in enumerate(offers, start=1):\n"
+    "        if not isinstance(o, dict):\n"
+    "            continue\n"
+    "        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n"
+    "        r = roster.get(seq)\n"
+    "        if not r:\n"
+    "            continue\n"
+    "        if r.get('name') and not str(o.get('name') or '').strip():\n"
+    "            o['name'] = r['name']\n"
+    "        if r.get('quantity') not in (None, '') and o.get('quantity') in (None, ''):\n"
+    "            o['quantity'] = r['quantity']\n"
+    "    return offers\n"
+    "\n"
+)
+
 def nid(seq, ns="a1b2c3d4"):
     return "%s-0000-4000-8000-%012d" % (ns, seq)
 
@@ -502,11 +555,17 @@ CODE_EXTRACT_REQUEST_IDS = (
     "                ids = [x for x in _join(rid).split(',') if x]\n"
     "                all_ids += ids\n"
     "                seq = o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i\n"
-    "                norm.append({'offer_seq': seq,\n"
-    "                             'offer_id': str(o.get('offer_id') or o.get('offerId') or ''),\n"
-    "                             'requestIds': ','.join(ids),\n"
-    "                             'sales_id': str(o.get('sales_id') or ''),\n"
-    "                             'file_id': str(o.get('file_id') or '')})\n"
+    "                one = {'offer_seq': seq,\n"
+    "                       'offer_id': str(o.get('offer_id') or o.get('offerId') or ''),\n"
+    "                       'requestIds': ','.join(ids),\n"
+    "                       'sales_id': str(o.get('sales_id') or ''),\n"
+    "                       'file_id': str(o.get('file_id') or '')}\n"
+    "                # V3.14：透传权威 name/quantity，供 4b 结构化封包按名册合并进 spec offers[]\n"
+    "                if str(o.get('name') or '').strip():\n"
+    "                    one['name'] = str(o.get('name')).strip()\n"
+    "                if o.get('quantity') not in (None, ''):\n"
+    "                    one['quantity'] = o.get('quantity')\n"
+    "                norm.append(one)\n"
     "            if not all_ids:\n"
     "                rid = inner.get('requestIds') or inner.get('request_ids') or ''\n"
     "                all_ids = [x for x in _join(rid).split(',') if x]\n"
@@ -1448,6 +1507,7 @@ CODE_SUMMARY_APPROVAL = (
     "import json\n"
     "from typing import Any, Dict\n"
     "\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "def _parse(text):\n"
     "    if not isinstance(text, str) or not text.strip():\n"
     "        return {}\n"
@@ -1550,6 +1610,10 @@ CODE_SUMMARY_APPROVAL = (
     "    offers_out = []\n"
     "    cfg_offers = cfg.get('offers') if isinstance(cfg, dict) else None\n"
     "    if isinstance(cfg_offers, list) and cfg_offers:\n"
+    "        # V3.14：按权威名册（需求提报 offers，含 name/quantity）合并销售品名称与数量，\n"
+    "        # 保证审批看板/报告销售品文案与需求提报一致（名册缺失时零变化）。\n"
+    "        _roster = p.get('roster') or p.get('roster_name') or (req.get('offers') if isinstance(req, dict) else '')\n"
+    "        cfg_offers = _merge_roster([dict(c) for c in cfg_offers if isinstance(c, dict)], _roster)\n"
     "        for i, c in enumerate(cfg_offers, start=1):\n"
     "            if not isinstance(c, dict):\n"
     "                continue\n"
@@ -1557,7 +1621,9 @@ CODE_SUMMARY_APPROVAL = (
     "            offers_out.append({\n"
     "                'offer_seq': int(c.get('offer_seq') or i),\n"
     "                'offer_id': o_id,\n"
-    "                'offer_name': str(c.get('offer_name') or ''),\n"
+    "                'offer_name': str(c.get('offer_name') or c.get('name') or ''),\n"
+    "                'name': str(c.get('name') or c.get('offer_name') or ''),\n"
+    "                'quantity': c.get('quantity'),\n"
     "                'config_status': str(c.get('status') or ''),\n"
     "                'plan_json': c.get('plan_json'),\n"
     "                'spec': dict(summary['spec']),\n"
@@ -1593,6 +1659,7 @@ CODE_PACK_RECORD = (
     "import json\n"
     "from typing import Any, Dict\n"
     "\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n"
     "                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n"
     "                'offers', 'req_id', 'plan_json')\n"
@@ -1620,6 +1687,11 @@ CODE_PACK_RECORD = (
     "    for key in _PASSTHROUGH:\n"
     "        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n"
     "            env[key] = _any(p.get(key))\n"
+    "    # V3.14：若提供权威名册（roster_name/roster 入参），按 offer_seq 把 name/quantity\n"
+    "    # 合并进落库 offers[]，保证下游销售品文案前后一致（名册缺失时零变化）。\n"
+    "    roster = p.get('roster') or p.get('roster_name') or ''\n"
+    "    if roster and isinstance(env.get('offers'), list):\n"
+    "        env['offers'] = _merge_roster(env['offers'], roster)\n"
     "    md = str(p.get('md') or p.get('markdown') or '')\n"
     "    md_key = str(p.get('md_key') or 'report_md')\n"
     "    if md:\n"
@@ -1642,10 +1714,13 @@ CODE_PACK_RECORD = (
 # 场景态来源：6a 为发起阶段，C2 get_test_scenes 仅返回场景清单（testSceneNbr/testSceneName/sort），
 #   故场景态统一标注「待执行」，由 6b 轮询 C3/C4 后回填真实执行态。
 #   兼容 C3/C4 若已带场景级 status（success/fail/处理中）则按其值渲染。
-# 出参：offers_text（多行文本）、offer_count（品数）、scene_count（场景总数）。
+# 入参：offers（节点303出参，逐品 {offer_seq,globalId,testScenes}）+
+#   roster（权威名册，节点310 offers，含 name/quantity；按 offer_seq 合并补齐商品名，避免文案前后不一）。
+# 出参：offers_text（多行文本）、offer_count（品数）、scene_count（场景总数）、offer_name（首品名称，供面板 url 的 name）。
 CODE_FMT_OFFERS = (
     "import json\n"
     "\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "_STATUS_CN = {'SUCCESS': '已发起', 'PENDING': '处理中', 'PARTIAL': '部分成功', 'FAIL': '失败', 'FAILED': '失败'}\n"
     "_SCENE_STATUS_CN = {'SUCCESS': '通过', 'PASS': '通过', 'FAIL': '失败', 'FAILED': '失败',\n"
     "                    'PENDING': '处理中', 'RUNNING': '执行中', 'WAIT': '待执行'}\n"
@@ -1674,17 +1749,23 @@ CODE_FMT_OFFERS = (
     "async def main(args):\n"
     "    p = args.params\n"
     "    offers = _as_list(p.get('offers'))\n"
+    "    offers = _merge_roster(offers, p.get('roster') or '')\n"
     "    blocks = []\n"
     "    scene_total = 0\n"
+    "    offer_name = ''\n"
     "    for i, o in enumerate(offers, start=1):\n"
     "        if not isinstance(o, dict):\n"
     "            continue\n"
     "        seq = o.get('offer_seq', i)\n"
+    "        name = str(o.get('name') or o.get('offer_name') or '').strip()\n"
+    "        if not offer_name and name:\n"
+    "            offer_name = name\n"
     "        oid = o.get('offer_id') or o.get('offerId') or '—'\n"
     "        gid = o.get('globalId') or o.get('global_id') or '—'\n"
     "        st = str(o.get('status') or o.get('result') or 'SUCCESS').upper()\n"
     "        st_cn = _STATUS_CN.get(st, st)\n"
-    "        head = ('  【商品' + str(seq) + '】offer_id=' + str(oid)\n"
+    "        title = (str(seq) + '. ' + name) if name else ('商品' + str(seq))\n"
+    "        head = ('  ' + title + '  offer_id=' + str(oid)\n"
     "                + ' 测试流水号=' + str(gid) + ' 发起状态=' + st_cn)\n"
     "        scenes = _as_list(o.get('testScenes') or o.get('test_scenes'))\n"
     "        scenes = sorted(scenes, key=lambda s: (s.get('sort') if isinstance(s, dict) and s.get('sort') is not None else 999))\n"
@@ -1699,7 +1780,8 @@ CODE_FMT_OFFERS = (
     "    ret: Output = {\n"
     "        'offers_text': offers_text,\n"
     "        'offer_count': str(len([o for o in offers if isinstance(o, dict)])),\n"
-    "        'scene_count': str(scene_total)\n"
+    "        'scene_count': str(scene_total),\n"
+    "        'offer_name': offer_name\n"
     "    }\n"
     "    return ret"
 )
@@ -1713,6 +1795,7 @@ CODE_PACK_AUDIT_LAUNCH = (
     "import json\n"
     "from typing import Any, Dict\n"
     "\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "_PASSTHROUGH = ('pass', 'error_list', 'audit_summary', 'risk_list', 'compare_list',\n"
     "                'requestIds', 'sales_id', 'file_id', 'globalId', 'testScenes', 'offer_id',\n"
     "                'offers', 'req_id', 'plan_json', 'file_name', 'download_url')\n"
@@ -1752,6 +1835,10 @@ CODE_PACK_AUDIT_LAUNCH = (
     "    for key in _PASSTHROUGH:\n"
     "        if key in p and p.get(key) is not None and str(p.get(key)) != '':\n"
     "            env[key] = _any(p.get(key))\n"
+    "    # V3.14：按权威名册合并 name/quantity 进落库 offers[]（名册缺失时零变化）\n"
+    "    roster = p.get('roster') or p.get('roster_name') or ''\n"
+    "    if roster and isinstance(env.get('offers'), list):\n"
+    "        env['offers'] = _merge_roster(env['offers'], roster)\n"
     "    md = str(p.get('md') or p.get('markdown') or '')\n"
     "    md_key = str(p.get('md_key') or 'report_md')\n"
     "    if md:\n"

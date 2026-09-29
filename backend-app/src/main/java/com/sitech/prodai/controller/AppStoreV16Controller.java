@@ -7,6 +7,7 @@ import com.sitech.prodai.service.appstore.AuditRequirementSource;
 import com.sitech.prodai.service.appstore.FieldOntologyService;
 import com.sitech.prodai.service.appstore.InterfaceFacade;
 import com.sitech.prodai.service.appstore.NodeResultService;
+import com.sitech.prodai.service.appstore.OntologySwrlCheckService;
 import com.sitech.prodai.service.appstore.OfferSimV16Service;
 import com.sitech.prodai.service.common.MapOps;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +40,7 @@ public class AppStoreV16Controller {
     private final OfferSimV16Service sim;
     private final NodeResultService nodeResultService;
     private final FieldOntologyService fieldOntologyService;
+    private final OntologySwrlCheckService ontologySwrlCheckService;
     private final ProductOntologyService productOntologyService;
     private final com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService;
     private final com.sitech.prodai.service.appstore.RequirementDocService requirementDocService;
@@ -49,6 +51,7 @@ public class AppStoreV16Controller {
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
+                                 OntologySwrlCheckService ontologySwrlCheckService,
                                  ProductOntologyService productOntologyService,
                                  com.sitech.prodai.service.appstore.ConfigTemplateService configTemplateService,
                                  com.sitech.prodai.service.appstore.RequirementDocService requirementDocService,
@@ -59,6 +62,7 @@ public class AppStoreV16Controller {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
+        this.ontologySwrlCheckService = ontologySwrlCheckService;
         this.productOntologyService = productOntologyService;
         this.configTemplateService = configTemplateService;
         this.requirementDocService = requirementDocService;
@@ -614,6 +618,21 @@ public class AppStoreV16Controller {
         }
         String fieldsJson = MapOps.str(req.get("fields_json"));
         return fieldsJson.isBlank() ? "[]" : fieldsJson;
+    }
+
+    /* ================= 接口14b：配置要素本体SWRL校验（ontology_swrl_check，P2） ================= */
+
+    /**
+     * 对接 wf_sub_01 节点108（要素校验与方案合并）本体逻辑校验（P2 仅记录不阻断）：
+     * 把该商品已合并要素映射为本体内联事实图，代理调用本体平台同步 SWRL 推理，
+     * 归一返回 checked/diagnostics/statistics/results 等 snake_case 出参，由节点108 写入 meta.onto_check。
+     * 本体不可用/无映射/异常时返回 checked=0（不阻断），由调用方按附加信息展示。
+     */
+    @Operation(summary = "配置要素本体SWRL校验", description = "P2：elements→本体内联事实图→本体平台同步SWRL推理，出参 checked/diagnostics/statistics/results（仅记录不阻断）")
+    @PostMapping("/ontology/swrl-check")
+    public Map<String, Object> ontologySwrlCheck(@RequestBody(required = false) Map<String, Object> req) {
+        Map<String, Object> safe = req == null ? Map.of() : req;
+        return ontologySwrlCheckService.check(safe);
     }
 
     /* ================= 接口15：异动根因本体推理（ops_root_cause） ================= */

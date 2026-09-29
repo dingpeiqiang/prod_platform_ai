@@ -36,6 +36,7 @@ from wf_common import (
     CODE_FMT_OFFERS,
     CODE_FMT_APPROVAL,
     CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
+    CODE_OFFER_ROSTER_HELPERS,
     validate_workflow,
 )
 
@@ -130,7 +131,7 @@ CODE_RENDER_REQ = (
     "EMPTY_MARKS = ('', '待补充', '系统待生成', '无', '暂无')\n"
     "FUSION_PRODUCT_TYPES = ('家庭基础套餐', '融合套餐')\n"
     "BASE_FIELDS = (\n"
-    "    ('name', '销售品名称'), ('product_type', '产品类型'), ('series', '所属系列'),\n"
+    "    ('name', '销售品名称'), ('quantity', '销售品数量'), ('product_type', '产品类型'), ('series', '所属系列'),\n"
     "    ('price', '套餐档位（月费）'), ('resources', '套内资源'), ('out_price', '套外资费'),\n"
     "    ('billing_cycle', '计费周期'), ('effective_way', '生效方式'), ('validity', '套餐有效期'),\n"
     "    ('change_rule', '变更规则'), ('cancel_rule', '退订/拆机规则'),\n"
@@ -152,6 +153,20 @@ CODE_RENDER_REQ = (
     "def _gen_req_id():\n"
     "    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')\n"
     "    return 'PLAN%s%03d' % (ts, random.randint(0, 999))\n"
+    "\n"
+    "def _norm_qty(v):\n"
+    "    # 销售品数量归一：缺省/非法 → 1，正数取整\n"
+    "    if v is None:\n"
+    "        return 1\n"
+    "    s = str(v).strip()\n"
+    "    if s == '':\n"
+    "        return 1\n"
+    "    import re\n"
+    "    m = re.search(r'\\d+', s)\n"
+    "    if not m:\n"
+    "        return 1\n"
+    "    n = int(m.group())\n"
+    "    return n if n > 0 else 1\n"
     "\n"
     "def _parse(raw):\n"
     "    if isinstance(raw, dict):\n"
@@ -208,7 +223,7 @@ CODE_RENDER_REQ = (
     "        out = ['| 字段 | 内容 |', '| --- | --- |']\n"
     "        out += ['| %s | %s |' % (k, v) for k, v in rows]\n"
     "        return out\n"
-    "    offers_out = []\n"
+    "    offers_flat = []\n"
     "    pending_all = []\n"
     "    lines = []\n"
     "    lines.append('## 销售品需求提报单')\n"
@@ -224,19 +239,25 @@ CODE_RENDER_REQ = (
     "        if not isinstance(elements, dict):\n"
     "            continue\n"
     "        offer_seq = int(elements.get('offer_seq') or idx)\n"
+    "        quantity = _norm_qty(elements.get('quantity'))\n"
     "        fmt = lambda k: _norm(elements.get(k))\n"
     "        fields = fields_for(elements.get('product_type'))\n"
     "        values = {}\n"
     "        pending = []\n"
     "        for key, label in fields:\n"
+    "            if key == 'quantity':\n"
+    "                values[key] = quantity\n"
+    "                continue\n"
     "            val = fmt(key)\n"
     "            values[key] = val\n"
     "            if key in REQUIRED_FIELDS and (val == '' or (key in PRICE_FIELDS and val in (0, '0', '0元'))):\n"
     "                pending.append(label)\n"
-    "        offers_out.append({'offer_seq': offer_seq, 'fields': values, 'pending_fields': pending})\n"
+    "        flat = {'offer_seq': offer_seq}\n"
+    "        flat.update(values)\n"
+    "        offers_flat.append(flat)\n"
     "        if pending:\n"
     "            pending_all.append('第%d档（%s）：%s' % (offer_seq, cell(values.get('name')), '、'.join(pending)))\n"
-    "        prod_rows = [('销售品名称', cell(values['name'])), ('产品类型', cell(values['product_type']))]\n"
+    "        prod_rows = [('销售品名称', cell(values['name'])), ('销售品数量', str(quantity)), ('产品类型', cell(values['product_type']))]\n"
     "        if values['series']:\n"
     "            prod_rows.append(('所属系列', values['series']))\n"
     "        if values.get('members'):\n"
@@ -275,12 +296,16 @@ CODE_RENDER_REQ = (
     "    while lines and lines[-1] == '':\n"
     "        lines.pop()\n"
     "    text = '\\n'.join(lines)\n"
+    "    offers_list_lines = ['| 序号 | 销售品名称 | 数量 |', '| --- | --- | --- |']\n"
+    "    offers_list_lines += ['| %d | %s | %d |' % (o.get('offer_seq', i), cell(o.get('name')), o.get('quantity', 1)) for i, o in enumerate(offers_flat, start=1)]\n"
+    "    offers_list = '\\n'.join(offers_list_lines) if offers_flat else '无'\n"
     "    ret: Output = {\n"
     "        \"report_text\": text,\n"
     "        \"pending_fields\": '；'.join(pending_all),\n"
     "        \"pending_count\": (str(len(pending_all)) if pending_all else ''),\n"
     "        \"req_id\": req_id,\n"
-    "        \"offers\": json.dumps({'req_id': req_id, 'offers': offers_out}, ensure_ascii=False),\n"
+    "        \"offers\": json.dumps({'req_id': req_id, 'offer_count': len(offers_flat), 'offers': offers_flat}, ensure_ascii=False),\n"
+    "        \"offers_list\": offers_list,\n"
     "    }\n"
     "    return ret"
 )
@@ -461,6 +486,7 @@ CODE_RENDER_TABLE = 'import json\nimport re\nfrom typing import Any, Dict\n\nSKI
 CODE_COLLECT_OFFERS = (
     "import json\n"
     "from typing import Any, Dict\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "def _load(v):\n"
     "    if isinstance(v, (dict, list)):\n"
     "        return v\n"
@@ -504,6 +530,9 @@ CODE_COLLECT_OFFERS = (
     "    for idx, o in enumerate(offers, start=1):\n"
     "        o.setdefault('offer_seq', idx)\n"
     "        o.setdefault('template', template)\n"
+    "    # V3.14：按权威名册（需求提报 offers，含 name/quantity）合并销售品名称与数量，\n"
+    "    # 使执行方案 offers[] 从环节2 起即携带 name/quantity，供全链路文案一致（名册缺失时零变化）。\n"
+    "    offers = _merge_roster(offers, p.get('record_json') or p.get('roster') or '')\n"
     "    ret: Output = {'result_json': json.dumps({'req_id': req_id, 'template': template, 'offers': offers}, ensure_ascii=False)}\n"
     "    return ret"
 )
@@ -526,25 +555,35 @@ s00.append(start_node(1, [
 s00.append(llm_node(2, "需求字段抽取",
     "你是产销品需求提报助手（环节1 需求提报），只做一件事：把用户需求原文翻译为结构化需求字段 JSON（可能含多个商品），不做补全、不做完整性判断、不渲染文档、不做任何业务决策。需求原文：{requirement_text}\n"
     "输出一个 offers 数组：用户原文中每提及一个销售品，就输出一个数组元素；元素按原文出现顺序编号 offer_seq 从 1 开始递增；仅提及一个销售品时数组长度为 1。\n"
+    "【销售品名称精准识别 name】\n"
+    "- 必须是完整、可识别的销售品/套餐名称，逐字引用原文，保留品牌+档位+类型全称，如“5G畅享99元套餐”“5G-A融合套餐”“千兆宽带300M套餐”。\n"
+    "- 剔除数量词、动词、连接词等非名称成分（如“3个”“订购”“份”“加装”），名称中不得包含数量信息。\n"
+    "- 同一销售品仅输出一个元素，数量信息统一放入 quantity，严禁因数量拆成多个元素、也严禁合并不同销售品。\n"
+    "- 无法识别出明确名称时 name 填空字符串。\n"
+    "【销售品数量 quantity】\n"
+    "- 用户明确指出订购/提报数量时（如“3个”“5份”“订购2套”“各1个”），quantity 填该整数（阿拉伯数字）。\n"
+    "- 未提及数量时 quantity 填 1。\n"
+    "- 数量仅作用于其紧跟/修饰的销售品，禁止跨销售品串值。\n"
     "每个元素字段口径（snake_case，逐字引用用户描述，未提及字段填空字符串）：\n"
     "- offer_seq：商品序号（整数，从 1 开始）\n"
-    "- name：销售品名称；product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费/融合套餐）；series：所属系列\n"
+    "- name：销售品名称（按上述精准识别规则）；quantity：销售品数量（整数，默认 1）\n"
+    "- product_type：产品类型（个人主套餐/个人附加资费/宽带主套餐/宽带附加资费/家庭基础套餐/家庭附加资费/融合套餐）；series：所属系列\n"
     "  · 产品类型判定优先看需求原文关键词：含“融合”二字（如“5G-A 融合套餐”“5G畅享融合79元套餐”）一律判为**融合套餐**；家庭类（家庭成员/家庭共享）判为家庭基础套餐；仅个人/宽带/附加资费按其余枚举对应。\n"
     "- members：融合成员（仅融合品——product_type 为融合套餐或家庭基础套餐时填写，逗号/顿号分隔，逐字引用原文成员如“主卡、宽带、天翼高清、副卡功能费”；非融合品不填）\n"
     "- price：套餐档位（月费，元/月）；resources：套内资源（流量/语音/短信/副卡等）；out_price：套外资费\n"
     "- billing_cycle：计费周期；effective_way：生效方式；validity：套餐有效期\n"
     "- change_rule：变更规则；cancel_rule：退订/拆机规则\n"
     "强制同义映射：月费/月租/套餐费+金额→price；每月XX G/含XX流量→resources；XX分钟语音/通话→resources；支持副卡→resources；按月付费→billing_cycle；X月X日生效→effective_way；退订/拆机→cancel_rule。\n"
-    "各商品字段严格归属对应商品，禁止跨商品串值；禁止臆造字段值；原文未明确的字段一律空字符串。\n"
-    "输出要求：只输出一个 JSON 对象，对象仅含一个键 offers_json，其值为上述 offers 数组 JSON 的字符串（即先按字段口径生成 offers 数组，再将该数组 JSON 整体作为 offers_json 的值，值为一个字符串，形如 {\"offers_json\": \"[{\\\"offer_seq\\\":1,\\\"name\\\":\\\"...\\\",...}]\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。",
+    "各商品字段严格归属对应商品，禁止跨商品串值；禁止臆造字段值；原文未明确的字段一律空字符串（quantity 除外，默认 1）。\n"
+    "输出要求：只输出一个 JSON 对象，对象仅含一个键 offers_json，其值为上述 offers 数组 JSON 的字符串（即先按字段口径生成 offers 数组，再将该数组 JSON 整体作为 offers_json 的值，值为一个字符串，形如 {\"offers_json\": \"[{\\\"offer_seq\\\":1,\\\"name\\\":\\\"5G畅享99元套餐\\\",\\\"quantity\\\":3,...}]\"}）；严禁输出其他文字、标签前缀、摘要、说明，严禁使用 Markdown 代码块包裹（不要输出```json```围栏）。",
     [inp("requirement_text", "引用开始节点需求文本", ref_block=nid(1), ref_rel="requirement_text")],
-    [out("offers_json", "需求商品字段数组 JSON 字符串（每元素为一个商品的 snake_case 字段，未提及项为空字符串）")]))
+    [out("offers_json", "需求商品字段数组 JSON 字符串（每元素为一个商品的 snake_case 字段：name 精准名称、quantity 数量，未提及项为空字符串，quantity 缺省为 1）")]))
 # render_requirement_report 代码节点：确定性渲染需求提报单（逐品）+ req_id 生成 + 待补充判定
 s00.append(code_node(3, "需求提报单渲染", CODE_RENDER_REQ,
     [inp("offers_json", "引用节点2需求商品字段数组 JSON", ref_block=nid(2), ref_rel="offers_json"),
      inp("req_id", "需求单号（开始节点，非空时沿用不重新生成）", ref_block=nid(1), ref_rel="req_id"),
      inp("reporter", "提报人（开始节点）", ref_block=nid(1), ref_rel="reporter")],
-    [code_out("report_text", 3), code_out("pending_fields", 3), code_out("pending_count", 3), code_out("req_id", 3), code_out("offers", 3)],
+    [code_out("report_text", 3), code_out("pending_fields", 3), code_out("pending_count", 3), code_out("req_id", 3), code_out("offers", 3), code_out("offers_list", 3)],
     pos=(650, 300)))
 # 待补充判定：pending_count 长度大于0 → 有待补充（port=-1）；否则（=0/空）→ 无待补充（port=0）
 s00.append(selector_node2(4, "待补充判定",
@@ -552,11 +591,11 @@ s00.append(selector_node2(4, "待补充判定",
     [(-1, [cond_item(cond_ref(3, "pending_count", "需求提报单渲染"), 10, cond_str(""))])]))
 # 无待补充分支：保存需求工单（node_name=requirement_report，供 wf_sub_01 需求分析延续 req_id）
 s00.append(plugin_node(5, "保存需求工单", "save_node_result",
-    "节点结果存储（复用）：req_id=代码节点生成的需求单号 req_id，node_name=requirement_report（需求提报单），result_json=归一后需求商品字段数组 JSON（含 req_id+offers[]）；同键覆盖；供 wf_sub_01 需求分析按 req_id+requirement_report 读取延续",
+    "节点结果存储（复用）：req_id=代码节点生成的需求单号 req_id，node_name=requirement_report（需求提报单），result_json=归一后需求商品字段数组 JSON（含 req_id+offer_count+销售品列表 offers[]，每品含 offer_seq/quantity/name/product_type/price/resources 等扁平字段）；同键覆盖；供 wf_sub_01 需求分析按 req_id+requirement_report 读取延续",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "需求单号（=代码节点生成 req_id，PLAN+yyyyMMddHHmmss+3位随机）", ref_block=nid(3), ref_rel="req_id"),
      inp("node_name", "环节名=requirement_report（需求提报单）", content="requirement_report"),
-     inp("result_json", "需求商品字段数组 JSON（=代码节点渲染后归一 offers，含 req_id+offers[]）", ref_block=nid(3), ref_rel="offers"),
+     inp("result_json", "需求商品字段数组 JSON（=代码节点归一 offers，含 req_id+offer_count+销售品列表 offers[]，每品含 offer_seq/quantity/name/product_type/price/resources 等扁平字段）", ref_block=nid(3), ref_rel="offers"),
      inp("status", "本环节状态=ok", content="ok")],
     [ ("record_id", "存储记录ID", "string")]))
 # 无待补充分支：止于确认点（V3.3：不自动发起需求工单审批，提示是否发起；审批由 wf_sub_11 承接）
@@ -581,7 +620,7 @@ e00 = [edge(1, 2), edge(2, 3), edge(3, 4),
        edge(4, 5, 0), edge(5, 9), edge(9, 7),
        edge(4, 10, -1), edge(10, 8)]
 files00 = workflow(
-    "产销品-需求提报", "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（一次抽 N 品，输出 offers 数组 snake_case 字段，未提及项空串）→代码节点render_requirement_report确定性逐品渲染《销售品需求提报单》并生成需求单号req_id+待补充判定→无待补充：保存需求工单(node_name=requirement_report，result_json 含 req_id+offers[])后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
+    "产销品-需求提报", "子工作流0：需求提报（环节1，双轨之需求轨）。需求文本→LLM需求字段抽取（一次抽 N 品，输出 offers 数组 snake_case 字段，精准识别销售品名称 name、识别销售品数量 quantity，未提及项空串/数量默认1）→代码节点render_requirement_report确定性逐品渲染《销售品需求提报单》并生成需求单号req_id+待补充判定，同时输出销售品列表（名称+数量）→无待补充：保存需求工单(node_name=requirement_report，result_json 含 req_id+offer_count+销售品列表offers[含quantity])后**止于确认点**（提示『是否发起【需求工单审批】』，不自动发起；用户回复【发起需求审批】后由 wf_sub_11 承接发起审批）→结束；有待补充：列待补充字段请补充后重新提报。req_id全程贯穿衔接wf_sub_01。",
     "wf_sub_00", s00, e00)
 
 # ============================================================
@@ -705,7 +744,8 @@ s01.append(code_node(109, "方案表格渲染", CODE_RENDER_TABLE,
 s01.append(code_node(114, "方案聚合", CODE_COLLECT_OFFERS,
     [inp("results", "逐品合并结果列表（节点108 offers）", ref_block=nid(108), ref_rel="offers"),
      inp("req_id", "需求单号（开始节点）", ref_block=nid(101), ref_rel="req_id"),
-     inp("template", "模板标识（节点106）", ref_block=nid(106), ref_rel="template_id")],
+     inp("template", "模板标识（节点106）", ref_block=nid(106), ref_rel="template_id"),
+     inp("record_json", "权威名册（节点103需求提报单原文，含 offers[] 销售品名称+数量）", ref_block=nid(103), ref_rel="record_json")],
     [code_out("result_json", 114)],
     pos=(1020, 135)))
 # 保存 requirement（延续 req_id，node_name=requirement 与既有 wf_sub_02~05 自查链路口径一致）
@@ -771,141 +811,28 @@ files01 = workflow(
 
 
 # ============================================================
-# 阶段3 执行主干融合组扩展（wf_sub_02/03/05；门槛=插件输出含 group/member_role/offer_group_check）
+# 阶段3 执行主干融合组扩展（wf_sub_03/05；门槛=插件输出含 group/member_role/offer_group_check）
 #   融合组口径（对齐 flow-B V4.0）：单商品行为零变化；全部成员维度数据逐字引用出参，
 #   禁止自行推理/增删成员/跨成员照搬价格或状态。
+#   （wf_sub_02 的融合概况由节点108 CODE_CONFIG_SUMMARY 从 offers[].group 自行渲染）
 # ============================================================
 
-# ---------------- CODE_FUSION_GROUP_ECHO：智能配置融合成员回显 ----------------
-# 输入：group_json（save_product_config 出参 product_config 或 group 的 JSON 文本，含 group 键时解析）、
-#       status（落地总状态 SUCCESS/PARTIAL/FAIL）
-# 输出：fusion_echo（融合成员回显行，无 group 键时为空串）、
-#       fusion_status（修正后状态：任一成员 PARTIAL→PARTIAL）、
-#       fusion_note（仅融合品且有成员失败时的提示行；单商品/无 group 时为空串，
-#                    避免在单商品执行时输出无关的融合口径说明）
-CODE_FUSION_GROUP_ECHO = (
-    "import json\n"
-    "from typing import Any, Dict\n"
-    "\n"
-    "def _load(text):\n"
-    "    # 兼容批量落地出参两种形态：裸 offers[] 数组 或 {offers:[...]} 信封；\n"
-    "    # 均为 {offers:[...]} 便于逐品回显（批量信封顶层不含 product_config）。\n"
-    "    if isinstance(text, list):\n"
-    "        return {'offers': text}\n"
-    "    if isinstance(text, dict):\n"
-    "        return text\n"
-    "    if not isinstance(text, str) or not text.strip():\n"
-    "        return {}\n"
-    "    try:\n"
-    "        obj = json.loads(text)\n"
-    "        if isinstance(obj, list):\n"
-    "            return {'offers': obj}\n"
-    "        return obj if isinstance(obj, dict) else {}\n"
-    "    except Exception:\n"
-    "        try:\n"
-    "            t = text.strip()\n"
-    "            if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
-    "                t = t.split(':', 1)[1].strip()\n"
-    "            obj = json.loads(t)\n"
-    "            if isinstance(obj, list):\n"
-    "                return {'offers': obj}\n"
-    "            return obj if isinstance(obj, dict) else {}\n"
-    "        except Exception:\n"
-    "            return {}\n"
-    "\n"
-    "async def main(args):\n"
-    "    p = args.params\n"
-    "    cfg = _load(p.get('group_json') or '')\n"
-    "    raw_status = str(p.get('status') or '')\n"
-    "    # V3.12 多商品：group_json 为批量落地结果 {offers:[{offer_seq,offer_id,status,product_config/group}]}\n"
-    "    elems = None\n"
-    "    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n"
-    "        elems = [c for c in cfg['offers'] if isinstance(c, dict)]\n"
-    "    lines, failed_all = [], []\n"
-    "    fusion_status = raw_status.upper()\n"
-    "    if elems:\n"
-    "        for i, c in enumerate(elems, start=1):\n"
-    "            seq = int(c.get('offer_seq') or i)\n"
-    "            merged = c.get('group') if isinstance(c.get('group'), dict) else None\n"
-    "            if not merged:\n"
-    "                continue\n"
-    "            members = merged.get('members') or []\n"
-    "            parts = []\n"
-    "            for m in members:\n"
-    "                role = str(m.get('role') or '')\n"
-    "                oid = str(m.get('offer_id') or '')\n"
-    "                if role:\n"
-    "                    parts.append('%s（offer_id %s）' % (role, oid))\n"
-    "                m_status = str(m.get('status') or '').upper()\n"
-    "                if m_status in ('PARTIAL', 'FAIL'):\n"
-    "                    failed_all.append('第%d档 %s=%s' % (seq, role or oid, m_status))\n"
-    "            main_id = str(merged.get('main_offer_id') or c.get('offer_id') or '')\n"
-    "            line = '第%d档融合成员：' % seq\n"
-    "            if main_id:\n"
-    "                line += '主 offer_id %s / ' % main_id\n"
-    "            line += ' / '.join(parts) if parts else ''\n"
-    "            lines.append(line)\n"
-    "        if failed_all and fusion_status == 'SUCCESS':\n"
-    "            fusion_status = 'PARTIAL'\n"
-    "        note = ''\n"
-    "        if fusion_status == 'PARTIAL':\n"
-    "            note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % '、'.join(failed_all)\n"
-    "        elif fusion_status == 'FAIL':\n"
-    "            note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n"
-    "        ret: Output = {\n"
-    "            'fusion_echo': '\\n'.join(lines),\n"
-    "            'fusion_status': fusion_status,\n"
-    "            'fusion_note': note,\n"
-    "        }\n"
-    "        return ret\n"
-    "    # 兼容旧单品：group_json 即单个落地配置\n"
-    "    merged = cfg.get('group') if isinstance(cfg.get('group'), dict) else None\n"
-    "    if not merged:\n"
-    "        ret: Output = {'fusion_echo': '', 'fusion_status': raw_status, 'fusion_note': ''}\n"
-    "        return ret\n"
-    "    members = merged.get('members') or []\n"
-    "    parts = []\n"
-    "    failed = []\n"
-    "    for m in members:\n"
-    "        role = str(m.get('role') or '')\n"
-    "        oid = str(m.get('offer_id') or '')\n"
-    "        if role:\n"
-    "            parts.append('%s（offer_id %s）' % (role, oid))\n"
-    "        m_status = str(m.get('status') or '').upper()\n"
-    "        if m_status in ('PARTIAL', 'FAIL'):\n"
-    "            failed.append('%s=%s' % (role or oid, m_status))\n"
-    "    main_id = str(merged.get('main_offer_id') or cfg.get('offer_id') or '')\n"
-    "    line = '融合成员：'\n"
-    "    if main_id:\n"
-    "        line += '主 offer_id %s / ' % main_id\n"
-    "    line += ' / '.join(parts) if parts else ''\n"
-    "    fusion_status = raw_status.upper()\n"
-    "    if failed and fusion_status == 'SUCCESS':\n"
-    "        fusion_status = 'PARTIAL'\n"
-    "    note = ''\n"
-    "    if fusion_status == 'PARTIAL':\n"
-    "        detail = '、'.join(failed) if failed else '详见失败明细'\n"
-    "        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % detail\n"
-    "    elif fusion_status == 'FAIL':\n"
-    "        note = '融合组配置失败：请按失败明细说明修改意见或回复【重新执行】'\n"
-    "    ret: Output = {\n"
-    "        \"fusion_echo\": line if parts else '',\n"
-    "        \"fusion_status\": fusion_status,\n"
-    "        \"fusion_note\": note,\n"
-    "    }\n"
-    "    return ret"
-)
-
-# ---------------- CODE_CONFIG_SUMMARY：智能配置要点简介 ----------------
+# ---------------- CODE_CONFIG_SUMMARY：智能配置要点简介 + 逐品明细/开头/下一步 ----------------
 # 输入：product_config（save_product_config 批量出参：裸 offers[] 数组 或 {offers:[...]} 信封）
 #       req_id（执行批次号，用于组装 config_json 信封供下游 result_json 落库）
+#       status（整批落地状态，节点103出参，用于 nextstep 文案分档）
+#       roster（权威名册，节点111 offers，含 name/quantity，按 offer_seq 合并进 config offers[]）
 # 输出：config_summary（逐品配置要点简介 markdown）、
 #       offers（逐品简介数组JSON）、
-#       config_json（{req_id, offers:[...]} 信封JSON，含各品 product_config，供 result/save 落库）
+#       config_json（{req_id, offers:[...]} 信封JSON，含各品 product_config，供 result/save 落库）、
+#       report（逐品聚合明细：商品名/offer_id、四类写入结果、配置要点、脚本下载地址）、
+#       headline（开头汇总行：商品数量/单品名 + 融合概况）、
+#       nextstep（下一步引导，按状态区分）
 # 说明：批量信封顶层无 product_config，offers[] 元素内才是逐品落地配置；解析失败时回退为空串，不阻断链路。
 CODE_CONFIG_SUMMARY = (
     "import json\n"
     "from typing import Any, Dict\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "\n"
     "def _load(text):\n"
     "    if isinstance(text, list):\n"
@@ -934,6 +861,11 @@ CODE_CONFIG_SUMMARY = (
     "def _cell(v):\n"
     "    return str(v) if v not in (None, '') else '—'\n"
     "\n"
+    "def _name_of(cfg):\n"
+    "    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n"
+    "    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n"
+    "    return str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n"
+    "\n"
     "def _summary_of(cfg):\n"
     "    plan = cfg.get('plan_json') if isinstance(cfg.get('plan_json'), dict) else {}\n"
     "    info = plan.get('optionalInfo') if isinstance(plan.get('optionalInfo'), dict) else {}\n"
@@ -942,7 +874,7 @@ CODE_CONFIG_SUMMARY = (
     "    voice = info.get('billVoiceCfg') if isinstance(info.get('billVoiceCfg'), dict) else {}\n"
     "    base = plan.get('baseInfo') if isinstance(plan.get('baseInfo'), dict) else {}\n"
     "    in_fee = cfg.get('in_fee') if isinstance(cfg.get('in_fee'), dict) else {}\n"
-    "    offer_name = str(base.get('prodPrcName') or cfg.get('offer_name') or '').strip()\n"
+    "    offer_name = _name_of(cfg)\n"
     "    fee = str(print_c.get('prcMonthFee') or base.get('fixFee') or '').strip()\n"
     "    gift = str(print_c.get('containResource') or '').strip()\n"
     "    if not gift:\n"
@@ -962,8 +894,7 @@ CODE_CONFIG_SUMMARY = (
     "        out_price = '、'.join(parts)\n"
     "    cycle = str(in_fee.get('计费周期') or '').strip()\n"
     "    carry = '是' if str(gprs.get('carryFlag') or '').strip() in ('是', 'true', 'True', '1') else ''\n"
-    "    lines = ['【配置销售品要点简介】']\n"
-    "    lines.append('- 销售品名称：%s' % _cell(offer_name))\n"
+    "    lines = ['- 销售品名称：%s' % _cell(offer_name)]\n"
     "    lines.append('- 套餐档位（月费）：%s' % ((fee + ' 元/月') if fee else '—'))\n"
     "    lines.append('- 套内资源：%s' % _cell(gift))\n"
     "    lines.append('- 套外资费：%s' % _cell(out_price))\n"
@@ -975,41 +906,172 @@ CODE_CONFIG_SUMMARY = (
     "    lines.append('- 退订规则：%s' % _cell(cfg.get('cancel_rule')))\n"
     "    return '\\n'.join(lines)\n"
     "\n"
+    "def _save_result_one(cfg):\n"
+    "    sr = cfg.get('save_result')\n"
+    "    if isinstance(sr, str):\n"
+    "        sr = _load(sr)\n"
+    "        sr = sr if isinstance(sr, list) else []\n"
+    "    if not isinstance(sr, list):\n"
+    "        sr = []\n"
+    "    items = []\n"
+    "    for x in sr:\n"
+    "        if not isinstance(x, dict):\n"
+    "            continue\n"
+    "        cat = str(x.get('category') or '').strip()\n"
+    "        res = str(x.get('result') or '').strip()\n"
+    "        if cat:\n"
+    "            items.append((cat, res or '—'))\n"
+    "    if not items:\n"
+    "        return '无'\n"
+    "    if all(res.lower() == 'success' for _, res in items):\n"
+    "        return '全部成功'\n"
+    "    bad = ['%s=%s' % (cat, res) for cat, res in items if res.lower() != 'success']\n"
+    "    return '；'.join(bad) if bad else '；'.join('%s=%s' % it for it in items)\n"
+    "\n"
+    "def _indent(text, prefix):\n"
+    "    return '\\n'.join(prefix + ln if ln else ln for ln in str(text).split('\\n'))\n"
+    "\n"
+    "def _inner_of(c):\n"
+    "    inner = c.get('product_config')\n"
+    "    if isinstance(inner, str):\n"
+    "        inner = _load(inner) or None\n"
+    "    elif not isinstance(inner, dict):\n"
+    "        inner = None\n"
+    "    return inner if inner is not None else c\n"
+    "\n"
+    "def _report(offers):\n"
+    "    # 逐品聚合：每品一块，集中展示商品名/offer_id、四类写入结果、配置要点、脚本下载地址。\n"
+    "    blocks = []\n"
+    "    for i, c in enumerate(offers, start=1):\n"
+    "        if not isinstance(c, dict):\n"
+    "            continue\n"
+    "        seq = int(c.get('offer_seq') or i)\n"
+    "        inner = _inner_of(c)\n"
+    "        oid = str(inner.get('offer_id') or c.get('offer_id') or '').strip()\n"
+    "        name = _name_of(inner) or str(inner.get('offer_name') or '').strip() or '未命名商品'\n"
+    "        head = '【第%d档】%s' % (seq, name)\n"
+    "        if oid:\n"
+    "            head += '（offer_id %s）' % oid\n"
+    "        lines = [head]\n"
+    "        lines.append('· 写入结果：%s' % _save_result_one(c))\n"
+    "        lines.append('· 配置要点：')\n"
+    "        lines.append(_indent(_summary_of(inner), '  '))\n"
+    "        url = str(c.get('script_url') or '').strip()\n"
+    "        lines.append('· 脚本下载：%s' % (url or '暂不可用，见智能配置结果'))\n"
+    "        blocks.append('\\n'.join(lines))\n"
+    "    return '\\n\\n'.join(blocks) if blocks else '无'\n"
+    "\n"
+    "def _fusion_of(offers):\n"
+    "    # 逐品融合组概况：仅当存在融合组（元素 group.members 非空）时才输出，避免单品场景噪声。\n"
+    "    echoes, failed = [], []\n"
+    "    for i, c in enumerate(offers, start=1):\n"
+    "        if not isinstance(c, dict):\n"
+    "            continue\n"
+    "        merged = c.get('group') if isinstance(c.get('group'), dict) else None\n"
+    "        if not merged:\n"
+    "            continue\n"
+    "        seq = int(c.get('offer_seq') or i)\n"
+    "        members = merged.get('members') or []\n"
+    "        parts = []\n"
+    "        for m in members:\n"
+    "            role = str(m.get('role') or '').strip()\n"
+    "            oid = str(m.get('offer_id') or '').strip()\n"
+    "            if role:\n"
+    "                parts.append('%s（offer_id %s）' % (role, oid))\n"
+    "            ms = str(m.get('status') or '').strip().upper()\n"
+    "            if ms in ('PARTIAL', 'FAIL'):\n"
+    "                failed.append('第%d档 %s=%s' % (seq, role or oid, ms))\n"
+    "        if parts:\n"
+    "            main_id = str(merged.get('main_offer_id') or c.get('offer_id') or '').strip()\n"
+    "            line = '第%d档融合成员：' % seq\n"
+    "            if main_id:\n"
+    "                line += '主 offer_id %s / ' % main_id\n"
+    "            line += ' / '.join(parts)\n"
+    "            echoes.append(line)\n"
+    "    note = ''\n"
+    "    if failed:\n"
+    "        note = '融合组部分成功（%s）：请按失败明细说明修改意见或回复【重新执行】' % '、'.join(failed)\n"
+    "    return '\\n'.join(echoes), note\n"
+    "\n"
+    "def _headline(offers, fusion_echo, fusion_note):\n"
+    "    n = len([c for c in offers if isinstance(c, dict)]) if isinstance(offers, list) else 0\n"
+    "    if n <= 1:\n"
+    "        one = next((c for c in offers if isinstance(c, dict)), None) if isinstance(offers, list) else None\n"
+    "        name = ''\n"
+    "        oid = ''\n"
+    "        if one is not None:\n"
+    "            inner = _inner_of(one)\n"
+    "            name = _name_of(inner) or str(inner.get('offer_name') or '').strip()\n"
+    "            oid = str(inner.get('offer_id') or one.get('offer_id') or '').strip()\n"
+    "        label = name or oid or '—'\n"
+    "        head = '智能配置完成：%s' % label\n"
+    "        if name and oid:\n"
+    "            head += '（offer_id %s）' % oid\n"
+    "    else:\n"
+    "        head = '智能配置完成：共 %d 个商品' % n\n"
+    "    if fusion_echo:\n"
+    "        head += '\\n' + fusion_echo\n"
+    "    if fusion_note:\n"
+    "        head += '\\n' + fusion_note\n"
+    "    return head\n"
+    "\n"
+    "def _nextstep(status, offers):\n"
+    "    st = str(status or '').strip().upper()\n"
+    "    all_success = True\n"
+    "    for c in offers if isinstance(offers, list) else []:\n"
+    "        if not isinstance(c, dict):\n"
+    "            continue\n"
+    "        sr = c.get('save_result')\n"
+    "        if isinstance(sr, str):\n"
+    "            sr = _load(sr)\n"
+    "        if not isinstance(sr, list):\n"
+    "            continue\n"
+    "        for x in sr:\n"
+    "            if isinstance(x, dict) and str(x.get('result') or '').strip().lower() not in ('', 'success'):\n"
+    "                all_success = False\n"
+    "                break\n"
+    "    if st == 'SUCCESS' and all_success:\n"
+    "        return '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。'\n"
+    "    return '【下一步】本次存在部分/失败项，请核对上述明细；确认无误后回复【下一步】继续发起【规格稽核】（环节4/8）。'\n"
+    "\n"
     "async def main(args):\n"
     "    p = args.params\n"
     "    cfg = _load(p.get('product_config') or '')\n"
     "    req_id = str(p.get('req_id') or '')\n"
+    "    status = str(p.get('status') or '')\n"
     "    # V3.12 多商品：product_config 为节点103出参 offers[]（含逐品 product_config）；\n"
     "    # 组装 config_json={req_id, offers:[...]} 信封供下游 result_json 落库（下游按 offers[] 键提取）。\n"
     "    if isinstance(cfg, dict) and isinstance(cfg.get('offers'), list):\n"
+    "        offers = cfg['offers']\n"
     "        blocks, offers_out, cfg_offers = [], [], []\n"
-    "        for i, c in enumerate(cfg['offers'], start=1):\n"
+    "        for i, c in enumerate(offers, start=1):\n"
     "            if not isinstance(c, dict):\n"
     "                continue\n"
     "            seq = int(c.get('offer_seq') or i)\n"
-    "            inner = c.get('product_config')\n"
-    "            if isinstance(inner, str):\n"
-    "                inner = _load(inner) or None\n"
-    "            elif not isinstance(inner, dict):\n"
-    "                inner = None\n"
-    "            if inner is None:\n"
-    "                inner = c\n"
+    "            inner = _inner_of(c)\n"
     "            text = _summary_of(inner)\n"
-    "            blocks.append('第%d档：\\n%s' % (seq, text))\n"
+    "            blocks.append('第%d档：%s\\n%s' % (seq, _name_of(inner) or '未命名商品', text))\n"
     "            offers_out.append({'offer_seq': seq, 'config_summary': text})\n"
     "            cfg_offers.append(c)\n"
+    "        # V3.14：按权威名册（节点111 offers，含 name/quantity）合并销售品名称与数量，\n"
+    "        # 供 config 落库 offers[] 携带 name/quantity，保证下游文案一致（名册缺失时零变化）。\n"
+    "        cfg_offers = _merge_roster(cfg_offers, p.get('roster') or '')\n"
+    "        fusion_echo, fusion_note = _fusion_of(offers)\n"
     "        config_json = json.dumps({'req_id': req_id, 'offers': cfg_offers}, ensure_ascii=False)\n"
     "        ret: Output = {\n"
     "            'config_summary': '\\n\\n'.join(blocks),\n"
     "            'offers': json.dumps(offers_out, ensure_ascii=False),\n"
     "            'config_json': config_json,\n"
+    "            'report': _report(offers),\n"
+    "            'headline': _headline(offers, fusion_echo, fusion_note),\n"
+    "            'nextstep': _nextstep(status, offers),\n"
     "        }\n"
     "        return ret\n"
     "    if not cfg:\n"
-    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False)}\n"
+    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False), 'report': '无', 'headline': '智能配置完成：无可展示商品', 'nextstep': '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。'}\n"
     "        return ret\n"
     "    one_sum = _summary_of(cfg)\n"
-    "    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False)}\n"
+    "    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False), 'report': _report([cfg]), 'headline': _headline([cfg], '', ''), 'nextstep': _nextstep(status, [cfg])}\n"
     "    return ret"
 )
 
@@ -1022,7 +1084,7 @@ CODE_CONFIG_SUMMARY = (
 CODE_GEN_OFFER_ID = (
     "import json, random\n"
     "from typing import Any, Dict\n"
-    "\n"
+    + CODE_OFFER_ROSTER_HELPERS +
     "def _str(v):\n"
     "    return str(v).strip() if v not in (None, '') else ''\n"
     "\n"
@@ -1076,7 +1138,13 @@ CODE_GEN_OFFER_ID = (
     "            oid = _gen()\n"
     "        seq = int(item.get('offer_seq') or i)\n"
     "        plan_json = _plan_of(item, req_id)\n"
-    "        out.append({'offer_seq': seq, 'offer_id': oid, 'plan_json': plan_json})\n"
+    "        one = {'offer_seq': seq, 'offer_id': oid, 'plan_json': plan_json}\n"
+    "        # V3.14：透传权威 name/quantity，供下游 config/审批文案一致（上游缺失时零变化）\n"
+    "        if str(item.get('name') or '').strip():\n"
+    "            one['name'] = str(item.get('name')).strip()\n"
+    "        if item.get('quantity') not in (None, ''):\n"
+    "            one['quantity'] = item.get('quantity')\n"
+    "        out.append(one)\n"
     "    ret: Output = {\n"
     "        'offers': json.dumps(out, ensure_ascii=False),\n"
     "        'offer_id': (out[0]['offer_id'] if out else ''),\n"
@@ -1085,9 +1153,9 @@ CODE_GEN_OFFER_ID = (
 )
 
 # ============================================================
-# wf_sub_02 智能配置（融合组扩展）：在既有链路上新增融合成员回显代码节点，
-# 出参含 group 时结束节点追加融合成员行；单商品路径零变化。
-# 并在结束时追加「配置销售品要点简介」（CODE_CONFIG_SUMMARY）。
+# wf_sub_02 智能配置：执行方案→生成商品编码（逐品 900）→save_product_config 批量落地
+# →配置要点简介（CODE_CONFIG_SUMMARY 逐品渲染 report/headline/nextstep，内含融合概况与脚本下载）
+# →写入门禁（status==SUCCESS 才写 config）→存储/未写库结束；单商品路径零变化。
 # ============================================================
 s2f = []
 s2f.append(start_node(101, [
@@ -1127,16 +1195,13 @@ s2f.append(plugin_node(103, "配置落地", "save_product_config",
      ("script_url", "配置脚本下载地址（后端生成，GET即返回可执行脚本）", "string"),
      ("offers", "逐品落地结果数组JSON（[{offer_seq,offer_id,status,product_config,...}]）", "string")],
     pos=(1455, 300)))
-# 融合成员回显代码节点（V3.12 多商品）：逐品 group 回显；无 group 路径零变化
-s2f.append(code_node(107, "融合成员回显", CODE_FUSION_GROUP_ECHO,
-    [inp("group_json", "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]）", ref_block=nid(103), ref_rel="offers"),
-     inp("status", "落地总状态（节点103出参 status）", ref_block=nid(103), ref_rel="status")],
-    [code_out("fusion_echo", 107), code_out("fusion_status", 107), code_out("fusion_note", 107)],
-    pos=(1815, 300)))
 s2f.append(code_node(108, "配置要点简介", CODE_CONFIG_SUMMARY,
     [inp("product_config", "整批逐品落地结果数组JSON（节点103出参 offers，裸 offers[]，元素含 product_config）", ref_block=nid(103), ref_rel="offers"),
-     inp("req_id", "执行批次号（节点103出参 req_id，组装 config_json 信封）", ref_block=nid(103), ref_rel="req_id")],
-    [code_out("config_summary", 108), code_out("offers", 108), code_out("config_json", 108)],
+     inp("req_id", "执行批次号（节点103出参 req_id，组装 config_json 信封）", ref_block=nid(103), ref_rel="req_id"),
+     inp("status", "整批落地状态（节点103出参 status，用于 nextstep 文案分档）", ref_block=nid(103), ref_rel="status"),
+     inp("roster", "权威名册（节点111 offers，含 name/quantity；按 offer_seq 合并进 config offers[]）", ref_block=nid(111), ref_rel="offers")],
+    [code_out("config_summary", 108), code_out("offers", 108), code_out("config_json", 108),
+     code_out("report", 108), code_out("headline", 108), code_out("nextstep", 108)],
     pos=(2175, 300)))
 # 写入门禁：契约§4——config 仅当整批落地 status==SUCCESS（全品通过）才写入；
 # status!=SUCCESS（PARTIAL/FAIL）跳过硬写，走未写库结束分支，避免脏写 config 蒙混下游。
@@ -1160,7 +1225,7 @@ s2f.append(panel_code_node(113, "构建页面地址面板(未写库)", "02",
     panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板", pos=(2895, 170)))
 s2f.append(end_node(114, "结束(配置未通过-未写config)",
     [inp("status", "整批落地状态（节点103）", ref_block=nid(103), ref_rel="status"),
-     inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
+     inp("save_result", "逐品聚合明细（商品名/四类写入结果/要点/脚本下载）", ref_block=nid(108), ref_rel="report"),
      inp("offer_id", "首品销售品ID（节点111）", ref_block=nid(111), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(113), ref_rel="panel")],
     "【环节3/8·智能配置】配置未全部通过：status={status}\n写入结果：{save_result}\n\n"
@@ -1168,20 +1233,15 @@ s2f.append(end_node(114, "结束(配置未通过-未写config)",
     "【下一步】请按落地失败明细修正后重新回复\"下一步\"发起配置（环节3）。\n\n"
     "{panel}", pos=(3255, 170)))
 s2f.append(end_node(104, "结束(配置落地完成)",
-    [inp("offer_id", "首品销售品ID（节点111生成/透传的逐品编码首品值）", ref_block=nid(111), ref_rel="offer_id"),
-     inp("save_result", "整批四类字段写入结果", ref_block=nid(103), ref_rel="save_result"),
+    [inp("headline", "开头汇总行（商品数量/单品名 + 融合概况）", ref_block=nid(108), ref_rel="headline"),
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status"),
-     inp("fusion_echo", "融合成员回显（V3.12 逐品，无 group 时为空）", ref_block=nid(107), ref_rel="fusion_echo"),
-     inp("fusion_note", "融合组失败提示（仅融合品且有成员 PARTIAL/FAIL 时非空）", ref_block=nid(107), ref_rel="fusion_note"),
-     inp("config_summary", "配置销售品要点简介（节点108逐品渲染）", ref_block=nid(108), ref_rel="config_summary"),
-     inp("script_url", "配置脚本下载地址（节点103出参）", ref_block=nid(103), ref_rel="script_url"),
+     inp("report", "逐品聚合明细（商品名/四类写入结果/要点/脚本下载）", ref_block=nid(108), ref_rel="report"),
+     inp("nextstep", "下一步引导（按状态区分）", ref_block=nid(108), ref_rel="nextstep"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(109), ref_rel="panel")],
-    "智能配置完成：offer_id={offer_id}\n{fusion_echo}\n四类字段写入结果：{save_result}\n状态：{status}\n\n"
-    "{config_summary}\n{fusion_note}\n"
-    "【配置脚本下载】下载地址：{script_url}（为空填写\"暂不可用，见智能配置结果\"）\n\n{panel}", pos=(3615, 300)))
+    "{headline}\n状态：{status}\n\n{report}\n\n{nextstep}\n\n{panel}", pos=(3615, 300)))
 files2f = workflow(
-    "产销品-智能配置", "子工作流2（V3.12 多商品）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取需求商品数组 offers[]→生成商品编码（逐品：新增品生成9位900编码/存量重配透传既有编码）→save_product_config 批量落地（后端逐品聚合返回 offers[]）→融合成员回显（逐品 group 回显）→配置要点简介（逐品）→存储 node_name=config（result_json 含 req_id+offers[]）。", "wf_sub_02", s2f,
-    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,107), edge(107,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
+    "产销品-智能配置", "子工作流2（V3.12 多商品）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取需求商品数组 offers[]→生成商品编码（逐品：新增品生成9位900编码/存量重配透传既有编码）→save_product_config 批量落地（后端逐品聚合返回 offers[]）→配置要点简介（逐品渲染 report/headline/nextstep，含融合概况与脚本下载）→写入门禁（status==SUCCESS）→存储 node_name=config（result_json 含 req_id+offers[]）/未通过走未写库结束。", "wf_sub_02", s2f,
+    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（融合组扩展）：组维度稽核——LLM 提示词增加组维度回显与
@@ -1232,6 +1292,7 @@ s3f.append(code_node(208, "稽核发起结果封包", CODE_PACK_AUDIT_LAUNCH,
      inp("download_url", "文件下载地址（节点202）", ref_block=nid(202), ref_rel="download_url"),
      inp("sales_id", "销售品清单（节点202）", ref_block=nid(202), ref_rel="sales_id"),
      inp("offers", "需求商品数组（节点207提取，供 4b 逐品回显）", ref_block=nid(207), ref_rel="offers"),
+     inp("roster", "权威名册（节点207 offers，含 name/quantity；按 offer_seq 合并进 audit_pending offers[]）", ref_block=nid(207), ref_rel="offers"),
      inp("req_id", "需求单号（节点207提取）", ref_block=nid(207), ref_rel="req_id"),
      inp("offer_id", "主销售品ID（节点207提取，供 4b 面板/回显）", ref_block=nid(207), ref_rel="offer_id"),
      inp("md", "稽核发起回执文案", content="稽核已发起"),
@@ -1354,6 +1415,7 @@ s12f.append(code_node(2207, "稽核结果结构化封包", CODE_PACK_RECORD,
      inp("error_list", "问题明细（节点2205）", ref_block=nid(2205), ref_rel="error_list"),
      inp("audit_summary", "稽核总结（节点2205）", ref_block=nid(2205), ref_rel="audit_summary"),
      inp("offers", "逐品稽核结果（节点2205）", ref_block=nid(2205), ref_rel="offers"),
+     inp("roster", "权威名册（节点2203 offers=audit_pending 逐品数组，含 name/quantity；按 offer_seq 合并进 spec offers[]）", ref_block=nid(2203), ref_rel="offers"),
      inp("md", "稽核明细清单 markdown（节点2206）", ref_block=nid(2206), ref_rel="audit_suggest"),
      inp("md_key", "md 落库字段名", content="audit_suggest")],
     [code_out("record_json", 2207)], pos=(900, 135)))
@@ -1591,6 +1653,7 @@ s5f.append(code_node(408, "资费结果结构化封包", CODE_PACK_RECORD,
      inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
      inp("compare_list", "资费比对明细（节点402，逐品聚合）", ref_block=nid(402), ref_rel="compare_list"),
      inp("offers", "逐品校验结果数组（节点402出参 offers）", ref_block=nid(402), ref_rel="offers"),
+     inp("roster", "权威名册（节点407 offers=config 逐品数组，含 name/quantity；按 offer_seq 合并进 fee offers[]）", ref_block=nid(407), ref_rel="offers"),
      inp("req_id", "执行批次号（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
      inp("md", "风险解读 markdown（节点403）", ref_block=nid(403), ref_rel="risk_summary"),
      inp("md_key", "md 落库字段名", content="risk_summary")],
@@ -2217,12 +2280,15 @@ s4f.append(plugin_node(303, "查询测试场景", "get_test_scenes",
      ("status", "整批状态 SUCCESS/PARTIAL/FAIL", "string")]))
 # 逐品「测试场景执行状态」结构化排版（供结束节点对齐回执，替代原始 JSON 字符串直出）
 s4f.append(code_node(330, "回执结构化排版", CODE_FMT_OFFERS,
-    [inp("offers", "逐品测试发起结果数组（节点303出参 offers，含 testScenes 场景清单）", ref_block=nid(303), ref_rel="offers")],
-    [code_out("offers_text", 330), code_out("offer_count", 330), code_out("scene_count", 330)], pos=(690, 30)))
+    [inp("offers", "逐品测试发起结果数组（节点303出参 offers，含 testScenes 场景清单）", ref_block=nid(303), ref_rel="offers"),
+     inp("roster", "权威名册（节点310 offers，含 name/quantity；按 offer_seq 合并补齐商品名）", ref_block=nid(310), ref_rel="offers")],
+    [code_out("offers_text", 330), code_out("offer_count", 330), code_out("scene_count", 330),
+     code_out("offer_name", 330)], pos=(690, 30)))
 # 发起结果封包 → test_pending 临时态（供 6b 轮询自查读取）
 s4f.append(code_node(308, "测试发起结果封包", CODE_PACK_RECORD,
     [inp("offers", "逐品测试发起结果数组（节点303出参 offers，含 offer_seq/globalId/testScenes）", ref_block=nid(303), ref_rel="offers"),
      inp("req_id", "执行批次号（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+     inp("roster", "权威名册（节点310 offers，含 name/quantity；按 offer_seq 合并进 test_pending offers[]）", ref_block=nid(310), ref_rel="offers"),
      inp("md", "测试发起回执文案", content="测试已发起"),
      inp("md_key", "md 落库字段名", content="launch_note")],
     [code_out("record_json", 308)], pos=(780, 135)))
@@ -2241,10 +2307,10 @@ s4f.append(plugin_node(305, "测试发起临时态存储", "save_node_result",
     [ ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 # xsbot-panel 独立代码节点
 s4f.append(panel_code_node(321, "构建页面地址面板", "06",
-    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="自动测试"))
+    panel_inputs(301, off_seq=310, off_rel="offer_id", name_seq=330, name_rel="offer_name", req_seq=301), biz_title="自动测试"))
 # 发起失败分支面板 + 结束（未写 test_pending）
 s4f.append(panel_code_node(323, "构建页面地址面板(发起失败)", "06",
-    panel_inputs(301, off_seq=310, off_rel="offer_id", req_seq=301), biz_title="自动测试"))
+    panel_inputs(301, off_seq=310, off_rel="offer_id", name_seq=330, name_rel="offer_name", req_seq=301), biz_title="自动测试"))
 s4f.append(end_node(324, "结束(测试发起失败-未写test_pending)",
     [inp("status", "整批状态（节点303出参 status）", ref_block=nid(303), ref_rel="status"),
      inp("offers_text", "逐品场景执行状态结构化文本（节点330）", ref_block=nid(330), ref_rel="offers_text"),

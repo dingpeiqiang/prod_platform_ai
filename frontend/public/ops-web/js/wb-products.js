@@ -22,6 +22,19 @@
     try { return JSON.parse(s); } catch (e) { return null; }
   }
 
+  // 归一销售品列表：兼容 {offers:[...]} / [ ... ] / JSON 字符串；逐品补 offer_seq
+  function normalizeOffers(raw){
+    var obj = parseJson(raw);
+    if (obj && !Array.isArray(obj) && Array.isArray(obj.offers)) obj = obj.offers;
+    if (!Array.isArray(obj)) return [];
+    return obj.filter(function(o){ return o && typeof o === 'object'; }).map(function(o, i){
+      var one = {};
+      Object.keys(o).forEach(function(k){ one[k] = o[k]; });
+      if (one.offer_seq === undefined || one.offer_seq === null || one.offer_seq === '') one.offer_seq = i + 1;
+      return one;
+    });
+  }
+
   // 从任意层级按候选键路径深取首个非空标量值
   function pick(obj, paths){
     if (!obj) return '';
@@ -47,11 +60,42 @@
     var requirement = byNode.requirement || {};
     var reqReport = byNode.requirement_report || {};
 
-    var name = pick(cfg, ['offer_name'])
+    // 权威销售品名册：以需求提报单（requirement_report）为准（name+quantity）；
+    // 逐环节（config/spec/fee/test/report）offers[] 已由工作流按 offer_seq 继承权威名称，此处仅作兜底合并。
+    var roster = normalizeOffers(reqReport);
+    if (!roster.length){
+      ['config', 'spec', 'fee', 'test_pending', 'test', 'audit_pending', 'requirement'].some(function(nm){
+        var got = normalizeOffers(byNode[nm]);
+        if (got.length){ roster = got; return true; }
+        return false;
+      });
+    }
+    var rosterBySeq = {};
+    roster.forEach(function(o){
+      rosterBySeq[String(o.offer_seq)] = { name: o.name || '', quantity: o.quantity };
+    });
+    // 各环节 offers[] 缺失 name/quantity 时按 offer_seq 回填权威名册
+    function mergeRoster(offers){
+      (offers || []).forEach(function(o){
+        var r = rosterBySeq[String(o.offer_seq)];
+        if (!r) return;
+        if (r.name && !String(o.name || '').trim()) o.name = r.name;
+        if (r.quantity !== undefined && r.quantity !== null && r.quantity !== '' && (o.quantity === undefined || o.quantity === null || o.quantity === '')) o.quantity = r.quantity;
+      });
+      return offers;
+    }
+    mergeRoster(normalizeOffers(cfg));
+
+    // 名称优先级：权威需求提报单 name 最高，其次配置环节，再回落计划/相似产品字段
+    var name = pick(reqReport, ['name'])
+      || (roster[0] && roster[0].name)
+      || pick(cfg, ['offer_name'])
       || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName'])
       || pick(base, ['prodPrcName'])
-      || pick(requirement, ['baseInfo.prodPrcName'])
-      || pick(reqReport, ['name']);
+      || pick(requirement, ['baseInfo.prodPrcName']);
+    // 数量：权威名册首品数量，其次配置环节透传值
+    var qty = (roster[0] && roster[0].quantity !== undefined && roster[0].quantity !== null && roster[0].quantity !== '') ? roster[0].quantity
+      : (pick(cfg, ['quantity']) || '');
     var code = pick(cfg, ['offer_id', 'offerId'])
       || pick(base, ['prodPrcId', 'prodId'])
       || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId'])
@@ -73,7 +117,7 @@
       if (!voice && mVoice) voice = mVoice[1];
       if (!sms && mSms) sms = mSms[1];
     }
-    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, plan: plan, raw: cfg, nodeResults: byNode };
+    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, quantity: qty, offers: roster, offerCount: roster.length, plan: plan, raw: cfg, nodeResults: byNode };
   }
 
   // 将接口解析结果写入/追加为当前商品（全量联动各页签）
@@ -91,6 +135,9 @@
       flowUnit: resolved.flowUnit || 'GB',
       voice: resolved.voice || '',
       sms: resolved.sms || '',
+      quantity: (resolved.quantity !== undefined && resolved.quantity !== null) ? resolved.quantity : '',
+      offers: resolved.offers || [],
+      offerCount: resolved.offerCount || (resolved.offers ? resolved.offers.length : 0),
       status: '在售中',
       templateLabel: '',
       category: 'req_id商品'

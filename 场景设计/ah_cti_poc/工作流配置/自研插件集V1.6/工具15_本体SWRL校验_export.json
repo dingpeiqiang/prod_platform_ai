@@ -1,0 +1,156 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/ontology/swrl-check",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"ontology-swrl-check-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"elements\", \"description\": \"该商品已合并配置要素对象（camelCase 模板键，即节点108 payload）\", \"sechema\": [], \"type\": \"object\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"offer_seq\", \"description\": \"商品序号（用于实例IRI定位）\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"ontology_swrl_check\", \"description\": \"P2 接入（仅记录不阻断）：把节点108 已合并配置要素映射为本体内联事实图（FACT_GRAPH），代理调用 Sitech 本体服务平台同步 SWRL 推理接口做逻辑校验，归一返回 checked/diagnostics/statistics/results 供方案展示。本体未配置、字段无IRI映射或平台不可用时返回 checked=0，不阻断方案生成与质量门禁。\", \"title\": \"配置要素本体SWRL校验\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"checked\", \"cname\": \"1=已执行本体校验 / 0=未执行（降级）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"code\", \"cname\": \"本体平台响应码（200 成功）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"message\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"推理任务状态：SUCCESS/PARTIAL_SUCCESS/FAILED\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"task_id\", \"cname\": \"本体平台推理审计任务ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"diagnostics\", \"cname\": \"诊断列表（level/code/message/ruleId）\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"diagnostic_count\", \"cname\": \"诊断条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"error_count\", \"cname\": \"ERROR 级诊断数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"warn_count\", \"cname\": \"WARN 级诊断数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"statistics\", \"cname\": \"事实加载与推理统计\", \"sechema\": [], \"type\": \"object\", \"required\": false}, {\"name\": \"results\", \"cname\": \"推理结论列表（subject/relation/object）\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"result_count\", \"cname\": \"推理结论条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"unmapped\", \"cname\": \"未命中IRI映射、跳过校验的字段路径\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"fact_count\", \"cname\": \"提交本体的事实条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"userScope\": 2, \"projectId\": \"\"}",
+  "userScope": 2,
+  "createUserName": "系统",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "P2 接入（仅记录不阻断）：把节点108 已合并配置要素映射为本体内联事实图（FACT_GRAPH），代理调用 Sitech 本体服务平台同步 SWRL 推理接口做逻辑校验，归一返回 checked/diagnostics/statistics/results 供方案展示。本体未配置、字段无IRI映射或平台不可用时返回 checked=0，不阻断方案生成与质量门禁。",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "P2 接入（仅记录不阻断）：配置要素→本体内联事实图→Sitech 本体平台同步 SWRL 推理，返回诊断/统计/结论。",
+      "title": "配置要素本体SWRL校验",
+      "version": "v1.7.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/ontology/swrl-check": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "根节点",
+                  "type": "object",
+                  "properties": {
+                    "elements": {
+                      "description": "该商品已合并配置要素对象（camelCase 模板键）",
+                      "type": "object"
+                    },
+                    "offer_seq": {
+                      "description": "商品序号（用于实例IRI定位）",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "elements"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "description": "根节点",
+                    "type": "object",
+                    "properties": {
+                      "checked": {
+                        "description": "1=已执行本体校验 / 0=未执行（降级）",
+                        "type": "string"
+                      },
+                      "code": {
+                        "description": "本体平台响应码",
+                        "type": "string"
+                      },
+                      "message": {
+                        "description": "状态描述",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "推理任务状态 SUCCESS/PARTIAL_SUCCESS/FAILED",
+                        "type": "string"
+                      },
+                      "task_id": {
+                        "description": "本体平台推理审计任务ID",
+                        "type": "string"
+                      },
+                      "diagnostics": {
+                        "description": "诊断列表",
+                        "type": "array"
+                      },
+                      "diagnostic_count": {
+                        "description": "诊断条数",
+                        "type": "string"
+                      },
+                      "error_count": {
+                        "description": "ERROR 级诊断数",
+                        "type": "string"
+                      },
+                      "warn_count": {
+                        "description": "WARN 级诊断数",
+                        "type": "string"
+                      },
+                      "statistics": {
+                        "description": "事实加载与推理统计",
+                        "type": "object"
+                      },
+                      "results": {
+                        "description": "推理结论列表",
+                        "type": "array"
+                      },
+                      "result_count": {
+                        "description": "推理结论条数",
+                        "type": "string"
+                      },
+                      "unmapped": {
+                        "description": "未命中IRI映射的字段路径",
+                        "type": "array"
+                      },
+                      "fact_count": {
+                        "description": "提交本体的事实条数",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "knowledgeCategory": null,
+  "id": "ontology-swrl-check-0001",
+  "toolAuthenticInfo": "null",
+  "ontology": null,
+  "toolName": "配置要素本体SWRL校验",
+  "usedBySceneNum": null,
+  "updateTime": null,
+  "versionInfo": null,
+  "toolType": 1,
+  "version": "1",
+  "isDefault": 1,
+  "toolCode": "ontology_swrl_check",
+  "observationField": "",
+  "submit_way": "post",
+  "createTime": null,
+  "knowledgeCategoryName": null,
+  "pluginName": null,
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"P2 接入（仅记录不阻断）：把节点108 已合并配置要素映射为本体内联事实图（FACT_GRAPH），代理调用 Sitech 本体服务平台同步 SWRL 推理接口做逻辑校验，归一返回 checked/diagnostics/statistics/results 供方案展示。本体未配置、字段无IRI映射或平台不可用时返回 checked=0，不阻断方案生成与质量门禁。\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-elements\": \"\", \"ROOT-offer_seq\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"配置要素本体SWRL校验\", \"name_for_model\": \"ontology_swrl_check\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"checked\", \"cname\": \"1=已执行本体校验 / 0=未执行（降级）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"code\", \"cname\": \"本体平台响应码（200 成功）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"message\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"推理任务状态：SUCCESS/PARTIAL_SUCCESS/FAILED\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"task_id\", \"cname\": \"本体平台推理审计任务ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"diagnostics\", \"cname\": \"诊断列表（level/code/message/ruleId）\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"diagnostic_count\", \"cname\": \"诊断条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"error_count\", \"cname\": \"ERROR 级诊断数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"warn_count\", \"cname\": \"WARN 级诊断数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"statistics\", \"cname\": \"事实加载与推理统计\", \"sechema\": [], \"type\": \"object\", \"required\": false}, {\"name\": \"results\", \"cname\": \"推理结论列表（subject/relation/object）\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"result_count\", \"cname\": \"推理结论条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"unmapped\", \"cname\": \"未命中IRI映射、跳过校验的字段路径\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"fact_count\", \"cname\": \"提交本体的事实条数\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}], \"version\": \"1\"}",
+  "pluginsId": null,
+  "prompt": "",
+  "remarks": "V1.7 P2 接入；本体平台不可用时 checked=0 降级，不阻断方案生成",
+  "status": 0,
+  "wsHeads": ""
+}

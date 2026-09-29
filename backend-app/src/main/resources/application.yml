@@ -124,6 +124,22 @@ prodai:
   # real-list 为混合模式白名单（similar/upload/notify/insert/sql/testStart/testScenes/testProgress/testResult），
   # 命中走 real、其余 mock。
   appstore:
+    # 本体平台（Sitech 本体服务平台）代理配置：wf_sub_01 节点108 P2 要素本体 SWRL 校验调用。
+    # 仅记录不阻断：project-id 为空或平台不可用时，代理返回 checked=0，节点108 降级为不校验。
+    ontology:
+      base-url: ${ONTO_BASE_URL:http://10.88.212.165:9999/data-onto-server}
+      # 认证：x-api-key 请求头（sk-onto-<UUID>）；为空则不携带，依赖网关其它鉴权
+      api-key: ${ONTO_API_KEY:}
+      # 已发布本体项目ID（=工作流节点108 硬编码依据；为空则跳过校验）
+      project-id: ${ONTO_PROJECT_ID:}
+      # 本体命名空间：模板字段 IRI 由 base-iri + 本地名拼接
+      base-iri: ${ONTO_BASE_IRI:http://sitech.com.cn/ontology/prod#}
+      timeout-ms: ${ONTO_TIMEOUT_MS:15000}
+      swrl:
+        # true=执行全部启用规则（ALL_ENABLED）；false=按 rule-ids 指定
+        use-all-rules: ${ONTO_SWRL_USE_ALL_RULES:true}
+        # use-all-rules=false 时生效，逗号分隔规则ID
+        rule-ids: ${ONTO_SWRL_RULE_IDS:}
     interface:
       # 固定 mock，不读环境变量（避免宿主机 APPSTORE_INTERFACE_MODE 覆盖导致误走 real）；
       # 接 EOP 时直接改此值或由 deploy 外部 config/application.yml 覆盖。

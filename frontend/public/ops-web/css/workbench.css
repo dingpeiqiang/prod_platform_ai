@@ -22,6 +22,8 @@
   .pp-chip:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; box-shadow: 0 2px 8px rgba(15,23,42,.10); }
   .pp-chip.active { background: #eff6ff; border-color: #3b82f6; color: #2563eb; font-weight: 700; box-shadow: 0 2px 10px rgba(37,99,235,.16); }
   .pp-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pp-chip-qty { flex-shrink: 0; padding: 0 6px; border-radius: 999px; background: #e0e7ff; color: #4338ca; font-size: 12px; font-weight: 600; line-height: 1.6; }
+  .pp-chip.active .pp-chip-qty { background: #c7d2fe; color: #3730a3; }
   .pp-list-btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 7px 14px; border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; color: #334155; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: all .15s; }
   .pp-list-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; }
   .pp-list-btn.active { background: #eff6ff; border-color: #3b82f6; color: #2563eb; }
