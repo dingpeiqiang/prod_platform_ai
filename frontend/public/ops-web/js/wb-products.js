@@ -9,8 +9,9 @@
   var PRODUCTS = [];
   window.__WB_PRODUCTS = PRODUCTS;
 
-  // 接口基址：生产部署在 /prod-ai/ 前缀下（nginx 剥前缀转发），本地/根路径走 /api
+  // 接口基址：优先 window.__WB_API_BASE（可被宿主/外链覆盖）；否则生产部署在 /prod-ai/ 前缀下（nginx 剥前缀转发），本地/根路径走 /api
   function apiBase(){
+    if (window.__WB_API_BASE) return window.__WB_API_BASE;
     var base = location.pathname.indexOf('/prod-ai/') === 0 ? '/prod-ai' : '';
     return base + '/api/v1/appstore';
   }
@@ -167,9 +168,21 @@
   var offerId = q.offer_id || q.offerId || '';
   var qName = q.name || q.offer_name || '';
   var reqId = q.req_id || q.reqId || '';
+  // 多商品：url 可携带 offers=<offer_id,offer_id,...>（面板由工作流 offers[] 拍平），逐品构造占位
+  var offersCsv = q.offers || q.offer_ids || '';
 
-  // 无 req_id 时，若 URL 携带 offer_id/name，则以此构造一个最小商品占位（字段留空待填充）
+  // 无 req_id 时，若 URL 携带 offer_id/name/offers，则构造最小商品占位（字段留空待填充）
   function pickByUrl(){
+    var ids = String(offersCsv || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if (ids.length > 1){
+      var first = null;
+      ids.forEach(function(id, i){
+        var temp = { id: 'url-' + id, name: (i === 0 ? (qName || id) : id), code: id, fee: '', flow: '', flowUnit: 'GB', voice: '', sms: '', status: '草稿', templateLabel: '销售品模板', category: '外链商品' };
+        PRODUCTS.push(temp);
+        if (i === 0) first = temp;
+      });
+      return first;
+    }
     if (!offerId && !qName) return null;
     var temp = { id: 'url-' + (offerId || qName), name: qName || offerId, code: offerId || '', fee: '', flow: '', flowUnit: 'GB', voice: '', sms: '', status: '草稿', templateLabel: '销售品模板', category: '外链商品' };
     PRODUCTS.unshift(temp);
@@ -192,9 +205,14 @@
           var resolved = buildProductFromNodeResults(data.list);
           if (applyResolvedProduct(resolved)) return window.__WB_PRODUCT;
         }
+        // 有 req_id 但接口无有效数据：标记降级，供页面提示（占位商品仍可用）
+        window.__WB_DATA_DEGRADED = true;
         return window.__WB_PRODUCT;
       })
-      .catch(function(){ return window.__WB_PRODUCT; })
+      .catch(function(){
+        window.__WB_DATA_DEGRADED = true;
+        return window.__WB_PRODUCT;
+      })
       .then(function(p){ clearTimeout(timer); return p; });
   })();
 })();

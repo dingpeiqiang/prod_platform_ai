@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "description": "环节(stage) → 页面视图(Tab) 唯一事实源。由 gen_workflows.py 生成面板 URL 时读取校验，前端 app-config-workbench.js 读取做默认 Tab 与单环节聚焦（view=stage）。",
+  "default_tab": "config",
+  "stages": {
+    "00": { "tab": "demand",    "title": "需求提报单",   "view": "stage" },
+    "01": { "tab": "scheme",    "title": "配置方案",     "view": "stage" },
+    "02": { "tab": "config",    "title": "落地配置看板", "view": "stage" },
+    "03": { "tab": "audit",     "title": "规格稽核",     "view": "stage" },
+    "04": { "tab": "approval",  "title": "上线审批",     "view": "stage" },
+    "05": { "tab": "calibrate", "title": "资费校准",     "view": "stage" },
+    "06": { "tab": "testrep",   "title": "自动测试",     "view": "stage" },
+    "07": { "tab": "monitor",   "title": "单品运营看板", "view": "stage" },
+    "08": { "tab": "approval",  "title": "上线审批看板", "view": "stage" },
+    "09": { "tab": "monitor",   "title": "存量产品详情", "view": "stage" },
+    "10": { "tab": "monitor",   "title": "存量合规看板", "view": "stage" },
+    "11": { "tab": "approval",  "title": "需求工单审批", "view": "stage" }
+  }
+}

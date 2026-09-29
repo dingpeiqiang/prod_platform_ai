@@ -21,6 +21,10 @@
     document.title = (name || offerId) + ' 路 閰嶇疆宸ヤ綔鍙?;
   }
   // 涓庢棦鏈夋紨绀烘暟鎹鎺ワ細鎶婂閾鹃€忎紶鐨勪笂涓嬫枃骞跺叆鍏ㄥ眬閰嶇疆锛岄〉闈㈠唴璇诲彇 window.__CFG 鍗冲彲鎰熺煡
+  // stage -> view metadata: from stage-map.json (window.__WB_STAGE_MAP) when present, else empty
+  var stageMap = window.__WB_STAGE_MAP || {};
+  window.__WB_STAGE_META = (stageMap.stages || {})[stage] || null;
+  window.__WB_DEFAULT_TAB = stageMap.default_tab || 'config';
   try {
     var cfg = window.__CFG || (window.__CFG = {});
     cfg.__query = q;

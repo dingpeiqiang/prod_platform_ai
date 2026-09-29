@@ -15,6 +15,19 @@
 <script src="./js/elmessage.js"></script>
 
 <!-- 数据与业务逻辑 -->
+<!-- Load stage->tab map (single source of truth shared with gen_workflows.py) before business scripts -->
+<script>
+(function(){
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', './stage-map.json', false); // sync load: activeTab must read the map at init
+    xhr.send(null);
+    if (xhr.status === 200 || xhr.status === 0) {
+      window.__WB_STAGE_MAP = JSON.parse(xhr.responseText);
+    }
+  } catch (e) { /* file:// or load failure: leave empty, business scripts use built-in fallback */ }
+})();
+</script>
 <script src="./js/data-presets.js"></script>
 <script src="./js/app-config-workbench.js"></script>
 <script src="./js/ops-view.js"></script>

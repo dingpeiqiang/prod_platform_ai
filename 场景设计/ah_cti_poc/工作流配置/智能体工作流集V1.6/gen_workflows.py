@@ -50,19 +50,65 @@ from wf_common import (
 OPS_WEB_BASE = "http://10.86.13.201:31280/ops-web"
 CONFIG_WB_PAGE = OPS_WEB_BASE + "/config-workbench.html"
 
+# 环节(stage) → 页面视图(Tab) 唯一事实源：前端 ops-web/stage-map.json。
+# 生成器与前端同源读取，避免 stage 编号语义与默认 Tab 映射在两处漂移。
+STAGE_MAP_PATH = os.path.normpath(os.path.join(
+    BASE, "..", "..", "..", "..", "frontend", "public", "ops-web", "stage-map.json"))
+
+
+def _load_stage_map():
+    """读取 stage-map.json；缺失/损坏时抛错（stage 映射是面板 URL 契约的硬依赖）。"""
+    with io.open(STAGE_MAP_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+STAGE_MAP = _load_stage_map()
+
+
+def _stage_view(stage):
+    """从 stage-map.json 读该 stage 的 view（默认 stage）；未登记 stage 抛错，杜绝漏配。"""
+    st = STAGE_MAP.get("stages", {}).get(str(stage))
+    if not st:
+        raise KeyError("stage '%s' 未登记于 stage-map.json，请在 stages 中补充后再生成面板" % stage)
+    return st.get("view") or "stage"
+
 
 def gen_panel_code(stage, biz_title=None):
     """构建 xsbot-panel 片段的代码节点源码（type=6 内联 Python，供 panel_code_node 使用）。
     对齐参考示例：**单面板**（一个 url + 一个 title），url 用环节业务页
-    config-workbench.html?stage=<N>&view=stage，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
+    config-workbench.html?stage=<N>&view=<view>，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
     输出 panel 为 `\n\n```xsbot-panel {compact_json} ``` ` 片段（无文字前缀、JSON 紧凑无空格，逐字对齐参考示例），
-    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id，运行期完成实值替换；
-    offer_id/offer_name 为空时不在 url 拼接（避免出现 offer_id=&name= 空参），多品时以 req_id 定位。
+    结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id/offers，运行期完成实值替换；
+    offer_id 为空时不在 url 拼接 offer_id/name（避免空参），多品时追加 offers= 供页面逐品渲染。
     """
     page = CONFIG_WB_PAGE
-    title = biz_title or "环节业务页"
+    view = _stage_view(stage)
+    st = STAGE_MAP["stages"][str(stage)]
+    title = biz_title or st.get("title") or "环节业务页"
     body = [
         "from typing import Any, Dict",
+        "",
+        "def _csv(v):",
+        "    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串",
+        "    import json as _json",
+        "    if isinstance(v, str):",
+        "        s = v.strip()",
+        "        if not s:",
+        "            return ''",
+        "        try:",
+        "            v = _json.loads(s)",
+        "        except Exception:",
+        "            v = s",
+        "    if isinstance(v, dict) and isinstance(v.get('offers'), list):",
+        "        v = v['offers']",
+        "    if not isinstance(v, list):",
+        "        return ''",
+        "    ids = []",
+        "    for o in v:",
+        "        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''",
+        "        if oid:",
+        "            ids.append(oid)",
+        "    return ','.join(ids)",
         "",
         "async def main(args):",
         "    p = args.params",
@@ -70,10 +116,13 @@ def gen_panel_code(stage, biz_title=None):
         "    offer_id = str(p.get('offer_id') or '')",
         "    offer_name = str(p.get('offer_name') or '')",
         "    req_id = str(p.get('req_id') or '')",
-        "    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=%s&view=stage')" % stage,
+        "    offers_csv = _csv(p.get('offers'))",
+        "    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=%s&view=%s')" % (stage, view),
         "    if offer_id:",
         "        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
-        "+ '&req_id=' + req_id + '&stage=%s&view=stage')" % stage,
+        "+ '&req_id=' + req_id + '&stage=%s&view=%s')" % (stage, view),
+        "    if offers_csv:",
+        "        qs += '&offers=' + offers_csv",
         "    biz_url = '%s' + qs" % page,
     ]
     # 紧凑 JSON（无空格，逐字对齐参考示例），title 在生成期烘焙为字面量
@@ -90,10 +139,12 @@ def gen_panel_code(stage, biz_title=None):
     return "\n".join(body) + "\n"
 
 
-def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name_rel='offer_name', req_seq=None):
+def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name_rel='offer_name',
+                 req_seq=None, offers_seq=None, offers_rel='offers'):
     """构建 xsbot-panel 代码节点入参（name 即代码读取的 param key，ref_rel 绑定上游出参）。
-    供各工作流按其实有可用的 会话ID/销售品ID/产品名/需求单号 绑定；offer/name/req 可选传入。
-    req_seq 指定提供 req_id 的节点（有 req_id 的工作流 00~06 传入；只读/监控等无 req_id 的留空）。
+    供各工作流按其实有可用的 会话ID/销售品ID/产品名/需求单号/逐品名册 绑定；offer/name/req/offers 可选传入。
+    req_seq 指定提供 req_id 的节点（有 req_id 的工作流 00~06/11 传入；只读/监控等无 req_id 的留空）；
+    offers_seq 指定提供逐品名册（offers[]，含 offer_id）的节点，供页面多商品渲染。
     """
     refs = [inp("chat_id", "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
                 ref_block=nid(chat_seq), ref_rel="chat_id")]
@@ -106,6 +157,9 @@ def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name
     if name_seq is not None:
         refs.append(inp("offer_name", "产品名称（用于面板 url 的 name）",
                         ref_block=nid(name_seq), ref_rel=name_rel))
+    if offers_seq is not None:
+        refs.append(inp("offers", "逐品名册 offers[]（含 offer_id；用于面板 url 的 offers，多品定位）",
+                        ref_block=nid(offers_seq), ref_rel=offers_rel))
     return refs
 
 
@@ -2919,13 +2973,18 @@ s6f.append(code_node(618, "格式化审批结果", CODE_FMT_APPROVAL,
      inp("approval_type", "审批类型（节点615出参，兜底 launch）", ref_block=nid(615), ref_rel="approval_type")],
     [code_out("approval_matrix", 618), code_out("approval_type", 618)],
     pos=(5595, 300)))
+# 619 xsbot-panel 独立代码节点（环节8 上线审批；offer_id/offers 取节点612，req_id 取自开始节点）
+s6f.append(panel_code_node(619, "构建页面地址面板", "04",
+    panel_inputs(601, off_seq=612, off_rel="offer_id", req_seq=601, offers_seq=612),
+    biz_title="上线审批"))
 # 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批状态由【查询审批进度】事后查询
 # （后端模拟自动流转：提交 10s 后"审批中"→"通过（上架完成）"，查询时惰性推进）
 s6f.append(end_node(616, "结束(审批已提交)",
     [inp("approval_id", "工单级审批单号（顶层单值）", ref_block=nid(615), ref_rel="approval_id"),
      inp("status", "整批提交状态（审批中，模拟约10s后自动通过）", ref_block=nid(615), ref_rel="status"),
      inp("approval_type", "审批类型（launch=上线审批，节点618兜底）", ref_block=nid(618), ref_rel="approval_type"),
-     inp("approval_matrix", "审批矩阵 Markdown 表格（节点618）", ref_block=nid(618), ref_rel="approval_matrix")],
+     inp("approval_matrix", "审批矩阵 Markdown 表格（节点618）", ref_block=nid(618), ref_rel="approval_matrix"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(619), ref_rel="panel")],
     "### 上线审批已提交\n\n"
     "| 项 | 值 |\n| :--- | :--- |\n"
     "| 工单级审批单号 | {approval_id} |\n"
@@ -2934,12 +2993,13 @@ s6f.append(end_node(616, "结束(审批已提交)",
     "**审批矩阵**\n\n{approval_matrix}\n\n"
     "> 审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。\n"
     ">\n"
-    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。\n"))
+    "> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。\n\n"
+    "{panel}"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 格式化审批矩阵(出参无矩阵时模拟单据级多节点审批流)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 格式化审批矩阵(出参无矩阵时模拟单据级多节点审批流)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
-     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,618), edge(618,616)])
+     edge(611,612), edge(612,613), edge(613,617), edge(617,614,-1), edge(614,615), edge(617,615,0), edge(615,618), edge(618,619), edge(619,616)])
 
 # ============================================================
 # wf_sub_07 监控运维（阶段5 重写：异常分支追加根因推理链+建工单闭环；两分支均输出 xsbot-panel+环节9收尾块）
@@ -3031,7 +3091,7 @@ s7f.append(code_node(708, "建工单闭环", CODE_OP_CREATE_WO,
     [code_out("backend_pending", 708), code_out("work_order_id", 708), code_out("note", 708)]))
 # xsbot-panel 独立代码节点（异常分支；产品名/offer_id 取首个异常商品，req_id 取自开始节点）
 s7f.append(panel_code_node(712, "构建页面地址面板(异常闭环)", "07",
-    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701),
+    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701, offers_seq=714),
     biz_title="单品运营看板"))
 s7f.append(end_node(709, "结束(异常-已告警并闭环)",
     [inp("offer_name", "产品名称（首个异常商品，节点714）", ref_block=nid(714), ref_rel="first_offer_name"),
@@ -3086,7 +3146,7 @@ s7f.append(end_node(711, "结束(正常-运营报告)",
      "> **建议处理：** 运行指标正常，无需人工干预；可继续观察，如需刷新运行情况可回复【查询监控】\n\n{panel}"))
 # xsbot-panel 独立代码节点（正常分支；产品名/offer_id 取首品，req_id 取自开始节点）
 s7f.append(panel_code_node(713, "构建页面地址面板(正常)", "07",
-    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701),
+    panel_inputs(701, off_seq=714, off_rel="first_offer_id", name_seq=714, name_rel="first_offer_name", req_seq=701, offers_seq=714),
     biz_title="单品运营看板"))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；V3.12 多商品：监控查询返回 offers[]，节点714 聚合异常判定；异常分支对首个异常商品追加异动根因本体推理链+建工单闭环；两分支均输出环节9标题头+xsbot-panel+环节9收尾固定块。query_product_monitor（自研模拟，含产品名称/订单量/异常量/计费差错率及趋势/告警列表；offer_id 缺省时后端按 req_id 关联解析全部商品）→监控聚合（聚合异常量/首个异常商品；error_count≠0 或任一品 fee_error_rate>0.1 走异常分支）→异常分支：告警文案→send_alert→ops_root_cause 根因推理(阶段1.1 Java插件待接入占位)→LLM 根因推理链+优化方案→create_work_order 建工单闭环(占位)→结束(异常闭环+xsbot-panel+收尾块)；正常分支：运营摘要→结束(正常+xsbot-panel+收尾块)。告警/根因/建单保持单体（首个异常商品）；根因/优化一律依据出参逐字引用，禁止自行编造。", "wf_sub_07", s7f,
@@ -3372,6 +3432,32 @@ def apply_pins(data):
     return data
 
 
+def validate_panel_stages(data, fn):
+    """校验所有 panel 代码节点引用的 stage 均已登记于 stage-map.json（契约单一事实源）。
+    panel 节点特征：type=6 且源码含 'stage=' 拼接；同时要求结束节点模板引用 {panel}。"""
+    errs = []
+    nodes = data["workFlowSchemaJSON"]["nodes"]
+    panel_nodes = []
+    for n in nodes:
+        code = json.dumps(n.get("parameters") or n, ensure_ascii=False)
+        if "xsbot-panel" in code and "stage=" in code:
+            panel_nodes.append(n)
+            import re
+            for m in re.findall(r"stage=(\d+)", code):
+                if m not in STAGE_MAP.get("stages", {}):
+                    errs.append("节点 %s 引用了未登记的 stage=%s（需补入 stage-map.json）" % (n.get("id"), m))
+    if not panel_nodes:
+        errs.append("缺少 panel 代码节点（每个工作流至少应有一个 xsbot-panel 面板节点）")
+    # 结束节点（type=9）须引用 {panel}
+    END_NODE_TYPE = 9
+    has_panel_ref = any(str(n.get("type")) == str(END_NODE_TYPE)
+                        and "{panel}" in json.dumps(n, ensure_ascii=False)
+                        for n in nodes)
+    if panel_nodes and not has_panel_ref:
+        errs.append("存在 panel 节点但无结束节点引用 {panel}（面板将不会展示）")
+    return errs
+
+
 # ============================================================
 # 写出（V2.0 重塑：11 个子工作流 wf_sub_00~10 + V3.3 新增 wf_sub_11
 # + V3.10 两阶段拆分新增 wf_sub_12/13，共 14 个 JSON；
@@ -3388,6 +3474,7 @@ for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分
     data = apply_pins(apply_layout(data))
     # 写出前按《工作流JSON开发规范.md》校验，违规即中止（不产出不合规范的 JSON）
     errs = validate_workflow(data, fn)
+    errs += validate_panel_stages(data, fn)
     if errs:
         _failed.append(fn)
         print("VALIDATE FAIL:", fn)

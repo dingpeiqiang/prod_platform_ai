@@ -160,8 +160,20 @@ const tabs = computed(() => baseTabs)
 // 宸ヤ綔娴佺幆鑺?-> 榛樿椤电锛? 鐜妭鍙ｅ緞锛夛細
 // 闇€姹傛彁鎶モ啋闇€姹傛彁鎶?/ 闇€姹傚垎鏋愨啋閰嶇疆鏂规 / 鏅鸿兘閰嶇疆鈫掗厤缃俊鎭€佷俊鎭瑙?/ 瑙勬牸绋芥牳鈫掔ń鏍告姤鍛?/
 // 璧勮垂鏍″噯鈫掓牎鍑嗘姤鍛?/ 鑷姩鍖栨祴璇曗啋娴嬭瘯鎶ュ憡 / 涓婄嚎瀹℃壒鈫掑鎵圭煩闃?/ 鐩戞帶杩愮淮鈫掔洃鎺ц繍缁?
-const DEFAULT_TAB_BY_STAGE = { '00':'demand', '01':'scheme', '02':'config', '03':'audit', '05':'calibrate', '04':'testrep', '06':'approval', '07':'monitor', '08':'approval', '09':'monitor', '10':'monitor' }
-const activeTab = ref((window.__WB_QUERY && DEFAULT_TAB_BY_STAGE[window.__WB_QUERY.stage]) || 'config')
+const DEFAULT_TAB_BY_STAGE = (function(){
+  // Prefer stage-map.json (window.__WB_STAGE_MAP, single source of truth shared with gen_workflows.py);
+  // fall back to the built-in defaults when map is unavailable so the page always works.
+  try {
+    const sm = window.__WB_STAGE_MAP;
+    if (sm && sm.stages) {
+      const m = {};
+      Object.keys(sm.stages).forEach(function(k){ m[k] = sm.stages[k].tab; });
+      return m;
+    }
+  } catch (e) {}
+  return { '00':'demand', '01':'scheme', '02':'config', '03':'audit', '05':'calibrate', '04':'approval', '06':'testrep', '07':'monitor', '08':'approval', '09':'monitor', '10':'monitor', '11':'approval' };
+})()
+const activeTab = ref((window.__WB_QUERY && DEFAULT_TAB_BY_STAGE[window.__WB_QUERY.stage]) || (window.__WB_DEFAULT_TAB || 'config'))
 
 // 椤电鑱斿姩锛氭寜宸ヤ綔娴佺幆鑺傚垏鎹㈠埌瀵瑰簲椤甸潰tab
 // 鑷姩鍖栨祴璇曪紙04锛夆啋 娴嬭瘯鎶ュ憡
