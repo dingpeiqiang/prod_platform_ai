@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-测试查询结果",
-  "flowRemark": "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告（逐场景 ✅/❌/⏳ + 逐测点明细表）→结束节点 Markdown 展示；未终态则输出「进度仪表盘」（进度条/步数/场景计数）并结束引导续查。全程不写 test（结构展示型子流）。",
+  "flowRemark": "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→未终态则输出「进度仪表盘」并结束引导续查；终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告→2334【通过判定】scene_failed==0 视为通过→通过则封包+save(node_name=test，最终态，供上线审批四环节门禁)→结束展示；未通过（存在失败场景）不写 test，展示报告并引导整改。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -124,6 +124,11 @@
             "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002303,offer_name",
+            "name": "offer_name",
+            "type": "string"
+          },
+          {
             "relName": "a1b2c3d4-0000-4000-8000-000000002303,globalId",
             "name": "globalId",
             "type": "string"
@@ -134,7 +139,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\ndef _join(v):\n    if isinstance(v, list):\n        return ','.join(str(x) for x in v if str(x))\n    return str(v or '')\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    global_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n            ids = []\n            normalized = []\n            for o in offers:\n                gid = _join(o.get('globalId') or o.get('global_id') or '')\n                oid = str(o.get('offer_id') or o.get('offerId') or '')\n                if gid:\n                    ids += [x for x in gid.split(',') if x]\n                normalized.append({'offer_seq': o.get('offer_seq'),\n                                   'offer_id': oid, 'globalId': gid})\n            if not ids:\n                ids = [x for x in _join(inner.get('globalId') or inner.get('global_id') or '').split(',') if x]\n            global_id = ','.join(ids)\n            offers_json = json.dumps(normalized, ensure_ascii=False)\n        else:\n            offers_json = '[]'\n    except Exception:\n        offer_id = ''\n        global_id = ''\n        offers_json = '[]'\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"globalId\": global_id,\n        \"offers\": offers_json\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\ndef _join(v):\n    if isinstance(v, list):\n        return ','.join(str(x) for x in v if str(x))\n    return str(v or '')\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    global_id = ''\n    offers = []\n    offers_json = '[]'\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n            ids = []\n            normalized = []\n            for idx, o in enumerate(offers, start=1):\n                gid = _join(o.get('globalId') or o.get('global_id') or '')\n                oid = str(o.get('offer_id') or o.get('offerId') or '')\n                oname = str(o.get('offer_name') or o.get('offerName') or '')\n                if gid:\n                    ids += [x for x in gid.split(',') if x]\n                # offer_seq 兜底：上游封包缺失时按位置补序号，避免逐品标题全部退化为「商品1」\n                seq = o.get('offer_seq')\n                if seq in (None, ''):\n                    seq = idx\n                normalized.append({'offer_seq': seq,\n                                   'offer_id': oid, 'offer_name': oname, 'globalId': gid})\n            if not ids:\n                ids = [x for x in _join(inner.get('globalId') or inner.get('global_id') or '').split(',') if x]\n            global_id = ','.join(ids)\n            offers_json = json.dumps(normalized, ensure_ascii=False)\n        else:\n            offers_json = '[]'\n    except Exception:\n        offer_id = ''\n        global_id = ''\n        offers_json = '[]'\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id,\n        \"offer_name\": str((offers[0].get('offer_name') or offers[0].get('offerName') or '') if offers else ''),\n        \"globalId\": global_id,\n        \"offers\": offers_json\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -199,7 +204,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://172.30.8.52:6174/api/v1/appstore/test/offer/progress'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _int(v, default=0):\n    try:\n        return int(str(v).strip())\n    except Exception:\n        return default\n\ndef _bar(ratio, width=20):\n    filled = int(round(width * ratio))\n    if filled < 0:\n        filled = 0\n    if filled > width:\n        filled = width\n    return '█' * filled + '░' * (width - filled)\n\ndef _one(item):\n    # 单商品进度快照 -> (归一 dict, 是否终态, 展示行)\n    seq = item.get('offer_seq')\n    gid = str(item.get('globalId') or item.get('global_id') or '')\n    # EOP 真实出参：业务体在 resultObject 内（{resultCode, resultObject, resultMsg}）；\n    # 兼容包裹层级：resultObject > progress > item 本体（逐层回退，保证 mock/real 同构）\n    ro = item.get('resultObject')\n    if isinstance(ro, dict):\n        r = ro\n    elif isinstance(item.get('progress'), dict):\n        r = item.get('progress')\n    else:\n        r = item\n    total_scene = _int(r.get('totalSceneCount'))\n    finished_scene = _int(r.get('finishedSceneCount'))\n    failed_scene = _int(r.get('failedSceneCount'))\n    total_step = _int(r.get('totalSteps'))\n    active = _int(r.get('activeIndex'))\n    done = str(r.get('done', '')).lower() == 'true'\n    failed = str(r.get('failed', '')).lower() == 'true'\n    is_final = done or (total_scene > 0 and finished_scene >= total_scene)\n    if total_scene > 0:\n        ratio = float(finished_scene) / float(total_scene)\n    else:\n        ratio = 1.0 if is_final else 0.0\n    if is_final:\n        state = '已完成' if not failed else '已完成（存在失败场景）'\n        icon = '✅' if not failed else '❌'\n    else:\n        state = '处理中'\n        icon = '⏳'\n    line = ('  【商品%s】%s %s\\n'\n            '    进度：%s %d%%（场景 %d/%d，失败 %d）\\n'\n            '    步骤：%d/%d%s\\n'\n            '    流水号：%s' % (\n                seq if seq not in (None, '') else '1', icon, state,\n                _bar(ratio), int(round(ratio * 100)),\n                finished_scene, total_scene, failed_scene,\n                active, total_step, ('（失败于第 %d 步）' % (active + 1)) if failed else '',\n                gid or '-'))\n    info = {'offer_seq': seq, 'globalId': gid, 'done': done, 'failed': failed,\n            'is_final': is_final, 'totalSceneCount': total_scene,\n            'finishedSceneCount': finished_scene, 'failedSceneCount': failed_scene,\n            'totalSteps': total_step, 'activeIndex': active}\n    return info, is_final, line\n\nasync def main(args):\n    offers = _load(args.params.get('offers'))\n    offers = [o for o in offers if isinstance(o, dict) and str(o.get('globalId') or '')]\n    if not offers:\n        ret: Output = {'done': 'false', 'failed': 'true', 'is_final': 'false',\n                       'progress_text': '未获取到测试流水号 globalId，请先发起测试（环节6a）。',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试', 'offers': '[]'}\n        return ret\n    try:\n        body = json.dumps({'offers': [{'offer_seq': o.get('offer_seq'),\n                                       'globalId': o.get('globalId')} for o in offers]}).encode('utf-8')\n        req = urllib.request.Request(PROGRESS_URL, data=body,\n                                     headers={'Content-Type': 'application/json'})\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n    except Exception as e:\n        ret: Output = {'done': 'false', 'failed': 'true', 'is_final': 'false',\n                       'progress_text': '查询测试进度失败：%s' % str(e)[:200],\n                       'fail_reason': '查询测试进度失败', 'offers': '[]'}\n        return ret\n    items = (resp.get('offers') if isinstance(resp, dict) else None) or []\n    by_seq = {}\n    for it in items:\n        if isinstance(it, dict):\n            by_seq[it.get('offer_seq')] = it\n    lines = []\n    infos = []\n    all_final = True\n    any_failed = False\n    for o in offers:\n        it = by_seq.get(o.get('offer_seq'))\n        if it is None:\n            it = {'offer_seq': o.get('offer_seq'), 'globalId': o.get('globalId')}\n        info, is_final, line = _one(it)\n        infos.append(info)\n        lines.append(line)\n        if not is_final:\n            all_final = False\n        if info['failed']:\n            any_failed = True\n    if all_final:\n        head = '■ 测试已结束，正在获取测试结果……'\n    else:\n        head = '■ 测试进行中，请稍后回复【查询测试结果】续查'\n    progress_text = head + '\\n\\n' + '\\n'.join(lines)\n    ret: Output = {\n        'done': 'true' if all_final else 'false',\n        'failed': 'true' if any_failed else 'false',\n        'is_final': 'true' if all_final else 'false',\n        'progress_text': progress_text,\n        'fail_reason': '存在失败场景' if any_failed else '',\n        'offers': json.dumps(infos, ensure_ascii=False),\n    }\n    return ret",
+        "code": "import json\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://172.30.8.52:6174/api/v1/appstore/test/offer/progress'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _int(v, default=0):\n    try:\n        return int(str(v).strip())\n    except Exception:\n        return default\n\ndef _bar(ratio, width=20):\n    filled = int(round(width * ratio))\n    if filled < 0:\n        filled = 0\n    if filled > width:\n        filled = width\n    return '█' * filled + '░' * (width - filled)\n\ndef _one(item):\n    # 单商品进度快照 -> (归一 dict, 是否终态, 展示行)\n    seq = item.get('offer_seq')\n    gid = str(item.get('globalId') or item.get('global_id') or '')\n    # EOP 真实出参：业务体在 resultObject 内（{resultCode, resultObject, resultMsg}）；\n    # 兼容包裹层级：resultObject > progress > item 本体（逐层回退，保证 mock/real 同构）\n    ro = item.get('resultObject')\n    if isinstance(ro, dict):\n        r = ro\n    elif isinstance(item.get('progress'), dict):\n        r = item.get('progress')\n    else:\n        r = item\n    # 后端逐品返回业务错误（如 resultCode=1 查无对应测试任务）：标记 error，避免误报「处理中 0/0」\n    rc = str(item.get('resultCode') or '').strip()\n    err = rc != '' and rc != '0'\n    err_msg = str(item.get('resultMsg') or '').strip() if err else ''\n    if err:\n        info = {'offer_seq': seq, 'globalId': gid, 'done': False, 'failed': True,\n                'is_final': False, 'error': True, 'errorMsg': err_msg,\n                'totalSceneCount': 0, 'finishedSceneCount': 0, 'failedSceneCount': 0,\n                'totalSteps': 0, 'activeIndex': 0}\n        line = ('  【商品%s】❌ 查询失败\\n'\n                '    原因：%s\\n'\n                '    流水号：%s（请重新发起测试）' % (\n                    seq if seq not in (None, '') else '1', err_msg or '测试任务已失效', gid or '-'))\n        return info, False, line\n    total_scene = _int(r.get('totalSceneCount'))\n    finished_scene = _int(r.get('finishedSceneCount'))\n    failed_scene = _int(r.get('failedSceneCount'))\n    total_step = _int(r.get('totalSteps'))\n    active = _int(r.get('activeIndex'))\n    done = str(r.get('done', '')).lower() == 'true'\n    failed = str(r.get('failed', '')).lower() == 'true'\n    is_final = done or (total_scene > 0 and finished_scene >= total_scene)\n    if total_scene > 0:\n        ratio = float(finished_scene) / float(total_scene)\n    else:\n        ratio = 1.0 if is_final else 0.0\n    if is_final:\n        state = '已完成' if not failed else '已完成（存在失败场景）'\n        icon = '✅' if not failed else '❌'\n    else:\n        state = '处理中'\n        icon = '⏳'\n    line = ('  【商品%s】%s %s\\n'\n            '    进度：%s %d%%（场景 %d/%d，失败 %d）\\n'\n            '    步骤：%d/%d%s\\n'\n            '    流水号：%s' % (\n                seq if seq not in (None, '') else '1', icon, state,\n                _bar(ratio), int(round(ratio * 100)),\n                finished_scene, total_scene, failed_scene,\n                active, total_step, ('（失败于第 %d 步）' % (active + 1)) if failed else '',\n                gid or '-'))\n    info = {'offer_seq': seq, 'globalId': gid, 'done': done, 'failed': failed,\n            'is_final': is_final, 'error': False,\n            'totalSceneCount': total_scene,\n            'finishedSceneCount': finished_scene, 'failedSceneCount': failed_scene,\n            'totalSteps': total_step, 'activeIndex': active}\n    return info, is_final, line\n\nasync def main(args):\n    offers = _load(args.params.get('offers'))\n    offers = [o for o in offers if isinstance(o, dict) and str(o.get('globalId') or '')]\n    if not offers:\n        ret: Output = {'done': 'false', 'failed': 'true', 'is_final': 'false',\n                       'progress_text': '未获取到测试流水号 globalId，请先发起测试（环节6a）。',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试', 'offers': '[]'}\n        return ret\n    try:\n        body = json.dumps({'offers': [{'offer_seq': o.get('offer_seq'),\n                                       'globalId': o.get('globalId')} for o in offers]}).encode('utf-8')\n        req = urllib.request.Request(PROGRESS_URL, data=body,\n                                     headers={'Content-Type': 'application/json'})\n        with urllib.request.urlopen(req, timeout=30) as http_resp:\n            resp = json.loads(http_resp.read().decode('utf-8'))\n    except Exception as e:\n        ret: Output = {'done': 'false', 'failed': 'true', 'is_final': 'false',\n                       'progress_text': '查询测试进度失败：%s' % str(e)[:200],\n                       'fail_reason': '查询测试进度失败', 'offers': '[]'}\n        return ret\n    items = (resp.get('offers') if isinstance(resp, dict) else None) or []\n    by_gid = {}\n    by_seq = {}\n    for it in items:\n        if isinstance(it, dict):\n            gid = str(it.get('globalId') or it.get('global_id') or '')\n            if gid:\n                by_gid[gid] = it\n            by_seq[str(it.get('offer_seq'))] = it\n    lines = []\n    infos = []\n    all_final = True\n    any_failed = False\n    any_error = False\n    for o in offers:\n        # 首选按 globalId 匹配（唯一字符串，规避 offer_seq 数值/字符串类型漂移导致的匹配失败）\n        it = by_gid.get(str(o.get('globalId') or ''))\n        if it is None:\n            it = by_seq.get(str(o.get('offer_seq')))\n        if it is None:\n            it = {'offer_seq': o.get('offer_seq'), 'globalId': o.get('globalId')}\n        info, is_final, line = _one(it)\n        infos.append(info)\n        lines.append(line)\n        if not is_final:\n            all_final = False\n        if info['failed']:\n            any_failed = True\n        if info.get('error'):\n            any_error = True\n    if all_final:\n        head = '■ 测试已结束，正在获取测试结果……'\n    elif any_error:\n        head = '■ 查询异常：部分测试任务已失效（后端查无对应流水号，可能已重启或超时），请重新发起测试（环节6a）'\n    else:\n        head = '■ 测试进行中，请稍后回复【查询测试结果】续查'\n    progress_text = head + '\\n\\n' + '\\n'.join(lines)\n    ret: Output = {\n        'done': 'true' if all_final else 'false',\n        'failed': 'true' if any_failed else 'false',\n        'is_final': 'true' if all_final else 'false',\n        'progress_text': progress_text,\n        'fail_reason': ('测试任务失效，请重新发起' if any_error else ('存在失败场景' if any_failed else '')),\n        'offers': json.dumps(infos, ensure_ascii=False),\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -429,7 +434,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _norm(item, idx):\n    # EOP 真实出参业务体在 resultObject 内（{resultCode, resultObject, resultMsg}）；\n    # 兼容包裹层级：resultObject > result > item 本体（逐层回退，mock/real 同构）\n    ro = item.get('resultObject')\n    if isinstance(ro, dict):\n        r = ro\n    elif isinstance(item.get('result'), dict):\n        r = item.get('result')\n    else:\n        r = item\n    scenes = []\n    raw_scenes = r.get('testScenes') if isinstance(r, dict) else None\n    if not isinstance(raw_scenes, list):\n        raw_scenes = []\n    for s in raw_scenes:\n        if not isinstance(s, dict):\n            continue\n        pts = []\n        for p in (s.get('testCasePointResults') or []):\n            if not isinstance(p, dict):\n                continue\n            pts.append({\n                'testCaseName': str(p.get('testCaseName') or ''),\n                'testPointNbr': str(p.get('testPointNbr') or ''),\n                'testPointName': str(p.get('testPointName') or ''),\n                'presetValue': str(p.get('presetValue') or ''),\n                'testValue': str(p.get('testValue') or ''),\n                'resultCode': str(p.get('resultCode') or ''),\n                'resultMsg': str(p.get('resultMsg') or ''),\n            })\n        rel = s.get('objTestSceneRel') if isinstance(s.get('objTestSceneRel'), dict) else {}\n        scenes.append({\n            'testSceneNbr': str(s.get('testSceneNbr') or ''),\n            'testSceneName': str(s.get('testSceneName') or ''),\n            'testSceneDesc': str(s.get('testSceneDesc') or ''),\n            'testCaseCount': s.get('testCaseCount'),\n            'successTestCaseCount': s.get('successTestCaseCount'),\n            'failTestCaseCount': s.get('failTestCaseCount'),\n            'relResultCode': str(rel.get('resultCode') or ''),\n            'relResultMsg': str(rel.get('resultMsg') or ''),\n            'points': pts,\n        })\n    return {\n        'offer_seq': item.get('offer_seq') if item.get('offer_seq') not in (None, '') else idx,\n        'globalId': str(item.get('globalId') or r.get('globalId') or ''),\n        'offerId': str(r.get('offerId') or item.get('offer_id') or ''),\n        'offerName': str(r.get('offerName') or r.get('offerId') or item.get('offer_id') or ''),\n        'testRequestId': str(r.get('testRequestId') or ''),\n        'resultCode': str(r.get('resultCode') or ''),\n        'resultMsg': str(r.get('resultMsg') or ''),\n        'testScenes': scenes,\n    }\n\nasync def main(args):\n    offers = _load(args.params.get('result_offers'))\n    out = []\n    for idx, it in enumerate(offers, start=1):\n        if isinstance(it, dict):\n            out.append(_norm(it, idx))\n    payload = json.dumps(out, ensure_ascii=False)\n    ret: Output = {'offers': payload, 'result_list': payload}\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _roster_map(raw):\n    # 权威名册归一：入参可为 [{offer_seq,name,quantity}] / {offers:[...]} / JSON 字符串\n    obj = raw\n    if isinstance(obj, str):\n        try:\n            obj = json.loads(obj)\n        except Exception:\n            obj = None\n    if isinstance(obj, dict):\n        obj = obj.get('offers')\n    if not isinstance(obj, list):\n        return {}\n    out = {}\n    for i, o in enumerate(obj, start=1):\n        if not isinstance(o, dict):\n            continue\n        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n        name = str(o.get('name') or '').strip()\n        qty = o.get('quantity')\n        if name or qty not in (None, ''):\n            out[seq] = {'name': name, 'quantity': qty}\n    return out\n\ndef _merge_roster(offers, raw):\n    # 按 offer_seq 把权威名册的 name/quantity 合并进逐品元素（已有非空 name 不覆盖）\n    roster = _roster_map(raw)\n    if not roster or not isinstance(offers, list):\n        return offers\n    for i, o in enumerate(offers, start=1):\n        if not isinstance(o, dict):\n            continue\n        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n        r = roster.get(seq)\n        if not r:\n            continue\n        if r.get('name') and not str(o.get('name') or '').strip():\n            o['name'] = r['name']\n        if r.get('quantity') not in (None, '') and o.get('quantity') in (None, ''):\n            o['quantity'] = r['quantity']\n    return offers\n\ndef _records_to_offers(raw):\n    # 节点2302 list 为记录数组（每元素含 result_json），取其内 offers 供名册归一\n    obj = raw\n    if isinstance(obj, str):\n        try:\n            obj = json.loads(obj)\n        except Exception:\n            obj = None\n    if isinstance(obj, dict):\n        obj = obj.get('offers') or [obj]\n    if isinstance(obj, list) and obj and isinstance(obj[0], dict) and 'result_json' in obj[0]:\n        inner = obj[0].get('result_json')\n        if isinstance(inner, str):\n            try:\n                inner = json.loads(inner)\n            except Exception:\n                inner = None\n        if isinstance(inner, dict):\n            obj = inner.get('offers') or []\n    return obj\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _norm(item, idx):\n    # EOP 真实出参业务体在 resultObject 内（{resultCode, resultObject, resultMsg}）；\n    # 兼容包裹层级：resultObject > result > item 本体（逐层回退，mock/real 同构）\n    ro = item.get('resultObject')\n    if isinstance(ro, dict):\n        r = ro\n    elif isinstance(item.get('result'), dict):\n        r = item.get('result')\n    else:\n        r = item\n    scenes = []\n    raw_scenes = r.get('testScenes') if isinstance(r, dict) else None\n    if not isinstance(raw_scenes, list):\n        raw_scenes = []\n    for s in raw_scenes:\n        if not isinstance(s, dict):\n            continue\n        pts = []\n        for p in (s.get('testCasePointResults') or []):\n            if not isinstance(p, dict):\n                continue\n            pts.append({\n                'testCaseName': str(p.get('testCaseName') or ''),\n                'testPointNbr': str(p.get('testPointNbr') or ''),\n                'testPointName': str(p.get('testPointName') or ''),\n                'presetValue': str(p.get('presetValue') or ''),\n                'testValue': str(p.get('testValue') or ''),\n                'resultCode': str(p.get('resultCode') or ''),\n                'resultMsg': str(p.get('resultMsg') or ''),\n            })\n        rel = s.get('objTestSceneRel') if isinstance(s.get('objTestSceneRel'), dict) else {}\n        scenes.append({\n            'testSceneNbr': str(s.get('testSceneNbr') or ''),\n            'testSceneName': str(s.get('testSceneName') or ''),\n            'testSceneDesc': str(s.get('testSceneDesc') or ''),\n            'testCaseCount': s.get('testCaseCount'),\n            'successTestCaseCount': s.get('successTestCaseCount'),\n            'failTestCaseCount': s.get('failTestCaseCount'),\n            'relResultCode': str(rel.get('resultCode') or ''),\n            'relResultMsg': str(rel.get('resultMsg') or ''),\n            'points': pts,\n        })\n    return {\n        'offer_seq': item.get('offer_seq') if item.get('offer_seq') not in (None, '') else idx,\n        'globalId': str(item.get('globalId') or r.get('globalId') or ''),\n        'offerId': str(r.get('offerId') or item.get('offer_id') or ''),\n        'offerName': str(r.get('offerName') or r.get('offerId') or item.get('offer_id') or ''),\n        'testRequestId': str(r.get('testRequestId') or ''),\n        'resultCode': str(r.get('resultCode') or ''),\n        'resultMsg': str(r.get('resultMsg') or ''),\n        'testScenes': scenes,\n    }\n\nasync def main(args):\n    offers = _load(args.params.get('result_offers'))\n    roster = _roster_map(_records_to_offers(args.params.get('roster')))\n    out = []\n    for idx, it in enumerate(offers, start=1):\n        if isinstance(it, dict):\n            e = _norm(it, idx)\n            r = roster.get(str(e.get('offer_seq')))\n            if r and r.get('name'):\n                e['offerName'] = r['name']\n            out.append(e)\n    payload = json.dumps(out, ensure_ascii=False)\n    ret: Output = {'offers': payload, 'result_list': payload}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -445,6 +450,20 @@
               "a1b2c3d4-0000-4000-8000-000000002305,offers"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000002305,offers"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002302",
+            "relName": "list",
+            "name": "roster",
+            "description": "权威名册（节点2302 test_pending list，含逐品 name），按 offer_seq 覆盖 EOP 系统名",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002302",
+              "a1b2c3d4-0000-4000-8000-000000002302,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002302,list"
           }
         ],
         "checkErr": false,
@@ -489,7 +508,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        return obj if isinstance(obj, list) else []\n    except Exception:\n        return []\n\ndef _scene_state(scene):\n    rel_rc = str(scene.get('relResultCode') or '').strip()\n    pts = scene.get('points') or []\n    rcs = [str(p.get('resultCode') or '').strip() for p in pts]\n    nonempty = [rc for rc in rcs if rc != '']\n    if rel_rc in ('1', '2'):\n        return '失败', '❌'\n    if nonempty:\n        ok = sum(1 for rc in nonempty if rc == '0')\n        if ok == len(nonempty):\n            return '通过', '✅'\n        return '失败', '❌'\n    return '处理中', '⏳'\n\ndef _point_icon(p):\n    rc = str(p.get('resultCode') or '').strip()\n    if rc == '0':\n        return '✅'\n    if rc == '':\n        return '⏳'\n    return '❌'\n\ndef _render(o):\n    seq = o.get('offer_seq')\n    name = o.get('offerName') or '-'\n    lines = []\n    total_pts = 0\n    pass_pts = 0\n    fail_scene = 0\n    for s in (o.get('testScenes') or []):\n        st_text, st_icon = _scene_state(s)\n        pts = s.get('points') or []\n        ok = sum(1 for p in pts if str(p.get('resultCode') or '').strip() == '0')\n        total_pts += len(pts)\n        pass_pts += ok\n        if st_text == '失败':\n            fail_scene += 1\n        lines.append('### %s %s · %s（%d/%d 测点通过）' % (\n            st_icon, s.get('testSceneName') or '-', st_text, ok, len(pts)))\n        meta = []\n        if s.get('testSceneNbr'):\n            meta.append('场景编号：' + str(s.get('testSceneNbr')))\n        if s.get('testSceneDesc'):\n            meta.append('说明：' + str(s.get('testSceneDesc')))\n        if meta:\n            lines.append('｜' + ' ｜ '.join(meta))\n        if str(s.get('relResultCode') or '') in ('1', '2'):\n            lines.append('> 场景级失败原因：%s' % (s.get('relResultMsg') or '未提供'))\n        if pts:\n            lines.append('')\n            lines.append('| 用例 | 测点编号 | 测点名称 | 预期值 | 实际值 | 结果 |')\n            lines.append('| --- | --- | --- | --- | --- | --- |')\n            for p in pts:\n                lines.append('| %s | %s | %s | %s | %s | %s |' % (\n                    p.get('testCaseName') or '-', p.get('testPointNbr') or '-',\n                    p.get('testPointName') or '-', p.get('presetValue') or '-',\n                    p.get('testValue') or '-', _point_icon(p)))\n        else:\n            lines.append('')\n            lines.append('（该场景无测点明细）')\n        lines.append('')\n    head = '## 商品%s：%s' % (seq if seq not in (None, '') else '1', name)\n    info = ('- 测试任务ID：%s\\n- 流水号：%s\\n- 销售品编码：%s\\n'\n            '- 场景数：%d（失败 %d）\\n- 测点：%d/%d 通过' % (\n                o.get('testRequestId') or '-', o.get('globalId') or '-', o.get('offerId') or '-',\n                len(o.get('testScenes') or []), fail_scene, pass_pts, total_pts))\n    return head + '\\n' + info + '\\n\\n' + '\\n'.join(lines).rstrip() + '\\n'\n\nasync def main(args):\n    offers = _load(args.params.get('result_list'))\n    parts = []\n    total_scene = 0\n    total_fail = 0\n    total_pt = 0\n    total_pass = 0\n    for o in offers:\n        if not isinstance(o, dict):\n            continue\n        parts.append(_render(o))\n        for s in (o.get('testScenes') or []):\n            total_scene += 1\n            _t, icon = _scene_state(s)\n            if icon == '❌':\n                total_fail += 1\n            for p in (s.get('points') or []):\n                total_pt += 1\n                if str(p.get('resultCode') or '').strip() == '0':\n                    total_pass += 1\n    overall = ('# 测试结果报告\\n\\n'\n               '■ 汇总：商品 %d 个 ｜ 场景 %d 个（失败 %d）｜ 测点 %d/%d 通过\\n\\n'\n               % (len(offers), total_scene, total_fail, total_pass, total_pt))\n    ret: Output = {'test_report': overall + '\\n'.join(parts),\n                   'scene_count': str(total_scene), 'scene_failed': str(total_fail),\n                   'point_pass': str(total_pass), 'point_total': str(total_pt)}\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        return obj if isinstance(obj, list) else []\n    except Exception:\n        return []\n\ndef _scene_state(scene):\n    rel_rc = str(scene.get('relResultCode') or '').strip()\n    pts = scene.get('points') or []\n    rcs = [str(p.get('resultCode') or '').strip() for p in pts]\n    nonempty = [rc for rc in rcs if rc != '']\n    if rel_rc in ('1', '2'):\n        return '失败', '❌'\n    if nonempty:\n        ok = sum(1 for rc in nonempty if rc == '0')\n        if ok == len(nonempty):\n            return '通过', '✅'\n        return '失败', '❌'\n    return '处理中', '⏳'\n\ndef _point_icon(p):\n    rc = str(p.get('resultCode') or '').strip()\n    if rc == '0':\n        return '✅'\n    if rc == '':\n        return '⏳'\n    return '❌'\n\ndef _render(o, idx):\n    seq = o.get('offer_seq')\n    name = o.get('offerName') or o.get('offerId') or ('销售品%s' % (seq if seq not in (None, '') else idx))\n    lines = []\n    total_pts = 0\n    pass_pts = 0\n    fail_scene = 0\n    for s in (o.get('testScenes') or []):\n        st_text, st_icon = _scene_state(s)\n        pts = s.get('points') or []\n        ok = sum(1 for p in pts if str(p.get('resultCode') or '').strip() == '0')\n        total_pts += len(pts)\n        pass_pts += ok\n        if st_text == '失败':\n            fail_scene += 1\n        lines.append('### %s %s · %s（%d/%d 测点通过）' % (\n            st_icon, s.get('testSceneName') or '-', st_text, ok, len(pts)))\n        meta = []\n        if s.get('testSceneNbr'):\n            meta.append('场景编号：' + str(s.get('testSceneNbr')))\n        if s.get('testSceneDesc'):\n            meta.append('说明：' + str(s.get('testSceneDesc')))\n        if meta:\n            lines.append('｜' + ' ｜ '.join(meta))\n        if str(s.get('relResultCode') or '') in ('1', '2'):\n            lines.append('> 场景级失败原因：%s' % (s.get('relResultMsg') or '未提供'))\n        if pts:\n            lines.append('')\n            lines.append('| 用例 | 测点编号 | 测点名称 | 预期值 | 实际值 | 结果 |')\n            lines.append('| --- | --- | --- | --- | --- | --- |')\n            for p in pts:\n                lines.append('| %s | %s | %s | %s | %s | %s |' % (\n                    p.get('testCaseName') or '-', p.get('testPointNbr') or '-',\n                    p.get('testPointName') or '-', p.get('presetValue') or '-',\n                    p.get('testValue') or '-', _point_icon(p)))\n        else:\n            lines.append('')\n            lines.append('（该场景无测点明细）')\n        lines.append('')\n    head = '## 商品%s：%s' % (seq if seq not in (None, '') else idx, name)\n    info = ('- 测试任务ID：%s\\n- 流水号：%s\\n- 销售品编码：%s\\n'\n            '- 场景数：%d（失败 %d）\\n- 测点：%d/%d 通过' % (\n                o.get('testRequestId') or '-', o.get('globalId') or '-', o.get('offerId') or '-',\n                len(o.get('testScenes') or []), fail_scene, pass_pts, total_pts))\n    return head + '\\n' + info + '\\n\\n' + '\\n'.join(lines).rstrip() + '\\n'\n\nasync def main(args):\n    offers = _load(args.params.get('result_list'))\n    parts = []\n    total_scene = 0\n    total_fail = 0\n    total_pt = 0\n    total_pass = 0\n    for idx, o in enumerate(offers, start=1):\n        if not isinstance(o, dict):\n            continue\n        parts.append(_render(o, idx))\n        for s in (o.get('testScenes') or []):\n            total_scene += 1\n            _t, icon = _scene_state(s)\n            if icon == '❌':\n                total_fail += 1\n            for p in (s.get('points') or []):\n                total_pt += 1\n                if str(p.get('resultCode') or '').strip() == '0':\n                    total_pass += 1\n    overall = ('# 测试结果报告\\n\\n'\n               '■ 汇总：商品 %d 个 ｜ 场景 %d 个（失败 %d）｜ 测点 %d/%d 通过\\n\\n'\n               % (len(offers), total_scene, total_fail, total_pass, total_pt))\n    ret: Output = {'test_report': overall + '\\n'.join(parts),\n                   'scene_count': str(total_scene), 'scene_failed': str(total_fail),\n                   'point_pass': str(total_pass), 'point_total': str(total_pt)}\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -522,6 +541,335 @@
         "type": 6
       },
       {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+                    "relName": "scene_failed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000002333",
+                      "a1b2c3d4-0000-4000-8000-000000002333,scene_failed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000002333,scene_failed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "0"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "测试通过判定"
+        },
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002334",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002333",
+            "name": "构建测试结果报告",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000002333,scene_failed",
+                "name": "scene_failed",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002311,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n    except Exception:\n        return []\n    if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n        return obj['offers']\n    return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n\ndef _scene_stats(offer):\n    # 逐场景失败判定与报告口径一致：场景级 relResultCode 1/2 失败；否则按测点聚合\n    total = 0\n    failed = 0\n    for s in (offer.get('testScenes') or []):\n        pts = s.get('points') or []\n        total += len(pts)\n        rel = str(s.get('relResultCode') or '').strip()\n        rcs = [str(p.get('resultCode') or '').strip() for p in pts]\n        nonempty = [rc for rc in rcs if rc != '']\n        if rel in ('1', '2'):\n            failed += 1\n        elif nonempty and sum(1 for rc in nonempty if rc == '0') != len(nonempty):\n            failed += 1\n    return total, failed\n\ndef _summary(offer, idx):\n    seq = offer.get('offer_seq')\n    point_total, scene_failed = _scene_stats(offer)\n    scenes = offer.get('testScenes') or []\n    return {\n        'offer_seq': seq if seq not in (None, '') else idx,\n        'offer_id': str(offer.get('offerId') or ''),\n        'offer_name': str(offer.get('offerName') or ''),\n        'globalId': str(offer.get('globalId') or ''),\n        'test_request_id': str(offer.get('testRequestId') or ''),\n        'scene_count': len(scenes),\n        'scene_failed': scene_failed,\n        'point_total': point_total,\n    }\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('result_list'))\n    summaries = [_summary(o, i) for i, o in enumerate(offers, start=1) if isinstance(o, dict)]\n    env: Dict[str, Any] = {\n        'pass': str(p.get('pass') or '1'),\n        'test_report': str(p.get('test_report') or ''),\n        'req_id': str(p.get('req_id') or ''),\n        'scene_count': str(p.get('scene_count') or ''),\n        'scene_failed': str(p.get('scene_failed') or ''),\n        'point_pass': str(p.get('point_pass') or ''),\n        'point_total': str(p.get('point_total') or ''),\n        'offers': summaries,\n    }\n    ret: Output = {'record_json': json.dumps(env, ensure_ascii=False)}\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002332",
+            "relName": "result_list",
+            "name": "result_list",
+            "description": "逐品归一结果数组（节点2332出参 result_list）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002332",
+              "a1b2c3d4-0000-4000-8000-000000002332,result_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002332,result_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "测试结果报告 Markdown（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "scene_count",
+            "name": "scene_count",
+            "description": "场景总数（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,scene_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,scene_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "scene_failed",
+            "name": "scene_failed",
+            "description": "失败场景数（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,scene_failed"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,scene_failed"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "point_pass",
+            "name": "point_pass",
+            "description": "通过测点数（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,point_pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,point_pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "point_total",
+            "name": "point_total",
+            "description": "测点总数（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,point_total"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,point_total"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "pass",
+            "description": "测试通过标记=1",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "测试结论封包"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002311",
+        "position": {
+          "x": 3255,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次标识（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=test（自动测试，最终态）",
+            "type": "string",
+            "required": true,
+            "content": "test"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002311",
+            "relName": "record_json",
+            "name": "result_json",
+            "description": "环节结果JSON=测试结论封包（pass+test_report+逐品摘要）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002311",
+              "a1b2c3d4-0000-4000-8000-000000002311,record_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002311,record_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "测试结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试，最终态）；result_json=测试结论封包（pass=1 + test_report 报告全文 + 逐品轻量摘要+计数，紧凑体，避免超 64KB 被拒）；仅测试通过（scene_failed==0）时写入（门禁：由节点2334判定）；供上线审批四环节门禁与报告引用",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002312",
+        "position": {
+          "x": 3615,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
+      },
+      {
         "outputs": [
           {
             "relName": "a1b2c3d4-0000-4000-8000-000000002309,panel",
@@ -529,7 +877,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -573,6 +921,20 @@
               "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_name",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
           }
         ],
         "checkErr": false,
@@ -583,7 +945,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000002309",
         "position": {
-          "x": 2895,
+          "x": 3975,
           "y": 300
         },
         "dependencyData": [],
@@ -597,7 +959,7 @@
             "type": "string"
           }
         ],
-        "code": "from typing import Any, Dict\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
         "flowJson": null,
         "inputs": [
           {
@@ -641,6 +1003,20 @@
               "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_name",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
           }
         ],
         "checkErr": false,
@@ -652,6 +1028,88 @@
         "id": "a1b2c3d4-0000-4000-8000-000000002325",
         "position": {
           "x": 1815,
+          "y": 170
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000002326,panel",
+            "name": "panel",
+            "type": "string"
+          }
+        ],
+        "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=06&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"测试报告\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "chat_id",
+            "name": "chat_id",
+            "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,chat_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002301",
+              "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002301,req_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_name",
+            "name": "offer_name",
+            "description": "产品名称（用于面板 url 的 name）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_name"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "构建页面地址面板(未通过)"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000002326",
+        "position": {
+          "x": 3255,
           "y": 170
         },
         "dependencyData": [],
@@ -748,7 +1206,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试结果查询完成\n\n{test_report}\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试结果查询完成（测试通过，已写入 test 最终态）\n\n{test_report}\n\n■ 结论：全部场景通过，已写入自动测试最终态（test），可推进上线审批。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -825,10 +1283,111 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3255,
+          "x": 4335,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000002310",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节6/8·自动测试】测试结果查询完成（测试未通过：失败场景 {scene_failed} 个）\n\n{test_report}\n\n■ 结论：存在失败场景，本次未写入测试最终态（test 仍为空），无法推进上线审批。\n【下一步】请按上述 ❌ 明细整改配置后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "scene_failed",
+            "name": "scene_failed",
+            "description": "失败场景数（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,scene_failed"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,scene_failed"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002333",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "结构化测试结果报告（节点2333）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002333",
+              "a1b2c3d4-0000-4000-8000-000000002333,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002333,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "被测销售品ID（供面板）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002303",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002303",
+              "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002303,globalId"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000002326",
+            "relName": "panel",
+            "name": "panel",
+            "description": "xsbot-panel 页面地址片段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000002326",
+              "a1b2c3d4-0000-4000-8000-000000002326,panel"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000002326,panel"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(测试未通过-未写test)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 3615,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000002327",
         "dependencyData": []
       }
     ],
@@ -880,13 +1439,38 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000002309",
+        "endId": "a1b2c3d4-0000-4000-8000-000000002334",
         "startId": "a1b2c3d4-0000-4000-8000-000000002333"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002311",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002334"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002312",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002311"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002309",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002312"
       },
       {
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000002310",
         "startId": "a1b2c3d4-0000-4000-8000-000000002309"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002326",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002334"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000002327",
+        "startId": "a1b2c3d4-0000-4000-8000-000000002326"
       }
     ],
     "flowId": "wf_sub_13",
