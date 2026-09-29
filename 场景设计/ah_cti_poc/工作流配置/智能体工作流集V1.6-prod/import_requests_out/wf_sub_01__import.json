@@ -1,0 +1,1657 @@
+{
+  "schema": {
+    "flowName": "产销品-需求分析",
+    "flowRemark": "子工作流1（模板轨）：需求分析（环节2）。req_id（环节1延续，不重新生成）→读取需求工单(requirement_report)提取需求商品数组→产品识别LLM(逐品判产品类型)→模板路由代码(类型→模板，防幻觉)→相似产品检索(query_similar_offer，含融合 offer_group 下发；offerModel/offerInfo 后端恒有值，缺失时按产品类型从存量同类型产品衍生生成)→获取配置模板→配置要素提取LLM(逐品输出elements数组)→要素校验与方案合并(代码内逐品:validate_elements六项校验+E31门禁+merge_nested+融合组注入)→方案表格渲染(逐品)→方案聚合(offers[]方案包)→保存requirement(req_id+offers[])→结束输出方案+待补充+质量结论。",
+    "flowIco": "workflowIcon",
+    "workFlowSchema": null,
+    "workFlowSchemaJSON": {
+      "nodes": [
+        {
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "req_id",
+              "description": "需求单号（环节1 wf_sub_00 生成，PLAN+yyyyMMddHHmmss+3位随机；严禁重新生成）",
+              "type": "string",
+              "required": true,
+              "content": ""
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "chat_id",
+              "description": "{chatId}",
+              "type": "string",
+              "required": true,
+              "content": ""
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+            "title": "开始节点"
+          },
+          "position": {
+            "x": 15,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000101",
+          "dependencyData": [],
+          "type": 0
+        },
+        {
+          "outputs": [
+            {
+              "name": "list",
+              "cname": "记录数组JSON（取[0].result_json为需求字段原文）",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            }
+          ],
+          "submit_way": "get",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "存储键（=开始节点 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "node_name",
+              "description": "环节名=requirement_report（需求提报单）",
+              "type": "string",
+              "required": true,
+              "content": "requirement_report"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "latest_only",
+              "description": "1=只返回最新一条（默认）",
+              "type": "string",
+              "required": true,
+              "content": "1"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "读取需求工单",
+            "code": "query_node_result",
+            "description": "节点结果查询（复用）：req_id=开始节点 req_id（环节1 延续），node_name=requirement_report 取回需求字段记录数组",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000102",
+          "position": {
+            "x": 375,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/result/query"
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000103,record_json",
+              "name": "record_json",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000103,req_id",
+              "name": "req_id",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000103,offer_id",
+              "name": "offer_id",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000103,offers",
+              "name": "offers",
+              "type": "string"
+            }
+          ],
+          "code": "import json\nfrom typing import Any, Dict\n\ndef _offers_of(obj):\n    # V3.12 多商品：优先取 offers[] 数组；旧单品平面对象包装为 1 品（offer_seq=1）\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        out = []\n        for i, o in enumerate(offers, start=1):\n            if not isinstance(o, dict):\n                continue\n            e = dict(o)\n            e.setdefault('offer_seq', i)\n            out.append(e)\n        return out\n    return [obj]\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    req_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n                req_id = str(first.get('req_id') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n            req_id = str(arr.get('req_id') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    offers = []\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            if not req_id:\n                req_id = str(inner.get('req_id') or '')\n            offers = _offers_of(inner)\n            if offers:\n                offer_id = str(offers[0].get('offer_id') or offers[0].get('offerId') or '')\n    except Exception:\n        offers = []\n    ret: Output = {\n        \"record_json\": record_json,\n        \"req_id\": req_id,\n        \"offer_id\": offer_id,\n        \"offers\": json.dumps(offers, ensure_ascii=False)\n    }\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000102",
+              "relName": "list",
+              "name": "query_list",
+              "description": "引用节点102查询出参 list（记录数组JSON）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000102",
+                "a1b2c3d4-0000-4000-8000-000000000102,list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000102,list"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "提取需求字段原文"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000103",
+          "position": {
+            "x": 735,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "flowJson": null,
+          "inputs": {
+            "condition": [
+              {
+                "sourcePort": -1,
+                "itemflag": true,
+                "logic": 1,
+                "conditions": [
+                  {
+                    "left": {
+                      "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+                      "relName": "offers",
+                      "nameValue": [
+                        "a1b2c3d4-0000-4000-8000-000000000103",
+                        "a1b2c3d4-0000-4000-8000-000000000103,offers"
+                      ],
+                      "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offers",
+                      "name": "",
+                      "description": "",
+                      "type": "ref",
+                      "content": ""
+                    },
+                    "right": {
+                      "blockID": "",
+                      "relName": "",
+                      "nameValue": "",
+                      "currValue": ",",
+                      "name": "",
+                      "description": "",
+                      "type": "string",
+                      "content": "[]"
+                    },
+                    "conditions": [
+                      {
+                        "value": 1,
+                        "label": "等于"
+                      },
+                      {
+                        "value": 2,
+                        "label": "不等于"
+                      },
+                      {
+                        "value": 3,
+                        "label": "长度大于"
+                      },
+                      {
+                        "value": 4,
+                        "label": "长度大于等于"
+                      },
+                      {
+                        "value": 5,
+                        "label": "长度小于"
+                      },
+                      {
+                        "value": 6,
+                        "label": "长度小于等于"
+                      },
+                      {
+                        "value": 7,
+                        "label": "包含"
+                      },
+                      {
+                        "value": 8,
+                        "label": "不包含"
+                      },
+                      {
+                        "value": 9,
+                        "label": "为空"
+                      },
+                      {
+                        "value": 10,
+                        "label": "不为空"
+                      },
+                      {
+                        "value": 15,
+                        "label": "长度等于"
+                      }
+                    ],
+                    "operator": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "nodeMeta": {
+            "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+            "title": "需求工单有效性判定"
+          },
+          "position": {
+            "x": 1095,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000115",
+          "dependencyData": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000103",
+              "name": "提取需求字段原文",
+              "disabled": true,
+              "children": [
+                {
+                  "relName": "a1b2c3d4-0000-4000-8000-000000000103,offers",
+                  "name": "offers",
+                  "type": "string",
+                  "content": ""
+                }
+              ]
+            }
+          ],
+          "type": 2
+        },
+        {
+          "outputs": {
+            "name": "",
+            "type": "string",
+            "content": "❌ 未找到该需求单号（{req_id}）的需求提报记录，无法进行需求分析。\n请先完成【需求提报】（环节1/8），生成《销售品需求提报单》后再回复【确认执行】进入需求分析。"
+          },
+          "settings": {
+            "stream": false,
+            "output_mode": "text"
+          },
+          "terminatePlan": "useAnswerContent",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            }
+          ],
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+            "title": "结束(需求工单缺失-失败)"
+          },
+          "type": 9,
+          "top_p": 1,
+          "top_k": 0.1,
+          "temperature": 0.1,
+          "position": {
+            "x": 1455,
+            "y": 170
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000116",
+          "dependencyData": []
+        },
+        {
+          "outputs": [
+            {
+              "name": "offers_json",
+              "description": "逐商品产品类型数组JSON字符串（[{offer_seq,product_type,need_summary}]）",
+              "type": "string",
+              "content": ""
+            },
+            {
+              "name": "need_summary",
+              "description": "全部商品合并摘要（相似检索检索词）",
+              "type": "string",
+              "content": ""
+            }
+          ],
+          "max_tokens": 2048,
+          "flowJson": null,
+          "inputs": {
+            "llmParam": [
+              {
+                "name": "prompt",
+                "type": "string",
+                "content": "你是产销品需求分析助手（环节2 产品识别）。基于需求商品数组（{offers}）为每个商品识别其产品类型（product_type）：\n产品类型枚举（六选一，逐商品判定）：\n- 个人主套餐：面向个人/手机单卡的主套餐（含纯流量/语音主套餐）\n- 宽带主套餐：以宽带为主体、不含融合成员的主套餐\n- 个人附加资费：挂在个人主套餐之外的附加资费/可选包\n- 宽带附加资费：宽带提速/加速等附加包\n- 家庭基础套餐：含家庭/融合成员的套餐（如“5G-A 融合套餐”“家庭套餐”，成员含主卡+宽带+高清+副卡等）\n- 家庭附加资费：家庭/融合场景下的附加业务\n判定规则（逐商品独立判定）：\n1. 商品已有 product_type 字段且属上述枚举 → 直接采用该值（逐字）；\n2. product_type 缺失或不属于枚举 → 按 name/所属系列/资源内容关键词推断；\n3. **关键约束**：凡商品名称或内容中出现“融合”“家庭”或含多类成员（宽带/天翼高清/副卡等与主卡并存）时，**必须**判定为“家庭基础套餐”，严禁判定为“个人主套餐”；\n4. 仍无法判定默认“个人主套餐”。\n每个商品保持输入 offer_seq 原值，输出顺序与输入一致。\n输出要求：只输出一个 JSON 对象，对象仅含两个键——\n1. offers_json：一个数组的字符串，数组每个元素对应一个商品，字段为 {\"offer_seq\": 输入序号, \"product_type\": 六选一中文产品类型（逐字取上述枚举值）, \"need_summary\": 该商品需求要素摘要（≤2000字符）}；\n2. need_summary：全部商品的合并摘要（产品类型+资费+资源要点，供相似检索检索词，≤2000字符，字符串）。\n严禁输出其他文字、编号列表、标签前缀、解释或 Markdown 代码块围栏。"
+              }
+            ],
+            "inputParameters": [
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+                "relName": "offers",
+                "name": "offers",
+                "description": "引用节点103需求商品数组",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000103",
+                  "a1b2c3d4-0000-4000-8000-000000000103,offers"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offers"
+              }
+            ]
+          },
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "产品识别",
+            "title": "产品识别"
+          },
+          "model": "qwen3-30b-a3b",
+          "temperature": 0.2,
+          "top_p": 0.5,
+          "position": {
+            "x": 1455,
+            "y": 430
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000104",
+          "dependencyData": [],
+          "type": 1
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000119,offers_tpl",
+              "name": "offers_tpl",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000119,template_id",
+              "name": "template_id",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000119,template_ids",
+              "name": "template_ids",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000119,fusion_flag",
+              "name": "fusion_flag",
+              "type": "string"
+            }
+          ],
+          "code": "import json\nfrom typing import Any, Dict\n\n# 产品类型关键词 → 模板标识（顺序即优先级；命中即锁定，全部不命中默认 personMainPrc）\nTYPE_RULES = (\n    ('家庭基础套餐', 'familyBasePrc'), ('融合套餐', 'familyBasePrc'),\n    ('融合', 'familyBasePrc'), ('家庭', 'familyBasePrc'),\n    ('宽带加速包', 'broadBandOptSpeedPrc'), ('宽带附加资费', 'broadBandOptSpeedPrc'),\n    ('宽带主套餐', 'broadBandMainPrc'), ('宽带主资费', 'broadBandMainPrc'),\n    ('家庭附加资费', 'familyAddPrc'), ('家庭附加业务', 'familyAddPrc'),\n    ('个人附加资费', 'personAddPrc'), ('个人附加', 'personAddPrc'),\n    ('个人主套餐', 'personMainPrc'), ('个人主资费', 'personMainPrc'),\n)\nVALID = ('personMainPrc', 'broadBandMainPrc', 'personAddPrc',\n         'broadBandOptSpeedPrc', 'familyBasePrc', 'familyAddPrc')\n\ndef _load(raw):\n    if isinstance(raw, (list, dict)):\n        return raw\n    if not isinstance(raw, str) or not raw.strip():\n        return []\n    t = raw.strip()\n    if ':' in t and not t.lstrip().startswith('{') and not t.lstrip().startswith('['):\n        t = t.split(':', 1)[1].strip()\n    s, e = t.find('['), t.rfind(']')\n    if s != -1 and e > s:\n        t = t[s:e + 1]\n    try:\n        return json.loads(t)\n    except Exception:\n        return []\n\ndef _route(offer):\n    tid = str(offer.get('template_id') or '').strip()\n    if tid in VALID:\n        return tid\n    pt = str(offer.get('product_type') or '')\n    names = pt + ' ' + str(offer.get('name') or '') + ' ' + str(offer.get('series') or '')\n    for kw, mapped in TYPE_RULES:\n        if kw in names:\n            return mapped\n    return 'personMainPrc'\n\nasync def main(args):\n    p = args.params\n    data = _load(p.get('offers_json') or '')\n    if isinstance(data, dict):\n        data = data.get('offers') or data.get('offers_json') or [data]\n    if not isinstance(data, list):\n        data = []\n    out, first, fusion = [], '', '0'\n    for i, offer in enumerate(data, start=1):\n        if not isinstance(offer, dict):\n            continue\n        tid = _route(offer)\n        out.append({'offer_seq': offer.get('offer_seq') or i,\n                    'template_id': tid,\n                    'need_summary': str(offer.get('need_summary') or '')})\n        if not first:\n            first = tid\n        if tid == 'familyBasePrc':\n            fusion = '1'\n    if not out:\n        out = [{'offer_seq': 1, 'template_id': 'personMainPrc', 'need_summary': ''}]\n        first = 'personMainPrc'\n    ret: Output = {\n        'offers_tpl': json.dumps(out, ensure_ascii=False),\n        'template_id': first,\n        'template_ids': ','.join(str(o['template_id']) for o in out),\n        'fusion_flag': fusion,\n    }\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000104",
+              "relName": "offers_json",
+              "name": "offers_json",
+              "description": "逐商品产品识别结果（节点104 offers_json）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000104",
+                "a1b2c3d4-0000-4000-8000-000000000104,offers_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000104,offers_json"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "模板路由（类型→模板）"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000119",
+          "position": {
+            "x": 1815,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "name": "similarOffer",
+              "cname": "相似产品（含相似度评分、offerInfo 同构字段与 offerModel 逻辑模型报文；offerModel/offerInfo 后端恒有值——命中存量品直接返回，缺该模板时按产品类型从存量同类型产品衍生生成）",
+              "sechema": [],
+              "type": "object",
+              "required": false
+            },
+            {
+              "name": "offer_group",
+              "cname": "融合组下发（命中融合品时后端顶层内嵌 offer_group：group_id/main_offer_id/members/group_rules；单品为空）",
+              "sechema": [],
+              "type": "object",
+              "required": false
+            }
+          ],
+          "submit_way": "post",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000104",
+              "relName": "need_summary",
+              "name": "businessDesc",
+              "description": "业务需求描述（=节点104合并摘要）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000104",
+                "a1b2c3d4-0000-4000-8000-000000000104,need_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000104,need_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000119",
+              "relName": "template_id",
+              "name": "templateId",
+              "description": "模板标识（节点119首品模板；相似检索模板提示）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000119",
+                "a1b2c3d4-0000-4000-8000-000000000119,template_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000119,template_id"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "相似产品检索",
+            "code": "query_similar_offer",
+            "description": "工具1（复用·兜底）：以《产品信息.txt》全部销售品为相似库，返回相似度最高的产品（含 offerInfo 同构字段，与模板同构；并附 offerModel 存量逻辑模型报文——按当前模板实例化，模板同构嵌套 key=模板字段名）；供要素合并节点按 JSONPath 对位补全。后端保证 offerModel/offerInfo 恒有值：命中存量品直接返回其报文；该品缺该模板报文时，按 templateId 从任一载有同模板的存量同类型产品衍生生成（schema 同构填充），避免 real 模式仅有扁字段导致合并落空",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000105",
+          "position": {
+            "x": 2175,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/similar/offer/query"
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_id",
+              "name": "template_id",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,schema_json",
+              "name": "schema_json",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,missing",
+              "name": "missing",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_name_cn",
+              "name": "template_name_cn",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,template_product_type",
+              "name": "template_product_type",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,schema_file",
+              "name": "schema_file",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000106,source",
+              "name": "source",
+              "type": "string"
+            }
+          ],
+          "code": "import json, os, urllib.request\nfrom typing import Any, Dict\n\nTEMPLATE_URL = 'http://172.30.8.52:6174/api/v1/appstore/template/schema'\nTEMPLATE_ALIAS = {\n    'personMainPrc': ('个人主资费', '个人主套餐'),\n    'broadBandMainPrc': ('宽带主资费', '宽带主套餐'),\n    'personAddPrc': ('个人附加资费', '个人附加资费'),\n    'broadBandOptSpeedPrc': ('宽带加速包', '宽带附加资费'),\n    'familyBasePrc': ('家庭基础套餐', '家庭基础套餐'),\n    'familyAddPrc': ('家庭附加业务', '家庭附加资费'),\n}\n\ndef _pick(req):\n    r = str(req or '').strip()\n    # ① 精确匹配（模板标识/中文名/产品类型）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if r == tid or r == cn or r == pt:\n            return tid, cn, pt\n    # ② 兜底：子串包含（容忍上游出参夹带标签/说明文字）\n    for tid, (cn, pt) in TEMPLATE_ALIAS.items():\n        if tid in r or (cn and cn in r) or (pt and pt in r):\n            return tid, cn, pt\n    return 'personMainPrc', '个人主资费', '个人主套餐'\n\ndef _fetch(tid):\n    body = json.dumps({'templateId': tid}).encode('utf-8')\n    req = urllib.request.Request(TEMPLATE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    tid, cn, pt = _pick(p.get('template_id') or '')\n    content = '{}'\n    missing = '0'\n    source = 'empty'\n    # ① 后端下发（主路径）\n    try:\n        info = _fetch(tid)\n        schema_text = str((info or {}).get('schema_json') or '')\n        if schema_text.strip() and schema_text.strip() != '{}':\n            content = schema_text\n            cn = str(info.get('template_name_cn') or cn)\n            pt = str(info.get('template_product_type') or pt)\n            source = 'backend'\n    except Exception:\n        info = None\n    # ② 本地文件兜底（仅当显式配置 template_base 时）\n    if source != 'backend':\n        base = str(p.get('template_base') or '').strip()\n        if base:\n            try:\n                with open(os.path.join(base, '%s.schema.json' % tid), 'r', encoding='utf-8') as f:\n                    content = f.read()\n                source = 'file'\n            except Exception:\n                missing = '1'\n    if source == 'empty':\n        missing = '1'\n    ret: Output = {\n        \"template_id\": tid,\n        \"template_name_cn\": cn,\n        \"template_product_type\": pt,\n        \"schema_json\": content,\n        \"schema_file\": '%s.schema.json' % tid,\n        \"missing\": missing,\n        \"source\": source,\n    }\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000119",
+              "relName": "template_id",
+              "name": "template_id",
+              "description": "模板标识（节点119首品模板）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000119",
+                "a1b2c3d4-0000-4000-8000-000000000119,template_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000119,template_id"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "template_base",
+              "description": "模板目录（方案/templates，随包迁移）",
+              "type": "string",
+              "required": true,
+              "content": "D:\\工作\\sitech\\项目\\研发\\git_workspace\\AI\\prod_platform_ai\\场景设计\\ah_cti_poc\\方案\\templates"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "获取配置模板"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000106",
+          "position": {
+            "x": 2535,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "name": "elements_json",
+              "description": "逐品配置要素数组JSON字符串（[{offer_seq,template_id,elements}]）",
+              "type": "string",
+              "content": ""
+            }
+          ],
+          "max_tokens": 8192,
+          "flowJson": null,
+          "inputs": {
+            "llmParam": [
+              {
+                "name": "prompt",
+                "type": "string",
+                "content": "你是产销品需求分析助手（环节2 要素提取）。已有需求商品数组（{offers}）与产品识别结果（{offers_tpl}）。请**逐商品**在其需求字段中查找信息，输出一个元素数组。\n【硬性约束】\n0. 输出数组每个元素为 {\"offer_seq\": 输入序号, \"template_id\": 该商品模板标识, \"elements\": 该商品配置要素嵌套对象}；元素顺序与输入一致，offer_seq 原值保持。\n1. 每个商品的 elements 对象，key 必须**逐字复制该商品模板 schema 中的字段键名**（英文键，如 baseInfo.prodPrcName、optionalInfo.printContent.containResource 末段键），层级必须与 schema 的 properties 嵌套完全一致；**严禁**自造键名（如 name/product_type/price/resources 等一律禁止），**严禁**改写成中文键。\n2. **严禁枚举展开多值/枚举型字段**：凡 schema 中标注 x-element=多选框、enum 为集合或语义为“明细列表”的字段，一律**只写一个占位/汇总值或直接省略**，绝不可逐项罗列。\n3. **必须输出完整、闭合的合法 JSON**：宁可少写叶子，也不可让输出中途截断。\n4. 禁止臆造值：每个键值必须能在对应商品需求原文中找到对应表述（含同义改写）；价格类字段只取该商品需求原文，不得照搬相似产品或其他商品；严禁跨商品串值。\n重点叶子：optionalInfo.printContent.prcMonthFee、optionalInfo.acctMonth.fixFee、optionalInfo.printContent.containResource、optionalInfo.billGprsCfg.theshold、optionalInfo.billGprsCfg.unit、optionalInfo.billGprsCfg.outChargeMode、optionalInfo.billGprsCfg.carryFlag、optionalInfo.billVoiceCfg.theshold。\n输出要求：只输出一个 JSON 对象，对象仅含一个键 elements_json，其值为上述元素数组 JSON 的**字符串**（形如 {\"elements_json\":\"[{\\\"offer_seq\\\":1,\\\"template_id\\\":\\\"personMainPrc\\\",\\\"elements\\\":{...}}]\"}）；严禁输出其他文字、标签前缀、说明，严禁 Markdown 代码块围栏。"
+              }
+            ],
+            "inputParameters": [
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+                "relName": "offers",
+                "name": "offers",
+                "description": "引用节点103需求商品数组",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000103",
+                  "a1b2c3d4-0000-4000-8000-000000000103,offers"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offers"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000119",
+                "relName": "offers_tpl",
+                "name": "offers_tpl",
+                "description": "逐商品模板识别（节点119 offers_tpl）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000119",
+                  "a1b2c3d4-0000-4000-8000-000000000119,offers_tpl"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000119,offers_tpl"
+              }
+            ]
+          },
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "配置要素提取",
+            "title": "配置要素提取"
+          },
+          "model": "qwen3-30b-a3b",
+          "temperature": 0.2,
+          "top_p": 0.5,
+          "position": {
+            "x": 2895,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000107",
+          "dependencyData": [],
+          "type": 1
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,payload",
+              "name": "payload",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,meta",
+              "name": "meta",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,pending_required",
+              "name": "pending_required",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+              "name": "quality_gate",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,ve_stats",
+              "name": "ve_stats",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,status",
+              "name": "status",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,template",
+              "name": "template",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,ve_result",
+              "name": "ve_result",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108,offers",
+              "name": "offers",
+              "type": "string"
+            }
+          ],
+          "code": "import json\nimport re\nfrom typing import Any, Dict\n\nNON_EXTRACTABLE_PATTERNS = (\n    r\"(effDate|expDate)$\",\n    r\"(effRuleId|cancelRuleId)$\",\n    r\"(prodId|pricingId|prodPrcId|inProdPrcId|outProdPrcId|billPrcId|conditionCode|groupId)$\",\n    r\"orderNo$\",\n    r\"groupIdMessage$\",\n    r\"subBillPrcIds$\",\n    r\"^optionalInfo\\.prcSmsCfg\\.\",\n    r\"acctItem$\",\n    r\"powerCode$\",\n    r\"familyCata$\",\n    r\"splitRate(9|6)$\",\n    r\"(favValidityVAlue|fixValidityVAlue)$\",\n)\nYES_HINT_WORDS = ('允许', '开通', '支持', '可以', '可办')\nPRICE_KEYWORDS = ('档位', '月功能费', '月租', '月费', '固定费', '费用')\nPRICE_EXCLUDE_MARKS = ('有效期', '周期', '时长', '间隔')\nCHARGE_DESC_KEYWORDS = ('超套', '套外', '资费', '计费', '收费')\nEMPTY_MARKS = ('', '待补充', '系统待生成')\nSKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\nSYSTEM_GEN_KEYS = ('orderNo',)\nSAME_PARAMETER_PAIRS = (\n    ('optionalInfo.printContent.prcMonthFee', 'optionalInfo.acctMonth.fixFee', '套餐月费', '套餐固定费'),\n)\n\n# 业务默认值：不强制发布地市取值——需求未提及地市时不填、不默认，\n# 由原始需求原文/模板默认决定，避免臆断『全省/非全省/22地市』。\nBUSINESS_DEFAULTS = {}\n\n# 模板取值溯源：区分“原始需求 / 模板默认 / 模板枚举 / 模型推测”\nDEFAULT_MARK_RE = re.compile(r'默认(?:为)?([^，。、；：\\s]+)')\nENUM_SPLIT_RE = re.compile(r'[、，,/\\n；;]')\nREQ_TRACE_MIN_LEN = 2\nMODEL_GUESS_SOURCE = '模型推测'\nTEMPLATE_SOURCE = '模板值'\nDEFAULT_SOURCE = '默认值'\nREQ_SOURCE = '原始需求'\n\ndef _req_tokens(req_text):\n    return set(re.split(r'[\\s,，、。;；:：()（）{}\\[\\]\"\\'\\\\/\\n]+', str(req_text or '')))\n\ndef _matches_requirement(val, req_text, tokens):\n    s = str(val).strip()\n    if not s:\n        return False\n    if len(s) >= REQ_TRACE_MIN_LEN and s in str(req_text):\n        return True\n    return s in tokens\n\ndef _schema_owned_values(prop, path):\n    out = []\n    if path in BUSINESS_DEFAULTS:\n        out.append(('default', str(BUSINESS_DEFAULTS[path])))\n    d = prop.get('default')\n    if d not in (None, ''):\n        out.append(('default', str(d).strip()))\n    for e in prop.get('enum') or []:\n        s = str(e).strip()\n        if s:\n            out.append(('enum', s))\n            out.extend(('enum', t.strip()) for t in ENUM_SPLIT_RE.split(s) if t.strip())\n    for key in ('x-hint', 'description'):\n        txt = str(prop.get(key) or '')\n        m = DEFAULT_MARK_RE.search(txt)\n        if m and m.group(1).strip():\n            out.append(('hint_default', m.group(1).strip()))\n        out.extend(('hint_word', t.strip()) for t in ENUM_SPLIT_RE.split(txt)\n                   if t.strip() and len(t.strip()) >= REQ_TRACE_MIN_LEN)\n    return out\n\ndef relabel_source_map(elements_map, leaves, req_text):\n    # 溯源修正：需求原文可追溯→原始需求；命中 schema 显式默认/枚举→默认值/模板值；\n    # 其余为模型推测。仅改来源标注与默认值归一，不改变取值语义。\n    tokens = _req_tokens(req_text)\n    source_map = {}\n    for path, val in list(elements_map.items()):\n        prop = leaves.get(path)\n        if not prop:\n            continue\n        if _matches_requirement(val, req_text, tokens):\n            source_map[path] = REQ_SOURCE\n            continue\n        matched = None\n        for kind, sv in _schema_owned_values(prop, path):\n            if str(val).strip() == sv:\n                matched = (kind, sv)\n                break\n        if matched is None:\n            source_map[path] = MODEL_GUESS_SOURCE\n            continue\n        kind, sv = matched\n        if kind in ('default', 'hint_default'):\n            # 该要素已由 LLM 抽取器产出于 elements_map：即便取值与 schema 默认一致，\n            # 亦属模型/需求驱动，不降级为「默认值」以免掩盖真实溯源\n            # （如「是否结转到次月」= 是 恰与默认值相同，但源自需求「可结转至次月」）。\n            source_map[path] = MODEL_GUESS_SOURCE\n        else:\n            source_map[path] = TEMPLATE_SOURCE\n    return source_map\n\ndef _is_non_extractable(path):\n    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n\ndef _collect_leaves(schema):\n    leaves = {}\n    def walk(node, prefix=''):\n        props = node.get('properties') if isinstance(node, dict) else None\n        if not isinstance(props, dict):\n            return\n        for k, v in props.items():\n            p2 = (prefix + '.' + k) if prefix else k\n            if isinstance(v, dict) and v.get('type') == 'object':\n                walk(v, p2)\n            else:\n                leaves[p2] = v or {}\n    walk(schema)\n    return leaves\n\ndef _flatten(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if not isinstance(node, dict):\n        return out\n    for k, v in node.items():\n        path = (prefix + '.' + k) if prefix else k\n        if isinstance(v, dict):\n            _flatten(v, path, out)\n        else:\n            out[path] = v\n    return out\n\ndef _to_number(v):\n    if isinstance(v, bool):\n        return None\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    if not s:\n        return None\n    try:\n        return float(s) if '.' in s else int(s)\n    except ValueError:\n        m = re.match(r'^(\\d+(?:\\.\\d+)?)\\s*元?$', s)\n        return float(m.group(1)) if m else None\n\ndef _today_str():\n    import datetime\n    return datetime.date.today().strftime('%Y-%m-%d')\n\ndef is_price(label, key):\n    for text in (label, key):\n        t = text or ''\n        if any(m in t for m in PRICE_EXCLUDE_MARKS):\n            continue\n        if any(kw in t for kw in PRICE_KEYWORDS):\n            return True\n    return False\n\ndef strip(v):\n    if v is None:\n        return ''\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, (int, float)):\n        return v\n    s = str(v).strip()\n    return '' if s in EMPTY_MARKS else s\n\ndef _charge_desc_covers(prop, cur, elements_map):\n    if not prop.get('enum'):\n        return False\n    label = str(prop.get('x-label', '') or '') + cur\n    if not [w for w in CHARGE_DESC_KEYWORDS if w in label]:\n        return False\n    for epath, evalue in elements_map.items():\n        if not epath.endswith('chargeStandard'):\n            continue\n        if any(w in str(evalue) for w in CHARGE_DESC_KEYWORDS):\n            return True\n    return False\n\ndef flatten_elements(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if not isinstance(node, dict):\n        return out\n    for k, v in node.items():\n        path = (prefix + '.' + k) if prefix else k\n        if isinstance(v, dict):\n            flatten_elements(v, path, out)\n        else:\n            val = strip(v)\n            if val != '':\n                out[path] = val\n    return out\n\ndef flatten_offer(node, prefix='', out=None):\n    if out is None:\n        out = {}\n    if isinstance(node, dict):\n        for k, v in node.items():\n            path = (prefix + '.' + k) if prefix else k\n            flatten_offer(v, path, out)\n    elif isinstance(node, list):\n        for i, v in enumerate(node):\n            flatten_offer(v, '%s[%d]' % (prefix, i), out)\n    else:\n        val = strip(node)\n        if val != '':\n            out[prefix] = val\n    return out\n\ndef _visible(cond_map, out_map, cur):\n    # 依据节点级 x-show-when 判定当前字段是否展示（不展示即不计入待补充）\n    cond = cond_map.get(cur)\n    if not cond:\n        return True\n    parent = cur.rsplit('.', 1)[0] if '.' in cur else ''\n    gkey = (parent + '.groupId') if parent else 'groupId'\n    gval = str(out_map.get(gkey) or '')\n    # 语义：'选择非全省时展示' -> groupId=全省 时隐藏\n    if '非全省' in str(cond):\n        return '全省' not in gval\n    return True\n\ndef merge_body(schema, elements_map, offer_map, meta, path='', pending=None, cond_map=None, out_map=None, source_map=None, req_price_map=None):\n    if pending is None:\n        pending = []\n    if cond_map is None:\n        cond_map = {}\n    if out_map is None:\n        out_map = {}\n    if source_map is None:\n        source_map = {}\n    if req_price_map is None:\n        req_price_map = {}\n    out = {}\n    props = schema.get('properties') or {}\n    for key, sub in props.items():\n        cur = (path + '.' + key) if path else key\n        label = sub.get('x-label', key)\n        if sub.get('x-show-when'):\n            cond_map[cur] = sub['x-show-when']\n        if sub.get('type') == 'object':\n            out[key] = merge_body(sub, elements_map, offer_map, meta, cur, pending, cond_map, out_map, source_map, req_price_map)\n            continue\n        val = elements_map.get(cur)\n        source = source_map.get(cur) or (REQ_SOURCE if val is not None else '')\n        if val is None and not is_price(label, key):\n            oval = offer_map.get(cur)\n            if oval is not None:\n                val, source = oval, 'AI补全'\n        if val is None and req_price_map:\n            rp = _match_req_price(cur, label, req_price_map)\n            if rp is not None:\n                val, source = rp, '原始需求'\n        if val is None and sub.get('default') is not None:\n            val, source = sub['default'], '默认值'\n        if val is None and sub.get('x-default-rule'):\n            rule = sub['x-default-rule']\n            val = _today_str() if rule == 'system_date' else rule\n            source = '默认值'\n        if val is None and cur in BUSINESS_DEFAULTS:\n            val, source = BUSINESS_DEFAULTS[cur], '默认值'\n        if val is None:\n            val, source = '', ''\n        out_map[cur] = val\n        if val == '' and source == '':\n            if sub.get('x-required') and key not in SKIP_KEYS and key not in SYSTEM_GEN_KEYS \\\n                    and not _is_non_extractable(cur) \\\n                    and (is_price(label, key) or '资源' in label or 'resource' in str(label).lower()):\n                if not _charge_desc_covers(sub, cur, elements_map) and _visible(cond_map, out_map, cur):\n                    pending.append(cur)\n        out[key] = val\n        if source:\n            meta[cur] = {'label': label, 'value': val, 'source': source}\n    return out\n\ndef _collect_req_prices(record_json):\n    # 从需求字段原文提取价格候选（仅按月费/固定费口径），供 LLM 漏提时确定性兜底\n    rec = _load(record_json)\n    if not isinstance(rec, dict):\n        return {}\n    out = {}\n    for k in ('price', 'month_fee', 'monthFee', 'fee', 'monthly_fee'):\n        v = rec.get(k)\n        if v in (None, ''):\n            continue\n        num = _to_number(v)\n        if num is not None:\n            out[k] = v\n    return out\n\nPRICE_LABEL_HINTS = ('套餐月费', '套餐固定费', '月功能费')\nPRICE_LABEL_EXCLUDE = ('有效期', '周期', '时长', '间隔', '值')\n\ndef _match_req_price(path, label, req_price_map):\n    # 仅对“月费/固定费”类价格叶子兜底：标签严格命中月费语义且非有效期类\n    lab = str(label or '')\n    if any(x in lab for x in PRICE_LABEL_EXCLUDE):\n        return None\n    if not any(h in lab for h in PRICE_LABEL_HINTS):\n        return None\n    for _, v in req_price_map.items():\n        return v\n    return None\n\ndef _path_get(node, path):\n    for part in path.split('.'):\n        if not isinstance(node, dict) or part not in node:\n            return None\n        node = node[part]\n    return node\n\ndef _path_set(node, path, value):\n    parts = path.split('.')\n    cur = node\n    for part in parts[:-1]:\n        if not isinstance(cur, dict):\n            return\n        cur = cur.setdefault(part, {})\n    if isinstance(cur, dict):\n        cur[parts[-1]] = value\n\ndef reconcile_same_parameter(merged, meta, pending):\n    for path_a, path_b, label_a, label_b in SAME_PARAMETER_PAIRS:\n        na, nb = _to_number(_path_get(merged, path_a)), _to_number(_path_get(merged, path_b))\n        src_a = (meta.get(path_a) or {}).get('source', '')\n        src_b = (meta.get(path_b) or {}).get('source', '')\n        def _authority():\n            if na is None and nb is None:\n                return None\n            pri = {'原始需求': 0, '存量提取': 0, 'AI补全': 1, '同源派生': 2, '默认值': 2}\n            rank_a, rank_b = pri.get(str(src_a), 2), pri.get(str(src_b), 2)\n            if na is not None and nb is not None:\n                if na == nb:\n                    return None\n                return (na, path_a, label_a) if (rank_a, path_a) <= (rank_b, path_b) else (nb, path_b, label_b)\n            return (na, path_a, label_a) if na is not None else (nb, path_b, label_b)\n        auth = _authority()\n        if auth is None:\n            continue\n        value, apath, alabel = auth\n        for path, label in ((path_a, label_a), (path_b, label_b)):\n            if _to_number(_path_get(merged, path)) != value:\n                _path_set(merged, path, value)\n                meta[path] = {'label': label, 'value': value, 'source': '同源派生(%s)' % alabel}\n                if path in pending:\n                    pending.remove(path)\n\ndef unwrap_offer(offer):\n    # 归一化：优先取 offerModel（按模板实例化的逻辑模型报文，键=模板字段名），\n    # 其次 offerInfo（同构字段）；兼容两种包裹层级——\n    # ① {similarOffer:{offerModel/offerInfo:...}}（工具外层再包一层）\n    # ② {similarOfferId,...,offerModel/offerInfo:...}（相似检索直接返回的扁平静态）\n    # 后端已保证 offerModel/offerInfo 恒有值（命中品缺失时按产品类型从存量同类型产品衍生）；\n    # 仍保留回退 offer 本体，兼容工具未透出上述字段的历史/异常情形。\n    def _pick(d):\n        if not isinstance(d, dict):\n            return None\n        if isinstance(d.get('offerModel'), dict):\n            return d['offerModel']\n        if isinstance(d.get('offerInfo'), dict):\n            return d['offerInfo']\n        return None\n    if isinstance(offer, dict):\n        picked = _pick(offer)\n        if picked is not None:\n            return picked\n        inner = offer.get('similarOffer')\n        picked = _pick(inner)\n        if picked is not None:\n            return picked\n    return offer\n\ndef _as_group(obj):\n    # 归一融合组对象：兼容两种入参形态——① 裸组对象（含 members/main_offer_id）；\n    # ② 包裹对象（{offer_group:{...}} 或 {similarOffer:{offer_group:{...}}}）。无组返回 None。\n    if not isinstance(obj, dict):\n        return None\n    if isinstance(obj.get('members'), list) or obj.get('main_offer_id') or obj.get('group_id'):\n        return obj\n    if isinstance(obj.get('offer_group'), dict):\n        return obj.get('offer_group')\n    inner = obj.get('similarOffer')\n    if isinstance(inner, dict) and isinstance(inner.get('offer_group'), dict):\n        return inner.get('offer_group')\n    return None\n\ndef extract_offer_group(raw_offer_json, raw_group=None):\n    # 融合组抽取：优先取节点105 显式出参 offer_group（后端顶层内嵌），回退从相似检索\n    # 出参（similar_offer）中取顶层 offer_group（组定义下发），\n    # 归一为 plan_json 组结构字段：{offer_type:\"融合\", main_offer:{role,offer_id,name},\n    # member_offers:[{role,offer_id,required,dependency?,preset?}], group_rules:{...}}。\n    # 未命中融合组（单品）返回 None——单商品链路行为零变化。\n    grp = _as_group(_load(raw_group or ''))\n    if grp is None:\n        grp = _as_group(_load(raw_offer_json or ''))\n    if not isinstance(grp, dict) or not grp:\n        return None\n    members = grp.get('members') if isinstance(grp.get('members'), list) else []\n    main_offer_id = str(grp.get('main_offer_id') or '')\n    main_offer_name = str(grp.get('main_offer_name') or '')\n    member_offers = []\n    for m in members:\n        if not isinstance(m, dict):\n            continue\n        item = {'role': str(m.get('role') or ''),\n                'offer_id': str(m.get('offer_id') or ''),\n                'required': bool(m.get('required'))}\n        if m.get('dependency'):\n            item['dependency'] = str(m.get('dependency'))\n        if isinstance(m.get('preset'), dict):\n            item['preset'] = m.get('preset')\n        member_offers.append(item)\n    return {\n        'offer_type': '融合',\n        'main_offer': {'role': '主卡套餐', 'offer_id': main_offer_id, 'name': main_offer_name},\n        'member_offers': member_offers,\n        'group_rules': grp.get('group_rules') if isinstance(grp.get('group_rules'), dict) else {},\n    }\n\ndef _load(text):\n    # 兼容上游直接透传 dict/list（节点出参未序列化时的常见情形）\n    if isinstance(text, (dict, list)):\n        return text\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    t = text.strip()\n    # 剥离标签行前缀，如 \"elements_json: {...}\"\n    if ':' in t and not t.lstrip().startswith('{') and not t.lstrip().startswith('['):\n        t = t.split(':', 1)[1].strip()\n    # 去除 Markdown 代码块围栏\n    t = re.sub(r'^```[a-zA-Z]*\\s*', '', t)\n    t = re.sub(r'\\s*```$', '', t)\n    try:\n        return json.loads(t)\n    except Exception:\n        pass\n    # 回退①：截取首个 { 到末个 } 的子串\n    s, e = t.find('{'), t.rfind('}')\n    if s != -1 and e > s:\n        try:\n            return json.loads(t[s:e + 1])\n        except Exception:\n            pass\n    # 回退②：截断 JSON 抢救——补齐未闭合的字符串/容器\n    s = t.find('{')\n    if s != -1:\n        salvaged = _salvage_json(t[s:])\n        if salvaged is not None:\n            return salvaged\n    return {}\n\ndef _salvage_json(text):\n    # 逐字符扫描，遇未闭合字符串/括号则补齐，再尝试解析（抢救被 max_tokens 截断的 JSON）\n    stack, in_str, esc = [], False, False\n    for ch in text:\n        if in_str:\n            if esc:\n                esc = False\n            elif ch == '\\\\':\n                esc = True\n            elif ch == '\"':\n                in_str = False\n            continue\n        if ch == '\"':\n            in_str = True\n        elif ch in '{[':\n            stack.append(ch)\n        elif ch in '}]':\n            if stack:\n                stack.pop()\n    # 从末尾向前回溯，寻找可解析的最长前缀\n    for cut in range(len(text), 0, -1):\n        frag = text[:cut].rstrip()\n        frag = re.sub(r',\\s*$', '', frag)\n        # 去掉尾部不完整的键（形如 ,\"key\" 或 ,\"key\": 或 ,{\"key\"）\n        frag = re.sub(r',\\s*\"[^\"]*\"\\s*:?\\s*$', '', frag)\n        frag = re.sub(r',\\s*\\{[^}]*$', '', frag)\n        frag = frag.rstrip().rstrip(',')\n        st, ins, es = [], False, False\n        for ch in frag:\n            if ins:\n                if es:\n                    es = False\n                elif ch == '\\\\':\n                    es = True\n                elif ch == '\"':\n                    ins = False\n                continue\n            if ch == '\"':\n                ins = True\n            elif ch in '{[':\n                st.append(ch)\n            elif ch in '}]':\n                if st:\n                    st.pop()\n        if ins:\n            frag += '\"'\n        frag += ''.join('}' if c == '{' else ']' for c in reversed(st))\n        try:\n            obj = json.loads(frag)\n            if isinstance(obj, dict) and obj:\n                return obj\n        except Exception:\n            continue\n    return None\n\ndef _salvage_offer_list(text):\n    # LLM 输出的逐品数组若整体非法（如多余括号/未闭合），按 \"offer_seq\" 边界切片，逐品抢救，\n    # 保证单个商品格式瑕疵不吞掉其余商品。返回 [dict, ...]（可能少于实际，但尽量多保留）。\n    if not isinstance(text, str):\n        return []\n    s = text.find('[')\n    if s != -1:\n        text = text[s + 1:]\n    # 以 ,{ 或 {\"offer_seq\" 作为切分点，按平衡括号提取每个对象\n    items, i, n = [], 0, len(text)\n    while i < n:\n        if text[i] != '{':\n            i += 1\n            continue\n        depth, ins, esc, j = 0, False, False, i\n        while j < n:\n            ch = text[j]\n            if ins:\n                if esc:\n                    esc = False\n                elif ch == '\\\\':\n                    esc = True\n                elif ch == '\"':\n                    ins = False\n            elif ch == '\"':\n                ins = True\n            elif ch == '{':\n                depth += 1\n            elif ch == '}':\n                depth -= 1\n                if depth == 0:\n                    frag = text[i:j + 1]\n                    try:\n                        obj = json.loads(frag)\n                    except Exception:\n                        obj = _salvage_json(frag)\n                    if isinstance(obj, dict) and obj:\n                        items.append(obj)\n                    break\n            j += 1\n        i = j + 1 if j < n else n\n    return items\n\ndef _load_offers(raw):\n    # 逐品要素数组解析：优先整体 JSON；失败则按品切片抢救。返回 [dict, ...]。\n    if isinstance(raw, list):\n        return raw\n    if isinstance(raw, dict):\n        if isinstance(raw.get('offers'), list):\n            return raw['offers']\n        return [raw]\n    if isinstance(raw, str):\n        obj = _load(raw)\n        if isinstance(obj, list):\n            return obj\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        salvaged = _salvage_offer_list(raw)\n        if salvaged:\n            return salvaged\n        if isinstance(obj, dict) and obj:\n            return [obj]\n    return []\n\nasync def _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw=None):\n    elements = elems\n    # V3.12.1 多商品：LLM 逐品输出 {offer_seq, template_id, elements:{...schema 键...}}，\n    # 需先解包内层要素对象再拍平，否则拍平路径成 'elements.baseInfo.x' 与 schema 键不匹配，\n    # 导致 elements_map 全程未命中、回退相似品（offer_json）串值。\n    for _wrap in ('elements', 'elements_json', 'payload', 'fields'):\n        if isinstance(elements, dict) and _wrap in elements:\n            inner = elements[_wrap]\n            if isinstance(inner, str):\n                inner = _load(inner)\n            if isinstance(inner, dict) and inner:\n                elements = inner\n                break\n    if not isinstance(elements, dict):\n        elements = {}\n    # ① 质量校验（validate_elements 六项校验 + E31 命中率门禁）\n    leaves = _collect_leaves(schema)\n    flat = _flatten(elements)\n    removed, yes_norm_hints, price_cross = [], [], []\n    valid_paths = {}\n    for path, val in flat.items():\n        prop = leaves.get(path)\n        if prop is None:\n            removed.append({'path': path, 'value': val, 'reason': 'invalid_path'})\n            continue\n        if prop.get('type') == 'number' and _to_number(val) is None:\n            removed.append({'path': path, 'value': val, 'reason': 'invalid_number'})\n            continue\n        valid_paths[path] = (val, prop)\n    for path, (val, prop) in valid_paths.items():\n        label = prop.get('x-label') or ''\n        enum = prop.get('enum') or []\n        is_yes_no = ('是否' in label) or any(e in ('是、否', '是、否、默认') or str(e) in ('是', '否') for e in enum)\n        if is_yes_no and isinstance(val, str) and any(w in val for w in YES_HINT_WORDS):\n            yes_norm_hints.append({'path': path, 'value': val, 'suggest': '是'})\n    extractable_required = [p for p, prop in leaves.items()\n                            if prop.get('x-required') and not _is_non_extractable(p)]\n    hit = [p for p in extractable_required if p in valid_paths]\n    rate = (len(hit) / len(extractable_required)) if extractable_required else 1.0\n    gate = '通过' if rate >= threshold else '不通过'\n    pmf = _to_number(valid_paths.get('optionalInfo.printContent.prcMonthFee', (None,))[0]) \\\n        if 'optionalInfo.printContent.prcMonthFee' in valid_paths else None\n    ff = _to_number(valid_paths.get('optionalInfo.acctMonth.fixFee', (None,))[0]) \\\n        if 'optionalInfo.acctMonth.fixFee' in valid_paths else None\n    if pmf is not None and ff is not None and pmf != ff:\n        price_cross.append({'paths': ['optionalInfo.printContent.prcMonthFee',\n                                      'optionalInfo.acctMonth.fixFee'],\n                            'values': [pmf, ff],\n                            'note': '套餐月费与固定费不一致，请人工确认（不阻断）'})\n    ve_result = '不通过' if gate == '不通过' else ('通过（含提示）' if removed else '通过')\n    ve_stats = '提取字段总数 %d，有效 %d，无效剔除 %d；必填字段 %d（可提取 %d，命中 %d，可提取命中率 %.1f%%）；门禁阈值 %.2f' % (\n        len(flat), len(valid_paths), len(removed),\n        sum(1 for x in leaves.values() if x.get('x-required')),\n        len(extractable_required), len(hit), rate * 100.0, threshold)\n    # ② 报文合并（merge_nested：schema 骨架 + 需求要素优先 + 相似品补全 + 同源派生）\n    offer = unwrap_offer(_load(offer_json or ''))\n    template_id = schema.get('x-template', '')\n    if isinstance(offer, dict) and template_id in offer:\n        offer = offer[template_id]\n    elements_map = flatten_elements(elements)\n    source_map = relabel_source_map(elements_map, leaves, record_json or '')\n    offer_map = flatten_offer(offer)\n    req_price_map = _collect_req_prices(record_json or '')\n    meta, pending = {}, []\n    merged = merge_body(schema, elements_map, offer_map, meta, pending=pending, source_map=source_map, req_price_map=req_price_map)\n    reconcile_same_parameter(merged, meta, pending)\n    # ③ 融合组注入（V3.13）：相似检索命中融合组（similar_offer 出参顶层 offer_group）时，\n    # 把组结构写入 plan_json（offer_type/main_offer/member_offers/group_rules）——members 以组种子为准，\n    # 供 wf_sub_02 save_product_config 生成 group 出参、CODE_FUSION_GROUP_ECHO 回显；单品无 offer_group 不注入。\n    offer_group = extract_offer_group(offer_json, offer_group_raw)\n    if offer_group:\n        merged['offer_type'] = offer_group['offer_type']\n        merged['main_offer'] = offer_group['main_offer']\n        merged['member_offers'] = offer_group['member_offers']\n        merged['group_rules'] = offer_group['group_rules']\n    return {'payload': json.dumps(merged, ensure_ascii=False),\n            'meta': json.dumps(meta, ensure_ascii=False),\n            'pending_required': ','.join(pending),\n            'template': template_id,\n            'quality_gate': gate,\n            've_result': ve_result,\n            've_stats': ve_stats,\n            'status': 'pend' if pending else 'ok'}\n\nasync def main(args):\n    p = args.params\n    schema = _load(p.get('schema_json') or '')\n    threshold = float(p.get('threshold') or 0.30)\n    record_json = p.get('record_json') or ''\n    offer_json = p.get('offer_json') or ''\n    offer_group_raw = p.get('offer_group') or ''\n    raw_elems = p.get('elements_json') or ''\n    template_id = schema.get('x-template', '')\n    # V3.12 多商品：elements_json 为 [{offer_seq,...}] 数组时逐品合并；单品对象包装为 1 品\n    # 解析容错：整体非法时按 \"offer_seq\" 边界逐品抢救，避免单品格瑕疵吞掉其余商品\n    elems_list = _load_offers(raw_elems)\n    offers_out, payloads, metas = [], [], []\n    all_pending, gates, ve_results, ve_stats_list, statuses = [], [], [], [], []\n    for i, elems in enumerate(elems_list, start=1):\n        if isinstance(elems, dict) and 'elements_json' in elems and len(elems) == 1:\n            elems = elems.get('elements_json')\n        one = await _merge_one(elems, schema, threshold, record_json, offer_json, offer_group_raw)\n        payloads.append(one['payload'])\n        metas.append(one['meta'])\n        gates.append(one['quality_gate'])\n        ve_results.append(one['ve_result'])\n        ve_stats_list.append(one['ve_stats'])\n        statuses.append(one['status'])\n        all_pending.append({'offer_seq': i, 'pending_required': one['pending_required']})\n        offers_out.append({'offer_seq': i,\n                           'template': one['template'],\n                           'payload': one['payload'],\n                           'meta': one['meta'],\n                           'pending_required': one['pending_required'],\n                           'quality_gate': one['quality_gate'],\n                           've_result': one['ve_result'],\n                           've_stats': one['ve_stats'],\n                           'status': one['status']})\n    if not offers_out:\n        one = await _merge_one({}, schema, threshold, record_json, offer_json, offer_group_raw)\n        payloads = [one['payload']]\n        metas = [one['meta']]\n        gates = [one['quality_gate']]\n        ve_results = [one['ve_result']]\n        ve_stats_list = [one['ve_stats']]\n        statuses = [one['status']]\n        offers_out = [{'offer_seq': 1, 'template': one['template'],\n                       'payload': one['payload'], 'meta': one['meta'],\n                       'pending_required': one['pending_required'],\n                       'quality_gate': one['quality_gate'], 've_result': one['ve_result'],\n                       've_stats': one['ve_stats'], 'status': one['status']}]\n    all_pending_flat = [(str(x.get('offer_seq')), x.get('pending_required') or '') for x in all_pending]\n    pending_joined = '；'.join('第%s档：%s' % (s, r) for s, r in all_pending_flat if r) or '无'\n    ret: Output = {\n        'payload': payloads[0],\n        'meta': metas[0],\n        'pending_required': pending_joined,\n        'template': template_id,\n        'quality_gate': ('通过' if all(g == '通过' for g in gates) else '不通过'),\n        've_result': ('通过' if all('通过' in v for v in ve_results) else '不通过'),\n        've_stats': '\\n'.join('第%d档：%s' % (i, s) for i, s in enumerate(ve_stats_list, start=1)),\n        'status': ('ok' if all(s == 'ok' for s in statuses) else 'pend'),\n        'offers': json.dumps(offers_out, ensure_ascii=False),\n    }\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+              "relName": "schema_json",
+              "name": "schema_json",
+              "description": "模板 schema（节点106；按首品模板）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000106",
+                "a1b2c3d4-0000-4000-8000-000000000106,schema_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000106,schema_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000107",
+              "relName": "elements_json",
+              "name": "elements_json",
+              "description": "配置要素数组（节点107提取；代码内逐品合并）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000107",
+                "a1b2c3d4-0000-4000-8000-000000000107,elements_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000107,elements_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000105",
+              "relName": "similarOffer",
+              "name": "offer_json",
+              "description": "相似产品出参（节点105 similarOffer；含 offerModel 逻辑模型报文，代码内优先取 offerModel 回退 offerInfo；后端保证二者恒有值，缺失时已按产品类型从存量同类型产品衍生生成）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000105",
+                "a1b2c3d4-0000-4000-8000-000000000105,similarOffer"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000105,similarOffer"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000105",
+              "relName": "offer_group",
+              "name": "offer_group",
+              "description": "融合组下发（节点105 offer_group；命中融合品时写入 plan_json 组结构）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000105",
+                "a1b2c3d4-0000-4000-8000-000000000105,offer_group"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000105,offer_group"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "threshold",
+              "description": "可提取命中率阈值（默认0.30）",
+              "type": "string",
+              "required": true,
+              "content": "0.30"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+              "relName": "record_json",
+              "name": "record_json",
+              "description": "需求字段原文（节点103；供价格类叶子确定性兜底）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000103",
+                "a1b2c3d4-0000-4000-8000-000000000103,record_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000103,record_json"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "要素校验与方案合并"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000108",
+          "position": {
+            "x": 3255,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000109,table_text",
+              "name": "table_text",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000109,pending_count",
+              "name": "pending_count",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000109,offers",
+              "name": "offers",
+              "type": "string"
+            }
+          ],
+          "code": "import json\nimport re\nfrom typing import Any, Dict\n\nSKIP_KEYS = ('templateId', 'prodId', 'prodPrcId', 'pricingId', 'opType')\nSYSTEM_GEN_KEYS = ('orderNo',)\n# 不可从自然语言需求提取的字段（系统生成/编码/规则类，x-required 亦不计入待补充）：\n# 与要素校验节点 108 的 NON_EXTRACTABLE_PATTERNS 保持一致，禁止在此罗列系统类字段为待补充。\nNON_EXTRACTABLE_PATTERNS = (\n    r'(effDate|expDate)$',\n    r'(effRuleId|cancelRuleId)$',\n    r'(prodId|pricingId|prodPrcId|inProdPrcId|outProdPrcId|billPrcId|conditionCode|groupId)$',\n    r'orderNo$',\n    r'groupIdMessage$',\n    r'subBillPrcIds$',\n    r'^optionalInfo\\.prcSmsCfg\\.',\n    r'acctItem$',\n    r'powerCode$',\n    r'familyCata$',\n    r'splitRate(9|6)$',\n    r'(favValidityVAlue|fixValidityVAlue)$',\n)\n\ndef _is_non_extractable(path):\n    return any(re.search(p, path) for p in NON_EXTRACTABLE_PATTERNS)\n\nSOURCE_MAP = {\n    '原始需求': '原始需求提取', 'AI补全': '相似产品补全',\n    '本体推理': '本体推理', '默认值': '默认值', '同源派生': '同源派生',\n}\nSIMILAR_REF_PREFIX = '参考相似产品: '\nINDENT_UNIT = '　'\nOVERVIEW_PATHS = (\n    ('baseInfo.prodPrcName', '资费名称'),\n    ('optionalInfo.printContent.prcMonthFee', '套餐月费'),\n    ('optionalInfo.printContent.containResource', '包含资源'),\n)\nTITLE_FALLBACK = '产销品配置方案（模板轨）'\n\ndef has_business_value(sub_schema, sub_data):\n    if isinstance(sub_data, dict):\n        for v in sub_data.values():\n            if v not in ('', None, [], {}):\n                return True\n        return False\n    return False\n\ndef fmt_value(v):\n    if isinstance(v, bool):\n        return '是' if v else '否'\n    if isinstance(v, list):\n        return '、'.join(str(x) for x in v)\n    return str(v)\n\ndef _dig(data, dotted):\n    node = data\n    for k in dotted.split('.'):\n        node = node.get(k) if isinstance(node, dict) else None\n    return node\n\ndef _offer_title(data, fallback=''):\n    # 方案标题=该商品名称（baseInfo.prodPrcName）；缺失时回退到入参 title，再回退常量\n    name = _dig(data, 'baseInfo.prodPrcName')\n    name = str(name).strip() if name not in ('', None) else ''\n    if name:\n        return name\n    fb = str(fallback or '').strip()\n    return fb or TITLE_FALLBACK\n\ndef similar_ref(similar_offer):\n    if not isinstance(similar_offer, dict):\n        return ''\n    oid = similar_offer.get('similarOfferId', '')\n    oname = similar_offer.get('similarOfferName', '')\n    if isinstance(oid, (int, float)):\n        oid = str(oid)\n    if not oid or not oname:\n        return ''\n    return '%s%s %s' % (SIMILAR_REF_PREFIX, str(oid), str(oname))\n\ndef collect(schema, data, pending, meta=None, sim_ref=''):\n    sections = []\n    meta = meta or {}\n    def hidden(obj_schema, sub, key, obj_data, path):\n        # x-show-when 语义判定：'选择非全省时展示' 且 groupId=全省 -> 隐藏（不计待补充）\n        cond = sub.get('x-show-when')\n        if not cond or '非全省' not in str(cond):\n            return False\n        g = obj_data.get('groupId') if isinstance(obj_data, dict) else ''\n        return '全省' in str(g or '')\n    def walk(obj_schema, obj_data, depth, path, sec):\n        for key, sub in obj_schema.get('properties', {}).items():\n            label = sub.get('x-label', key)\n            cur = (path + '.' + key) if path else key\n            if sub.get('type') == 'object':\n                sub_data = obj_data.get(key, {}) if isinstance(obj_data, dict) else {}\n                if not has_business_value(sub, sub_data):\n                    continue\n                if depth <= 1:\n                    sec2 = {'title': label, 'rows': []}\n                    sections.append(sec2)\n                    walk(sub, sub_data, depth + 1, cur, sec2)\n                else:\n                    sec['rows'].append(('s', depth, label, '', '', ''))\n                    walk(sub, sub_data, depth + 1, cur, sec)\n            else:\n                if key in SKIP_KEYS or not isinstance(obj_data, dict):\n                    continue\n                if key not in obj_data or obj_data[key] in ('', None):\n                    if sub.get('x-required') and key not in SYSTEM_GEN_KEYS and not _is_non_extractable(cur) and not hidden(obj_schema, sub, key, obj_data, path):\n                        pending.append((INDENT_UNIT * depth) + label)\n                    continue\n                val = fmt_value(obj_data[key])\n                note_parts = []\n                cond = sub.get('x-show-when')\n                if cond:\n                    note_parts.append('满足条件时展示：' + str(cond).rstrip('才展示展示'))\n                entry = meta.get(cur) or {}\n                source_raw = entry.get('source', '') if isinstance(entry, dict) else ''\n                source = SOURCE_MAP.get(source_raw, source_raw)\n                if source_raw == 'AI补全' and sim_ref:\n                    source = sim_ref\n                sec['rows'].append(('|', depth, label, val, source, '；'.join(note_parts)))\n    top = {'title': '', 'rows': []}\n    sections.append(top)\n    walk(schema, data, 0, '', top)\n    return [s for s in sections if s['rows']]\n\ndef _render_one(schema, data, meta, similar_offer, title, seq=None):\n    if schema.get('x-template') in data:\n        data = data[schema['x-template']]\n    pending = []\n    sim_ref = similar_ref(similar_offer)\n    sections = collect(schema, data, pending, meta, sim_ref)\n    lines = []\n    head = ('%d. ' % seq) if seq is not None else ''\n    title = _offer_title(data, title)\n    lines.append('## ' + head + title)\n    lines.append('')\n    overview = []\n    for dotted, cn in OVERVIEW_PATHS:\n        node = _dig(data, dotted)\n        if node not in ('', None):\n            overview.append('**%s**：%s' % (cn, fmt_value(node)))\n    if overview:\n        lines.append('> **套餐概览**　|　' + '　|　'.join(overview))\n        lines.append('')\n    n = 0\n    for sec in sections:\n        if not sec['rows']:\n            continue\n        n += 1\n        title_txt = '%d. %s' % (n, sec['title']) if sec['title'] else '%d. 配置明细' % n\n        lines.append('**%s**' % title_txt)\n        lines.append('')\n        lines.append('| 字段名称 | 字段值 | 取值来源 | 备注 |')\n        lines.append('| :--- | :--- | :--- | :--- |')\n        for kind, depth, label, val, source, note in sec['rows']:\n            if kind == 's':\n                lines.append('| **%s%s** |  |  |  |' % (INDENT_UNIT * (depth - 1), label))\n            else:\n                pad = INDENT_UNIT * (depth - 1) if depth > 0 else ''\n                lines.append('| %s%s | %s | %s | %s |' % (pad, label, val, source, note))\n        lines.append('')\n    if pending:\n        lines.append('**【待补充字段】**（%d 项，补充后可进入配置）：' % len(pending))\n        lines.append('、'.join(pending))\n        lines.append('')\n    return '\\n'.join(lines), pending\n\ndef _offers_of(raw):\n    # V3.12 多商品：元素可为 [{offer_seq,payload,meta}] 数组；旧单品对象包装为 1 品\n    if isinstance(raw, list):\n        return raw\n    if isinstance(raw, dict) and isinstance(raw.get('offers'), list):\n        return raw['offers']\n    return None\n\ndef load(text):\n    if not isinstance(text, str) or not text.strip():\n        return {}\n    try:\n        return json.loads(text)\n    except Exception:\n        try:\n            t = text.strip()\n            if ':' in t and not t.startswith('{') and not t.startswith('['):\n                t = t.split(':', 1)[1].strip()\n            return json.loads(t)\n        except Exception:\n            return {}\n\nasync def main(args):\n    p = args.params\n    schema = load(p.get('schema_json') or '')\n    title = str(p.get('title') or TITLE_FALLBACK)\n    # V3.12 多商品：offers_json 为合并节点出参 offers[]（[{offer_seq,payload,meta}]）；逐品渲染\n    elems = _offers_of(load(p.get('offers_json') or ''))\n    blocks, pending_all, offers_out = [], [], []\n    if isinstance(elems, list) and elems:\n        for i, e in enumerate(elems, start=1):\n            if not isinstance(e, dict):\n                continue\n            seq = int(e.get('offer_seq') or i)\n            pay = load(e.get('payload') or '')\n            mt = load(e.get('meta') or '')\n            text, pend = _render_one(schema, pay, mt, load(p.get('similar_offer') or ''), title, seq)\n            blocks.append(text)\n            pending_all += pend\n            offers_out.append({'offer_seq': seq, 'table_text': text,\n                               'pending_fields': pend, 'pending_count': str(len(pend))})\n    else:\n        text, pend = _render_one(schema, {}, {},\n                                 load(p.get('similar_offer') or ''), title)\n        blocks.append(text)\n        pending_all += pend\n        offers_out.append({'offer_seq': 1, 'table_text': text,\n                           'pending_fields': pend, 'pending_count': str(len(pend))})\n    ret: Output = {\n        \"table_text\": '\\n\\n'.join(blocks),\n        \"pending_count\": str(len(pending_all)),\n        \"offers\": json.dumps(offers_out, ensure_ascii=False),\n    }\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+              "relName": "schema_json",
+              "name": "schema_json",
+              "description": "模板 schema（节点106）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000106",
+                "a1b2c3d4-0000-4000-8000-000000000106,schema_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000106,schema_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "offers",
+              "name": "offers_json",
+              "description": "逐品合并结果（节点108 offers；含 [{offer_seq,payload,meta}]）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000105",
+              "relName": "similarOffer",
+              "name": "similar_offer",
+              "description": "相似产品（节点105，来源列拼接）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000105",
+                "a1b2c3d4-0000-4000-8000-000000000105,similarOffer"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000105,similarOffer"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "方案表格渲染"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000109",
+          "position": {
+            "x": 3615,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000114,result_json",
+              "name": "result_json",
+              "type": "string"
+            }
+          ],
+          "code": "import json\nfrom typing import Any, Dict\ndef _roster_map(raw):\n    # 权威名册归一：入参可为 [{offer_seq,name,quantity}] / {offers:[...]} / JSON 字符串\n    obj = raw\n    if isinstance(obj, str):\n        try:\n            obj = json.loads(obj)\n        except Exception:\n            obj = None\n    if isinstance(obj, dict):\n        obj = obj.get('offers')\n    if not isinstance(obj, list):\n        return {}\n    out = {}\n    for i, o in enumerate(obj, start=1):\n        if not isinstance(o, dict):\n            continue\n        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n        name = str(o.get('name') or '').strip()\n        qty = o.get('quantity')\n        if name or qty not in (None, ''):\n            out[seq] = {'name': name, 'quantity': qty}\n    return out\n\ndef _merge_roster(offers, raw):\n    # 按 offer_seq 把权威名册的 name/quantity 合并进逐品元素（已有非空 name 不覆盖）\n    roster = _roster_map(raw)\n    if not roster or not isinstance(offers, list):\n        return offers\n    for i, o in enumerate(offers, start=1):\n        if not isinstance(o, dict):\n            continue\n        seq = str(o.get('offer_seq') if o.get('offer_seq') not in (None, '') else i)\n        r = roster.get(seq)\n        if not r:\n            continue\n        if r.get('name') and not str(o.get('name') or '').strip():\n            o['name'] = r['name']\n        if r.get('quantity') not in (None, '') and o.get('quantity') in (None, ''):\n            o['quantity'] = r['quantity']\n    return offers\n\ndef _load(v):\n    if isinstance(v, (dict, list)):\n        return v\n    if not isinstance(v, str) or not v.strip():\n        return {}\n    t = v.strip()\n    try:\n        return json.loads(t)\n    except Exception:\n        try:\n            if ':' in t and not t.startswith('{'):\n                return json.loads(t.split(':', 1)[1].strip())\n        except Exception:\n            pass\n        return {}\nasync def main(args):\n    p = args.params\n    req_id = str(p.get('req_id') or '')\n    template = str(p.get('template') or '')\n    raw_results = p.get('results')\n    if not isinstance(raw_results, list):\n        raw_results = [raw_results] if raw_results else []\n    offers = []\n    for i, item in enumerate(raw_results, start=1):\n        obj = _load(item)\n        if isinstance(obj, list):\n            for sub in obj:\n                if isinstance(sub, dict):\n                    sub.setdefault('offer_seq', len(offers) + 1)\n                    offers.append(sub)\n            continue\n        if isinstance(obj, dict):\n            if isinstance(obj.get('offers'), list):\n                for sub in obj['offers']:\n                    if isinstance(sub, dict):\n                        sub.setdefault('offer_seq', len(offers) + 1)\n                        offers.append(sub)\n            elif obj:\n                obj.setdefault('offer_seq', i)\n                offers.append(obj)\n    for idx, o in enumerate(offers, start=1):\n        o.setdefault('offer_seq', idx)\n        o.setdefault('template', template)\n    # V3.14：按权威名册（需求提报 offers，含 name/quantity）合并销售品名称与数量，\n    # 使执行方案 offers[] 从环节2 起即携带 name/quantity，供全链路文案一致（名册缺失时零变化）。\n    offers = _merge_roster(offers, p.get('record_json') or p.get('roster') or '')\n    ret: Output = {'result_json': json.dumps({'req_id': req_id, 'template': template, 'offers': offers}, ensure_ascii=False)}\n    return ret",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "offers",
+              "name": "results",
+              "description": "逐品合并结果列表（节点108 offers）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号（开始节点）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+              "relName": "template_id",
+              "name": "template",
+              "description": "模板标识（节点106）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000106",
+                "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+              "relName": "record_json",
+              "name": "record_json",
+              "description": "权威名册（节点103需求提报单原文，含 offers[] 销售品名称+数量）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000103",
+                "a1b2c3d4-0000-4000-8000-000000000103,record_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000103,record_json"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "方案聚合"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000114",
+          "position": {
+            "x": 3975,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "name": "record_id",
+              "cname": "存储记录ID",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            }
+          ],
+          "submit_way": "post",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号（=开始节点 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "node_name",
+              "description": "环节名=requirement（执行方案）",
+              "type": "string",
+              "required": true,
+              "content": "requirement"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000114",
+              "relName": "result_json",
+              "name": "result_json",
+              "description": "执行方案JSON=方案包（节点114 result_json，含 offers[]）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000114",
+                "a1b2c3d4-0000-4000-8000-000000000114,result_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000114,result_json"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "status",
+              "description": "本环节状态=ok",
+              "type": "string",
+              "required": true,
+              "content": "ok"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "保存执行方案",
+            "code": "save_node_result",
+            "description": "节点结果存储（复用）：req_id=开始节点 req_id（环节1延续，不重新生成），node_name=requirement（执行方案），result_json={req_id,offers:[{offer_seq,template,payload,meta,pending_required,quality_gate,...}]}（逐品实例化逻辑模型）；供 wf_sub_02 智能配置自查链路与 wf_sub_06 门禁按 req_id+requirement 读取",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000110",
+          "position": {
+            "x": 4335,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000112,panel",
+              "name": "panel",
+              "type": "string"
+            }
+          ],
+          "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "chat_id",
+              "name": "chat_id",
+              "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+              "relName": "offer_id",
+              "name": "offer_id",
+              "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000103",
+                "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "构建页面地址面板"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000112",
+          "position": {
+            "x": 5055,
+            "y": 430
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000113,panel",
+              "name": "panel",
+              "type": "string"
+            }
+          ],
+          "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=01&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"配置方案\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "chat_id",
+              "name": "chat_id",
+              "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,chat_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+              "relName": "offer_id",
+              "name": "offer_id",
+              "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000103",
+                "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "构建页面地址面板(质量未通过)"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000113",
+          "position": {
+            "x": 5055,
+            "y": 600
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "flowJson": null,
+          "inputs": {
+            "condition": [
+              {
+                "sourcePort": -1,
+                "itemflag": true,
+                "logic": 1,
+                "conditions": [
+                  {
+                    "left": {
+                      "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+                      "relName": "quality_gate",
+                      "nameValue": [
+                        "a1b2c3d4-0000-4000-8000-000000000108",
+                        "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+                      ],
+                      "currValue": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+                      "name": "",
+                      "description": "",
+                      "type": "ref",
+                      "content": ""
+                    },
+                    "right": {
+                      "blockID": "",
+                      "relName": "",
+                      "nameValue": "",
+                      "currValue": ",",
+                      "name": "",
+                      "description": "",
+                      "type": "string",
+                      "content": "通过"
+                    },
+                    "conditions": [
+                      {
+                        "value": 1,
+                        "label": "等于"
+                      },
+                      {
+                        "value": 2,
+                        "label": "不等于"
+                      },
+                      {
+                        "value": 3,
+                        "label": "长度大于"
+                      },
+                      {
+                        "value": 4,
+                        "label": "长度大于等于"
+                      },
+                      {
+                        "value": 5,
+                        "label": "长度小于"
+                      },
+                      {
+                        "value": 6,
+                        "label": "长度小于等于"
+                      },
+                      {
+                        "value": 7,
+                        "label": "包含"
+                      },
+                      {
+                        "value": 8,
+                        "label": "不包含"
+                      },
+                      {
+                        "value": 9,
+                        "label": "为空"
+                      },
+                      {
+                        "value": 10,
+                        "label": "不为空"
+                      },
+                      {
+                        "value": 15,
+                        "label": "长度等于"
+                      }
+                    ],
+                    "operator": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "nodeMeta": {
+            "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+            "title": "方案质量门禁"
+          },
+          "position": {
+            "x": 4695,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000117",
+          "dependencyData": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000108",
+              "name": "要素校验与方案合并",
+              "disabled": true,
+              "children": [
+                {
+                  "relName": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate",
+                  "name": "quality_gate",
+                  "type": "string",
+                  "content": ""
+                }
+              ]
+            }
+          ],
+          "type": 2
+        },
+        {
+          "outputs": {
+            "name": "",
+            "type": "string",
+            "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n【下一步】请补充/修正上述待补充或命中不足字段后重新分析（回复【重新分析】），或直接说明修改意见；质量达标后方可回复【确认执行】。\n\n{panel}"
+          },
+          "settings": {
+            "stream": false,
+            "output_mode": "text"
+          },
+          "terminatePlan": "useAnswerContent",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000109",
+              "relName": "table_text",
+              "name": "table_text",
+              "description": "配置方案表格",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000109",
+                "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "pending_required",
+              "name": "pending_required",
+              "description": "必填待补充",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+              "relName": "template_id",
+              "name": "template_id",
+              "description": "模板",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000106",
+                "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "quality_gate",
+              "name": "quality_gate",
+              "description": "要素提取质量门禁（节点108）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "ve_stats",
+              "name": "ve_stats",
+              "description": "要素校验统计（节点108）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000113",
+              "relName": "panel",
+              "name": "panel",
+              "description": "xsbot-panel 页面地址片段（质量未通过分支面板）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000113",
+                "a1b2c3d4-0000-4000-8000-000000000113,panel"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000113,panel"
+            }
+          ],
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+            "title": "结束(方案质量未通过)"
+          },
+          "type": 9,
+          "top_p": 1,
+          "top_k": 0.1,
+          "temperature": 0.1,
+          "position": {
+            "x": 5055,
+            "y": 170
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000118",
+          "dependencyData": []
+        },
+        {
+          "outputs": {
+            "name": "",
+            "type": "string",
+            "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n请核对以上方案：\n- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。\n\n{panel}"
+          },
+          "settings": {
+            "stream": false,
+            "output_mode": "text"
+          },
+          "terminatePlan": "useAnswerContent",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000101",
+                "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000109",
+              "relName": "table_text",
+              "name": "table_text",
+              "description": "配置方案表格",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000109",
+                "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000109,table_text"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "pending_required",
+              "name": "pending_required",
+              "description": "必填待补充",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,pending_required"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000106",
+              "relName": "template_id",
+              "name": "template_id",
+              "description": "模板",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000106",
+                "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000106,template_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "quality_gate",
+              "name": "quality_gate",
+              "description": "要素提取质量门禁（节点108）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,quality_gate"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000108",
+              "relName": "ve_stats",
+              "name": "ve_stats",
+              "description": "要素校验统计（节点108）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000108",
+                "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000108,ve_stats"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000112",
+              "relName": "panel",
+              "name": "panel",
+              "description": "xsbot-panel 页面地址片段",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000112",
+                "a1b2c3d4-0000-4000-8000-000000000112,panel"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000112,panel"
+            }
+          ],
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+            "title": "结束(方案已生成)"
+          },
+          "type": 9,
+          "top_p": 1,
+          "top_k": 0.1,
+          "temperature": 0.1,
+          "position": {
+            "x": 5415,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000111",
+          "dependencyData": []
+        }
+      ],
+      "edges": [
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000102",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000101"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000103",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000102"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000115",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000103"
+        },
+        {
+          "sourcePort": 0,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000115"
+        },
+        {
+          "sourcePort": -1,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000116",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000115"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000119",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000104"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000105",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000119"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000106",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000105"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000107",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000106"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000108",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000107"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000109",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000108"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000114",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000109"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000110",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000114"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000117",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000110"
+        },
+        {
+          "sourcePort": -1,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000112",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000117"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000111",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000112"
+        },
+        {
+          "sourcePort": 0,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000113",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000117"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000118",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000113"
+        }
+      ],
+      "flowId": "wf_sub_01",
+      "version": "1.6"
+    },
+    "userScope": 4,
+    "projectId": ""
+  },
+  "action": "A",
+  "orgId": "10000",
+  "projectId": "c436c568-c42c-497e-b55d-de21cd98fdd8"
+}

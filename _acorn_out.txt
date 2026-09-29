@@ -1,4 +1,0 @@
-Unexpected token (334:21)
-pos=15029
-loc={"line":334,"column":21}
-CTX "          {name:'月净增'一',type:'bar',data:netIncrease,barWidth:8,\r"

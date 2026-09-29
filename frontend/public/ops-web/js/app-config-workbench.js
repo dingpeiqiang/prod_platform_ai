@@ -171,7 +171,7 @@ const DEFAULT_TAB_BY_STAGE = (function(){
       return m;
     }
   } catch (e) {}
-  return { '00':'demand', '01':'scheme', '02':'config', '03':'audit', '05':'calibrate', '04':'approval', '06':'testrep', '07':'monitor', '08':'approval', '09':'monitor', '10':'monitor', '11':'approval' };
+  return { '00':'demand', '01':'scheme', '02':'config', '03':'audit', '05':'calibrate', '04':'approval', '06':'testrep', '07':'monitor', '08':'approval', '09':'monitor', '10':'monitor', '11':'approval', '12':'approval' };
 })()
 const activeTab = ref((window.__WB_QUERY && DEFAULT_TAB_BY_STAGE[window.__WB_QUERY.stage]) || (window.__WB_DEFAULT_TAB || 'config'))
 

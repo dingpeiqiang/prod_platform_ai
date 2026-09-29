@@ -1,0 +1,1485 @@
+{
+  "schema": {
+    "flowName": "产销品-监控运维",
+    "flowRemark": "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze，工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL product-alert.ttl(R-E00~E04) 推理，逐品分级+告警推送+建工单+根因一次返回）。query_product_monitor（自研模拟）→监控聚合分析（POST /product/monitor/analyze；接口不可达时按 702 出参本地兜底；输出 any_abnormal/monitor_lines/summary/告警与工单计数）→异常判定→异常分支：LLM 处置报告→面板→结束；正常分支：LLM 运营摘要→面板→结束。",
+    "flowIco": "workflowIcon",
+    "workFlowSchema": null,
+    "workFlowSchemaJSON": {
+      "nodes": [
+        {
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "req_id",
+              "description": "需求单号（必填，PLAN+yyyyMMddHHmmss+3位随机数；用于关联解析销售品ID与页面定位）",
+              "type": "string",
+              "required": true,
+              "content": ""
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "chat_id",
+              "description": "{chatId}",
+              "type": "string",
+              "required": true,
+              "content": ""
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "offer_id",
+              "description": "销售品ID（非必填；9位存量编码或配置落地返回的新销售品ID，缺省时后端按 req_id 关联解析）",
+              "type": "string",
+              "required": false,
+              "content": ""
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "date_range",
+              "description": "统计周期（非必填；缺省默认最近七天）",
+              "type": "string",
+              "required": false,
+              "content": "最近七天"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+            "title": "开始节点"
+          },
+          "position": {
+            "x": 15,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000701",
+          "dependencyData": [],
+          "type": 0
+        },
+        {
+          "outputs": [
+            {
+              "name": "offer_id",
+              "cname": "销售品ID",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "offer_name",
+              "cname": "产品名称",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "order_count",
+              "cname": "订单量",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "order_trend",
+              "cname": "订单量趋势",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "error_count",
+              "cname": "异常量",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "error_trend",
+              "cname": "异常量趋势",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "fee_error_rate",
+              "cname": "计费差错率",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "fee_trend",
+              "cname": "计费差错率趋势",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "alarm_list",
+              "cname": "告警列表",
+              "sechema": [
+                {
+                  "name": "item",
+                  "cname": "告警列表",
+                  "sechema": [
+                    {
+                      "name": "alarm_id",
+                      "cname": "告警单号",
+                      "sechema": [],
+                      "type": "string",
+                      "required": false
+                    },
+                    {
+                      "name": "alarm_level",
+                      "cname": "告警级别：high/middle/low",
+                      "sechema": [],
+                      "type": "string",
+                      "required": false
+                    },
+                    {
+                      "name": "content",
+                      "cname": "告警内容",
+                      "sechema": [],
+                      "type": "string",
+                      "required": false
+                    },
+                    {
+                      "name": "alarm_time",
+                      "cname": "告警时间",
+                      "sechema": [],
+                      "type": "string",
+                      "required": false
+                    }
+                  ],
+                  "type": "object",
+                  "required": false
+                }
+              ],
+              "type": "array",
+              "required": false
+            },
+            {
+              "name": "offers",
+              "cname": "逐品监控明细（多商品批量）",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            }
+          ],
+          "submit_way": "get",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "offer_id",
+              "name": "offer_id",
+              "description": "销售品ID（非必填）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号（offer_id 缺省时兜底解析）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "date_range",
+              "name": "date_range",
+              "description": "统计周期",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "metric",
+              "description": "指标默认all",
+              "type": "string",
+              "required": true,
+              "content": "all"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "监控查询",
+            "code": "query_product_monitor",
+            "description": "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表）；offer_id 缺省时按 req_id 关联解析全部商品，返回 offers[] 逐品指标",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000702",
+          "position": {
+            "x": 375,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/product/monitor"
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal",
+              "name": "any_abnormal",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines",
+              "name": "monitor_lines",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,summary",
+              "name": "summary",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,alert_count",
+              "name": "alert_count",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,work_order_count",
+              "name": "work_order_count",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id",
+              "name": "first_offer_id",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name",
+              "name": "first_offer_name",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain",
+              "name": "reasoning_chain",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,metrics",
+              "name": "metrics",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,metric_anomalies",
+              "name": "metric_anomalies",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,alert_hints",
+              "name": "alert_hints",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,suggestions",
+              "name": "suggestions",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,offers",
+              "name": "offers",
+              "type": "string"
+            },
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703,aggregate_json",
+              "name": "aggregate_json",
+              "type": "string"
+            }
+          ],
+          "code": "import json, urllib.request\nfrom typing import Any, Dict\n\nANALYZE_URL = 'http://172.30.8.52:6174/api/v1/appstore/product/monitor/analyze'\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        obj = json.loads(v)\n        if isinstance(obj, dict) and isinstance(obj.get('offers'), list):\n            return obj['offers']\n        return obj if isinstance(obj, list) else ([obj] if isinstance(obj, dict) else [])\n    except Exception:\n        return []\n\ndef _num(v):\n    try:\n        return float(str(v).strip() or 0)\n    except Exception:\n        return 0.0\n\ndef _fetch(req_id, offer_id, date_range):\n    body = json.dumps({'req_id': req_id, 'offer_id': offer_id, 'date_range': date_range}).encode('utf-8')\n    req = urllib.request.Request(ANALYZE_URL, data=body, method='POST',\n                                 headers={'Content-Type': 'application/json'})\n    with urllib.request.urlopen(req, timeout=30) as resp:\n        return json.loads(resp.read().decode('utf-8'))\n\nasync def main(args):\n    p = args.params\n    req_id = str(p.get('req_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    date_range = str(p.get('date_range') or '')\n    try:\n        info = _fetch(req_id, offer_id, date_range)\n    except Exception:\n        info = None\n    if info and info.get('offers'):\n        offers = info.get('offers') or []\n        first = next((o for o in offers if str(o.get('alert_level') or 'NONE') != 'NONE'),\n                     offers[0] if offers else {})\n        ret: Output = {\n            'any_abnormal': str(info.get('any_abnormal') or 'false'),\n            'monitor_lines': str(info.get('monitor_lines') or ''),\n            'summary': str(info.get('summary') or ''),\n            'alert_count': str(info.get('alert_count') or '0'),\n            'work_order_count': str(info.get('work_order_count') or '0'),\n            'first_offer_id': str(first.get('offer_id') or ''),\n            'first_offer_name': str(first.get('offer_name') or ''),\n            'reasoning_chain': json.dumps(info.get('reasoning_chain') or [], ensure_ascii=False),\n            'metrics': json.dumps(info.get('metrics') or [], ensure_ascii=False),\n            'metric_anomalies': json.dumps(info.get('metric_anomalies') or [], ensure_ascii=False),\n            'alert_hints': json.dumps(info.get('alert_hints') or [], ensure_ascii=False),\n            'suggestions': json.dumps(info.get('suggestions') or [], ensure_ascii=False),\n            'offers': json.dumps(offers, ensure_ascii=False),\n        }\n        ret['aggregate_json'] = json.dumps(info, ensure_ascii=False)\n        return ret\n    # ---- 本地兜底聚合（接口不可达）----\n    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n    if not offers and offer_id:\n        offers = [{'offer_id': offer_id, 'offer_name': str(p.get('offer_name') or ''),\n                   'error_count': str(p.get('error_count') or '0')}]\n    any_ab = False\n    lines = []\n    reasoning = []\n    metrics_all = []\n    anomalies_all = []\n    hints_all = []\n    suggestions_all = []\n    first = {}\n    for o in offers:\n        ec = _num(o.get('error_count'))\n        fee = _num(o.get('fee_error_rate'))\n        ab = ec != 0\n        level = 'P0' if (fee >= 0.05 or ec >= 10) else ('P1' if (fee >= 0.01 or ec >= 1) else '正常')\n        if ab and not first:\n            first = o\n        if ab:\n            any_ab = True\n        nm = str(o.get('offer_name') or o.get('offer_id') or '')\n        for rid, cond, concl in (\n                ('R-E00', '监控指标已采集：异常量 %s，计费差错率 %s' % (ec, fee),\n                 '命中 → 触发告警评估' if ab else '未命中 → 指标正常'),\n                ('R-E01', '异常量 %s ≥ 10 或计费差错率 %s ≥ 0.05' % (ec, fee),\n                 '命中 → 判为 P0 严重告警' if level == 'P0' else '未命中 → 未达 P0'),\n                ('R-E02', '异常量 %s ≥ 1 或计费差错率 %s ≥ 0.01' % (ec, fee),\n                 '命中 → 判为 P1 重要告警' if level == 'P1' else '未命中 → 未达 P1'),\n                ('R-E03', '指标趋势劣化（订单量下降/异常量上升/计费差错率上升）',\n                 '命中 → 判为 P2 提示告警' if (ab and level == '正常') else '未命中 → 趋势平稳'),\n                ('R-E04', 'P0/P1 强制建单，P2 观察即可',\n                 '命中 → 需建处置工单' if level in ('P0', 'P1') else '未命中 → 无需建单')):\n            reasoning.append({'offer_id': str(o.get('offer_id') or ''), 'offer_name': nm,\n                              'ruleId': rid, 'condition': cond, 'conclusion': concl})\n        lines.append('- %s：订单量 %s（%s），异常量 %s（%s），计费差错率 %s，等级 %s'\n                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n                        str(o.get('fee_error_rate') or ''), '异常' if ab else '正常'))\n        oid = str(o.get('offer_id') or '')\n        for mk, mname, munit, mrule in (\n                ('revenue', '收入', '元', 'R-O01'), ('order_cnt', '订单量', '笔', 'R-O01'),\n                ('new_users', '新增用户', '户', 'R-O01'), ('churn_users', '流失用户', '户', 'R-O02'),\n                ('active_users', '活跃用户', '户', 'R-O05'), ('arpu', 'ARPU', '元', 'R-O04'),\n                ('attach_rate', '绑定率', '%', 'R-O03'), ('net_growth', '净增用户', '户', 'R-O01')):\n            metrics_all.append({'offer_id': oid, 'offer_name': nm, 'metric': mk, 'name': mname, 'unit': munit})\n        if ab:\n            anomalies_all.append({'offer_id': oid, 'offer_name': nm, 'metric': 'error_count',\n                                  'name': '异常量', 'value': str(o.get('error_count') or ''),\n                                  'trend': str(o.get('error_trend') or ''), 'threshold_ref': 'R-E02'})\n            hints_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E02', 'level': level,\n                              'hint': level + ' 告警：异常量 ' + str(o.get('error_count') or '') + '，请及时处置'})\n            suggestions_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-O01', 'name': '渠道促销建议',\n                                    'condition': '订单/收入劣化', 'advice': '加大渠道投放与限时促销'})\n        else:\n            hints_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E00', 'level': '正常',\n                              'hint': '运行正常，未触发告警'})\n    if not first and offers:\n        first = offers[0]\n    ret: Output = {\n        'any_abnormal': 'true' if any_ab else 'false',\n        'monitor_lines': chr(10).join(lines),\n        'summary': '监控完成（本地兜底聚合，聚合分析接口不可达）',\n        'alert_count': '0',\n        'work_order_count': '0',\n        'first_offer_id': str(first.get('offer_id') or ''),\n        'first_offer_name': str(first.get('offer_name') or ''),\n        'reasoning_chain': json.dumps(reasoning, ensure_ascii=False),\n        'metrics': json.dumps(metrics_all, ensure_ascii=False),\n        'metric_anomalies': json.dumps(anomalies_all, ensure_ascii=False),\n        'alert_hints': json.dumps(hints_all, ensure_ascii=False),\n        'suggestions': json.dumps(suggestions_all, ensure_ascii=False),\n        'offers': json.dumps(offers, ensure_ascii=False),\n    }\n    ret['aggregate_json'] = json.dumps({\n        'any_abnormal': ret['any_abnormal'], 'monitor_lines': ret['monitor_lines'],\n        'summary': ret['summary'], 'alert_count': ret['alert_count'],\n        'work_order_count': ret['work_order_count'], 'first_offer_id': ret['first_offer_id'],\n        'first_offer_name': ret['first_offer_name'], 'reasoning_chain': reasoning,\n        'metrics': metrics_all, 'metric_anomalies': anomalies_all,\n        'alert_hints': hints_all, 'suggestions': suggestions_all, 'offers': offers\n    }, ensure_ascii=False)\n    return ret\n\n",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "offer_id",
+              "name": "offer_id",
+              "description": "销售品ID（非必填）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "date_range",
+              "name": "date_range",
+              "description": "统计周期",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+              "relName": "offers",
+              "name": "offers",
+              "description": "逐品监控明细（节点702；接口不可达时本地兜底聚合）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000702",
+                "a1b2c3d4-0000-4000-8000-000000000702,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offers"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+              "relName": "error_count",
+              "name": "error_count",
+              "description": "异常量（单体兜底，节点702）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000702",
+                "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,error_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
+              "relName": "offer_name",
+              "name": "offer_name",
+              "description": "产品名称（单体兜底，节点702）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000702",
+                "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000702,offer_name"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "监控聚合分析"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000703",
+          "position": {
+            "x": 735,
+            "y": 300
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "flowJson": null,
+          "inputs": {
+            "condition": [
+              {
+                "sourcePort": -1,
+                "itemflag": true,
+                "logic": 1,
+                "conditions": [
+                  {
+                    "left": {
+                      "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                      "relName": "any_abnormal",
+                      "nameValue": [
+                        "a1b2c3d4-0000-4000-8000-000000000703",
+                        "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal"
+                      ],
+                      "currValue": "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal",
+                      "name": "",
+                      "description": "",
+                      "type": "ref",
+                      "content": ""
+                    },
+                    "right": {
+                      "blockID": "",
+                      "relName": "",
+                      "nameValue": "",
+                      "currValue": ",",
+                      "name": "",
+                      "description": "",
+                      "type": "string",
+                      "content": "true"
+                    },
+                    "conditions": [
+                      {
+                        "value": 1,
+                        "label": "等于"
+                      },
+                      {
+                        "value": 2,
+                        "label": "不等于"
+                      },
+                      {
+                        "value": 3,
+                        "label": "长度大于"
+                      },
+                      {
+                        "value": 4,
+                        "label": "长度大于等于"
+                      },
+                      {
+                        "value": 5,
+                        "label": "长度小于"
+                      },
+                      {
+                        "value": 6,
+                        "label": "长度小于等于"
+                      },
+                      {
+                        "value": 7,
+                        "label": "包含"
+                      },
+                      {
+                        "value": 8,
+                        "label": "不包含"
+                      },
+                      {
+                        "value": 9,
+                        "label": "为空"
+                      },
+                      {
+                        "value": 10,
+                        "label": "不为空"
+                      },
+                      {
+                        "value": 15,
+                        "label": "长度等于"
+                      }
+                    ],
+                    "operator": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "nodeMeta": {
+            "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+            "title": "异常判定"
+          },
+          "position": {
+            "x": 1095,
+            "y": 300
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000704",
+          "dependencyData": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000703",
+              "name": "监控聚合分析",
+              "disabled": true,
+              "children": [
+                {
+                  "relName": "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal",
+                  "name": "any_abnormal",
+                  "type": "string",
+                  "content": ""
+                }
+              ]
+            }
+          ],
+          "type": 2
+        },
+        {
+          "outputs": [
+            {
+              "name": "alert_report",
+              "description": "异常处置报告正文",
+              "type": "string",
+              "content": ""
+            }
+          ],
+          "max_tokens": 2048,
+          "flowJson": null,
+          "inputs": {
+            "llmParam": [
+              {
+                "name": "prompt",
+                "type": "string",
+                "content": "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，metrics={metrics}。\n输出结构：\n1. 一句总述（发现异常商品数、异常指标数、已推送告警数、已建工单数）。\n2. 【告警提示】逐行引用 alert_hints（含商品、等级 P0/P1/P2、提示语 hint），P0 置顶；alert_hints 为空时按 monitor_lines 归纳一句。\n3. 【指标概览】按商品分组，取 metrics（含 name/value/unit/trend/delta_pct）；每品一行概览其关键指标（收入、订单量、新增用户、流失用户、ARPU、绑定率），趋势/环比照抄。\n4. 【指标异常数据】取 metric_anomalies（含 name/value/unit/delta_pct/trend/threshold_ref），逐行「商品·指标 name：value unit，环比 delta_pct（trend），依据 threshold_ref」；无异常写「无」。\n5. 【优化建议】取 suggestions（含 name/condition/advice/ruleId），逐行「建议 name（ruleId）：advice」，须注明由本体推理给出。\n6. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n7. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 alert_hints 与本体推理依据为准。\n8. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n输出要求：仅输出报告正文（对应出参 alert_report）。"
+              }
+            ],
+            "inputParameters": [
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "any_abnormal",
+                "name": "any_abnormal",
+                "description": "是否异常（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,any_abnormal"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "alert_count",
+                "name": "alert_count",
+                "description": "已推送告警数（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,alert_count"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,alert_count"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "work_order_count",
+                "name": "work_order_count",
+                "description": "已建工单数（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,work_order_count"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,work_order_count"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "monitor_lines",
+                "name": "monitor_lines",
+                "description": "逐品监控分析明细（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "summary",
+                "name": "summary",
+                "description": "聚合结论（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,summary"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,summary"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "reasoning_chain",
+                "name": "reasoning_chain",
+                "description": "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "metrics",
+                "name": "metrics",
+                "description": "逐品指标概览（节点703，name/value/unit/trend/delta_pct）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,metrics"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,metrics"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "metric_anomalies",
+                "name": "metric_anomalies",
+                "description": "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,metric_anomalies"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,metric_anomalies"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "alert_hints",
+                "name": "alert_hints",
+                "description": "告警提示（节点703，ruleId/level/hint）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,alert_hints"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,alert_hints"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "suggestions",
+                "name": "suggestions",
+                "description": "本体优化建议（节点703，ruleId/name/condition/advice）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+              }
+            ]
+          },
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "异常处置报告",
+            "title": "异常处置报告"
+          },
+          "model": "qwen3-30b-a3b",
+          "temperature": 0.2,
+          "top_p": 0.5,
+          "position": {
+            "x": 1455,
+            "y": 430
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000705",
+          "dependencyData": [],
+          "type": 1
+        },
+        {
+          "outputs": [
+            {
+              "name": "ops_summary",
+              "description": "运营摘要正文",
+              "type": "string",
+              "content": ""
+            }
+          ],
+          "max_tokens": 2048,
+          "flowJson": null,
+          "inputs": {
+            "llmParam": [
+              {
+                "name": "prompt",
+                "type": "string",
+                "content": "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}，metrics={metrics}，alert_hints={alert_hints}，suggestions={suggestions}。\n格式要求：\n1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n2. 【指标概览】按商品分组，取 metrics（name/value/unit/trend），每品一行概览收入、订单量、新增用户、流失用户、ARPU、绑定率等关键指标。\n3. 【告警提示】引用 alert_hints 中 level=正常 的提示，归纳「各品未触发告警」。\n4. 【优化建议】若 suggestions 含非 R-O00 建议则逐行「建议 name（ruleId）：advice」；仅 R-O00 时写「维持现有运营策略」。\n5. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n6. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n7. 禁止原样拼接值串，禁止残留 { 占位符。\n输出要求：仅输出运营摘要正文（对应出参 ops_summary）。"
+              }
+            ],
+            "inputParameters": [
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "monitor_lines",
+                "name": "monitor_lines",
+                "description": "逐品监控明细（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "summary",
+                "name": "summary",
+                "description": "聚合结论（节点703）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,summary"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,summary"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "reasoning_chain",
+                "name": "reasoning_chain",
+                "description": "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,reasoning_chain"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "metrics",
+                "name": "metrics",
+                "description": "逐品指标概览（节点703，name/value/unit/trend）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,metrics"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,metrics"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "alert_hints",
+                "name": "alert_hints",
+                "description": "告警提示（节点703，ruleId/level/hint）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,alert_hints"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,alert_hints"
+              },
+              {
+                "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+                "relName": "suggestions",
+                "name": "suggestions",
+                "description": "本体优化建议（节点703，ruleId/name/advice）",
+                "type": "ref",
+                "required": true,
+                "content": "",
+                "nameValue": [
+                  "a1b2c3d4-0000-4000-8000-000000000703",
+                  "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+                ],
+                "currValue": "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+              }
+            ]
+          },
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "运营摘要生成(正常分支)",
+            "title": "运营摘要生成(正常分支)"
+          },
+          "model": "qwen3-30b-a3b",
+          "temperature": 0.2,
+          "top_p": 0.5,
+          "position": {
+            "x": 1455,
+            "y": 170
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000706",
+          "dependencyData": [],
+          "type": 1
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000707,panel",
+              "name": "panel",
+              "type": "string"
+            }
+          ],
+          "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "chat_id",
+              "name": "chat_id",
+              "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,chat_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,chat_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_id",
+              "name": "offer_id",
+              "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_name",
+              "name": "offer_name",
+              "description": "产品名称（用于面板 url 的 name）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "offers",
+              "name": "offers",
+              "description": "逐品名册 offers[]（含 offer_id；用于面板 url 的 offers，多品定位）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,offers"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "构建页面地址面板(异常)"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000707",
+          "position": {
+            "x": 1815,
+            "y": 430
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "name": "record_id",
+              "cname": "存储记录ID",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            }
+          ],
+          "submit_way": "post",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "执行批次标识（=开始节点 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "node_name",
+              "description": "环节名=monitor（监控运维）",
+              "type": "string",
+              "required": true,
+              "content": "monitor"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "aggregate_json",
+              "name": "result_json",
+              "description": "监控聚合结果JSON（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,aggregate_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,aggregate_json"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "status",
+              "description": "本环节状态=ok",
+              "type": "string",
+              "required": true,
+              "content": "ok"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "监控结果存储(异常)",
+            "code": "save_node_result",
+            "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=monitor（监控运维，最终态）；result_json=监控聚合结果封包（含 any_abnormal/metric_anomalies/alert_hints/suggestions/reasoning_chain/offers）",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000711",
+          "position": {
+            "x": 2175,
+            "y": 430
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
+        },
+        {
+          "outputs": [
+            {
+              "relName": "a1b2c3d4-0000-4000-8000-000000000708,panel",
+              "name": "panel",
+              "type": "string"
+            }
+          ],
+          "code": "from typing import Any, Dict\n\ndef _csv(v):\n    # offers 入参可能是 JSON 数组字符串或已归一数组，拍平为 offer_id 逗号串\n    import json as _json\n    if isinstance(v, str):\n        s = v.strip()\n        if not s:\n            return ''\n        try:\n            v = _json.loads(s)\n        except Exception:\n            v = s\n    if isinstance(v, dict) and isinstance(v.get('offers'), list):\n        v = v['offers']\n    if not isinstance(v, list):\n        return ''\n    ids = []\n    for o in v:\n        oid = str((o or {}).get('offer_id') or '') if isinstance(o, dict) else ''\n        if oid:\n            ids.append(oid)\n    return ','.join(ids)\n\nasync def main(args):\n    p = args.params\n    chat_id = str(p.get('chat_id') or '')\n    offer_id = str(p.get('offer_id') or '')\n    offer_name = str(p.get('offer_name') or '')\n    req_id = str(p.get('req_id') or '')\n    offers_csv = _csv(p.get('offers'))\n    qs = ('?chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offer_id:\n        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id + '&req_id=' + req_id + '&stage=07&view=stage')\n    if offers_csv:\n        qs += '&offers=' + offers_csv\n    biz_url = 'http://szyg-stq-test.anhuitelecom.com:10001/prod-ai/ops-web/config-workbench.html' + qs\n    panel = (\n        \"\\n\\n```xsbot-panel\\n\"\n        + '{\"version\":\"1.0\",\"message_id\":\"' + chat_id + '\",'\n        + '\"panels\":[{\"panel\":\"right\",\"mode\":\"external\",\"url\":\"' + biz_url + '\",\"title\":\"单品运营看板\"}]}'\n        + \"\\n```\\n\"\n    )\n    result: Output = {'panel': panel}\n    return result\n",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "chat_id",
+              "name": "chat_id",
+              "description": "会话消息ID（用于 xsbot-panel message_id 与 url 的 chatId）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,chat_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,chat_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "需求单号/方案批次号（用于面板 url 的 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_id",
+              "name": "offer_id",
+              "description": "销售品ID/需求单号（用于面板 url 的 offer_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_name",
+              "name": "offer_name",
+              "description": "产品名称（用于面板 url 的 name）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "offers",
+              "name": "offers",
+              "description": "逐品名册 offers[]（含 offer_id；用于面板 url 的 offers，多品定位）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,offers"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,offers"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "description": "编写代码，处理输入变量来生成返回值",
+            "title": "构建页面地址面板(正常)"
+          },
+          "language": 1,
+          "id": "a1b2c3d4-0000-4000-8000-000000000708",
+          "position": {
+            "x": 1815,
+            "y": 170
+          },
+          "dependencyData": [],
+          "type": 6
+        },
+        {
+          "outputs": [
+            {
+              "name": "record_id",
+              "cname": "存储记录ID",
+              "sechema": [],
+              "type": "string",
+              "required": false
+            }
+          ],
+          "submit_way": "post",
+          "flowJson": null,
+          "authentic_info": "",
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "执行批次标识（=开始节点 req_id）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "node_name",
+              "description": "环节名=monitor（监控运维）",
+              "type": "string",
+              "required": true,
+              "content": "monitor"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "aggregate_json",
+              "name": "result_json",
+              "description": "监控聚合结果JSON（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,aggregate_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,aggregate_json"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "status",
+              "description": "本环节状态=ok",
+              "type": "string",
+              "required": true,
+              "content": "ok"
+            }
+          ],
+          "checkErr": false,
+          "nodeMeta": {
+            "title": "监控结果存储(正常)",
+            "code": "save_node_result",
+            "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=monitor（监控运维，最终态）；result_json=监控聚合结果封包（含 metrics/alert_hints/suggestions/reasoning_chain/offers）",
+            "version": "1"
+          },
+          "authentic_info_new": {
+            "auth_type": "1",
+            "auth_info": {
+              "inparams": [],
+              "params": [],
+              "outparams": []
+            }
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000712",
+          "position": {
+            "x": 2175,
+            "y": 170
+          },
+          "dependencyData": [],
+          "type": 3,
+          "url": "http://172.30.8.52:6174/api/v1/appstore/result/save"
+        },
+        {
+          "outputs": {
+            "name": "",
+            "type": "string",
+            "content": "【环节9/9·监控运维】✅ 执行成功\n\n【销售品运行监控】{offer_id}（{date_range}）\n- 首个异常商品：{offer_name}　已推送告警 {alert_count} 条　已建工单 {work_order_count} 个\n\n{alert_report}\n\n> **建议处理：** 已按 SWRL 分级推送告警并闭环建单，建议按工单执行后回复【查询监控】回检。\n\n{panel}"
+          },
+          "settings": {
+            "stream": false,
+            "output_mode": "text"
+          },
+          "terminatePlan": "useAnswerContent",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_name",
+              "name": "offer_name",
+              "description": "产品名称（首个异常商品，节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_name"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "first_offer_id",
+              "name": "offer_id",
+              "description": "销售品ID（首个异常商品，节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,first_offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "date_range",
+              "name": "date_range",
+              "description": "统计周期",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,date_range"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "monitor_lines",
+              "name": "monitor_lines",
+              "description": "逐品监控分析明细（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "alert_count",
+              "name": "alert_count",
+              "description": "已推送告警数（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,alert_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,alert_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "work_order_count",
+              "name": "work_order_count",
+              "description": "已建工单数（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,work_order_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,work_order_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000705",
+              "relName": "alert_report",
+              "name": "alert_report",
+              "description": "异常处置报告",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000705",
+                "a1b2c3d4-0000-4000-8000-000000000705,alert_report"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000705,alert_report"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000707",
+              "relName": "panel",
+              "name": "panel",
+              "description": "xsbot-panel 页面地址片段",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000707",
+                "a1b2c3d4-0000-4000-8000-000000000707,panel"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000707,panel"
+            }
+          ],
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+            "title": "结束(异常-已分级处置)"
+          },
+          "type": 9,
+          "top_p": 1,
+          "top_k": 0.1,
+          "temperature": 0.1,
+          "position": {
+            "x": 2535,
+            "y": 430
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000709",
+          "dependencyData": []
+        },
+        {
+          "outputs": {
+            "name": "",
+            "type": "string",
+            "content": "【环节9/9·监控运维】✅ 执行成功\n\n{ops_summary}\n\n【逐品运行监控明细】\n{monitor_lines}\n\n> **建议处理：** 运行指标正常，无需人工干预；如需刷新可回复【查询监控】\n\n{panel}"
+          },
+          "settings": {
+            "stream": false,
+            "output_mode": "text"
+          },
+          "terminatePlan": "useAnswerContent",
+          "flowJson": null,
+          "inputs": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000706",
+              "relName": "ops_summary",
+              "name": "ops_summary",
+              "description": "运营摘要",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000706",
+                "a1b2c3d4-0000-4000-8000-000000000706,ops_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000706,ops_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000703",
+              "relName": "monitor_lines",
+              "name": "monitor_lines",
+              "description": "逐品监控明细（节点703）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000703",
+                "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000703,monitor_lines"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000708",
+              "relName": "panel",
+              "name": "panel",
+              "description": "xsbot-panel 页面地址片段",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000708",
+                "a1b2c3d4-0000-4000-8000-000000000708,panel"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000708,panel"
+            }
+          ],
+          "checkErr": false,
+          "prompt_system": "",
+          "nodeMeta": {
+            "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+            "title": "结束(正常-运营报告)"
+          },
+          "type": 9,
+          "top_p": 1,
+          "top_k": 0.1,
+          "temperature": 0.1,
+          "position": {
+            "x": 2535,
+            "y": 170
+          },
+          "id": "a1b2c3d4-0000-4000-8000-000000000710",
+          "dependencyData": []
+        }
+      ],
+      "edges": [
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000702",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000701"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000703",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000702"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000704",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000703"
+        },
+        {
+          "sourcePort": 0,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000706",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000704"
+        },
+        {
+          "sourcePort": -1,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000705",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000704"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000707",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000705"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000711",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000707"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000709",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000711"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000708",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000706"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000712",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000708"
+        },
+        {
+          "sourcePort": null,
+          "endId": "a1b2c3d4-0000-4000-8000-000000000710",
+          "startId": "a1b2c3d4-0000-4000-8000-000000000712"
+        }
+      ],
+      "flowId": "wf_sub_07",
+      "version": "1.6"
+    },
+    "userScope": 4,
+    "projectId": ""
+  },
+  "action": "A",
+  "orgId": "10000",
+  "projectId": "c436c568-c42c-497e-b55d-de21cd98fdd8"
+}

@@ -14,6 +14,7 @@
     "08": { "tab": "approval",  "title": "上线审批看板", "view": "stage" },
     "09": { "tab": "monitor",   "title": "存量产品详情", "view": "stage" },
     "10": { "tab": "monitor",   "title": "存量合规看板", "view": "stage" },
-    "11": { "tab": "approval",  "title": "需求工单审批", "view": "stage" }
+    "11": { "tab": "approval",  "title": "需求工单审批", "view": "stage" },
+    "12": { "tab": "approval",  "title": "优化工单审批", "view": "stage" }
   }
 }

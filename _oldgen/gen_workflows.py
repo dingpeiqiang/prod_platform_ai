@@ -4168,7 +4168,7 @@ s11f.append(llm_node(1105, "审批发起回执渲染",
      inp("status", "提交状态", ref_block=nid(1104), ref_rel="status")],
     [out("approval_receipt", "审批发起回执正文")]))
 # xsbot-panel 独立代码节点（无 offer 场景，页面以 req_id 定位）
-s11f.append(panel_code_node(1109, "构建页面地址面板", "01",
+s11f.append(panel_code_node(1109, "构建页面地址面板", "00",
     panel_inputs(1101, req_seq=1101), biz_title="需求工单审批"))
 s11f.append(end_node(1106, "结束(需求审批已发起)",
     [inp("approval_receipt", "审批发起回执正文", ref_block=nid(1105), ref_rel="approval_receipt"),

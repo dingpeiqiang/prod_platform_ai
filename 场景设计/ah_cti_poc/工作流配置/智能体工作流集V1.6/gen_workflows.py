@@ -3106,8 +3106,13 @@ CODE_OP_MONITOR_ANALYZE = (
     "            'first_offer_id': str(first.get('offer_id') or ''),\n"
     "            'first_offer_name': str(first.get('offer_name') or ''),\n"
     "            'reasoning_chain': json.dumps(info.get('reasoning_chain') or [], ensure_ascii=False),\n"
+    "            'metrics': json.dumps(info.get('metrics') or [], ensure_ascii=False),\n"
+    "            'metric_anomalies': json.dumps(info.get('metric_anomalies') or [], ensure_ascii=False),\n"
+    "            'alert_hints': json.dumps(info.get('alert_hints') or [], ensure_ascii=False),\n"
+    "            'suggestions': json.dumps(info.get('suggestions') or [], ensure_ascii=False),\n"
     "            'offers': json.dumps(offers, ensure_ascii=False),\n"
     "        }\n"
+    "        ret['aggregate_json'] = json.dumps(info, ensure_ascii=False)\n"
     "        return ret\n"
     "    # ---- 本地兜底聚合（接口不可达）----\n"
     "    offers = [o for o in _load(p.get('offers')) if isinstance(o, dict)]\n"
@@ -3117,6 +3122,10 @@ CODE_OP_MONITOR_ANALYZE = (
     "    any_ab = False\n"
     "    lines = []\n"
     "    reasoning = []\n"
+    "    metrics_all = []\n"
+    "    anomalies_all = []\n"
+    "    hints_all = []\n"
+    "    suggestions_all = []\n"
     "    first = {}\n"
     "    for o in offers:\n"
     "        ec = _num(o.get('error_count'))\n"
@@ -3145,6 +3154,24 @@ CODE_OP_MONITOR_ANALYZE = (
     "                     % (nm, str(o.get('order_count') or ''), str(o.get('order_trend') or ''),\n"
     "                        str(o.get('error_count') or ''), str(o.get('error_trend') or ''),\n"
     "                        str(o.get('fee_error_rate') or ''), '异常' if ab else '正常'))\n"
+    "        oid = str(o.get('offer_id') or '')\n"
+    "        for mk, mname, munit, mrule in (\n"
+    "                ('revenue', '收入', '元', 'R-O01'), ('order_cnt', '订单量', '笔', 'R-O01'),\n"
+    "                ('new_users', '新增用户', '户', 'R-O01'), ('churn_users', '流失用户', '户', 'R-O02'),\n"
+    "                ('active_users', '活跃用户', '户', 'R-O05'), ('arpu', 'ARPU', '元', 'R-O04'),\n"
+    "                ('attach_rate', '绑定率', '%', 'R-O03'), ('net_growth', '净增用户', '户', 'R-O01')):\n"
+    "            metrics_all.append({'offer_id': oid, 'offer_name': nm, 'metric': mk, 'name': mname, 'unit': munit})\n"
+    "        if ab:\n"
+    "            anomalies_all.append({'offer_id': oid, 'offer_name': nm, 'metric': 'error_count',\n"
+    "                                  'name': '异常量', 'value': str(o.get('error_count') or ''),\n"
+    "                                  'trend': str(o.get('error_trend') or ''), 'threshold_ref': 'R-E02'})\n"
+    "            hints_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E02', 'level': level,\n"
+    "                              'hint': level + ' 告警：异常量 ' + str(o.get('error_count') or '') + '，请及时处置'})\n"
+    "            suggestions_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-O01', 'name': '渠道促销建议',\n"
+    "                                    'condition': '订单/收入劣化', 'advice': '加大渠道投放与限时促销'})\n"
+    "        else:\n"
+    "            hints_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E00', 'level': '正常',\n"
+    "                              'hint': '运行正常，未触发告警'})\n"
     "    if not first and offers:\n"
     "        first = offers[0]\n"
     "    ret: Output = {\n"
@@ -3156,8 +3183,20 @@ CODE_OP_MONITOR_ANALYZE = (
     "        'first_offer_id': str(first.get('offer_id') or ''),\n"
     "        'first_offer_name': str(first.get('offer_name') or ''),\n"
     "        'reasoning_chain': json.dumps(reasoning, ensure_ascii=False),\n"
+    "        'metrics': json.dumps(metrics_all, ensure_ascii=False),\n"
+    "        'metric_anomalies': json.dumps(anomalies_all, ensure_ascii=False),\n"
+    "        'alert_hints': json.dumps(hints_all, ensure_ascii=False),\n"
+    "        'suggestions': json.dumps(suggestions_all, ensure_ascii=False),\n"
     "        'offers': json.dumps(offers, ensure_ascii=False),\n"
     "    }\n"
+    "    ret['aggregate_json'] = json.dumps({\n"
+    "        'any_abnormal': ret['any_abnormal'], 'monitor_lines': ret['monitor_lines'],\n"
+    "        'summary': ret['summary'], 'alert_count': ret['alert_count'],\n"
+    "        'work_order_count': ret['work_order_count'], 'first_offer_id': ret['first_offer_id'],\n"
+    "        'first_offer_name': ret['first_offer_name'], 'reasoning_chain': reasoning,\n"
+    "        'metrics': metrics_all, 'metric_anomalies': anomalies_all,\n"
+    "        'alert_hints': hints_all, 'suggestions': suggestions_all, 'offers': offers\n"
+    "    }, ensure_ascii=False)\n"
     "    return ret\n"
     "\n"
 )
@@ -3202,19 +3241,24 @@ s7f.append(code_node(703, "监控聚合分析", CODE_OP_MONITOR_ANALYZE,
     [code_out("any_abnormal", 703), code_out("monitor_lines", 703), code_out("summary", 703),
      code_out("alert_count", 703), code_out("work_order_count", 703),
      code_out("first_offer_id", 703), code_out("first_offer_name", 703),
-     code_out("reasoning_chain", 703), code_out("offers", 703)]))
+     code_out("reasoning_chain", 703), code_out("metrics", 703),
+      code_out("metric_anomalies", 703), code_out("alert_hints", 703),
+      code_out("suggestions", 703), code_out("offers", 703), code_out("aggregate_json", 703)]))
 s7f.append(selector_node2(704, "异常判定",
     [dep_node(703, "监控聚合分析", ["any_abnormal"])],
     [(-1, [cond_item(cond_ref(703, "any_abnormal", "监控聚合分析"), 1, cond_str("true"))])]))
 # ---- 异常分支 ----
 s7f.append(llm_node(705, "异常处置报告",
-    "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}。\n"
+    "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，metrics={metrics}。\n"
     "输出结构：\n"
-    "1. 一句总述（发现异常商品数、已推送告警数、已建工单数）。\n"
-    "2. 【逐品告警与处置】逐行引用 monitor_lines（含商品、指标、等级 P0/P1/P2、告警单号、工单号），P0 置顶。\n"
-    "3. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n"
-    "4. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 monitor_lines 与本体推理依据为准。\n"
-    "5. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
+    "1. 一句总述（发现异常商品数、异常指标数、已推送告警数、已建工单数）。\n"
+    "2. 【告警提示】逐行引用 alert_hints（含商品、等级 P0/P1/P2、提示语 hint），P0 置顶；alert_hints 为空时按 monitor_lines 归纳一句。\n"
+    "3. 【指标概览】按商品分组，取 metrics（含 name/value/unit/trend/delta_pct）；每品一行概览其关键指标（收入、订单量、新增用户、流失用户、ARPU、绑定率），趋势/环比照抄。\n"
+    "4. 【指标异常数据】取 metric_anomalies（含 name/value/unit/delta_pct/trend/threshold_ref），逐行「商品·指标 name：value unit，环比 delta_pct（trend），依据 threshold_ref」；无异常写「无」。\n"
+    "5. 【优化建议】取 suggestions（含 name/condition/advice/ruleId），逐行「建议 name（ruleId）：advice」，须注明由本体推理给出。\n"
+    "6. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n"
+    "7. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 alert_hints 与本体推理依据为准。\n"
+    "8. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
     "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n"
     "输出要求：仅输出报告正文（对应出参 alert_report）。",
     [inp("any_abnormal", "是否异常（节点703）", ref_block=nid(703), ref_rel="any_abnormal"),
@@ -3222,31 +3266,59 @@ s7f.append(llm_node(705, "异常处置报告",
      inp("work_order_count", "已建工单数（节点703）", ref_block=nid(703), ref_rel="work_order_count"),
      inp("monitor_lines", "逐品监控分析明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
      inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
-     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain")],
+     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain"),
+     inp("metrics", "逐品指标概览（节点703，name/value/unit/trend/delta_pct）", ref_block=nid(703), ref_rel="metrics"),
+     inp("metric_anomalies", "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）", ref_block=nid(703), ref_rel="metric_anomalies"),
+     inp("alert_hints", "告警提示（节点703，ruleId/level/hint）", ref_block=nid(703), ref_rel="alert_hints"),
+     inp("suggestions", "本体优化建议（节点703，ruleId/name/condition/advice）", ref_block=nid(703), ref_rel="suggestions")],
     [out("alert_report", "异常处置报告正文")]))
 # ---- 正常分支 ----
 s7f.append(llm_node(706, "运营摘要生成(正常分支)",
-    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}。\n"
+    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}，metrics={metrics}，alert_hints={alert_hints}，suggestions={suggestions}。\n"
     "格式要求：\n"
     "1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n"
-    "2. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n"
-    "3. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
-    "4. 禁止原样拼接值串，禁止残留 { 占位符。\n"
+    "2. 【指标概览】按商品分组，取 metrics（name/value/unit/trend），每品一行概览收入、订单量、新增用户、流失用户、ARPU、绑定率等关键指标。\n"
+    "3. 【告警提示】引用 alert_hints 中 level=正常 的提示，归纳「各品未触发告警」。\n"
+    "4. 【优化建议】若 suggestions 含非 R-O00 建议则逐行「建议 name（ruleId）：advice」；仅 R-O00 时写「维持现有运营策略」。\n"
+    "5. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n"
+    "6. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
+    "7. 禁止原样拼接值串，禁止残留 { 占位符。\n"
     "输出要求：仅输出运营摘要正文（对应出参 ops_summary）。",
     [inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
      inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
-     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain")],
+     inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain"),
+     inp("metrics", "逐品指标概览（节点703，name/value/unit/trend）", ref_block=nid(703), ref_rel="metrics"),
+     inp("alert_hints", "告警提示（节点703，ruleId/level/hint）", ref_block=nid(703), ref_rel="alert_hints"),
+     inp("suggestions", "本体优化建议（节点703，ruleId/name/advice）", ref_block=nid(703), ref_rel="suggestions")],
     [out("ops_summary", "运营摘要正文")]))
 # xsbot-panel 独立代码节点（异常分支）
 s7f.append(panel_code_node(707, "构建页面地址面板(异常)", "07",
     panel_inputs(701, off_seq=703, off_rel="first_offer_id", name_seq=703, name_rel="first_offer_name",
                  req_seq=701, offers_seq=703),
     biz_title="单品运营看板"))
+# 监控运维结果存储（node_name=monitor，最终态）：保存监控聚合结果（含本体 R-O 优化建议），
+# 供 wf_sub_14【发起优化工单】自查监控结果并取回建议原文（建议→工单可追溯）。
+s7f.append(plugin_node(711, "监控结果存储(异常)", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=monitor（监控运维，最终态）；result_json=监控聚合结果封包（含 any_abnormal/metric_anomalies/alert_hints/suggestions/reasoning_chain/offers）",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(701), ref_rel="req_id"),
+     inp("node_name", "环节名=monitor（监控运维）", content="monitor"),
+     inp("result_json", "监控聚合结果JSON（节点703）", ref_block=nid(703), ref_rel="aggregate_json"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("record_id", "存储记录ID", "string")]))
 # xsbot-panel 独立代码节点（正常分支）
 s7f.append(panel_code_node(708, "构建页面地址面板(正常)", "07",
     panel_inputs(701, off_seq=703, off_rel="first_offer_id", name_seq=703, name_rel="first_offer_name",
                  req_seq=701, offers_seq=703),
     biz_title="单品运营看板"))
+s7f.append(plugin_node(712, "监控结果存储(正常)", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=monitor（监控运维，最终态）；result_json=监控聚合结果封包（含 metrics/alert_hints/suggestions/reasoning_chain/offers）",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(701), ref_rel="req_id"),
+     inp("node_name", "环节名=monitor（监控运维）", content="monitor"),
+     inp("result_json", "监控聚合结果JSON（节点703）", ref_block=nid(703), ref_rel="aggregate_json"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("record_id", "存储记录ID", "string")]))
 s7f.append(end_node(709, "结束(异常-已分级处置)",
     [inp("offer_name", "产品名称（首个异常商品，节点703）", ref_block=nid(703), ref_rel="first_offer_name"),
      inp("offer_id", "销售品ID（首个异常商品，节点703）", ref_block=nid(703), ref_rel="first_offer_id"),
@@ -3273,7 +3345,7 @@ s7f.append(end_node(710, "结束(正常-运营报告)",
 files7f = workflow(
     "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze，工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL product-alert.ttl(R-E00~E04) 推理，逐品分级+告警推送+建工单+根因一次返回）。query_product_monitor（自研模拟）→监控聚合分析（POST /product/monitor/analyze；接口不可达时按 702 出参本地兜底；输出 any_abnormal/monitor_lines/summary/告警与工单计数）→异常判定→异常分支：LLM 处置报告→面板→结束；正常分支：LLM 运营摘要→面板→结束。", "wf_sub_07", s7f,
     [edge(701,702), edge(702,703), edge(703,704), edge(704,706,0), edge(704,705,-1),
-     edge(705,707), edge(707,709), edge(706,708), edge(708,710)])
+     edge(705,707), edge(707,711), edge(711,709), edge(706,708), edge(708,712), edge(712,710)])
 
 s8f = []
 s8f.append(start_node(801, [
@@ -3510,7 +3582,7 @@ s11f.append(llm_node(1105, "审批发起回执渲染",
      inp("status", "提交状态", ref_block=nid(1104), ref_rel="status")],
     [out("approval_receipt", "审批发起回执正文")]))
 # xsbot-panel 独立代码节点（无 offer 场景，页面以 req_id 定位）
-s11f.append(panel_code_node(1109, "构建页面地址面板", "01",
+s11f.append(panel_code_node(1109, "构建页面地址面板", "00",
     panel_inputs(1101, req_seq=1101), biz_title="需求工单审批"))
 s11f.append(end_node(1106, "结束(需求审批已发起)",
     [inp("approval_receipt", "审批发起回执正文", ref_block=nid(1105), ref_rel="approval_receipt"),
@@ -3522,6 +3594,102 @@ files11f = workflow(
     [edge(1101,1102), edge(1102,1103), edge(1103,1107),
      edge(1107,1104,0), edge(1107,1108,-1),
      edge(1104,1105), edge(1105,1109), edge(1109,1106)])
+
+# ============================================================
+# wf_sub_14 销售品优化工单发起（环节9 监控运维延伸：用户采纳本体优化建议后发起优化工单审批）
+#   入参 req_id/chat_id 必填、offer_id 非必填（缺省按 req_id 关联解析全部商品）
+#   流程：自查监控聚合结果(query_node_result,node_name=monitor) → 提取优化建议(CODE_EXTRACT_RECORD)
+#        → 建议有效性门禁 → submit_release_approval(approval-type=requirement 轨复用+work_order_type=optimize)
+#        → LLM 回执渲染 → 面板 → 结束
+#   前置契约：wf_sub_07 监控报告给出 R-O 优化建议并引导【发起优化工单】，用户明确回复后才由本子流发起
+#     （approve_confirmed 固定 true，确认门禁在调度层/提示词，未确认不得调入本流）
+#   证据链：优化建议来自本体 R-O01~R-O05 推理（ops_rules.suggestions + OpsSwrlReasoner），
+#     本子流取回建议原文作为审批 report_url，保证「建议→工单」可追溯。
+# ============================================================
+s14f = []
+s14f.append(start_node(1401, [
+    inp("req_id", "需求单号（监控运维环节产出，关联该销售品优化建议；严禁重新生成）", required=True),
+    inp("chat_id", "{chatId}", required=True),
+    inp("offer_id", "销售品ID（非必填；缺省时按 req_id 关联解析全部商品）", required=False),
+]))
+# 自查监控聚合结果：取回监控环节经本体推理产出的优化建议（审批发起依据）
+s14f.append(plugin_node(1402, "自查监控优化建议", "query_node_result",
+    "节点结果存储查询（复用）：按 req_id+node_name=monitor 取回监控运维环节聚合结果（含本体 R-O 优化建议），作为优化工单审批的发起依据；total=0 → 提示先执行监控运维",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "需求单号", ref_block=nid(1401), ref_rel="req_id"),
+     inp("node_name", "环节名=monitor", content="monitor"),
+     inp("latest_only", "仅取最新一条", content="1")],
+    [("total", "记录数", "string"), ("list", "记录列表（list[0].result_json 为监控聚合结果原文）", "string")],
+    method="get"))
+# 提取监控结果原文与优化建议
+s14f.append(code_node(1403, "提取优化建议", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点1402查询出参 list（记录数组JSON）", ref_block=nid(1402), ref_rel="list")],
+    [code_out("record_json", 1403), code_out("req_id", 1403), code_out("offer_id", 1403), code_out("offers", 1403)]))
+# 建议有效性门禁：record_json 为空（未先执行监控运维/req_id 不匹配）→ 失败结束；否则正常发起审批主链
+s14f.append(selector_node2(1407, "优化建议有效性判定",
+    [dep_node(1403, "提取优化建议", ["record_json"])],
+    [(-1, [cond_item(cond_ref(1403, "record_json", "提取优化建议"), 9, cond_str(""))])]))
+s14f.append(end_node(1408, "结束(优化建议缺失-失败)",
+    [inp("req_id", "需求单号", ref_block=nid(1401), ref_rel="req_id")],
+    "❌ 未找到该需求单号（{req_id}）的监控运维结果，无法发起优化工单。\n请先在【监控运维】（环节9/9）完成监控分析并产出优化建议，再回复【发起优化工单】。"))
+# 有效销售品ID兜底：offer_id 空则回退 req_id（approvalSubmit 硬要求 offer_id 非空；需求轨以 req_id 占位）
+s14f.append(code_node(1410, "有效销售品ID兜底", (
+    "from typing import Any, Dict\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    oid = str(p.get('offer_id') or '').strip()\n"
+    "    rid = str(p.get('req_id') or '').strip()\n"
+    "    return {'effective_offer_id': oid or rid}\n"
+    "\n"
+), [inp("offer_id", "销售品ID（非必填）", ref_block=nid(1401), ref_rel="offer_id"),
+    inp("req_id", "需求单号（兜底占位）", ref_block=nid(1401), ref_rel="req_id")],
+    [code_out("effective_offer_id", 1410)]))
+# 发起优化工单审批（复用 approval-type=requirement 轨；work_order_type=optimize 标注优化工单）
+s14f.append(plugin_node(1404, "发起优化工单审批", "submit_release_approval",
+    "工具9（复用，需求轨）：提交优化工单审批；approval-type=requirement 复用需求轨（跳过四环节门禁），work_order_type=optimize 标注为监控优化工单。approve_confirmed 固定 true——以用户已明确回复【发起优化工单】为前提（确认门禁在调度层）",
+    BASE_URL + "/api/v1/appstore/approval/submit",
+    [inp("offer_id", "销售品ID（缺省回退 req_id 占位，节点1410）", ref_block=nid(1410), ref_rel="effective_offer_id"),
+     inp("report_url", "优化建议原文（节点1403 取回的监控聚合结果，含本体 R-O 建议）", ref_block=nid(1403), ref_rel="record_json"),
+     inp("req_id", "需求单号", ref_block=nid(1401), ref_rel="req_id"),
+     inp("approve_confirmed", "审批发起确认标志true（用户已明确回复【发起优化工单】）", content="true"),
+     inp("approval_flow", "审批流默认standard", content="standard"),
+     inp("approval_type", "审批类型=requirement（沿用需求轨）", content="requirement"),
+     inp("work_order_type", "工单类型=optimize（标注监控优化工单）", content="optimize")],
+    [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
+# LLM 回执渲染（逐字引用出参，禁止编造）
+s14f.append(llm_node(1405, "优化工单发起回执渲染",
+    "你是产销品监控优化工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），**先判定提交是否成功**：仅当 approval_id 非空且 status 不属于（FAIL/失败/error/空）时视为成功，否则视为失败。\n"
+    "【成功口径】（approval_id 非空且 status 正常）输出：\n"
+    "【环节9/9·监控运维】✅ 优化工单审批已发起\n"
+    "- 需求单号：{req_id}\n"
+    "- 优化工单审批单号：{approval_id}，状态：{status}\n"
+    "- 建议依据：源自本体 R-O01~R-O05 推理给出的销售品优化建议\n"
+    "- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后按工单执行优化并回复【查询监控】回检。\n"
+    "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
+    "【环节9/9·监控运维】❌ 优化工单审批发起失败\n"
+    "- 需求单号：{req_id}\n"
+    "- 失败原因：审批服务未返回有效审批单号（approval_id 为空，status={status}）\n"
+    "- 建议：请确认监控运维已完成，回复【重新执行】后重试；若持续失败请联系管理员。\n"
+    "约束：逐字引用出参，严禁编造审批单号/状态，严禁在失败时输出任何✅成功措辞。\n"
+    "输出要求：仅输出审批发起回执正文（对应出参 optimize_receipt），不输出其他多余文字。",
+    [inp("req_id", "需求单号", ref_block=nid(1401), ref_rel="req_id"),
+     inp("approval_id", "审批单号", ref_block=nid(1404), ref_rel="approval_id"),
+     inp("status", "提交状态", ref_block=nid(1404), ref_rel="status")],
+    [out("optimize_receipt", "优化工单发起回执正文")]))
+# xsbot-panel 独立代码节点（stage=12 优化工单审批）
+s14f.append(panel_code_node(1409, "构建页面地址面板", "12",
+    panel_inputs(1401, off_seq=1401, req_seq=1401), biz_title="优化工单审批"))
+s14f.append(end_node(1406, "结束(优化工单已发起)",
+    [inp("optimize_receipt", "优化工单发起回执正文", ref_block=nid(1405), ref_rel="optimize_receipt"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(1409), ref_rel="panel")],
+    "{optimize_receipt}\n\n{panel}"))
+files14f = workflow(
+    "产销品-发起优化工单", "子工作流14（环节9 监控运维延伸，采纳优化建议后触发）：用户明确回复【发起优化工单】→ 自查监控聚合结果 query_node_result(req_id+monitor) → 提取本体 R-O 优化建议原文 → 门禁 → submit_release_approval(approval-type=requirement+work_order_type=optimize) → 回执+引导【查询审批进度】。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）。审批进度查询走 wf_sub_08。",
+    "wf_sub_14", s14f,
+    [edge(1401,1402), edge(1402,1403), edge(1403,1407),
+     edge(1407,1410,0), edge(1407,1408,-1),
+     edge(1410,1404), edge(1404,1405), edge(1405,1409), edge(1409,1406)])
 
 # ============================================================
 # 布局微调（钉位）：apply_layout 为拓扑自动布局，无法表达 wf_sub_01
@@ -3587,7 +3755,8 @@ for fn, data in [("wf_sub_00_需求提报.json", files00), ("wf_sub_01_需求分
                  ("wf_sub_06_上线审批.json", files6f), ("wf_sub_07_监控运维.json", files7f),
                  ("wf_sub_08_审批进度查询.json", files8f), ("wf_sub_09_存量产品查询.json", files9f),
                  ("wf_sub_10_存量合规扫描.json", files10f), ("wf_sub_11_发起需求审批.json", files11f),
-                 ("wf_sub_12_规格稽核查询.json", files12f), ("wf_sub_13_测试查询结果.json", files13f)]:
+                 ("wf_sub_12_规格稽核查询.json", files12f), ("wf_sub_13_测试查询结果.json", files13f),
+                 ("wf_sub_14_发起优化工单.json", files14f)]:
     data = apply_pins(apply_layout(data))
     # 写出前按《工作流JSON开发规范.md》校验，违规即中止（不产出不合规范的 JSON）
     errs = validate_workflow(data, fn)
