@@ -3195,14 +3195,18 @@ files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = 
 # ============================================================
 _ALLOWED_NODE_TYPES = {0, 1, 2, 3, 6, 9, 13}
 # 平台单个 LLM 节点提示词（inputs.llmParam[].content）长度上限（字符数）。
-# 实测：wf_sub_08 节点803 提示词 1967 字符可正常导入；曾达 2197 被平台拒绝，故取 2000 拦截回归。
-_MAX_PROMPT_LEN = 2000
+# 实测：wf_sub_08 节点803 提示词 1967 字符可正常导入；2197 被拒，故取 1968 拦截回归。
+_MAX_PROMPT_LEN = 1968
 # LLM 节点提示词必含关键短语（按节点 id 末 3 位匹配）：精简提示词时若删掉这些
 # 约束，语义会回退（LLM 判错阶段/回显规则），故生成器强校验。新增可按需追加。
 _PROMPT_REQUIRED_PHRASES = {
     "803": ["其中 stage 才是业务阶段信号", "禁止用工单级 approval_type 判断当前业务阶段",
-            "需求审核已通过，可进入需求分析"],
+            "需求审核已通过，可进入需求分析", "work_order_type=optimize", "优化工单审批中，当前待"],
 }
+# 平台对顶层 flowRemark 有字节上限（UTF-8 字节数）。实测：wf_sub_08 flowRemark 恰为
+# 1000 字节可导入；一旦新增内容超过 1000 字节即被平台拒绝（与提示词是否改动无关）。
+# 曾误判为「提示词长度」问题，实为 flowRemark 顶格后任何追加都会越界。取 1000 硬拦截。
+_MAX_FLOW_REMARK_BYTES = 1000
 
 
 def _code_return_keys(code):
@@ -3233,6 +3237,12 @@ def validate_workflow(data, filename="<workflow>"):
     nodes = W.get('nodes') or []
     edges = W.get('edges') or []
     byid = {n.get('id'): n for n in nodes}
+
+    remark = (data or {}).get('flowRemark') or ''
+    remark_bytes = len(remark.encode('utf-8'))
+    if remark_bytes > _MAX_FLOW_REMARK_BYTES:
+        errs.append(f"[flowRemark] 顶层 flowRemark {remark_bytes} 字节超上限 {_MAX_FLOW_REMARK_BYTES}"
+                    f"（平台按字节限制，超限将导入失败，请精简）")
 
     for n in nodes:
         if n.get('type') not in _ALLOWED_NODE_TYPES:

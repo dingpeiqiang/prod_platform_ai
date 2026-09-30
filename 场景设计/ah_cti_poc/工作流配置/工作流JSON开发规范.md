@@ -55,6 +55,16 @@
 }
 ```
 
+### 3.1 flowRemark 字节上限（重要，历次踩坑点）
+
+平台对顶层 `flowRemark`（流程说明）字段有**字节上限：≤ 1000 字节（UTF-8 编码）**，超限将导致工作流**导入失败且无任何报错**（静默拒绝）。
+
+- **实测**：`wf_sub_08` 基线 `flowRemark` 恰为 **1000 字节**（顶格），能导入；一旦在其上追加任何内容（哪怕一个短语）即 >1000 字节被平台拒绝。该现象极易被误判为"提示词过长"——因为改动往往同时动了 prompt，实为 `flowRemark` 越界（与提示词是否改动无关）。
+- **规避**：`flowRemark` 顶格状态下要新增内容，必须**同步精简同句/别处等量以上文字**，留出余量（建议保持 ≤ 950 字节，勿长期顶格）。
+- **生成器强校验**：`validate_workflow`（`wf_common._MAX_FLOW_REMARK_BYTES=1000`）在写出前按 UTF-8 字节数校验，超限即 `VALIDATE FAIL` 且不产出 JSON。
+
+> 排查口诀：工作流导入失败**无报错**时，优先怀疑"非提示词字段"长度（顶层 `flowRemark` 等平台有独立限制的字段），不要只盯 LLM 提示词。
+
 ---
 
 ## 四、节点通用结构与类型
@@ -262,7 +272,7 @@ llm_node(seq, title, prompt, in_refs, outputs, sys_prompt="", model="qwen3-30b-a
 - `inputs.llmParam[].content` 为完整提示词；`{}` 为引用占位（如 `{elements_json}`），平台运行时以对应出参替换。
 - `inputs.inputParameters` 为引用入参数组（`inp(...,ref_block=nid(上游), ref_rel=...)`）。
 - 固定参数：`temperature=0.2`、`top_p=0.5`、`max_tokens=2048`、`prompt_system`。
-- **提示词长度上限**：单个 LLM 节点提示词（`inputs.llmParam[].content`）**≤ 1600 字符**。平台对单节点提示词有长度限制，超限将导致工作流**导入失败**（`wf_sub_08` 曾达 2197 字符被平台拒绝）。生成器 `validate_workflow`（`_MAX_PROMPT_LEN=1600`）在写出前强制校验，超限即中止且不产出 JSON；提示词需精简表达、勿堆砌冗余说明。
+- **提示词长度上限**：单个 LLM 节点提示词（`inputs.llmParam[].content`）**≤ 1968 字符**。平台对单节点提示词有长度限制，超限将导致工作流**导入失败**（`wf_sub_08` 曾达 2197 字符被平台拒绝）。生成器 `validate_workflow`（`wf_common._MAX_PROMPT_LEN=1968`）在写出前强制校验，超限即中止且不产出 JSON；提示词需精简表达、勿堆砌冗余说明。
 - **提示词语义自检（防精简回退）**：精简提示词时若误删关键约束，LLM 会语义回退（如判错业务阶段、把规则文字当结论回显）。生成器 `validate_workflow` 按 `_PROMPT_REQUIRED_PHRASES`（按节点 id 末三位匹配）强校验以下必需短语仍在，缺失即中止：
   - `wf_sub_08` 节点 803「状态摘要归纳」：必含 `判阶段只看工单级 stage`、`禁止因矩阵含 launch 节点`（否则会把矩阵里的 launch 节点误判为"已进入上线审批"）。
 - **提示词占位符红线（防导入失败）**：花括号 `{}` 内**只能放入参名本身**，不得含空格/中文/标点。平台按 `{名称}` 精确匹配 `inputs.inputParameters[].name`，形如 `{per_offer 数量}`（含空格）会被判为非法占位符导致**导入失败**。需要附加说明时把文字移到花括号外（如 `{per_offer} 元素数量`）。注意与"JSON 示例字面量"区分：`{"offer_seq":1,...}` 内是 `"`/`:`，非占位符，平台不替换。生成器 `validate_workflow` 对"标识符+空格+多余字符"型花括号强校验。
@@ -364,6 +374,7 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
    - **代码节点出参声明完备性**：代码节点（type=6）`Output={...}` 返回的每个顶层键，必须在 `code_out(...)` 出参中已声明（平台按「返回键 ⊆ 声明出参」严格校验，返回未声明键会导致节点校验失败、工作流无法执行；本地 `wf_runner` 宽松忽略故不可见）。
    - 插件 array 出参 `sechema` 有 item 树（对齐 `ARRAY_ITEM_FIELDS`）。
    - **结束节点占位符校验**：对每个 type=9 节点，提取 `outputs.content` 中所有 `{...}` 占位符（跳过 `xsbot-panel` 代码块内的内嵌 JSON），逐个核对是否与 `inputs[].name` 逐字一致（含大小写）；不一致即 FAIL（对齐 11.1，防止"节点无法显示"）。
+   - **顶层 `flowRemark` 字节上限**：`flowRemark` 的 UTF-8 字节数 ≤ `wf_common._MAX_FLOW_REMARK_BYTES`（1000）；超限即 FAIL（对齐 3.1，唯一可经"非提示词字段"导致静默导入失败的校验项）。
 4. 到平台上逐个导入并人工核对（条件分支 sourcePort 语义、结束节点模板、子流路由）。
 
 > 交叉引用错误（断链）是最高频问题：新增节点后务必同步更新 `edge(...)`，以及上游的出参声明、下有的 `inp(...ref_block=...)`。
@@ -380,10 +391,11 @@ subflow_node(seq, title, desc, work_flow_id, inputs, outputs)
 
 ---
 
-**最后更新**：2026-09-28
-**版本**：v1.12
+**最后更新**：2026-09-30
+**版本**：v1.13
 
 ### 变更记录
+- v1.13（2026-09-30）：**新增 flowRemark 字节上限红线（3.1）并落地生成器校验**：查明 `wf_sub_08` 导入失败的真正根因是顶层 `flowRemark` 超平台 1000 字节上限（基线恰 1000 字节顶格，任何追加即静默失败，与提示词无关），而非此前误判的提示词长度；`wf_common.validate_workflow` 新增 `_MAX_FLOW_REMARK_BYTES=1000` 校验项（§十四），§十提示词长度上限由过时的 1600 更正为实际值 1968；§三补 3.1 专项说明与"无报错优先排查非提示词字段"口诀；同步精简 `wf_sub_08` flowRemark 至 985 字节并加 optimize 措辞。
 - v1.12（2026-09-28）：**生成器内置自动校验**：`wf_common.validate_workflow(data, fn)` 落地第十四节全部静态校验项（type 白名单/悬空边/fan-out/引用三层一致与出参存在/代码节点返回键⊆声明出参/结束节点占位符），`gen_workflows.py` 写出前逐流校验，违规打印 `VALIDATE FAIL` 明细并非零退出（不产出不合规 JSON）；第十四节流程同步改为由该校验器自动执行。
 - v1.11（2026-09-28）：**生成器文件重命名（去「两个生成器」歧义）**：原 `gen_workflows_v2.py`（唯一生成入口）→ `gen_workflows.py`，原 `gen_workflows.py`（共享常量库）→ `wf_common.py`；`gen_workflows.py` 改为 `from wf_common import ...`，两目录（`智能体工作流集V1.6` 与 `-prod`）同步，文档与 `_probe_urls.py` glob 一并更新。
 - v1.10（2026-09-28）：**① 数量口径修正为 14 个子工作流 + 存量 fan-out 清理**：适用范围/总原则/文件组织/七节 seq 分段/十二节/十四节校验条数由"12 个（wf_sub_00~11）"更新为 **14 个（wf_sub_00~13，含 V3.10 两阶段拆分新增 wf_sub_12 规格稽核轮询 / wf_sub_13 测试轮询查询）**；② 按 6.4 修正 3 处存量 fan-out（wf_sub_01 节点 103/108、wf_sub_05 节点 402、wf_sub_08 节点 802 串联化），14 个 JSON 重生成并全量校验 ALL_OK，同步 `-prod`；③ 删除临时残留 `_test00.json`（v1.6 早期 8 节点旧版）。
