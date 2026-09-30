@@ -53,14 +53,26 @@ class BillingRulesSwrlTest {
     }
 
     @Test
-    @DisplayName("plan_json 顶层 optionalInfo 形态（固费 79 元）→ 解析月固费成功，无 R-C05/R-C09 假阳性")
-    void feeFromPlanJsonTopLevelOptionalInfo() {
-        // 回归：wf_sub_02 落库的 product_config.plan_json 原文形态（optionalInfo/baseInfo 直接在顶层，
-        // 非嵌套 payload.optionalInfo），月固费需正解析，否则 fixedFeeAmount=0 → R-C05/R-C09 全量误判
-        String configJson = "{\"offer_id\":\"900117099\",\"offer_name\":\"5G畅享主套餐79元档\","
-                + "\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G畅享主套餐79元档\"},"
-                + "\"optionalInfo\":{\"acctMonth\":{\"fixFee\":\"79\"},\"printContent\":{\"prcMonthFee\":\"79\"}}}}";
-        Map<String, Object> body = batchOf(configJson);
+    @DisplayName("真实报文形态（product_config 为转义 JSON 字符串，plan_json 亦为字符串，固费 79 元）→ 无 R-C05/R-C09 假阳性")
+    void feeFromEscapedProductConfig() {
+        // 回归：wf_sub_05 实际入参形态——offers[] 元素内 product_config 是「序列化 JSON 字符串」，
+        // 其内 plan_json 又是「序列化 JSON 字符串」（optionalInfo 直接在 plan_json 顶层）。
+        // 不解包这两层字符串则月固费解析为空 → fixedFeeAmount=0 → R-C05/R-C09 全量误判。
+        String planJson = "{\"baseInfo\":{\"prodPrcName\":\"5G畅享主套餐79元档\"},"
+                + "\"optionalInfo\":{\"acctMonth\":{\"fixFee\":\"79\"},\"printContent\":{\"prcMonthFee\":\"79\"}},"
+                + "\"req_id\":\"PLAN20260101000000005\"}";
+        Map<String, Object> productConfig = new java.util.LinkedHashMap<>();
+        productConfig.put("offer_id", "900117099");
+        productConfig.put("offer_name", "5G畅享主套餐79元档");
+        productConfig.put("plan_json", planJson);
+        Map<String, Object> element = new java.util.LinkedHashMap<>();
+        element.put("offer_seq", 1);
+        element.put("offer_id", "900117099");
+        element.put("product_config", simJson(productConfig));
+        Map<String, Object> body = sim.billingRulesVerifyBatch(Map.of(
+                "req_id", "PLAN20260101000000005",
+                "check_scene", "all",
+                "offers", List.of(element)));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
         Map<String, Object> item = offers.get(0);
@@ -76,6 +88,14 @@ class BillingRulesSwrlTest {
                         .filter(r -> "R-C09".equals(r.get("ruleId")))
                         .anyMatch(r -> MapOps.str(r.get("condition")).contains("79")),
                 "R-C09 通过行应带解析出的固费取值 79：" + reasoning);
+    }
+
+    private static String simJson(Object value) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

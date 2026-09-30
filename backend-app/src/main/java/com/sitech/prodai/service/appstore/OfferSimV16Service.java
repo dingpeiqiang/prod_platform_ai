@@ -82,13 +82,15 @@ public class OfferSimV16Service {
     };
     /** 需求提报阶段审批通过前的首节点下标（需求审核） */
     private static final int REQUIREMENT_NODE_IDX = 0;
-    /** 预置模拟审批（演示 wf_sub_08 审批闭环，免等待）：{approval_id, offer_id, req_id, approval_type, status, current_node, approver, opinion, matrix_end}
+    /** 预置模拟审批（演示 wf_sub_08 审批闭环，免等待）：{approval_id, offer_id, req_id, approval_type, status, current_node, approver, opinion, matrix_end, work_order_type}
      *  闭环口径：一个需求单一张审批单、一张矩阵贯穿「需求审核→上线审批」。
      *  requirement 轨种子=需求阶段通过（仅首节点点亮，状态仍为审批中，待上线审批）；
-     *  launch 轨种子=全流程通过（全节点点亮，终态上架）。 */
+     *  launch 轨种子=全流程通过（全节点点亮，终态上架）；
+     *  optimize 种子=监控优化工单（复用需求轨 approval_type=requirement，work_order_type=optimize 标注）。 */
     private static final String[][] SEED_PASSED_APPROVALS = {
-        {"AP2026091900000001", "900117022", "PLAN20260919000000001", "requirement", "审批中", "需求审核已通过，待上线审批", "需求审核", "需求审核通过，同意进入需求分析", "req"},
-        {"AP2026091900000002", "900102308", "PLAN20260919000000002", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架", "launch"}
+        {"AP2026091900000001", "900117022", "PLAN20260919000000001", "requirement", "审批中", "需求审核已通过，待上线审批", "需求审核", "需求审核通过，同意进入需求分析", "req", ""},
+        {"AP2026091900000002", "900102308", "PLAN20260919000000002", "launch", "通过", "流程结束（上架完成）", "产品经理", "审核通过，同意上架", "launch", ""},
+        {"AP2026091900000003", "900117026", "PLAN20260919000000003", "requirement", "审批中", "需求审核已通过，待上线审批", "需求审核", "优化工单受理，同意进入需求分析", "req", "optimize"}
     };
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
@@ -122,6 +124,7 @@ public class OfferSimV16Service {
             approval.put("offer_id", row[1]);
             approval.put("req_id", row[2]);
             approval.put("approval_type", row[3]);
+            approval.put("work_order_type", row.length > 9 ? row[9] : "");
             boolean fullPass = "launch".equals(row[8]);
             approval.put("stage", fullPass ? "launch" : "requirement");
             approval.put("requirement_passed", true);
@@ -1093,10 +1096,24 @@ public class OfferSimV16Service {
         return body;
     }
 
-    /** plan_json 取值：顶层含 plan_json 键取之（环节1 出参形态），否则顶层自身（原文直传形态） */
+    /**
+     * plan_json 取值（三种形态兼容，逐层解包至 plan 原文）：
+     * ① 顶层 product_config（多商品批量元素，值为 JSON 字符串或嵌套 Map）→ 其内 plan_json；
+     * ② 顶层 plan_json（环节1 出参形态，值为 JSON 字符串或嵌套 Map）；
+     * ③ 顶层自身（plan_json 原文直传形态）。
+     * 不解包 product_config 会导致月固费解析为空 → fixedFeeAmount=0 → R-C05/R-C09 假阳性。
+     */
     private Map<String, Object> planOrSelf(Map<String, Object> config) {
-        Map<String, Object> plan = castMap(config.get("plan_json"));
-        return plan.isEmpty() ? config : plan;
+        Map<String, Object> inner = configInner(config);
+        Map<String, Object> plan = parseConfigSafe(inner.get("plan_json"));
+        if (!plan.isEmpty()) {
+            return plan;
+        }
+        plan = castMap(inner.get("plan_json"));
+        if (!plan.isEmpty()) {
+            return plan;
+        }
+        return inner.isEmpty() ? config : inner;
     }
 
     /** 组结构 plan 判定：含 member_offers 键（与脚本 _is_group_input 同构，脚本侧另含 main_offer 键） */
@@ -1339,15 +1356,13 @@ public class OfferSimV16Service {
      * offer_id/similarOfferId 溯源键回查档案，避免两侧全空退化（E27 假阳性根因）。
      */
     private List<Map<String, Object>> buildFeeCompareList(Map<String, Object> config, String offerId) {
-        Map<String, Object> plan = castMap(config.get("plan_json"));
-        String resolvedOfferId = offerId;
-        if (plan.isEmpty()) {
-            // config_json=plan_json 原文直传：顶层即 plan 本体
-            plan = config;
-            resolvedOfferId = firstNonEmptyText(offerId,
-                    config.get("offer_id"), config.get("similarOfferId"),
-                    config.get("相似产品ID"), plan.get("offer_id"), plan.get("similarOfferId"));
-        }
+        // planOrSelf 统一解包 product_config / plan_json / 原文直传三形态，plan 恒为需求侧原文
+        Map<String, Object> plan = planOrSelf(config);
+        Map<String, Object> inner = configInner(config);
+        String resolvedOfferId = firstNonEmptyText(offerId,
+                inner.get("offer_id"), inner.get("similarOfferId"),
+                config.get("offer_id"), config.get("similarOfferId"),
+                config.get("相似产品ID"), plan.get("offer_id"), plan.get("similarOfferId"));
         Map<String, String> req = planFieldValues(plan);
         if (resolvedOfferId != null && !resolvedOfferId.isBlank() && !resolvedOfferId.equals(offerId)) {
             offerId = resolvedOfferId;
@@ -1608,6 +1623,9 @@ public class OfferSimV16Service {
         // 此时执行主干四环节尚未执行，跳过四环节门禁；approval_type=launch（上线审批，flow-C）
         // 仍须四环节结果齐全才可推送。
         String approvalType = MapOps.str(req.get("approval_type")).trim();
+        // 工单类型（可选）：optimize=监控优化工单，复用需求轨（approval_type=requirement），
+        // 仅作业务标注，供审批进度查询逐单识别。缺省视为普通工单。
+        String workOrderType = MapOps.str(req.get("work_order_type")).trim();
         String reqId = MapOps.str(req.get("req_id")).trim();
         // 审批双轨均须 req_id：既作关联索引（req_id -> 审批工单），也作上线轨四环节门禁依据
         if (reqId.isEmpty()) {
@@ -1632,6 +1650,10 @@ public class OfferSimV16Service {
         String existed = approvalByReq.get(reqId);
         if (existed != null) {
             Map<String, Object> existedApproval = approvals.get(existed);
+            // 复用已有工单时，若本次提交携带 work_order_type 则补齐标注（如优化工单复用需求轨）
+            if (!workOrderType.isEmpty()) {
+                existedApproval.put("work_order_type", workOrderType);
+            }
             boolean requirementTrack = "requirement".equals(approvalType);
             if (requirementTrack && !MapOps.truthy(existedApproval.get("requirement_passed"))) {
                 // 需求轨重复提交：幂等
@@ -1669,6 +1691,7 @@ public class OfferSimV16Service {
         approval.put("offer_id", offerId);
         approval.put("req_id", reqId);
         approval.put("approval_type", approvalType.isBlank() ? "launch" : approvalType);
+        approval.put("work_order_type", workOrderType);
         approval.put("stage", requirementTrack ? "requirement" : "launch");
         approval.put("requirement_passed", !requirementTrack);
         approval.put("report_url", MapOps.str(req.get("report_url")));
@@ -1696,6 +1719,7 @@ public class OfferSimV16Service {
         body.put("approval_id", approvalId);
         body.put("req_id", reqId);
         body.put("approval_type", approval.get("approval_type"));
+        body.put("work_order_type", MapOps.str(approval.get("work_order_type")));
         body.put("status", "审批中");
         body.put("approval_matrix", approvalMatrixOf(approval));
         return body;
@@ -1794,6 +1818,7 @@ public class OfferSimV16Service {
         body.put("offer_id", MapOps.str(approval.get("offer_id")));
         body.put("chat_id", chatId);
         body.put("approval_type", MapOps.str(approval.get("approval_type")));
+        body.put("work_order_type", MapOps.str(approval.get("work_order_type")));
         body.put("stage", MapOps.str(approval.get("stage")));
         body.put("status", MapOps.str(approval.get("status")));
         body.put("current_node", MapOps.str(approval.get("current_node")));
@@ -2662,12 +2687,32 @@ public class OfferSimV16Service {
         return inner;
     }
 
-    /** 元素自身若含内层 product_config 包装则取内层，否则取元素本身。 */
+    /**
+     * 元素自身若含内层 product_config 包装则取内层，否则取元素本身。
+     * product_config 既可能是嵌套 Map，也可能是序列化 JSON 字符串（平台出参 string 约定）。
+     */
     private Map<String, Object> configInner(Map<String, Object> node) {
         if (node.get("product_config") instanceof Map<?, ?> pc) {
             return castMap(pc);
         }
+        Map<String, Object> parsed = parseConfigSafe(node.get("product_config"));
+        if (!parsed.isEmpty()) {
+            return parsed;
+        }
         return node;
+    }
+
+    /** parseConfig 的空安全包装：非字符串或解析失败返回空 Map（避免 NPE），供解包链路使用。 */
+    private Map<String, Object> parseConfigSafe(Object value) {
+        if (value == null) {
+            return Map.of();
+        }
+        String json = value instanceof String s ? s : toJson(value);
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        Map<String, Object> parsed = parseConfig(json);
+        return parsed == null ? Map.of() : parsed;
     }
 
     /** 依 plan 重建产品档案并写入内存缓存；plan 为空时严谨回退 config 记录自身。 */
@@ -3120,7 +3165,7 @@ public class OfferSimV16Service {
             String st = MapOps.str(r.get("status"));
             item.put("status", st.isEmpty() ? "NOT_CONFIRMED" : st);
             // 多商品口径：approval_id 为工单级单值，只出现在顶层信封，元素不再重复携带
-            for (String k : List.of("req_id", "approval_type", "approval_matrix", "reason", "resultCode", "resultMsg")) {
+            for (String k : List.of("req_id", "approval_type", "work_order_type", "approval_matrix", "reason", "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
                     item.put(k, r.get(k));
                 }
@@ -3220,7 +3265,7 @@ public class OfferSimV16Service {
             // 元素 status = 审批单域状态（审批中/通过/驳回），供前端/工作流逐品展示与衔接判断
             item.put("status", MapOps.str(r.get("status")));
             // 多商品口径：进度为工单级，各元素冗余携带同一 approval_id
-            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "stage",
+            for (String k : List.of("approval_id", "req_id", "chat_id", "approval_type", "work_order_type", "stage",
                     "current_node", "approver", "opinion", "submit_time", "update_time", "approval_matrix",
                     "resultCode", "resultMsg")) {
                 if (r.containsKey(k)) {
