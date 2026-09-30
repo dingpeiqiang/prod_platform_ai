@@ -1207,13 +1207,24 @@ const calibrateView = computed(() => {
         ['套外语音费率', '0.15元/分钟', '0.15元/分钟', '一致'],
         ['套外短信费率', '0.1元/权', '0.1元/权', '一致'],
       ]
-  const risk = obj ? pick(obj, ['risk_summary']) : ''
   const allSame = rows.every((r) => String(r[3]).indexOf('一致') >= 0 || String(r[3]).indexOf('通过') >= 0)
+  // risk_summary 是面向 AI 会话的完整多商品 Markdown 报告，不能直接塞进结论条。
+  // 这里只提取其中的「校准结论」单行文本；取不到时用结构化比对结果生成一句话结论。
+  const conclusion = (() => {
+    const risk = obj ? String(pick(obj, ['risk_summary']) || '') : ''
+    if (risk) {
+      const m = risk.match(/校准结论[：:]\s*\**\s*([^\n*]+)/)
+      if (m && m[1] && m[1].trim()) return m[1].trim()
+    }
+    return allSame
+      ? '资费校准通过：计费配置与方案需求保持一致，未发现叠加/互斥冲突'
+      : '存在差异：计费配置与方案需求不完全一致，请核对上方比对明细'
+  })()
   return {
     object: productInstance.value.code,
     status: allSame ? '通过' : '存在差异',
     time: productInstance.value.today,
-    conclusion: risk || '资费校准通过：计费配置与方案需求保持一致，未发现叠动"互斥冲突、',
+    conclusion,
     rows,
   }
 })
