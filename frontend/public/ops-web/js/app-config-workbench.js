@@ -60,41 +60,32 @@ const dialogueStatus = ref('draft')
 const panelWidth = ref(DEFAULT_WIDTH)
 const resizing = ref(false)
 
-// ========== 多商品切换（头部横向平铺，溢出收进“更多”） ==========
-// 商品在头部横向平铺展示，宽度足够时全部并排；放不下的自动收进“更多”下拉列表。
+// ========== 多商品切换（头部横向平铺，溢出横向滚动） ==========
+// 全部商品在头部平铺展示为标签；超出宽度时该区域可横向滚动（不再隐藏进下拉）。
+// 右侧「查看商品列表」下拉作为快捷导航，选择后同步高亮并滚动定位到对应顶部标签。
 const products = computed(() => props.products || [])
 const activeProductId = computed(() => props.activeProductId || '')
 const productMenuOpen = ref(false)
 const ppStripRef = ref(null)
-const ppVisibleCount = ref(Infinity)
+
+// 选中商品后把对应顶部标签滚动到可视区，保证切换与标签高亮联动。
+const scrollActiveChipIntoView = () => {
+  const strip = ppStripRef.value
+  if (!strip) return
+  const chip = strip.querySelector('.pp-chip-slot.active')
+  if (chip && chip.scrollIntoView) chip.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+}
 
 const onSelectProduct = (p) => {
   productMenuOpen.value = false
   if (p && p.id !== activeProductId.value) emit('select-product', p)
+  // 切换后（无论来自顶部标签还是下拉列表）滚动定位到高亮标签
+  requestAnimationFrame(scrollActiveChipIntoView)
 }
 const toggleProductMenu = () => { productMenuOpen.value = !productMenuOpen.value }
 
-// 可平铺展示的商品（未溢出部分，
-const visibleProducts = computed(() => {
-  const list = products.value
-  if (ppVisibleCount.value >= list.length) return list
-  return list.slice(0, Math.max(0, ppVisibleCount.value))
-})
-const measureChips = () => {
-  const strip = ppStripRef.value
-  if (!strip) return
-  const list = products.value
-  const nodes = strip.querySelectorAll('.pp-chip-slot')
-  const gap = 8
-  const available = strip.clientWidth
-  let used = 0
-  let count = 0
-  for (let i = 0; i < nodes.length; i++) {
-    const w = nodes[i].offsetWidth + (count > 0 ? gap : 0)
-    if (used + w <= available) { used += w; count++ } else { break }
-  }
-  ppVisibleCount.value = count >= list.length ? list.length : count
-}
+// 顶部平铺全部商品标签
+const visibleProducts = computed(() => products.value)
 
 const onDocClick = (e) => {
   if (productMenuOpen.value && !e.target.closest('.product-picker')) {
@@ -104,19 +95,21 @@ const onDocClick = (e) => {
 let ppResizeObserver = null
 onMounted(() => {
   document.addEventListener('click', onDocClick)
-  requestAnimationFrame(measureChips)
+  requestAnimationFrame(scrollActiveChipIntoView)
   if (window.ResizeObserver && ppStripRef.value) {
-    ppResizeObserver = new ResizeObserver(() => measureChips())
+    ppResizeObserver = new ResizeObserver(() => scrollActiveChipIntoView())
     ppResizeObserver.observe(ppStripRef.value)
   }
-  window.addEventListener('resize', measureChips)
+  window.addEventListener('resize', scrollActiveChipIntoView)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
-  window.removeEventListener('resize', measureChips)
+  window.removeEventListener('resize', scrollActiveChipIntoView)
   if (ppResizeObserver) { ppResizeObserver.disconnect(); ppResizeObserver = null }
 })
-watch(products, () => requestAnimationFrame(measureChips))
+watch(products, () => requestAnimationFrame(scrollActiveChipIntoView))
+// 直接切换（如外部更新 activeProductId）时也滚动定位到高亮标签
+watch(activeProductId, () => requestAnimationFrame(scrollActiveChipIntoView))
 
 const startResize = (e) => {
   e.preventDefault()
