@@ -73,13 +73,24 @@ def _stage_view(stage):
     return st.get("view") or "stage"
 
 
-def gen_panel_code(stage, biz_title=None):
+def gen_panel_code(stage, biz_title=None, resolve_step=False):
     """构建 xsbot-panel 片段的代码节点源码（type=6 内联 Python，供 panel_code_node 使用）。
     对齐参考示例：**单面板**（一个 url + 一个 title），url 用环节业务页
     config-workbench.html?stage=<N>&view=<view>，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
     输出 panel 为 `\n\n```xsbot-panel {compact_json} ``` ` 片段（无文字前缀、JSON 紧凑无空格，逐字对齐参考示例），
     结束节点模板仅引用 {panel}。读取参数 chat_id/offer_id/offer_name/req_id/offers，运行期完成实值替换；
     offer_id 为空时不在 url 拼接 offer_id/name（避免空参），多品时追加 offers= 供页面逐品渲染。
+
+    resolve_step=True（wf_sub_08 审批进度查询专用）：额外读取 approval_data（节点802 offers JSON），
+    按审批矩阵节点级 stage/status 计算「真实业务进度」并追加 url 参数 step_stage=<n>，
+    供页面导航步骤条按真实进度定位（stage=<N> 仍保留用于页面默认 Tab 选择，二者解耦）。
+    进度口径（navs：0需求提报 1需求分析 2智能配置 3规格稽核 4资费校准 5自动测试 6受理验证 7上线审批 8监控运维）：
+      - work_order_type=optimize（监控优化工单）→ 7 上线审批；
+      - 任一节点驳回 → 按该驳回节点 stage：requirement→0 需求提报、launch→7 上线审批；
+      - requirement 首节点未通过 → 0 需求提报；
+      - requirement 已通过、launch 未全通过 → 1 需求分析（需求审核通过后下一步为需求分析）；
+      - 全部通过 → 8 监控运维。
+    无法解析 approval_data 时不拼接 step_stage，页面回落至静态 stage 映射。
     """
     page = CONFIG_WB_PAGE
     view = _stage_view(stage)
@@ -109,6 +120,60 @@ def gen_panel_code(stage, biz_title=None):
         "        if oid:",
         "            ids.append(oid)",
         "    return ','.join(ids)",
+    ]
+    if resolve_step:
+        # 审批进度 -> 导航步骤索引（node 级 stage/status 判定，禁用 work_order_type/approval_type 混判业务阶段）
+        body += [
+            "",
+            "def _step_stage(v):",
+            "    # 依据审批矩阵节点级 stage/status 计算真实业务进度（navs 索引）；无法判定返回 None",
+            "    import json as _json",
+            "    if isinstance(v, str):",
+            "        s = v.strip()",
+            "        if not s:",
+            "            return None",
+            "        try:",
+            "            v = _json.loads(s)",
+            "        except Exception:",
+            "            return None",
+            "    if isinstance(v, dict) and isinstance(v.get('offers'), list):",
+            "        v = v['offers']",
+            "    if not isinstance(v, list) or not v:",
+            "        return None",
+            "    first = next((o for o in v if isinstance(o, dict)), None)",
+            "    if not first:",
+            "        return None",
+            "    if str(first.get('work_order_type') or '') == 'optimize':",
+            "        return 7",
+            "    matrix = first.get('approval_matrix')",
+            "    if isinstance(matrix, str):",
+            "        try:",
+            "            matrix = _json.loads(matrix)",
+            "        except Exception:",
+            "            matrix = None",
+            "    if not isinstance(matrix, list) or not matrix:",
+            "        return None",
+            "    nodes = [n for n in matrix if isinstance(n, dict)]",
+            "    req_nodes = [n for n in nodes if str(n.get('stage') or '') == 'requirement']",
+            "    launch_nodes = [n for n in nodes if str(n.get('stage') or '') == 'launch']",
+            "",
+            "    def _passed(n):",
+            "        return '已通过' in str(n.get('status') or '')",
+            "",
+            "    def _rejected(n):",
+            "        s = str(n.get('status') or '')",
+            "        return ('驳回' in s) or ('未通过' in s) or ('拒绝' in s)",
+            "",
+            "    rejected = [n for n in nodes if _rejected(n)]",
+            "    if rejected:",
+            "        return 0 if str(rejected[0].get('stage') or '') == 'requirement' else 7",
+            "    if req_nodes and not all(_passed(n) for n in req_nodes):",
+            "        return 0",
+            "    if launch_nodes and not all(_passed(n) for n in launch_nodes):",
+            "        return 1",
+            "    return 8",
+        ]
+    body += [
         "",
         "async def main(args):",
         "    p = args.params",
@@ -121,6 +186,14 @@ def gen_panel_code(stage, biz_title=None):
         "    if offer_id:",
         "        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
         "+ '&req_id=' + req_id + '&stage=%s&view=%s')" % (stage, view),
+    ]
+    if resolve_step:
+        body += [
+            "    step_stage = _step_stage(p.get('approval_data'))",
+            "    if step_stage is not None:",
+            "        qs += '&step_stage=' + str(step_stage)",
+        ]
+    body += [
         "    if offers_csv:",
         "        qs += '&offers=' + offers_csv",
         "    biz_url = '%s' + qs" % page,
@@ -163,9 +236,10 @@ def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name
     return refs
 
 
-def panel_code_node(seq, title, stage, in_refs, biz_title=None, pos=(650, 300)):
-    """type=6 代码节点：独立构建单面板 xsbot-panel 片段，输出 panel 供结束节点 {panel} 引用。"""
-    return code_node(seq, title, gen_panel_code(stage, biz_title), in_refs,
+def panel_code_node(seq, title, stage, in_refs, biz_title=None, pos=(650, 300), resolve_step=False):
+    """type=6 代码节点：独立构建单面板 xsbot-panel 片段，输出 panel 供结束节点 {panel} 引用。
+    resolve_step=True 时（审批进度查询专用）额外注入 _step_stage 计算逻辑，由 approval_data 入参驱动。"""
+    return code_node(seq, title, gen_panel_code(stage, biz_title, resolve_step), in_refs,
                      [code_out("panel", seq)], pos=pos)
 
 
@@ -3504,7 +3578,7 @@ s8f.append(code_node(806, "审批首品提取", (
      code_out("approval_type", 806), code_out("offers", 806)]))
 s8f.append(llm_node(803, "状态摘要归纳",
     "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/work_order_type/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态，≠单个商品状态）。\n"
-    "**结构要点（务必理解）**：一张审批工单（approval_id）内含多个商品，各商品的 approval_id/approval_type/current_node/approval_matrix 均相同（工单级）；approval_matrix[] 是工单级节点矩阵，每个节点含 node_seq/node_name/approver/stage/status/opinion/update_time，其中 stage 才是业务阶段信号（requirement=需求阶段节点；launch=上线阶段节点）。**禁止用工单级 approval_type 判断当前业务阶段**（工单同时含 requirement 与 launch 节点，approval_type 恒为 requirement）。work_order_type=optimize 即监控优化工单，须独立措辞。\n"
+    "**结构要点**：一张审批工单（approval_id）内含多个商品，各商品 approval_id/approval_type/current_node/approval_matrix 相同（工单级）；approval_matrix[] 为工单级节点矩阵，每节点含 node_seq/node_name/approver/stage/status/opinion/update_time，其中 stage 才是业务阶段信号（requirement=需求阶段；launch=上线阶段）。**禁止用工单级 approval_type 判断当前业务阶段**（工单同含 requirement 与 launch 节点，approval_type 恒为 requirement）。work_order_type=optimize 即监控优化工单。\n"
     "\n"
     "按 flow-D D-1 输出：\n"
     "**一、工单概览（工单级，只输出一次）**\n"
@@ -3514,7 +3588,7 @@ s8f.append(llm_node(803, "状态摘要归纳",
     "**三、审批矩阵（工单级，只打印一次；逐字引用 approval_matrix[]，禁止编造）**\n"
     "| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
     "| :---: | :--- | :--- | :--- | :--- | :--- |\n"
-    "（逐行展开全部节点；业务阶段列取节点 stage 中文：requirement→需求阶段、launch→上线阶段；无 approval_matrix 则省略本表）\n"
+    "（**仅打印首个非「已通过」节点及其之前节点**；其后未开始节点不打印，**严禁把未开始的上线审批节点当已到达环节**；阶段列取 stage：requirement→需求、launch→上线；无矩阵省略）\n"
     "\n"
     "**四、业务阶段衔接（严格按下述条件自上而下匹配，**只命中一条**，禁止叠加多条；按矩阵节点级 status 判定，禁止用工单级 approval_type）**：\n"
     "先从 approval_matrix 中找出**第一个 status 不等于「已通过」的节点**，记为「当前节点」。逐条判断，命中即停：\n"
@@ -3529,10 +3603,13 @@ s8f.append(llm_node(803, "状态摘要归纳",
      inp("req_id", "需求单号（节点802）", ref_block=nid(802), ref_rel="req_id"),
      inp("status", "整批状态（节点802）", ref_block=nid(802), ref_rel="status")],
     [out("approval_summary", "审批工单摘要")]))
-# xsbot-panel 独立代码节点（offer_id/req_id 取自审批首品提取节点806；chat_id 取自开始节点）
+# xsbot-panel 独立代码节点（offer_id/req_id 取自审批首品提取节点806；chat_id 取自开始节点；
+# resolve_step=True：由 approval_data（节点802 offers，含审批矩阵）解析真实业务进度，写入 url 的 step_stage 供页面步骤条定位）
 s8f.append(panel_code_node(805, "构建页面地址面板", "08",
-    panel_inputs(801, off_seq=806, off_rel="offer_id", name_seq=806, name_rel="approval_id", req_seq=806),
-    biz_title="上线审批看板"))
+    panel_inputs(801, off_seq=806, off_rel="offer_id", name_seq=806, name_rel="approval_id", req_seq=806)
+    + [inp("approval_data", "逐品审批工单明细（节点802，含审批矩阵，供步骤条按真实进度定位）",
+           ref_block=nid(802), ref_rel="offers")],
+    biz_title="上线审批看板", resolve_step=True))
 s8f.append(end_node(804, "结束(查询完成)",
     [inp("approval_summary", "审批工单摘要", ref_block=nid(803), ref_rel="approval_summary"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(805), ref_rel="panel")],

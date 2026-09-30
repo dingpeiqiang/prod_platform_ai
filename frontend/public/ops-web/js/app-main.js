@@ -25,11 +25,23 @@
         </div>
       </nav>
     `,
-    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'], stage: '' }; },
-    created(){ this.stage = (window.__WB_QUERY && window.__WB_QUERY.stage) || ''; },
+    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'], stage: '', stepStage: '' }; },
+    created(){
+      const q = window.__WB_QUERY || {};
+      this.stage = q.stage || '';
+      // step_stage：审批进度查询子流（stage=08）由工作流按真实审批矩阵计算的业务进度索引，
+      // 与 stage（页面默认 Tab 选择）解耦，避免步骤条无条件停在「上线审批」。
+      this.stepStage = (q.step_stage !== undefined && q.step_stage !== null && q.step_stage !== '') ? String(q.step_stage) : '';
+    },
     computed: {
       // stage -> 导航步进索引（环节口径：08/09/10 辅助子流按就近展示；00 提报与 11 需求工单发起/审批同属「需求提报」环节）
       activeIndex(){
+        // step_stage 优先：工作流已按真实审批进度给出业务步骤索引（如 08 审批查询可能落在 0/1/7/8）
+        const ss = this.stepStage;
+        if (ss !== '') {
+          const n = parseInt(ss, 10);
+          if (!isNaN(n) && n >= 0 && n < this.navs.length) return n;
+        }
         var map = { '00':0, '11':0, '01':1, '02':2, '03':3, '05':4, '04':5, '06':7, '07':8, '08':7, '09':8, '10':8, '12':8 };
         var st = this.stage || '';
         return map[st] !== undefined ? map[st] : 2;
