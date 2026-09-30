@@ -67,6 +67,11 @@
   /* ===== 报表/运营视图（配置工作台新增页签）样式 ===== */
 .rv-wrap { display: block; }
 .rv-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 22px; }
+.rv-pending-body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 20px; text-align: center; }
+.rv-pending-spinner { width: 28px; height: 28px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: rv-spin .8s linear infinite; }
+@keyframes rv-spin { to { transform: rotate(360deg); } }
+.rv-pending-title { font-size: 15px; font-weight: 600; color: #1f2937; }
+.rv-pending-desc { font-size: 12.5px; color: #64748b; max-width: 420px; line-height: 1.6; }
 .rv-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9; }
 .rv-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: #1f2937; }
 .rv-title svg { color: #2563eb; }
