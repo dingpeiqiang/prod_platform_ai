@@ -18,7 +18,7 @@ DST_DIR = BASE_DIR / "智能体工作流集V1.6-prod"
 # 环境地址替换规则（顺序敏感：先替换更长的具体地址）
 REPLACEMENTS = [
     ("http://10.86.13.201:31281", "http://172.30.8.52:6174"),
-    ("http://10.86.13.201:31280", "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai"),
+    ("http://10.86.13.201:31280/prod-ai", "http://szyg-stq-test.anhuitelecom.com:10001/prod-ai"),
 ]
 
 

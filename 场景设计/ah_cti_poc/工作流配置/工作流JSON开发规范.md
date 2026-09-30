@@ -262,6 +262,10 @@ llm_node(seq, title, prompt, in_refs, outputs, sys_prompt="", model="qwen3-30b-a
 - `inputs.llmParam[].content` 为完整提示词；`{}` 为引用占位（如 `{elements_json}`），平台运行时以对应出参替换。
 - `inputs.inputParameters` 为引用入参数组（`inp(...,ref_block=nid(上游), ref_rel=...)`）。
 - 固定参数：`temperature=0.2`、`top_p=0.5`、`max_tokens=2048`、`prompt_system`。
+- **提示词长度上限**：单个 LLM 节点提示词（`inputs.llmParam[].content`）**≤ 1600 字符**。平台对单节点提示词有长度限制，超限将导致工作流**导入失败**（`wf_sub_08` 曾达 2197 字符被平台拒绝）。生成器 `validate_workflow`（`_MAX_PROMPT_LEN=1600`）在写出前强制校验，超限即中止且不产出 JSON；提示词需精简表达、勿堆砌冗余说明。
+- **提示词语义自检（防精简回退）**：精简提示词时若误删关键约束，LLM 会语义回退（如判错业务阶段、把规则文字当结论回显）。生成器 `validate_workflow` 按 `_PROMPT_REQUIRED_PHRASES`（按节点 id 末三位匹配）强校验以下必需短语仍在，缺失即中止：
+  - `wf_sub_08` 节点 803「状态摘要归纳」：必含 `判阶段只看工单级 stage`、`禁止因矩阵含 launch 节点`（否则会把矩阵里的 launch 节点误判为"已进入上线审批"）。
+- **提示词占位符红线（防导入失败）**：花括号 `{}` 内**只能放入参名本身**，不得含空格/中文/标点。平台按 `{名称}` 精确匹配 `inputs.inputParameters[].name`，形如 `{per_offer 数量}`（含空格）会被判为非法占位符导致**导入失败**。需要附加说明时把文字移到花括号外（如 `{per_offer} 元素数量`）。注意与"JSON 示例字面量"区分：`{"offer_seq":1,...}` 内是 `"`/`:`，非占位符，平台不替换。生成器 `validate_workflow` 对"标识符+空格+多余字符"型花括号强校验。
 - **模型字段**：`model`（LLM 节点默认模型，固定 `qwen3-30b-a3b`；由 `llm_node` 生成器统一写入，平台运行时按此模型执行 LLM 节点）。
 - 提示词末尾约定"输出要求：仅输出…对应出参…，不输出其他多余文字"，保证单出参/多出参隔离（对齐现有所有 LLM 节点）。
 

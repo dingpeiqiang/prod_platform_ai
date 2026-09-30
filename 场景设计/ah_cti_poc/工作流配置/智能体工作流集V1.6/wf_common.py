@@ -3186,8 +3186,22 @@ files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = 
 #   4. 引用入参三层一致（blockID/nameValue[0]/currValue）且上游出参已声明
 #   5. 代码节点 Output 返回键 ⊆ 声明出参
 #   6. 结束节点占位符 ⊆ inputs[].name
+#   7. LLM 节点提示词长度 ≤ _MAX_PROMPT_LEN（平台对单节点提示词有长度限制，
+#      超限将导入失败；wf_sub_08 曾达 2197 字符被平台拒绝）
+#   8. LLM 节点提示词语义自检：关键约束短语仍在（防精简时误删导致语义回退，
+#      如 wf_sub_08 节点803 误删"判阶段只看工单级 stage"→ 误判进入上线审批）
+#   9. LLM 节点提示词占位符红线：花括号内除入参名外不得有空格/多余字符
+#      （平台按 {入参名} 精确匹配；如 {per_offer 数量} 会被判为非法占位符致导入失败）
 # ============================================================
 _ALLOWED_NODE_TYPES = {0, 1, 2, 3, 6, 9, 13}
+# 平台单个 LLM 节点提示词（inputs.llmParam[].content）长度上限（字符数）。
+# 取略高于全量工作流现最大值（wf_sub_00=1592），以拦截回归并约束提示词精简。
+_MAX_PROMPT_LEN = 1600
+# LLM 节点提示词必含关键短语（按节点 id 末 3 位匹配）：精简提示词时若删掉这些
+# 约束，语义会回退（LLM 判错阶段/回显规则），故生成器强校验。新增可按需追加。
+_PROMPT_REQUIRED_PHRASES = {
+    "803": ["判阶段只看工单级 stage", "禁止因矩阵含 launch 节点"],
+}
 
 
 def _code_return_keys(code):
@@ -3256,6 +3270,25 @@ def validate_workflow(data, filename="<workflow>"):
             extra = _code_return_keys(n.get('code')) - {o.get('name') for o in (n.get('outputs') or [])}
             if extra:
                 errs.append(f"[code] 节点 {n['id']} 返回未声明出参 {sorted(extra)}")
+
+    for n in nodes:
+        if n.get('type') == 1:
+            nid_str = str(n.get('id') or '')
+            required = _PROMPT_REQUIRED_PHRASES.get(nid_str[-3:])
+            for p in ((n.get('inputs') or {}).get('llmParam') or []):
+                content = p.get('content') or ''
+                length = len(content)
+                if length > _MAX_PROMPT_LEN:
+                    errs.append(f"[prompt] 节点 {n['id']} 提示词长度 {length} 超上限 {_MAX_PROMPT_LEN}（平台导入将失败，请精简）")
+                for phrase in (required or []):
+                    if phrase not in content:
+                        errs.append(f"[prompt] 节点 {n['id']} 提示词缺失关键约束短语「{phrase}」（精简时误删将导致语义回退）")
+                # 占位符红线：花括号内除入参名外不得有空格/多余字符（平台按 {入参名} 精确匹配）
+                names = {i.get('name') for i in ((n.get('inputs') or {}).get('inputParameters') or [])}
+                for m in re.finditer(r'\{([^{}]*)\}', content):
+                    inner = m.group(1)
+                    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\s+\S.*', inner):
+                        errs.append(f"[prompt] 节点 {n['id']} 占位符 {m.group(0)} 内含空格等多余字符，平台按 {{名称}} 精确匹配会失配")
 
     for n in nodes:
         if n.get('type') == 9:
