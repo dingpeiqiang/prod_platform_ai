@@ -1082,22 +1082,48 @@ const demandView = computed(() => {
   const rawReq = nc.byNode.requirement_report || {}
   const rawObj = nc.asObj(rawReq) || {}
   const reqId = pick(rawObj, ['req_id']) || (window.__WB_QUERY && window.__WB_QUERY.req_id) || ''
-  const target = pick(r, ['target', 'target_group', 'customer', 'fields.target']) || pick(rawObj, ['target', 'target_group'])
+  const inst = productInstance.value
+  // 需求提报单字段（含薄平单品：product_type/price/resources/out_price/billing_cycle/effective_way/validity/change_rule/cancel_rule）
+  const ptype = pick(r, ['product_type', 'fields.product_type'])
+  const series = pick(r, ['series', 'fields.series'])
+  const price = pick(r, ['price', 'fields.price']) || inst.fee
+  const resources = pick(r, ['resources', 'fields.resources']) || inst.resources
+  const outPrice = pick(r, ['out_price', 'fields.out_price', 'outPrice'])
+  const billing = pick(r, ['billing_cycle', 'fields.billing_cycle'])
+  const validity = pick(r, ['validity', 'fields.validity'])
+  const changeRule = pick(r, ['change_rule', 'fields.change_rule'])
+  const cancelRule = pick(r, ['cancel_rule', 'fields.cancel_rule'])
+  const effectiveWay = pick(r, ['effective_way', 'fields.effective_way'])
+  // 业务需求概述：由真实字段拼装（无节点内容时才用静态兜底文案）
+  const requireParts = []
+  if (ptype) requireParts.push('产品类型：' + ptype)
+  if (series) requireParts.push('所属系列：' + series)
+  if (price) requireParts.push('套餐档位：' + price + '元/月')
+  if (resources) requireParts.push('套内资源：' + resources)
+  if (outPrice) requireParts.push('套外资费：' + outPrice)
+  if (billing) requireParts.push('计费周期：' + billing)
+  if (validity) requireParts.push('套餐有效期：' + validity)
+  if (changeRule) requireParts.push('变更规则：' + changeRule)
+  if (cancelRule) requireParts.push('退订/拆机规则：' + cancelRule)
   const require = pick(r, ['require', 'requirement', 'desc', 'fields.require']) || pick(rawObj, ['require'])
+    || (requireParts.length ? requireParts.join('；') + '。' : ('推出' + inst.name + '，含' + (inst.resources || '基础资源') + '；首月按天折算，次月起按月收取；支撑营业厅、APP渠道销售。'))
+  const target = pick(r, ['target', 'target_group', 'customer', 'fields.target']) || pick(rawObj, ['target', 'target_group'])
+    || (ptype ? ('面向' + ptype + (series ? '（' + series + '）' : '') + '目标客群') : ('面向目标客群推出 ' + inst.name))
+  const effective = pick(r, ['effective', 'fields.effective']) || pick(rawObj, ['effective']) || effectiveWay || '订购立即生效'
   return {
-    no: pick(rawObj, ['requirement_no', 'no']) || ('XQ-' + reqId + '-' + productInstance.value.today),
-    name: pick(r, ['name', 'fields.name']) || productInstance.value.name,
-    applicant: pick(r, ['applicant', 'fields.applicant']) || productInstance.value.applicant,
-    department: pick(r, ['department', 'fields.department']) || productInstance.value.department,
-    date: pick(r, ['date', 'fields.date']) || productInstance.value.today,
-    target: target || ('面向目标客群推出、' + productInstance.value.name + '、' + (productInstance.value.fee ? '，月费' + productInstance.value.fee + '元' : '') + '，主打流量与通话体验'),
-    require: require || ('推出' + productInstance.value.name + '，含' + (productInstance.value.resources || '基础资源') + '；首月按天折算，次月起按月收取；支撑营业原"APP渠道销售、'),
-    effective: pick(r, ['effective', 'effective_way', 'fields.effective']) || pick(rawObj, ['effective']) || '2026-10-01',
+    no: pick(rawObj, ['requirement_no', 'no']) || reqId || ('XQ-' + inst.today),
+    name: pick(r, ['name', 'fields.name']) || inst.name,
+    applicant: pick(r, ['applicant', 'reporter', 'fields.applicant']) || inst.applicant,
+    department: pick(r, ['department', 'fields.department']) || inst.department,
+    date: pick(r, ['date', 'fields.date']) || inst.today,
+    target,
+    require,
+    effective,
     channels: (() => {
       const raw = pick(r, ['channels', 'fields.channels'])
       if (Array.isArray(raw) && raw.length) return raw
       if (typeof raw === 'string' && raw.trim()) return raw.split(/[,，、]/).map((s) => s.trim()).filter(Boolean)
-      return ['营业原', 'APP']
+      return ['营业厅', 'APP']
     })(),
   }
 })
