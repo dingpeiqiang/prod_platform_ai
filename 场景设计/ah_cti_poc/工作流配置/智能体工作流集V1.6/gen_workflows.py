@@ -3503,25 +3503,25 @@ s8f.append(code_node(806, "审批首品提取", (
     [code_out("req_id", 806), code_out("offer_id", 806), code_out("approval_id", 806),
      code_out("approval_type", 806), code_out("offers", 806)]))
 s8f.append(llm_node(803, "状态摘要归纳",
-    "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/work_order_type/stage/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}。\n"
-    "一单含多商品，工单级字段 approval_id/approval_type/work_order_type/stage/approval_matrix 各商品相同；矩阵各节点的 stage 仅用于渲染表格，不代表工单当前阶段。\n"
-    "判阶段只看工单级 stage：requirement=仍在需求阶段（审核通过后进入需求分析），禁止因矩阵含 launch 节点就判为上线审批；launch=已进入上线审批。禁用 approval_type 判阶段（恒为 requirement）。\n"
-    "按 flow-D D-1 输出四部分：\n"
-    "一、工单概览（一次）：审批单号「approval_id」｜需求单号 {req_id}｜工单状态：「需求/上线/优化工单」（work_order_type=optimize→优化工单；否则 approval_type=requirement→需求工单、launch→上线工单）｜覆盖商品：{per_offer} 元素数量 款\n"
-    "二、商品列表（逐品一行）：销售品「offer_id」｜状态「status」｜当前环节「current_node」（审批人「approver」）｜意见「opinion」｜更新时间「update_time」\n"
-    "三、审批矩阵（一次，逐字引用 approval_matrix[] 禁止编造）：\n"
+    "你是产销品审批工单查询智能体。输入：per_offer={per_offer}（JSON 数组，每项含 approval_id/offer_id/status/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态）。\n"
+    "**结构关键**：approval_matrix[] 为工单级节点矩阵，节点含 node_name/approver/stage/status/opinion/update_time；**只有 stage 是业务阶段信号**（requirement=需求阶段，launch=上线阶段）。**禁止用工单级 approval_type 判断业务阶段**（工单恒含两类节点，approval_type 恒为 requirement）。\n"
+    "\n"
+    "按四部分输出：\n"
+    "**一、工单概览（一次）**：审批单号「approval_id」｜需求单号 {req_id}｜工单状态：「approval_type 中文化（需求工单/上线工单）」｜覆盖商品：{per_offer 数量} 款\n"
+    "**二、商品列表（逐品一行）**：销售品「offer_id」｜状态：「status」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n"
+    "**三、审批矩阵（一次，逐字引用 approval_matrix[]）**\n"
     "| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
-    "| :---: | :--- | :--- | :--- | :--- | :--- | :--- |\n"
-    "（逐行展开全部节点；业务阶段列按节点 stage：requirement→需求阶段、launch→上线阶段；无则省略）\n"
-    "四、业务阶段衔接：内部按工单级 stage 选一条，只输出选中那条结论句，严禁输出规则/条件/序号：\n"
-    "任一矩阵节点驳回（含未通过/拒绝）→\"审批未通过：节点【驳回节点名】已驳回，意见：驳回意见，可修改执行方案后重新发起\"。\n"
-    "stage=requirement 且需求节点未通过→\"等待需求审核，通过后方可进入需求分析\"。\n"
-    "stage=requirement 且需求节点已通过→\"需求审核已通过，工单进入需求分析阶段，请确认后推进需求分析\"。\n"
-    "stage=launch→\"> 建议处理：需求审核已通过，工单进入上线审批阶段，当前待【首个非已通过节点名】（其审批人）审批，请等待或联系对应审批人\"，【】（）用真实值。\n"
-    "全节点已通过→\"审批已通过，销售品上架完成，可回复【查询监控】查看运维\"。\n"
-    "stage=requirement 时绝不输出上线审批字样。work_order_type=optimize 时结论前加\"优化工单\"，\"需求分析\"引导改为\"执行优化\"、回复【查询监控】回检。\n"
-    "per_offer 为空→\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
-    "仅输出摘要（出参 approval_summary），禁止总结句/寒暄，收尾以正文结束，禁止以表格收尾。",
+    "| :---: | :--- | :--- | :--- | :--- | :--- |\n"
+    "（业务阶段列取 stage 中文；无 approval_matrix 省略本表）\n"
+    "\n"
+    "**四、业务阶段衔接（自上而下匹配，只命中一条，按节点级 status 判定）**：先取 approval_matrix 中**第一个 status≠已通过**的节点为「当前节点」，命中即停：\n"
+    "① 有节点 status=驳回（含未通过/拒绝）→ 输出\"审批未通过：节点【驳回节点名】已驳回，意见：xxx\"，提示\"可修改执行方案后重新发起\"。\n"
+    "② 当前节点 stage=requirement → 输出\"等待需求审核，通过后方可进入需求分析\"。\n"
+    "③ 当前节点 stage=launch → 输出\"> **建议处理：** 需求审核已通过，工单进入上线审批阶段，当前待【node_name】（approver）审批，请等待或联系对应审批人\"（【】（）须替换为真实取值）。\n"
+    "④ 全通过且含 launch 节点 → 输出\"审批已通过，销售品上架完成 ✅\"，引导查询监控运维。\n"
+    "**optimize 工单适配**：③ 输出\"> **建议处理：** 优化工单需求审核已通过，工单进入上线审批阶段，当前待【node_name】（approver）审批\"；④ 输出\"优化工单审批已通过，优化建议待执行 ✅\"并引导回复【查询监控】回检。\n"
+    "per_offer 为空时仅输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
+    "**输出要求**：仅输出摘要，禁止总结句/寒暄，收尾以衔接块正文结束，勿以表格收尾。",
     [inp("per_offer", "逐品审批工单明细（节点802）", ref_block=nid(802), ref_rel="offers"),
      inp("req_id", "需求单号（节点802）", ref_block=nid(802), ref_rel="req_id"),
      inp("status", "整批状态（节点802）", ref_block=nid(802), ref_rel="status")],
@@ -3535,7 +3535,7 @@ s8f.append(end_node(804, "结束(查询完成)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(805), ref_rel="panel")],
     "{approval_summary}\n\n{panel}"))
 files8f = workflow(
-    "产销品-审批工单查询", "子工作流8（入参 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首品字段供面板）→LLM 工单摘要归纳（V1.6.2）：工单概览（工单级一次，按 work_order_type/approval_type 显示需求/上线/优化工单）+商品列表（逐品）+审批矩阵（工单级一次，逐字引用 approval_matrix[] 禁止编造）+业务阶段衔接（**以工单级 stage 判定**：stage=requirement 未过→等待需求审核、已过→进入需求分析；stage=launch→上线审批；全通过→已上架；驳回优先，互斥命中即停）；**禁止用矩阵节点 stage 或 approval_type 判断工单业务阶段**（矩阵 launch 节点非当前阶段，approval_type 恒为 requirement）；禁止追加总结句，收尾以正文结束（SKILL.md纪律5.1）。", "wf_sub_08", s8f,
+    "产销品-审批工单查询", "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→LLM 工单摘要归纳（V1.6.1 修正）：工单概览（工单级，一次）+商品列表（逐品）+审批矩阵（工单级，一次，逐字引用 approval_matrix[] 禁止编造）+工单类型识别（work_order_type=optimize→优化工单；否则按 approval_type 显示需求/上线工单）+按**节点级 stage/status** 判定业务阶段衔接（四条件互斥，命中即停：驳回/需求阶段未过→等待需求审核/需求阶段全过且落到上线阶段→指明当前待审节点/全部通过→已上架；优化工单追加专属语境）；**禁止用工单级 approval_type 判断业务阶段**（工单同时含 requirement/launch 节点，approval_type 恒为 requirement）；**禁止追加总结性语句**，收尾固定块以正文收尾，禁止以矩阵表格收尾（SKILL.md纪律5.1）。", "wf_sub_08", s8f,
     [edge(801,802), edge(802,803), edge(803,806), edge(806,805), edge(805,804)])
 
 # ============================================================

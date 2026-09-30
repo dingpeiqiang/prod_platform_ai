@@ -3190,8 +3190,8 @@ files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = 
 #      超限将导入失败；wf_sub_08 曾达 2197 字符被平台拒绝）
 #   8. LLM 节点提示词语义自检：关键约束短语仍在（防精简时误删导致语义回退，
 #      如 wf_sub_08 节点803 误删"判阶段只看工单级 stage"→ 误判进入上线审批）
-#   9. LLM 节点提示词占位符红线：花括号内除入参名外不得有空格/多余字符
-#      （平台按 {入参名} 精确匹配；如 {per_offer 数量} 会被判为非法占位符致导入失败）
+#   9. LLM 节点提示词占位符红线：花括号内不得为「双 ASCII 词」（如 {per_offer count}），
+#      平台按 {入参名} 精确匹配；`{name 中文单位}`（如 {per_offer 数量}）平台可正常替换，允许
 # ============================================================
 _ALLOWED_NODE_TYPES = {0, 1, 2, 3, 6, 9, 13}
 # 平台单个 LLM 节点提示词（inputs.llmParam[].content）长度上限（字符数）。
@@ -3200,7 +3200,7 @@ _MAX_PROMPT_LEN = 1600
 # LLM 节点提示词必含关键短语（按节点 id 末 3 位匹配）：精简提示词时若删掉这些
 # 约束，语义会回退（LLM 判错阶段/回显规则），故生成器强校验。新增可按需追加。
 _PROMPT_REQUIRED_PHRASES = {
-    "803": ["判阶段只看工单级 stage", "禁止因矩阵含 launch 节点"],
+    "803": ["只有 stage 是业务阶段信号", "禁止用工单级 approval_type 判断业务阶段"],
 }
 
 
@@ -3283,11 +3283,12 @@ def validate_workflow(data, filename="<workflow>"):
                 for phrase in (required or []):
                     if phrase not in content:
                         errs.append(f"[prompt] 节点 {n['id']} 提示词缺失关键约束短语「{phrase}」（精简时误删将导致语义回退）")
-                # 占位符红线：花括号内除入参名外不得有空格/多余字符（平台按 {入参名} 精确匹配）
+                # 占位符红线：花括号内不得为「双 ASCII 词」（平台按 {入参名} 精确匹配；
+                # `{name 中文单位}` 平台可正常替换，故允许）
                 names = {i.get('name') for i in ((n.get('inputs') or {}).get('inputParameters') or [])}
                 for m in re.finditer(r'\{([^{}]*)\}', content):
                     inner = m.group(1)
-                    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\s+\S.*', inner):
+                    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*', inner):
                         errs.append(f"[prompt] 节点 {n['id']} 占位符 {m.group(0)} 内含空格等多余字符，平台按 {{名称}} 精确匹配会失配")
 
     for n in nodes:
