@@ -700,6 +700,9 @@ public class AppStoreV16Controller {
         out.put("metric_anomalies", metricAnomaliesAll);
         out.put("alert_hints", alertHintsAll);
         out.put("suggestions", suggestionsAll);
+        // 监控预警（面向用户的结构化预警矩阵）：由本体指标异常 → R-O 建议推理链聚合，
+        // 跨品按异常严重度取 Top2，供 wf_sub_07 报告「监控预警」段逐条渲染「推理链 + 采纳引导」。
+        out.put("alerts", buildMonitorAlerts(results));
         out.put("summary", anyAbnormal
                 ? "监控完成：发现异常商品，已按 SWRL 分级推送告警并闭环建单"
                 : "监控完成：各商品运行正常");
@@ -795,6 +798,107 @@ public class AppStoreV16Controller {
                             + "，计费差错率 " + MapOps.str(facts.get("fee_error_rate")) + "，未触发告警"));
         }
         return rows;
+    }
+
+    /** 监控预警展示上限（跨品按异常严重度取 Top N）。 */
+    private static final int MONITOR_ALERT_TOP_N = 2;
+
+    /**
+     * 监控预警矩阵（面向用户的结构化预警，供 wf_sub_07「监控预警」段直接渲染）。
+     * <p>
+     * 口径：以后端本体 R-O 建议的 firedRules 为锚，逐（商品, 建议规则）成一条预警；
+     * 每条预警内嵌其支撑指标异常明细与**本体推理链**（指标越界 → R-O 规则条件 → 建议结论），
+     * 并按支撑异常的最大环比重排，跨品取 Top N，供用户「采纳预警 → 发起销售品优化工单」。
+     * 无指标异常时返回空数组。
+     */
+    private List<Map<String, Object>> buildMonitorAlerts(List<Map<String, Object>> results) {
+        List<Map<String, Object>> alerts = new java.util.ArrayList<>();
+        for (Map<String, Object> row : results) {
+            String offerId = MapOps.str(row.get("offer_id"));
+            String offerName = MapOps.str(row.get("offer_name"));
+            List<Map<String, Object>> anomalies = MapOps.castListOfMaps(row.get("metric_anomalies"));
+            List<Map<String, Object>> suggestions = MapOps.castListOfMaps(row.get("suggestions"));
+            for (Map<String, Object> sug : suggestions) {
+                String ruleId = MapOps.str(sug.get("ruleId"));
+                if (ruleId.isEmpty() || "R-O00".equals(ruleId)) {
+                    continue;
+                }
+                // 支撑该建议的指标异常（metrics_registry.thresholdRef 指向同一 R-O 规则）
+                List<Map<String, Object>> support = new java.util.ArrayList<>();
+                double maxAbsDelta = 0;
+                for (Map<String, Object> a : anomalies) {
+                    if (!ruleId.equals(MapOps.str(a.get("threshold_ref")))) {
+                        continue;
+                    }
+                    support.add(a);
+                    maxAbsDelta = Math.max(maxAbsDelta, Math.abs(parsePercent(a.get("delta_pct"))));
+                }
+                if (support.isEmpty()) {
+                    continue;
+                }
+                Map<String, Object> alert = new java.util.LinkedHashMap<>();
+                alert.put("offer_id", offerId);
+                alert.put("offer_name", offerName);
+                alert.put("ruleId", ruleId);
+                alert.put("name", MapOps.str(sug.get("name")));
+                alert.put("advice", MapOps.str(sug.get("advice")));
+                alert.put("support_metrics", support);
+                alert.put("reasoning_chain", suggestionReasoningChain(offerName, offerId, sug, support));
+                alert.put("cta", "回复【发起优化工单】采纳该预警建议，发起销售品优化工单");
+                alert.put("_severity", maxAbsDelta);
+                alerts.add(alert);
+            }
+        }
+        alerts.sort((a, b) -> Double.compare(
+                Double.parseDouble(String.valueOf(b.get("_severity"))),
+                Double.parseDouble(String.valueOf(a.get("_severity")))));
+        int top = Math.min(MONITOR_ALERT_TOP_N, alerts.size());
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (int i = 0; i < top; i++) {
+            Map<String, Object> a = alerts.get(i);
+            a.remove("_severity");
+            Map<String, Object> ordered = new java.util.LinkedHashMap<>();
+            ordered.put("alert_no", String.valueOf(i + 1));
+            ordered.putAll(a);
+            out.add(ordered);
+        }
+        return out;
+    }
+
+    /**
+     * 逐条预警的本体推理链（metric 异常 → R-O 规则条件 → 建议结论），逐字可引用、可追溯。
+     * 链式三步：(1) 指标越界（含实测环比与阈值）；(2) R-O 规则命中（条件来自 ops_rules.suggestions）；
+     * (3) 建议结论（advice，来自本体 R-O01~R-O05）。
+     */
+    private List<Map<String, Object>> suggestionReasoningChain(String offerName, String offerId,
+                                                               Map<String, Object> sug,
+                                                               List<Map<String, Object>> support) {
+        List<Map<String, Object>> chain = new java.util.ArrayList<>();
+        String nm = offerName.isEmpty() ? offerId : offerName;
+        for (Map<String, Object> a : support) {
+            chain.add(reasonRow("R-A·指标异常",
+                    nm + "·" + MapOps.str(a.get("name")) + " 环比 " + MapOps.str(a.get("delta_pct"))
+                            + "（趋势" + MapOps.str(a.get("trend")) + "），越界阈值来自 metrics_registry."
+                            + MapOps.str(a.get("metric")) + ".anomaly.thresholdRef=" + MapOps.str(a.get("threshold_ref")),
+                    "命中 → 该指标记为异常"));
+        }
+        chain.add(reasonRow(MapOps.str(sug.get("ruleId")),
+                "条件：" + MapOps.str(sug.get("condition")),
+                "命中 → 归入【" + MapOps.str(sug.get("name")) + "】"));
+        chain.add(reasonRow("R-O·结论",
+                "本体 R-O 建议推理输出：" + MapOps.str(sug.get("advice")),
+                "结论 → 生成优化建议，可发起销售品优化工单"));
+        return chain;
+    }
+
+    /** 解析 "12.34%" 形态的环比百分数为数值（无 % 号按原值）。 */
+    private double parsePercent(Object v) {
+        String s = MapOps.str(v).replace("%", "").trim();
+        try {
+            return Double.parseDouble(s);
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 
     private Map<String, Object> hintRow(String offerId, String offerName, String ruleId, String level, String hint) {

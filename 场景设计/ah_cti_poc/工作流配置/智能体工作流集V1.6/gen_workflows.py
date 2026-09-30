@@ -222,6 +222,59 @@ CODE_RENDER_REQ = (
     "    n = int(m.group())\n"
     "    return n if n > 0 else 1\n"
     "\n"
+    "def _loose_obj(s):\n"
+    "    t = s.strip()\n"
+    "    if t[:3] == '```':\n"
+    "        t = t[3:]\n"
+    "        if t[:4].lower() == 'json':\n"
+    "            t = t[4:]\n"
+    "        if t[-3:] == '```':\n"
+    "            t = t[:-3]\n"
+    "        t = t.strip()\n"
+    "    try:\n"
+    "        return json.loads(t)\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    starts = [x for x in (t.find('{'), t.find('[')) if x >= 0]\n"
+    "    if not starts:\n"
+    "        return None\n"
+    "    st = min(starts)\n"
+    "    op = t[st]\n"
+    "    cl = '}' if op == '{' else ']'\n"
+    "    d = 0\n"
+    "    for i in range(st, len(t)):\n"
+    "        c = t[i]\n"
+    "        if c == op:\n"
+    "            d += 1\n"
+    "        elif c == cl:\n"
+    "            d -= 1\n"
+    "            if d == 0:\n"
+    "                try:\n"
+    "                    return json.loads(t[st:i + 1])\n"
+    "                except Exception:\n"
+    "                    return None\n"
+    "    return None\n"
+    "\n"
+    "def _unwrap(o):\n"
+    "    for _ in range(5):\n"
+    "        if not isinstance(o, dict):\n"
+    "            return o\n"
+    "        nx = None\n"
+    "        for k in ('offers', 'offers_json', 'elements', 'elements_json', 'data', 'result'):\n"
+    "            if k in o:\n"
+    "                nx = o[k]\n"
+    "                break\n"
+    "        if nx is None:\n"
+    "            return o\n"
+    "        if isinstance(nx, str):\n"
+    "            n2 = _loose_obj(nx)\n"
+    "            if n2 is None:\n"
+    "                return o\n"
+    "            o = n2\n"
+    "        else:\n"
+    "            o = nx\n"
+    "    return o\n"
+    "\n"
     "def _parse(raw):\n"
     "    if isinstance(raw, dict):\n"
     "        return raw\n"
@@ -229,23 +282,14 @@ CODE_RENDER_REQ = (
     "        return {'offers': raw}\n"
     "    if not isinstance(raw, str) or not raw.strip():\n"
     "        return {}\n"
-    "    try:\n"
-    "        obj = json.loads(raw)\n"
-    "        if isinstance(obj, list):\n"
-    "            # V3.12 多商品：LLM 抽取出参可能是 N 品字段数组，归一为 {'offers': [...]}\n"
-    "            return {'offers': obj}\n"
-    "        return obj\n"
-    "    except Exception:\n"
-    "        t = raw.strip()\n"
-    "        if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
-    "            try:\n"
-    "                obj = json.loads(t.split(':', 1)[1].strip())\n"
-    "                if isinstance(obj, list):\n"
-    "                    return {'offers': obj}\n"
-    "                return obj\n"
-    "            except Exception:\n"
-    "                return {}\n"
-    "        return {}\n"
+    "    o = _unwrap(_loose_obj(raw))\n"
+    "    if isinstance(o, list):\n"
+    "        return {'offers': o}\n"
+    "    if isinstance(o, dict):\n"
+    "        if isinstance(o.get('offers'), list):\n"
+    "            return o\n"
+    "        return {'offers': [o]}\n"
+    "    return {}\n"
     "\n"
     "def fields_for(product_type):\n"
     "    pt = _norm(product_type)\n"
@@ -3110,6 +3154,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "            'metric_anomalies': json.dumps(info.get('metric_anomalies') or [], ensure_ascii=False),\n"
     "            'alert_hints': json.dumps(info.get('alert_hints') or [], ensure_ascii=False),\n"
     "            'suggestions': json.dumps(info.get('suggestions') or [], ensure_ascii=False),\n"
+    "            'alerts': json.dumps(info.get('alerts') or [], ensure_ascii=False),\n"
     "            'offers': json.dumps(offers, ensure_ascii=False),\n"
     "        }\n"
     "        ret['aggregate_json'] = json.dumps(info, ensure_ascii=False)\n"
@@ -3126,6 +3171,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "    anomalies_all = []\n"
     "    hints_all = []\n"
     "    suggestions_all = []\n"
+    "    alerts_all = []\n"
     "    first = {}\n"
     "    for o in offers:\n"
     "        ec = _num(o.get('error_count'))\n"
@@ -3172,6 +3218,29 @@ CODE_OP_MONITOR_ANALYZE = (
     "        else:\n"
     "            hints_all.append({'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E00', 'level': '正常',\n"
     "                              'hint': '运行正常，未触发告警'})\n"
+    "        # 兜底监控预警：仅当存在实量异常时，按（商品, R-E02）成一条预警，内嵌本体推理链与采纳引导\n"
+    "        if ab:\n"
+    "            alerts_all.append({\n"
+    "                'offer_id': oid, 'offer_name': nm, 'ruleId': 'R-E02', 'name': '运行异常处置',\n"
+    "                'advice': '异常量 ' + str(o.get('error_count') or '') + '，请及时处置并回检',\n"
+    "                'support_metrics': [{'offer_id': oid, 'offer_name': nm, 'metric': 'error_count',\n"
+    "                                     'name': '异常量', 'value': str(o.get('error_count') or ''),\n"
+    "                                     'trend': str(o.get('error_trend') or ''), 'threshold_ref': 'R-E02'}],\n"
+    "                'reasoning_chain': [\n"
+    "                    {'ruleId': 'R-A·指标异常', 'condition': nm + '·异常量 ' + str(o.get('error_count') or '')\n"
+    "                     + '（趋势' + str(o.get('error_trend') or '') + '），越界阈值来自 ops_rules.alertGrading.R-E02',\n"
+    "                     'conclusion': '命中 → 该指标记为异常'},\n"
+    "                    {'ruleId': 'R-E02', 'condition': '异常量 ≥ 1 或计费差错率 ≥ 0.01',\n"
+    "                     'conclusion': '命中 → 判为 P1 重要告警'},\n"
+    "                    {'ruleId': 'R-O·结论', 'condition': '本体 R-O 建议推理输出：加大渠道投放与限时促销',\n"
+    "                     'conclusion': '结论 → 生成优化建议，可发起销售品优化工单'}],\n"
+    "                '_severity': _num(o.get('error_count')),\n"
+    "            })\n"
+    "    alerts_all.sort(key=lambda a: abs(a.get('_severity') or 0), reverse=True)\n"
+    "    alerts_all = alerts_all[:2]\n"
+    "    for i, a in enumerate(alerts_all):\n"
+    "        a.pop('_severity', None)\n"
+    "        a['alert_no'] = str(i + 1)\n"
     "    if not first and offers:\n"
     "        first = offers[0]\n"
     "    ret: Output = {\n"
@@ -3187,6 +3256,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "        'metric_anomalies': json.dumps(anomalies_all, ensure_ascii=False),\n"
     "        'alert_hints': json.dumps(hints_all, ensure_ascii=False),\n"
     "        'suggestions': json.dumps(suggestions_all, ensure_ascii=False),\n"
+    "        'alerts': json.dumps(alerts_all, ensure_ascii=False),\n"
     "        'offers': json.dumps(offers, ensure_ascii=False),\n"
     "    }\n"
     "    ret['aggregate_json'] = json.dumps({\n"
@@ -3195,7 +3265,7 @@ CODE_OP_MONITOR_ANALYZE = (
     "        'work_order_count': ret['work_order_count'], 'first_offer_id': ret['first_offer_id'],\n"
     "        'first_offer_name': ret['first_offer_name'], 'reasoning_chain': reasoning,\n"
     "        'metrics': metrics_all, 'metric_anomalies': anomalies_all,\n"
-    "        'alert_hints': hints_all, 'suggestions': suggestions_all, 'offers': offers\n"
+    "        'alert_hints': hints_all, 'suggestions': suggestions_all, 'alerts': alerts_all, 'offers': offers\n"
     "    }, ensure_ascii=False)\n"
     "    return ret\n"
     "\n"
@@ -3243,29 +3313,45 @@ s7f.append(code_node(703, "监控聚合分析", CODE_OP_MONITOR_ANALYZE,
      code_out("first_offer_id", 703), code_out("first_offer_name", 703),
      code_out("reasoning_chain", 703), code_out("metrics", 703),
       code_out("metric_anomalies", 703), code_out("alert_hints", 703),
-      code_out("suggestions", 703), code_out("offers", 703), code_out("aggregate_json", 703)]))
+      code_out("suggestions", 703), code_out("alerts", 703),
+      code_out("offers", 703), code_out("aggregate_json", 703)]))
 s7f.append(selector_node2(704, "异常判定",
     [dep_node(703, "监控聚合分析", ["any_abnormal"])],
     [(-1, [cond_item(cond_ref(703, "any_abnormal", "监控聚合分析"), 1, cond_str("true"))])]))
 # ---- 异常分支 ----
 s7f.append(llm_node(705, "异常处置报告",
-    "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，metrics={metrics}。\n"
-    "输出结构：\n"
+    "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。"
+    "输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，"
+    "monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，"
+    "metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，"
+    "reasoning_chain={reasoning_chain}。\n"
+    "输出结构（严格按序，标题照抄）：\n"
     "1. 一句总述（发现异常商品数、异常指标数、已推送告警数、已建工单数）。\n"
-    "2. 【告警提示】逐行引用 alert_hints（含商品、等级 P0/P1/P2、提示语 hint），P0 置顶；alert_hints 为空时按 monitor_lines 归纳一句。\n"
-    "3. 【指标概览】按商品分组，取 metrics（含 name/value/unit/trend/delta_pct）；每品一行概览其关键指标（收入、订单量、新增用户、流失用户、ARPU、绑定率），趋势/环比照抄。\n"
-    "4. 【指标异常数据】取 metric_anomalies（含 name/value/unit/delta_pct/trend/threshold_ref），逐行「商品·指标 name：value unit，环比 delta_pct（trend），依据 threshold_ref」；无异常写「无」。\n"
-    "5. 【优化建议】取 suggestions（含 name/condition/advice/ruleId），逐行「建议 name（ruleId）：advice」，须注明由本体推理给出。\n"
-    "6. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 offer_id/offer_name/ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止把 monitor_lines 的数字当作条件重述，禁止增删或改写**；reasoning_chain 为空时省略本节，某品无对应行时该品省略。\n"
-    "7. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），分级依据以 alert_hints 与本体推理依据为准。\n"
-    "8. 一句闭环建议（按工单执行并回复【查询监控】回检）。\n"
-    "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字。\n"
+    "2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头"
+    "「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，"
+    "每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，"
+    "如「12.3 万元（-20.00%↓）」。指标按 metrics 中该品的各 metric 取值，禁止编造。\n"
+    "3. 【监控预警】取 alerts 数组**逐条**渲染，共 {alert_count} 条；每条格式：\n"
+    "   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n"
+    "   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，"
+    "**逐字引用，禁止增删改写**；\n"
+    "   - **建议**：alert.advice（由本体 R-O 推理给出）；\n"
+    "   - **采纳**：alert.cta。\n"
+    "   alerts 为空时，本节按 alert_hints 归纳一句。\n"
+    "4. 【指标异常数据】取 metric_anomalies，逐行「商品·指标 name：value unit，环比 delta_pct（trend），"
+    "依据 threshold_ref」；无异常写「无」。\n"
+    "5. 【本体分级依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
+    "（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n"
+    "6. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），依据 alert_hints 与分级依据。\n"
+    "7. 一句闭环引导：可回复【发起优化工单】采纳预警建议发起销售品优化工单，执行后回复【查询监控】回检。\n"
+    "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字；禁止原样拼接值串。\n"
     "输出要求：仅输出报告正文（对应出参 alert_report）。",
     [inp("any_abnormal", "是否异常（节点703）", ref_block=nid(703), ref_rel="any_abnormal"),
      inp("alert_count", "已推送告警数（节点703）", ref_block=nid(703), ref_rel="alert_count"),
      inp("work_order_count", "已建工单数（节点703）", ref_block=nid(703), ref_rel="work_order_count"),
      inp("monitor_lines", "逐品监控分析明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
      inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
+     inp("alerts", "监控预警矩阵（节点703，含 reasoning_chain/advice/cta）", ref_block=nid(703), ref_rel="alerts"),
      inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain"),
      inp("metrics", "逐品指标概览（节点703，name/value/unit/trend/delta_pct）", ref_block=nid(703), ref_rel="metrics"),
      inp("metric_anomalies", "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）", ref_block=nid(703), ref_rel="metric_anomalies"),
@@ -3274,23 +3360,39 @@ s7f.append(llm_node(705, "异常处置报告",
     [out("alert_report", "异常处置报告正文")]))
 # ---- 正常分支 ----
 s7f.append(llm_node(706, "运营摘要生成(正常分支)",
-    "你是产销品监控运维智能体。基于正常监控数据输出面向用户的中文自然语言运营摘要。输入：monitor_lines={monitor_lines}，summary={summary}，metrics={metrics}，alert_hints={alert_hints}，suggestions={suggestions}。\n"
-    "格式要求：\n"
-    "1. 逐品各一行，引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级正常）。\n"
-    "2. 【指标概览】按商品分组，取 metrics（name/value/unit/trend），每品一行概览收入、订单量、新增用户、流失用户、ARPU、绑定率等关键指标。\n"
-    "3. 【告警提示】引用 alert_hints 中 level=正常 的提示，归纳「各品未触发告警」。\n"
-    "4. 【优化建议】若 suggestions 含非 R-O00 建议则逐行「建议 name（ruleId）：advice」；仅 R-O00 时写「维持现有运营策略」。\n"
-    "5. 【本体推理依据】取逐品本体推理依据（reasoning_chain={reasoning_chain}，含 ruleId/condition/conclusion），**逐字引用**各行「规则 ruleId：condition → conclusion」；**严格约束：只引用 reasoning_chain 中已有内容，禁止自行编号，禁止把规则改写成 R001/R002，禁止增删或改写**；reasoning_chain 为空时省略本节。\n"
-    "6. 结尾附一句运营结论，如「整体运行正常，无需人工干预」。\n"
-    "7. 禁止原样拼接值串，禁止残留 { 占位符。\n"
-    "输出要求：仅输出运营摘要正文（对应出参 ops_summary）。",
+    "你是产销品监控运维智能体。基于监控数据输出面向用户的中文运营报告。"
+    "输入：monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，"
+    "metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，"
+    "reasoning_chain={reasoning_chain}。\n"
+    "输出结构（严格按序，标题照抄）：\n"
+    "1. 一句总述（本次监控商品数、运行告警数、监控预警数）。\n"
+    "2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头"
+    "「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，"
+    "每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，"
+    "如「12.3 万元（-20.00%↓）」；禁止编造。\n"
+    "3. 【逐品运行监控明细】逐行引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级）。\n"
+    "4. 【监控预警】取 alerts 数组**逐条**渲染；每条格式：\n"
+    "   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n"
+    "   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，"
+    "**逐字引用，禁止增删改写**；\n"
+    "   - **建议**：alert.advice（由本体 R-O 推理给出）；\n"
+    "   - **采纳**：alert.cta。\n"
+    "   alerts 为空时，本节写「未触发监控预警」。\n"
+    "5. 【告警提示】取 alert_hints 的 level/提示语，归纳运行告警口径。\n"
+    "6. 【本体推理依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
+    "（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n"
+    "7. 结尾一句运营结论 + 闭环引导：如需采纳预警建议发起优化工单可回复【发起优化工单】。\n"
+    "纪律：空写「无」；严禁原样拼接值串；严禁残留 { 占位符。\n"
+    "输出要求：仅输出运营报告正文（对应出参 ops_summary）。",
     [inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
      inp("summary", "聚合结论（节点703）", ref_block=nid(703), ref_rel="summary"),
+     inp("alerts", "监控预警矩阵（节点703，含 reasoning_chain/advice/cta）", ref_block=nid(703), ref_rel="alerts"),
      inp("reasoning_chain", "逐品本体推理依据（节点703，R-E00~E04 的 ruleId/condition/conclusion）", ref_block=nid(703), ref_rel="reasoning_chain"),
-     inp("metrics", "逐品指标概览（节点703，name/value/unit/trend）", ref_block=nid(703), ref_rel="metrics"),
+     inp("metrics", "逐品指标概览（节点703，name/value/unit/trend/delta_pct）", ref_block=nid(703), ref_rel="metrics"),
+     inp("metric_anomalies", "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）", ref_block=nid(703), ref_rel="metric_anomalies"),
      inp("alert_hints", "告警提示（节点703，ruleId/level/hint）", ref_block=nid(703), ref_rel="alert_hints"),
      inp("suggestions", "本体优化建议（节点703，ruleId/name/advice）", ref_block=nid(703), ref_rel="suggestions")],
-    [out("ops_summary", "运营摘要正文")]))
+    [out("ops_summary", "运营报告正文")]))
 # xsbot-panel 独立代码节点（异常分支）
 s7f.append(panel_code_node(707, "构建页面地址面板(异常)", "07",
     panel_inputs(701, off_seq=703, off_rel="first_offer_id", name_seq=703, name_rel="first_offer_name",
@@ -3332,16 +3434,16 @@ s7f.append(end_node(709, "结束(异常-已分级处置)",
     "【销售品运行监控】{offer_id}（{date_range}）\n"
     "- 首个异常商品：{offer_name}　已推送告警 {alert_count} 条　已建工单 {work_order_count} 个\n\n"
     "{alert_report}\n\n"
-    "> **建议处理：** 已按 SWRL 分级推送告警并闭环建单，建议按工单执行后回复【查询监控】回检。\n\n"
+    "> **建议处理：** 已按 SWRL 分级推送告警并闭环建单；可回复【发起优化工单】采纳监控预警建议，"
+    "按工单执行后回复【查询监控】回检。\n\n"
     "{panel}"))
 s7f.append(end_node(710, "结束(正常-运营报告)",
-    [inp("ops_summary", "运营摘要", ref_block=nid(706), ref_rel="ops_summary"),
+    [inp("ops_summary", "运营报告", ref_block=nid(706), ref_rel="ops_summary"),
      inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(708), ref_rel="panel")],
     "【环节9/9·监控运维】✅ 执行成功\n\n"
     "{ops_summary}\n\n"
-    "【逐品运行监控明细】\n{monitor_lines}\n\n"
-    "> **建议处理：** 运行指标正常，无需人工干预；如需刷新可回复【查询监控】\n\n{panel}"))
+    "> **建议处理：** 如需采纳监控预警建议发起优化工单，请回复【发起优化工单】；如需刷新可回复【查询监控】\n\n{panel}"))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze，工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL product-alert.ttl(R-E00~E04) 推理，逐品分级+告警推送+建工单+根因一次返回）。query_product_monitor（自研模拟）→监控聚合分析（POST /product/monitor/analyze；接口不可达时按 702 出参本地兜底；输出 any_abnormal/monitor_lines/summary/告警与工单计数）→异常判定→异常分支：LLM 处置报告→面板→结束；正常分支：LLM 运营摘要→面板→结束。", "wf_sub_07", s7f,
     [edge(701,702), edge(702,703), edge(703,704), edge(704,706,0), edge(704,705,-1),

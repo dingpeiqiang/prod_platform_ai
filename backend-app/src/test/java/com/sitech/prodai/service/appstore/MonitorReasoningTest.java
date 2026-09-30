@@ -143,4 +143,29 @@ class MonitorReasoningTest {
                 "建议规则应为 R-O 前缀：" + first.get("ruleId"));
         Assertions.assertNotNull(first.get("advice"), "建议行应含 advice");
     }
+
+    @Test
+    @DisplayName("监控聚合分析返回监控预警 alerts（含本体推理链与采纳引导，最多 Top2）")
+    void analyzeReturnsTop2Alerts() throws Exception {
+        setupOffer();
+        Map<String, Object> body = controller.monitorAnalyze(Map.of("offer_id", OFFER_ID));
+        Object alerts = body.get("alerts");
+        Assertions.assertTrue(alerts instanceof List, "应返回 alerts 数组：" + body.keySet());
+        List<?> rows = (List<?>) alerts;
+        Assertions.assertFalse(rows.isEmpty(), "存在指标异常时应产出监控预警");
+        Assertions.assertTrue(rows.size() <= 2, "预警应最多 2 条：" + rows.size());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> first = (Map<String, Object>) rows.get(0);
+        Assertions.assertEquals("1", String.valueOf(first.get("alert_no")), "预警应带序号");
+        Assertions.assertTrue(String.valueOf(first.get("ruleId")).startsWith("R-O"),
+                "预警规则应为 R-O 前缀：" + first.get("ruleId"));
+        Assertions.assertNotNull(first.get("advice"), "预警应含建议");
+        Assertions.assertNotNull(first.get("cta"), "预警应含采纳引导");
+        Object chain = first.get("reasoning_chain");
+        Assertions.assertTrue(chain instanceof List && !((List<?>) chain).isEmpty(),
+                "预警应含本体推理链：" + chain);
+        Object support = first.get("support_metrics");
+        Assertions.assertTrue(support instanceof List && !((List<?>) support).isEmpty(),
+                "预警应含支撑指标异常：" + support);
+    }
 }
