@@ -82,7 +82,7 @@
       if (!voice && mVoice) voice = mVoice[1];
       if (!sms && mSms) sms = mSms[1];
     }
-    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, quantity: (off.quantity !== undefined && off.quantity !== null && off.quantity !== '') ? off.quantity : '' };
+    return { name: name, code: code, fee: fee, flow: flow, flowUnit: flowUnit, voice: voice, sms: sms, quantity: (off.quantity !== undefined && off.quantity !== null && off.quantity !== '') ? off.quantity : '', offerSeq: (off.offer_seq !== undefined && off.offer_seq !== null && off.offer_seq !== '') ? off.offer_seq : '' };
   }
 
   // 从节点结果列表（各环节 result_json）解析商品实例：逐字段取，取不到即留空（由调用方回填）
@@ -181,8 +181,11 @@
 
     var list = (resolved.products && resolved.products.length) ? resolved.products : [resolved];
     var created = [];
-    list.forEach(function(res){
-      var id = 'req-' + (res.code || res.name || Date.now());
+    list.forEach(function(res, idx){
+      // id 需保证唯一：多品同 code/name（或均缺失）会使 id 碰撞，导致头部只渲染部分商品且切换失效。
+      // 以 offerSeq 优先、其次 code/name，最后追加序号兜底，确保每个商品 id 唯一。
+      var key = (res.offerSeq !== undefined && res.offerSeq !== null && res.offerSeq !== '') ? ('seq' + res.offerSeq) : (res.code || res.name || '');
+      var id = 'req-' + (key || ('idx' + idx)) + '-' + idx;
       var product = {
         id: id,
         name: res.name || '',

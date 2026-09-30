@@ -2220,3 +2220,127 @@
   cursor: not-allowed;
 }
 
+/* ========== 右侧边栏窄栏适配（响应式） ==========
+   本页由智能助手右侧工作台以 iframe 直嵌，可用宽度仅约 400~640px，
+   而页面原按 1000px+ 宽屏设计，故以下断点内统一收敛为单列/紧凑排版。
+   ≤900px：中等收窄（双列改单列、标签列变窄）；
+   ≤640px：窄栏终态（字号、内边距、导航全部进一步压缩）。 */
+
+/* ---- ≤900px：多列网格统一塌缩为单列，收窄固定标签列 ---- */
+@media (max-width: 900px) {
+  /* 面板不再撑固定宽，随容器自适应 */
+  .page-body > .config-panel { width: 100% !important; }
+  .config-panel { width: 100% !important; max-width: 100%; }
+
+  /* 基础信息双列 → 单列 */
+  .base-info-grid { grid-template-columns: 1fr; gap: 0; }
+
+  /* 表单标签列收窄，给控件让出宽度 */
+  .base-field-row .form-label { width: 116px; }
+  .form-row .form-label { width: 106px; }
+
+  /* 报表/运营视图多列 → 单列 */
+  .rv-grid.grid-2 { grid-template-columns: 1fr; }
+  .rv-metrics { grid-template-columns: repeat(2, 1fr); }
+  .rv-kpi { grid-template-columns: repeat(2, 1fr); }
+  .rv-strip { gap: 14px 20px; }
+
+  /* 测试报告 / 备案 / 渠道多列 */
+  .tr-overview-grid,
+  .fl-overview-grid,
+  .fl-form-grid { grid-template-columns: 1fr; }
+
+  /* 手机预览：窄栏内等比缩小以完整展示 */
+  .phone-frame { width: 300px; height: 560px; }
+}
+
+/* ---- ≤640px：窄栏终态，进一步压缩字号与间距 ---- */
+@media (max-width: 640px) {
+  html, body { font-size: 13px; }
+
+  /* 顶部导航：隐藏大标题留白，步进器紧凑横滑 */
+  .biz-nav { padding: 12px 10px 8px; }
+  .stepper { max-width: none; }
+  .stepper-item { min-width: 60px; }
+  .stepper-circle { width: 24px; height: 24px; font-size: 11px; }
+  .stepper-track { top: 12px; }
+  .stepper-item.done .stepper-circle { font-size: 12px; }
+  .stepper-label { font-size: 10px; margin-top: 5px; }
+
+  /* 页面留白压缩 */
+  .page-body { padding: 10px; }
+  .page-body > .config-panel,
+  .config-panel { border-radius: 6px; }
+
+  /* 头部：标题、商品 chip、按钮整体缩小 */
+  .config-header { padding: 8px 10px; }
+  .config-header-left { gap: 6px; }
+  .config-copy-btn { height: 24px; padding: 0 9px; font-size: 11px; }
+  .pp-chip { padding: 5px 12px; font-size: 12px; }
+  .pp-chip-qty { font-size: 10px; }
+  .pp-list-btn { padding: 5px 10px; font-size: 12px; }
+  .product-picker-menu { width: 92vw; }
+
+  /* Tab 导航：字号缩小并允许横向滚动，避免换行挤压 */
+  .config-tabs { padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  .config-tabs::-webkit-scrollbar { display: none; }
+  .config-tab { padding: 8px 10px; font-size: 12px; flex: 0 0 auto; white-space: nowrap; }
+
+  /* Tab 内容留白压缩 */
+  .config-body { padding: 10px; }
+
+  /* 表单：标签列收窄 + 字号下调 */
+  .base-field-row .form-label { width: 100px; }
+  .form-row .form-label { width: 92px; }
+  .form-row { gap: 8px; margin-bottom: 10px; }
+  .label-text { font-size: 11px; }
+  .form-input { padding: 5px 8px; font-size: 12px; }
+  .form-textarea { min-height: 48px; }
+  .input-unit { padding: 5px 8px; font-size: 11px; }
+  .section-header { padding: 8px 10px; }
+  .section-title { font-size: 12px; }
+  .section-content { padding: 10px; }
+
+  /* 表格字段：更紧凑 */
+  .limit-table { font-size: 11px; }
+  .limit-table thead th { padding: 6px 7px; }
+  .limit-table tbody td { padding: 5px 6px; }
+  .table-cell-input { font-size: 11px; }
+
+  /* 多列网格 → 单列 */
+  .rv-metrics { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .rv-kpi { grid-template-columns: 1fr; gap: 8px; }
+  .rv-card { padding: 14px 12px; }
+  .rv-title { font-size: 14px; }
+  .rv-m-num { font-size: 20px; }
+  .rv-kpi-v { font-size: 18px; }
+  .rv-sum-k { width: 92px; padding: 8px 10px; }
+  .rv-sum-row { font-size: 12px; }
+  .rv-table { font-size: 12px; }
+  .rv-table th, .rv-table td { padding: 7px 8px; }
+  .rv-subtabs { width: 100%; }
+  .rv-subtab { flex: 1; text-align: center; padding: 5px 8px; }
+
+  /* 底部操作栏：按钮可换行，主按钮撑满 */
+  .config-footer { padding: 10px; gap: 6px; }
+  .footer-btn, .btn-submit { padding: 6px 10px; font-size: 11px; }
+  .btn-submit { flex: 1 1 auto; justify-content: center; }
+  .batch-nav { gap: 8px; }
+  .batch-nav-btn { padding: 4px 9px; font-size: 11px; }
+
+  /* 稽核弹窗：贴合窄栏 */
+  .audit-modal { width: 94vw; max-height: 84vh; }
+  .audit-modal-header { padding: 12px 14px; }
+  .audit-modal-body { padding: 14px; }
+
+  /* 测试报告 / 备案公示 / 渠道 Tab */
+  .test-report-tab, .filing-tab, .channel-tab { padding: 10px; gap: 10px; }
+  .tr-check-label { width: 72px; font-size: 11px; }
+  .tr-loading-desc, .tr-loading-tip { max-width: none; width: 100%; }
+  .ch-item { padding: 10px 12px; }
+
+  /* 手机预览：窄栏内进一步缩小 */
+  .phone-preview-tab { padding: 10px 4px; }
+  .phone-frame { width: 100%; max-width: 320px; height: clamp(480px, 78vh, 600px); }
+}
+
