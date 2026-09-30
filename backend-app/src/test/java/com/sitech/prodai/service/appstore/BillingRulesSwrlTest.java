@@ -53,6 +53,32 @@ class BillingRulesSwrlTest {
     }
 
     @Test
+    @DisplayName("plan_json 顶层 optionalInfo 形态（固费 79 元）→ 解析月固费成功，无 R-C05/R-C09 假阳性")
+    void feeFromPlanJsonTopLevelOptionalInfo() {
+        // 回归：wf_sub_02 落库的 product_config.plan_json 原文形态（optionalInfo/baseInfo 直接在顶层，
+        // 非嵌套 payload.optionalInfo），月固费需正解析，否则 fixedFeeAmount=0 → R-C05/R-C09 全量误判
+        String configJson = "{\"offer_id\":\"900117099\",\"offer_name\":\"5G畅享主套餐79元档\","
+                + "\"plan_json\":{\"baseInfo\":{\"prodPrcName\":\"5G畅享主套餐79元档\"},"
+                + "\"optionalInfo\":{\"acctMonth\":{\"fixFee\":\"79\"},\"printContent\":{\"prcMonthFee\":\"79\"}}}}";
+        Map<String, Object> body = batchOf(configJson);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
+        Map<String, Object> item = offers.get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> risks = (List<Map<String, Object>>) item.get("risk_list");
+        Assertions.assertTrue(risks.stream().noneMatch(r -> "R-C05".equals(r.get("risk_type"))),
+                "固费 79 元应正解析，不应命中 R-C05：" + risks);
+        Assertions.assertTrue(risks.stream().noneMatch(r -> "R-C09".equals(r.get("risk_type"))),
+                "固费 79 元在区间内，不应命中 R-C09：" + risks);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> reasoning = (List<Map<String, Object>>) item.get("reasoning_chain");
+        Assertions.assertTrue(reasoning.stream()
+                        .filter(r -> "R-C09".equals(r.get("ruleId")))
+                        .anyMatch(r -> MapOps.str(r.get("condition")).contains("79")),
+                "R-C09 通过行应带解析出的固费取值 79：" + reasoning);
+    }
+
+    @Test
     @DisplayName("固费在区间内（199）→ 无 R-C09 命中，pass=1，推理链含 R-C08 通过且逐规则补通过行")
     void feeWithinRangePass() {
         Map<String, Object> body = batchOf("{\"offer_id\":\"900117099\",\"offer_name\":\"测试套餐\",\"messageRootKey\":\"MAIN_PKG\",\"monthly_fee\":199,\"channelScope\":\"全渠道\"}");

@@ -23,13 +23,21 @@
     try { return JSON.parse(s); } catch (e) { return null; }
   }
 
-  // 归一销售品列表：兼容 {offers:[...]} / [ ... ] / JSON 字符串；逐品补 offer_seq；
+  // 归一销售品列表：兼容 {offers:[...]} / [ ... ] / 单品扁平对象 / JSON 字符串；逐品补 offer_seq；
   // 需求提报单元素形如 {offer_seq, fields:{name,price,resources,...}}，"fields" 拉平到元素顶层便于统一取值。
+  // 兼容两类历史/现网形态：①{req_id, offers:[...]}；②单品薄平对象 {name, price, resources, product_type,...}（无 offers 包裹）→ 视为 1 品。
+  function looksLikeOffer(o){
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+    return ['name', 'price', 'resources', 'prodPrcName', 'offer_name', 'offer_id', 'in_fee', 'plan_json', 'product_type', 'out_price']
+      .some(function(k){ return o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== ''; });
+  }
   function normalizeOffers(raw){
     var obj = parseJson(raw);
     if (obj && !Array.isArray(obj) && Array.isArray(obj.offers)) obj = obj.offers;
+    // 单品扁平对象（含 req_id 等包装键但无 offers）：包成 1 品，避免整条被丢弃导致商品列表为空
+    if (obj && !Array.isArray(obj) && looksLikeOffer(obj)) obj = [obj];
     if (!Array.isArray(obj)) return [];
-    return obj.filter(function(o){ return o && typeof o === 'object'; }).map(function(o, i){
+    return obj.filter(function(o){ return o && typeof o === 'object' && !Array.isArray(o); }).map(function(o, i){
       var one = {};
       Object.keys(o).forEach(function(k){ if (k !== 'fields') one[k] = o[k]; });
       if (o.fields && typeof o.fields === 'object'){
@@ -79,8 +87,11 @@
 
   // 从节点结果列表（各环节 result_json）解析商品实例：逐字段取，取不到即留空（由调用方回填）
   function buildProductFromNodeResults(list){
+    // list 兼容数组 / JSON 字符串（插件契约 list 声明为字符串）
+    if (typeof list === 'string') list = parseJson(list) || [];
+    if (!Array.isArray(list)) list = [];
     var byNode = {};
-    (list || []).forEach(function(rec){
+    list.forEach(function(rec){
       if (rec && rec.node_name) byNode[rec.node_name] = parseJson(rec.result_json);
     });
     // 配置环节（config）优先：含 offer_id/offer_name/in_fee/plan_json，信息最全
