@@ -186,7 +186,10 @@
         offerCount: resolved.offerCount || (resolved.offers ? resolved.offers.length : 0),
         status: '在售中',
         templateLabel: '',
-        category: 'req_id商品'
+        category: 'req_id商品',
+        // 各环节节点保存内容（按 node_name 索引的原始 result_json 对象）与配置环节原文，供各页签动态渲染
+        nodeResults: resolved.nodeResults || {},
+        raw: resolved.raw || {}
       };
       var existed = PRODUCTS.filter(function(p){ return p.id === id; })[0];
       if (existed){
@@ -247,6 +250,23 @@
 
   // 先落 URL 商品（若有），保证接口不可用时页面仍有基本数据
   window.__WB_PRODUCT = pickByUrl() || {};
+
+  // 供各页签动态渲染：读取当前选中商品对应环节的节点保存内容（按 node_name 索引）。
+  // 返回归一化后的对象：{ byNode, offers（权威名册，含 offer_seq/name/quantity 及逐品 fields）, raw }。
+  // 无任何节点内容时返回空结构，调用方回落到静态兜底。
+  window.__WB_NODE_CONTENT = function(){
+    var p = window.__WB_PRODUCT || {};
+    var byNode = p.nodeResults || {};
+    // 权威名册：优先需求提报单（requirement_report），逐环节回退，最终用当前商品 offers
+    var roster = [];
+    ['requirement_report', 'requirement', 'config', 'spec', 'fee', 'test'].some(function(nm){
+      var got = normalizeOffers(byNode[nm]);
+      if (got.length){ roster = got; return true; }
+      return false;
+    });
+    if (!roster.length && Array.isArray(p.offers)) roster = normalizeOffers(p.offers);
+    return { byNode: byNode, offers: roster, raw: p.raw || {} };
+  };
 
   // 按 req_id 拉取节点结果并解析；失败/超时静默保留已设置的值
   window.__WB_DATA_READY = (function(){

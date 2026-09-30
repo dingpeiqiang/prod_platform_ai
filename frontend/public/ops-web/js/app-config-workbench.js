@@ -38,6 +38,10 @@ const emit = __emit
 // 只读档案模式：传入 archiveSnapshot 时，本面板以"配置档案"形式只读展示某份归档工单的完整配置。// archiveSnapshot = { productInfo: { workOrderId, prodPrcName, templateLabel, status }, values: { 字段key: 值 } }
 const props = __props
 
+// 当前选中商品（响应式）：以 window.__WB_PRODUCT 初始化，商品切换时更新（见 activeProductId watcher），
+// 驱动所有页签/派生态全体重算。页面内派生数据统一读取本 ref，而非非响应式的 window.__WB_PRODUCT。
+const currentProduct = ref(window.__WB_PRODUCT || {})
+
 // 复制模式：基于某份存量商品归档档案「复制」出的可编辑新商品（保持只读档案预填的字段值为模板数据，
 const copyMode = ref(false)
 // 复制模式下的新工单号（进入复制时生成一次）
@@ -230,6 +234,16 @@ const productInfo = computed(() => {
       status: copyStatus.value,
     }
   }
+  // 多商品：标题/工单号以当前选中商品实例为准（名称优先取表单实际编辑值），切换商品即联动。
+  const cur = currentProduct.value || {}
+  if (cur.name || cur.code) {
+    const editedName = String(formData.prodName ?? '').trim()
+    return {
+      ...launchProductConfig.productInfo,
+      prodPrcName: editedName || cur.name || launchProductConfig.productInfo.prodPrcName,
+      workOrderId: cur.code || launchProductConfig.productInfo.workOrderId,
+    }
+  }
   return launchProductConfig.productInfo
 })
 
@@ -419,10 +433,15 @@ const emptyValue = (field) => {
 }
 initFormData()
 
-// 多商品切换：activeProductId 变化时以新商品实例（window.__WB_PRODUCT）重新回填身份/资源字段，实现各页签联动。
+// 多商品切换：activeProductId 变化时，把新商品实例同步进响应式 currentProduct，
+// 并完整重跑 initFormData() 全量回填各表单/页签（不再只覆写 8 个身份字段），
+// 同时清空上一商品的修改态与标签态，确保点击商品 chip / 列表后所有 tab 按新商品重新初始化。
 watch(() => props.activeProductId, () => {
-  ;['prodName', 'prodPrcName', 'prodCode', 'monthlyFee', 'flowAmount', 'flowUnit', 'voiceAmount', 'smsAmount'].forEach((k) => { if (k in formData) formData[k] = '' })
-  applyProductSeed()
+  currentProduct.value = window.__WB_PRODUCT || {}
+  Object.keys(modifiedFields).forEach((k) => { delete modifiedFields[k] })
+  Object.keys(parsedFilled).forEach((k) => { delete parsedFilled[k] })
+  Object.keys(aiFilled).forEach((k) => { delete aiFilled[k] })
+  initFormData()
   snapshotPrevValues()
 })
 
@@ -988,12 +1007,54 @@ __expose({
   applyFieldUpdate,
 })
 
+// ===== 工作流节点内容（按 node_name 索引的 result_json）读取工具 =====
+// 各页签优先取「对应工作流节点保存内容」，取不到再回落到基于商品实例的静态兜底，保证既有形态不破。
+const nodeContent = () => {
+  const p = currentProduct.value || {}
+  const byNode = p.nodeResults || {}
+  const q = window.__WB_QUERY || {}
+  // 当前商品对应的 offer_seq / offer_id，用于从多商品 offers[] 中定位本品
+  const wantSeq = p.offer_seq !== undefined && p.offer_seq !== null && p.offer_seq !== '' ? String(p.offer_seq) : ''
+  const wantId = String(p.code || q.offer_id || '').trim()
+  // 从（可能是 JSON 字符串的）节点内容中解出对象/数组
+  const asObj = (v) => {
+    if (!v) return null
+    if (typeof v === 'object') return v
+    try { return JSON.parse(v) } catch (e) { return null }
+  }
+  // 取某节点的解析后对象
+  const node = (nm) => asObj(byNode[nm])
+  // 从节点内容里挑出当前商品对应的元素：offers[] 按 offer_seq/offer_id 命中，命中不到取首元素
+  const offerOf = (rec) => {
+    const obj = asObj(rec)
+    if (!obj) return null
+    const arr = Array.isArray(obj) ? obj : (Array.isArray(obj.offers) ? obj.offers : null)
+    if (arr && arr.length) {
+      if (wantSeq) { const hit = arr.filter((o) => o && String(o.offer_seq) === wantSeq)[0]; if (hit) return hit }
+      if (wantId) { const hit = arr.filter((o) => o && String(o.offer_id || o.offerId) === wantId)[0]; if (hit) return hit }
+      return arr[0]
+    }
+    return obj
+  }
+  // 深度取首个非空标量（支持点路径），用于兼容多种信封字段命名
+  const pick = (obj, paths) => {
+    if (!obj) return ''
+    for (const path of paths) {
+      let cur = obj
+      for (const part of path.split('.')) { cur = cur == null ? null : cur[part] }
+      if (cur !== undefined && cur !== null && String(cur).trim() !== '') return cur
+    }
+    return ''
+  }
+  return { byNode, node, offerOf, pick, asObj }
+}
+
 // ===== 商品实例数据源（单一来源）：所有页签的数据统一由它派生 =====
 // 实例身份取自 ①URL 外链（offer_id/name/req_id）②已配置的表单值（formData）③全局 launch 档案。
 // 切换不同商品（换 URL 参数 / 修改表单）即全量联动初始化各页签，而非各页签各自一小撮演示数据。
 const productInstance = computed(() => {
   const q = window.__WB_QUERY || {}
-  const p = window.__WB_PRODUCT || {}
+  const p = currentProduct.value || {}
   const num = (v) => (v === undefined || v === null || v === '' ? '' : String(v))
   const name = String(formData.prodName ?? formData.prodPrcName ?? productInfo.value.prodPrcName ?? '').trim()
     || p.name || q.name || q.offer_name || '待命名商品'
@@ -1008,132 +1069,246 @@ const productInstance = computed(() => {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
   const resources = [flow ? flow + flowUnit + '流量' : '', voice ? voice + '分钟语音' : '', sms ? sms + '条短信' : ''].filter(Boolean).join('、')
-  return { name, code, fee, flow, flowUnit, voice, sms, applicant, department, resources, today, now }
+  // 需求提报单原文（requirement_report）——用于需求页签动态填值
+  const reqReport = nodeContent().offerOf(nodeContent().byNode.requirement_report)
+  return { name, code, fee, flow, flowUnit, voice, sms, applicant, department, resources, today, now, reqReport }
 })
 
-// 需求提报页签 —— 由实例数据动态生成。
-const demandView = computed(() => ({
-  no: 'XQ-' + ((window.__WB_QUERY && window.__WB_QUERY.req_id) || '') + '-' + productInstance.value.today,
-  name: productInstance.value.name,
-  applicant: productInstance.value.applicant,
-  department: productInstance.value.department,
-  date: productInstance.value.today,
-  target: '面向目标客群推出、' + productInstance.value.name + '、' + (productInstance.value.fee ? '，月费' + productInstance.value.fee + '元' : '') + '，主打流量与通话体验',
-  require: '推出' + productInstance.value.name + '，含' + (productInstance.value.resources || '基础资源') + '；首月按天折算，次月起按月收取；支撑营业原"APP渠道销售、',
-  effective: '2026-10-01',
-  channels: ['营业原', 'APP'],
-}))
+// 需求提报页签 —— 优先取需求提报单节点（requirement_report）保存内容，缺失回落静态兜底。
+const demandView = computed(() => {
+  const nc = nodeContent()
+  const r = productInstance.value.reqReport || {}
+  const pick = nc.pick
+  const rawReq = nc.byNode.requirement_report || {}
+  const rawObj = nc.asObj(rawReq) || {}
+  const reqId = pick(rawObj, ['req_id']) || (window.__WB_QUERY && window.__WB_QUERY.req_id) || ''
+  const target = pick(r, ['target', 'target_group', 'customer', 'fields.target']) || pick(rawObj, ['target', 'target_group'])
+  const require = pick(r, ['require', 'requirement', 'desc', 'fields.require']) || pick(rawObj, ['require'])
+  return {
+    no: pick(rawObj, ['requirement_no', 'no']) || ('XQ-' + reqId + '-' + productInstance.value.today),
+    name: pick(r, ['name', 'fields.name']) || productInstance.value.name,
+    applicant: pick(r, ['applicant', 'fields.applicant']) || productInstance.value.applicant,
+    department: pick(r, ['department', 'fields.department']) || productInstance.value.department,
+    date: pick(r, ['date', 'fields.date']) || productInstance.value.today,
+    target: target || ('面向目标客群推出、' + productInstance.value.name + '、' + (productInstance.value.fee ? '，月费' + productInstance.value.fee + '元' : '') + '，主打流量与通话体验'),
+    require: require || ('推出' + productInstance.value.name + '，含' + (productInstance.value.resources || '基础资源') + '；首月按天折算，次月起按月收取；支撑营业原"APP渠道销售、'),
+    effective: pick(r, ['effective', 'effective_way', 'fields.effective']) || pick(rawObj, ['effective']) || '2026-10-01',
+    channels: (() => {
+      const raw = pick(r, ['channels', 'fields.channels'])
+      if (Array.isArray(raw) && raw.length) return raw
+      if (typeof raw === 'string' && raw.trim()) return raw.split(/[,，、]/).map((s) => s.trim()).filter(Boolean)
+      return ['营业原', 'APP']
+    })(),
+  }
+})
 
-// 加载方案页签 —— 由实例数据动态生成。
-const schemeView = computed(() => ({
-  no: 'SCH-' + productInstance.value.today,
-  requireNo: demandView.value.no,
-  version: 'V1.0',
-  name: productInstance.value.name + '加载方案',
-  author: '产商品中心（CRM_POS，',
-  status: '已确订',
-  summary: [
-    ['资费名称', productInstance.value.name],
-    ['月租', (productInstance.value.fee ? productInstance.value.fee + '元/月' : '--') + '（首月按天折算，次月起按月收取）'],
-    ['包含资源', productInstance.value.resources || '--'],
-    ['套外标准', '流量3元/GB、语音/.15元/分钟、短信/.1元/权'],
-    ['生效方式', '订购立即生效 / 退订预约生效'],
-    ['发布范围', '全省22个地市，营业厅、APP渠道'],
-  ],
-  items: ['基础信息', '月租', '语音资源', '流量资源', '短信资源', '前项限制', '后项限制'],
-}))
+// 加载方案页签 —— 优先取配置方案节点（requirement）保存内容，缺失回落静态兜底。
+const schemeView = computed(() => {
+  const nc = nodeContent()
+  const r = nc.offerOf(nc.byNode.requirement) || {}
+  const plan = nc.asObj(r.plan_json) || {}
+  const base = plan.baseInfo || {}
+  const opt = plan.optionalInfo || {}
+  const pick = nc.pick
+  const keep = (v, fallback) => (v !== undefined && v !== null && String(v).trim() !== '' ? v : fallback)
+  return {
+    no: keep(pick(r, ['scheme_no', 'no']), 'SCH-' + productInstance.value.today),
+    requireNo: demandView.value.no,
+    version: keep(pick(r, ['version']), 'V1.0'),
+    name: keep(pick(r, ['name', 'fields.name']), productInstance.value.name + '加载方案'),
+    author: '产商品中心（CRM_POS，',
+    status: keep(pick(r, ['status']), '已确订'),
+    summary: [
+      ['资费名称', keep(pick(r, ['name', 'fields.name']) || pick(base, ['prodPrcName']), productInstance.value.name)],
+      ['月租', (productInstance.value.fee ? productInstance.value.fee + '元/月' : '--') + '（首月按天折算，次月起按月收取）'],
+      ['包含资源', pick(opt, ['printContent.containResource']) || pick(r, ['resources', 'fields.resources']) || productInstance.value.resources || '--'],
+      ['套外标准', keep(pick(opt, ['outPrice']), '流量3元/GB、语音/.15元/分钟、短信/.1元/权')],
+      ['生效方式', keep(pick(r, ['effective_way', 'fields.effective']), '订购立即生效 / 退订预约生效')],
+      ['发布范围', keep(pick(r, ['publish_range']), '全省22个地市，营业厅、APP渠道')],
+    ],
+    items: ['基础信息', '月租', '语音资源', '流量资源', '短信资源', '前项限制', '后项限制'],
+  }
+})
 
-// 稽核报告页签 —— 由实例数据动态生成。
-const auditView = computed(() => ({
-  object: 'offer_id = ' + productInstance.value.code,
-  status: '通过',
-  time: productInstance.value.today,
-  conclusion: '稽核通过：配置符合本次落地销售品 新增销售品' + productInstance.value.code + ' 规则、',
-  checks: [
-    ['基础信息完整态', '通过'],
-    ['资源配置完整态', '通过'],
-    ['套外资费完整态', '通过'],
-    ['字段格式规范态', '通过'],
-    ['字段枚举合法态', '通过'],
-    ['配置项关联一致态', '通过'],
-    ['业务规则完整态', '通过'],
-  ],
-}))
+// 稽核报告页签 —— 优先取规格稽核节点（spec）保存内容，缺失回落静态兜底。
+const auditView = computed(() => {
+  const nc = nodeContent()
+  const raw = nc.byNode.spec
+  const obj = nc.asObj(raw)
+  const offer = nc.offerOf(raw) || {}
+  const pick = nc.pick
+  const passVal = String(obj ? pick(obj, ['pass']) || pick(offer, ['pass']) : '').trim()
+  const passed = passVal === '' ? true : passVal === '1' || passVal === 'true' || passVal === '通过'
+  const errList = (offer && Array.isArray(offer.error_list) ? offer.error_list : (obj && Array.isArray(obj.error_list) ? obj.error_list : []))
+  const checks = errList.length
+    ? errList.map((e) => {
+        const item = pick(e, ['item', 'name', 'check_item', 'desc']) || '—'
+        const lv = pick(e, ['result', 'level', 'status']) || (String(e && e.pass) === '0' ? '未通过' : '通过')
+        return [item, lv]
+      })
+    : [
+        ['基础信息完整态', '通过'],
+        ['资源配置完整态', '通过'],
+        ['套外资费完整态', '通过'],
+        ['字段格式规范态', '通过'],
+        ['字段枚举合法态', '通过'],
+        ['配置项关联一致态', '通过'],
+        ['业务规则完整态', '通过'],
+      ]
+  const suggest = obj ? pick(obj, ['audit_suggest']) : ''
+  return {
+    object: 'offer_id = ' + productInstance.value.code,
+    status: passed ? '通过' : '未通过',
+    time: productInstance.value.today,
+    conclusion: suggest || ('稽核通过：配置符合本次落地销售品 新增销售品' + productInstance.value.code + ' 规则、'),
+    checks,
+  }
+})
 
-// 校准报告页签 —— 由实例数据动态生成。
-const calibrateView = computed(() => ({
-  object: productInstance.value.code,
-  status: '通过',
-  time: productInstance.value.today,
-  conclusion: '资费校准通过：计费配置与方案需求保持一致，未发现叠动"互斥冲突、',
-  rows: [
-    ['套餐固定费', productInstance.value.fee + '元', productInstance.value.fee + '元/月', '一致'],
-    ['国内通用流量', (productInstance.value.flow || '--') + productInstance.value.flowUnit, (productInstance.value.flow || '--') + productInstance.value.flowUnit, '一致'],
-    ['国内通话', (productInstance.value.voice || '--') + '分钟', (productInstance.value.voice || '--') + '分钟', '一致'],
-    ['套外流量标准', '3元/GB', '3元/GB', '一致'],
-    ['套外语音费率', '0.15元/分钟', '0.15元/分钟', '一致'],
-    ['套外短信费率', '0.1元/权', '0.1元/权', '一致'],
-  ],
-}))
+// 校准报告页签 —— 优先取资费校准节点（fee）保存内容，缺失回落静态兜底。
+const calibrateView = computed(() => {
+  const nc = nodeContent()
+  const raw = nc.byNode.fee
+  const obj = nc.asObj(raw)
+  const offer = nc.offerOf(raw) || {}
+  const pick = nc.pick
+  const cmp = offer && Array.isArray(offer.compare_list) ? offer.compare_list : (obj && Array.isArray(obj.compare_list) ? obj.compare_list : [])
+  const rows = cmp.length
+    ? cmp.map((c) => [
+        pick(c, ['project_name', 'item', 'name']) || '—',
+        pick(c, ['requirement_desc', 'demand', 'expect']) || '—',
+        pick(c, ['billing_desc', 'config', 'actual']) || '—',
+        pick(c, ['result']) || '一致',
+      ])
+    : [
+        ['套餐固定费', productInstance.value.fee + '元', productInstance.value.fee + '元/月', '一致'],
+        ['国内通用流量', (productInstance.value.flow || '--') + productInstance.value.flowUnit, (productInstance.value.flow || '--') + productInstance.value.flowUnit, '一致'],
+        ['国内通话', (productInstance.value.voice || '--') + '分钟', (productInstance.value.voice || '--') + '分钟', '一致'],
+        ['套外流量标准', '3元/GB', '3元/GB', '一致'],
+        ['套外语音费率', '0.15元/分钟', '0.15元/分钟', '一致'],
+        ['套外短信费率', '0.1元/权', '0.1元/权', '一致'],
+      ]
+  const risk = obj ? pick(obj, ['risk_summary']) : ''
+  const allSame = rows.every((r) => String(r[3]).indexOf('一致') >= 0 || String(r[3]).indexOf('通过') >= 0)
+  return {
+    object: productInstance.value.code,
+    status: allSame ? '通过' : '存在差异',
+    time: productInstance.value.today,
+    conclusion: risk || '资费校准通过：计费配置与方案需求保持一致，未发现叠动"互斥冲突、',
+    rows,
+  }
+})
 
-// 测试报告页签 —— 由实例数据动态生成。
-const testRepView = computed(() => ({
-  no: 'TEST-REP-' + productInstance.value.today + '-' + productInstance.value.code.slice(-3),
-  name: productInstance.value.name,
-  total: 30,
-  pass: 30,
-  rate: '100%',
-  conclusion: '建议上线',
-  dims: [
-    ['受理验证 (ACC)', '10', '10', '通过'],
-    ['计费验证 (BILL)', '10', '10', '通过'],
-    ['客服验证 (CUST)', '10', '10', '通过'],
-  ],
-  cases: [
-    ['ACC-001', '销售品基础准入规则校验', 'P0', '通过'],
-    ['ACC-004', '订购操作能力校验', 'P0', '通过'],
-    ['ACC-011', '模拟订购接口预测试', 'P0', '通过'],
-    ['BILL-001', '基础资费金额合法性校验', 'P0', '通过'],
-    ['BILL-004', '资源扣减规则校验', 'P0', '通过'],
-    ['BILL-010', '资费生效失效联动校验', 'P0', '通过'],
-    ['CUST-001', '客服产品基础视图完整态', 'P0', '通过'],
-    ['CUST-004', '产品资费对外说明话术校验', 'P0', '通过'],
-    ['CUST-008', '对外展示信息合规校验', 'P0', '通过'],
-  ],
-}))
+// 测试报告页签 —— 优先取自动化测试节点（test）保存内容，缺失回落静态兜底。
+const testRepView = computed(() => {
+  const nc = nodeContent()
+  const raw = nc.byNode.test
+  const obj = nc.asObj(raw)
+  const offer = nc.offerOf(raw) || {}
+  const pick = nc.pick
+  const dimObj = nc.asObj(offer.dimension_summary) || nc.asObj(obj && obj.dimension_summary) || {}
+  const dimNames = { ACC: '受理验证 (ACC)', BILL: '计费验证 (BILL)', CUST: '客服验证 (CUST)' }
+  const dimKeys = Object.keys(dimObj).filter((k) => dimObj[k] && typeof dimObj[k] === 'object')
+  const dims = dimKeys.length
+    ? dimKeys.map((k) => {
+        const pass = String(dimObj[k].pass ?? '0')
+        const fail = String(dimObj[k].fail ?? '0')
+        const total = String((Number(pass) || 0) + (Number(fail) || 0))
+        return [dimNames[k] || k, total, pass, Number(fail) > 0 ? '存在失败' : '通过']
+      })
+    : [
+        ['受理验证 (ACC)', '10', '10', '通过'],
+        ['计费验证 (BILL)', '10', '10', '通过'],
+        ['客服验证 (CUST)', '10', '10', '通过'],
+      ]
+  const casesArr = nc.asObj(offer.cases_json) || nc.asObj(obj && obj.cases_json)
+  const cases = Array.isArray(casesArr) && casesArr.length
+    ? casesArr.slice(0, 12).map((c) => [
+        pick(c, ['case_id', 'id', 'caseId']) || '—',
+        pick(c, ['case_name', 'name', 'title', 'desc']) || '—',
+        pick(c, ['level', 'priority']) || 'P0',
+        pick(c, ['result', 'status']) || (String(c.pass) === '0' ? '未通过' : '通过'),
+      ])
+    : [
+        ['ACC-001', '销售品基础准入规则校验', 'P0', '通过'],
+        ['ACC-004', '订购操作能力校验', 'P0', '通过'],
+        ['ACC-011', '模拟订购接口预测试', 'P0', '通过'],
+        ['BILL-001', '基础资费金额合法性校验', 'P0', '通过'],
+        ['BILL-004', '资源扣减规则校验', 'P0', '通过'],
+        ['BILL-010', '资费生效失效联动校验', 'P0', '通过'],
+        ['CUST-001', '客服产品基础视图完整态', 'P0', '通过'],
+        ['CUST-004', '产品资费对外说明话术校验', 'P0', '通过'],
+        ['CUST-008', '对外展示信息合规校验', 'P0', '通过'],
+      ]
+  const total = dims.reduce((s, d) => s + (Number(d[1]) || 0), 0) || 30
+  const pass = dims.reduce((s, d) => s + (Number(d[2]) || 0), 0) || 30
+  const conclusion = pick(offer, ['overall_conclusion']) || pick(obj || {}, ['overall_conclusion']) || '建议上线'
+  return {
+    no: 'TEST-REP-' + productInstance.value.today + '-' + productInstance.value.code.slice(-3),
+    name: productInstance.value.name,
+    total,
+    pass,
+    rate: total ? Math.round((pass / total) * 100) + '%' : '100%',
+    conclusion,
+    dims,
+    cases,
+  }
+})
 
-// 验证报告页签 —— 由实例数据动态生成。
-const verifyView = computed(() => ({
-  orderId: 'ORD' + productInstance.value.today.replace(/-/g, '') + Date.now().toString().slice(-6),
-  offerInstId: 'OI' + productInstance.value.today.replace(/-/g, '') + Date.now().toString().slice(-6),
-  status: '通过',
-  time: productInstance.value.today,
-  scenes: [
-    ['套餐新装 (S_O_TC)', '通过'],
-    ['副卡加装 (S_ADD_CARD)', '通过'],
-    ['套餐退订 (S_U_TC)', '通过'],
-  ],
-  points: [
-    ['P_EFF_DATE 生效时间', '通过'],
-    ['P_EXP_DATE 失效时间', '通过'],
-    ['P_STATUS 实例状态', '通过'],
-    ['P_ORD_CNT 订购数量', '通过'],
-  ],
-}))
+// 验证报告页签 —— 优先取自动化测试节点（test）的受理凭证/场景，缺失回落静态兜底。
+const verifyView = computed(() => {
+  const nc = nodeContent()
+  const raw = nc.byNode.test
+  const offer = nc.offerOf(raw) || {}
+  const pick = nc.pick
+  const scenesRaw = offer.testScenes
+  let scenes = []
+  if (Array.isArray(scenesRaw) && scenesRaw.length) {
+    scenes = scenesRaw.map((s) => (typeof s === 'string' ? [s, '通过'] : [pick(s, ['scene_name', 'name', 'sceneCode']) || '—', pick(s, ['result', 'status']) || '通过']))
+  } else {
+    scenes = [
+      ['套餐新装 (S_O_TC)', '通过'],
+      ['副卡加装 (S_ADD_CARD)', '通过'],
+      ['套餐退订 (S_U_TC)', '通过'],
+    ]
+  }
+  return {
+    orderId: pick(offer, ['orderId']) || ('ORD' + productInstance.value.today.replace(/-/g, '') + Date.now().toString().slice(-6)),
+    offerInstId: pick(offer, ['offerInstId']) || ('OI' + productInstance.value.today.replace(/-/g, '') + Date.now().toString().slice(-6)),
+    status: '通过',
+    time: productInstance.value.today,
+    scenes,
+    points: [
+      ['P_EFF_DATE 生效时间', '通过'],
+      ['P_EXP_DATE 失效时间', '通过'],
+      ['P_STATUS 实例状态', '通过'],
+      ['P_ORD_CNT 订购数量', '通过'],
+    ],
+  }
+})
 
-// 审批矩阵页签 —— 由实例数据动态生成。
-const approvalView = computed(() => ({
-  no: 'SP-' + productInstance.value.today + '-005',
-  name: productInstance.value.name,
-  status: '已通过',
-  nodes: [
-    ['产品经理审核', '产品经理', '已通过', '审核通过，同意上枀', productInstance.value.now],
-    ['资费主管审核', '资费主管', '已通过', '审核通过，同意上枀', productInstance.value.now],
-    ['运营审核', '运营专员', '已通过', '审核通过，同意上枀', productInstance.value.now],
-    ['上线审批', 'IT支撑', '已通过', '审核通过，同意上枀', productInstance.value.now],
-  ],
-  note: '审批已通过，销售品上架完成 ✅（审批通过即视为销售品已自动上线，无需二次确认）、',
-}))
+// 审批矩阵页签 —— 优先取上线审批建议节点（report）保存内容，缺失回落静态兜底。
+const approvalView = computed(() => {
+  const nc = nodeContent()
+  const raw = nc.byNode.report
+  const obj = nc.asObj(raw)
+  const pick = nc.pick
+  const reportText = obj ? (pick(obj, ['approval_suggest', 'text', 'report']) || (typeof raw === 'string' ? raw : '')) : (typeof raw === 'string' ? raw : '')
+  const allPass = obj ? String(pick(obj, ['all_pass'])) : ''
+  const hasReport = !!(reportText || (obj && Object.keys(obj).length))
+  return {
+    no: pick(obj || {}, ['approval_id', 'no']) || ('SP-' + productInstance.value.today + '-005'),
+    name: productInstance.value.name,
+    status: hasReport && allPass !== '0' ? '已通过' : (hasReport ? '审批中' : '已通过'),
+    nodes: [
+      ['产品经理审核', '产品经理', '已通过', '审核通过，同意上枀', productInstance.value.now],
+      ['资费主管审核', '资费主管', '已通过', '审核通过，同意上枀', productInstance.value.now],
+      ['运营审核', '运营专员', '已通过', '审核通过，同意上枀', productInstance.value.now],
+      ['上线审批', 'IT支撑', '已通过', '审核通过，同意上枀', productInstance.value.now],
+    ],
+    note: reportText || '审批已通过，销售品上架完成 ✅（审批通过即视为销售品已自动上线，无需二次确认）、',
+  }
+})
 
 // 运营视图页签概要 —— 名称/编码随实例联动（完整 ECharts 数据面板在独立模块，保留演示数据，
 const monitorView = computed(() => ({

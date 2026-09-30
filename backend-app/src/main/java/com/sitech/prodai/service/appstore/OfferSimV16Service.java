@@ -1410,8 +1410,13 @@ public class OfferSimV16Service {
                 values.putIfAbsent(field, blankIfPlaceholder(f.get("value")));
             }
         }
+        // 嵌套 payload.optionalInfo（需求分析模板轨）与 plan_json 顶层 optionalInfo（config 落地形态）双形态兼容：
+        // 后者为 wf_sub_02 落库的 product_config.plan_json 原文（optionalInfo/baseInfo 直接在顶层），
+        // 不兼容会导致月固费解析为空 → fixedFeeAmount=0 → R-C05/R-C09 假阳性（全部商品误判不通过）。
         collectPayloadFeeValues(castMap(castMap(plan.get("payload")).get("optionalInfo")), values);
+        collectPayloadFeeValues(castMap(plan.get("optionalInfo")), values);
         collectPayloadBaseValues(castMap(plan.get("payload")), values);
+        collectPayloadBaseValues(plan, values);
         return values;
     }
 
