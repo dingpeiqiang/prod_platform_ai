@@ -32,8 +32,9 @@ from wf_common import (
     CODE_SUMMARY_APPROVAL, CODE_PACK_RECORD, CODE_PACK_AUDIT_LAUNCH, CODE_POLL_AUDIT,
     CODE_EXTRACT_GLOBAL_ID, CODE_PROGRESS_LITE, CODE_EXTRACT_TEST_RESULTS,
     CODE_RENDER_TEST_REPORT, CODE_PACK_TEST_RESULT,
-    CODE_EXTRACT_REQUEST_IDS,
-    CODE_FMT_OFFERS,
+     CODE_EXTRACT_REQUEST_IDS,
+     CODE_OP_CONFIG_ELEMENTS,
+     CODE_FMT_OFFERS,
     CODE_FMT_APPROVAL,
     CODE_AUDIT_LAUNCH, CODE_AUDIT_INSERT, CODE_AUDIT_QUERY,
     CODE_OFFER_ROSTER_HELPERS,
@@ -3463,6 +3464,21 @@ s7f.append(code_node(703, "监控聚合分析", CODE_OP_MONITOR_ANALYZE,
       code_out("metric_anomalies", 703), code_out("alert_hints", 703),
       code_out("suggestions", 703), code_out("alerts", 703),
       code_out("offers", 703), code_out("aggregate_json", 703)]))
+# 查库提取配置要素实值（预警优化落点：基于真实配置给建议值，杜绝 LLM 编造数字）：
+#   713 query_node_result 按 req_id+node_name=config 取回智能配置环节结果（逐品 offer_id/offer_name/plan_json），
+#   714 CODE_OP_CONFIG_ELEMENTS 提取逐品配置要素（月费/固费/包含资源/套外计费/语音/短信/套餐名），
+#   同时喂给异常分支 705 与正常分支 706；监控场景无 config 记录时优雅置空（写「暂无」，不编造）。
+s7f.append(plugin_node(713, "读取配置环节结果", "query_node_result",
+    "节点结果存储查询（复用）：按 req_id+node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地配置JSON原文，逐品含 offer_id/offer_name/plan_json），作为【配置要素优化建议】的真实值依据；total=0 表示该品未走配置环节/无配置记录",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "需求单号（=开始节点 req_id）", ref_block=nid(701), ref_rel="req_id"),
+     inp("node_name", "环节名=config", content="config"),
+     inp("latest_only", "1=只返回最新一条", content="1")],
+    [("total", "记录数", "string"), ("list", "记录数组JSON（list[0].result_json 为配置结果原文，含 plan_json）", "string")],
+    method="get"))
+s7f.append(code_node(714, "提取配置要素实值", CODE_OP_CONFIG_ELEMENTS,
+    [inp("query_list", "引用节点713查询出参 list（记录数组JSON，取 [0].result_json 解析逐品 plan_json）", ref_block=nid(713), ref_rel="list")],
+    [code_out("config_elements", 714), code_out("config_elements_available", 714)]))
 s7f.append(selector_node2(704, "异常判定",
     [dep_node(703, "监控聚合分析", ["any_abnormal"])],
     [(-1, [cond_item(cond_ref(703, "any_abnormal", "监控聚合分析"), 1, cond_str("true"))])]))
@@ -3486,12 +3502,18 @@ s7f.append(llm_node(705, "异常处置报告",
     "   - **建议**：alert.advice（由本体 R-O 推理给出）；\n"
     "   - **采纳**：alert.cta。\n"
     "   alerts 为空时，本节按 alert_hints 归纳一句。\n"
-    "4. 【指标异常数据】取 metric_anomalies，逐行「商品·指标 name：value unit，环比 delta_pct（trend），"
+    "4. 【配置要素优化建议】(重点)针对每个异常商品，从产销品**自身配置要素**给优化方向——逐项「调整哪个配置要素→调到什么方向→预期改善哪个指标」，优先于泛化渠道/营销建议。"
+    "**主推两种调整方式**：①提升免费资源额度（上调包含资源 containResource 的流量/语音/短信赠送量，缓解套外高计费/流失）；②降低月租费（下调月费 prcMonthFee/固费 fixFee，提升性价比与续费意愿）。"
+    "**建议值必须以 config_elements={config_elements} 的真实实值为准推导（如免费资源额度 X→提至 Y、月租费 A→降至 B），严禁编造数字**；config_elements_available={config_elements_available}（0=未取到）。"
+    "其他配置要素须与该商品异常强相关（示例：月费 prcMonthFee、固费 fixFee、包含资源 containResource、流量计费 billGprsCfg 的阈值 theshold 与超套计费 outChargeMode、语音计费 billVoiceCfg、折扣/促销、宽带带宽等），可参考 suggestions 与 alerts 的异常指标，严禁生硬套用或编造不相关字段；"
+    "无明确优化方向写「暂无」；available=0 且无实值时仅给方向性建议、不写具体数值。\n"
+    "5. 【指标异常数据】取 metric_anomalies，逐行「商品·指标 name：value unit，环比 delta_pct（trend），"
     "依据 threshold_ref」；无异常写「无」。\n"
-    "5. 【本体分级依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
+    "6. 【本体分级依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
     "（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n"
-    "6. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），依据 alert_hints 与分级依据。\n"
-    "7. 一句闭环引导：可回复【发起优化工单】采纳预警建议发起销售品优化工单，执行后回复【查询监控】回检。\n"
+    "7. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），依据 alert_hints 与分级依据。\n"
+    "8. 一句闭环引导：可回复【发起优化工单】采纳预警的配置要素优化建议，按工单调整该产销品的配置要素后"
+    "回复【查询监控】回检。\n"
     "纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字；禁止原样拼接值串。\n"
     "输出要求：仅输出报告正文（对应出参 alert_report）。",
     [inp("any_abnormal", "是否异常（节点703）", ref_block=nid(703), ref_rel="any_abnormal"),
@@ -3504,7 +3526,9 @@ s7f.append(llm_node(705, "异常处置报告",
      inp("metrics", "逐品指标概览（节点703，name/value/unit/trend/delta_pct）", ref_block=nid(703), ref_rel="metrics"),
      inp("metric_anomalies", "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）", ref_block=nid(703), ref_rel="metric_anomalies"),
      inp("alert_hints", "告警提示（节点703，ruleId/level/hint）", ref_block=nid(703), ref_rel="alert_hints"),
-     inp("suggestions", "本体优化建议（节点703，ruleId/name/condition/advice）", ref_block=nid(703), ref_rel="suggestions")],
+     inp("suggestions", "本体优化建议（节点703，ruleId/name/condition/advice）", ref_block=nid(703), ref_rel="suggestions"),
+     inp("config_elements", "逐品配置要素实值（节点714，offer_id/offer_name/config_elements）", ref_block=nid(714), ref_rel="config_elements"),
+     inp("config_elements_available", "配置要素获取标记（节点714，1=取到/0=未取到）", ref_block=nid(714), ref_rel="config_elements_available")],
     [out("alert_report", "异常处置报告正文")]))
 # ---- 正常分支 ----
 s7f.append(llm_node(706, "运营摘要生成(正常分支)",
@@ -3526,10 +3550,24 @@ s7f.append(llm_node(706, "运营摘要生成(正常分支)",
     "   - **建议**：alert.advice（由本体 R-O 推理给出）；\n"
     "   - **采纳**：alert.cta。\n"
     "   alerts 为空时，本节写「未触发监控预警」。\n"
-    "5. 【告警提示】取 alert_hints 的 level/提示语，归纳运行告警口径。\n"
-    "6. 【本体推理依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
+    "5. 【配置要素优化建议】(重点，预警优化的落点)针对存在监控预警/指标异常的商品，从产销品**自身配置要素**"
+    "出发给优化方向——逐项说明「调整哪个配置要素→调到什么方向→预期改善哪个指标」，并优先于泛化的渠道/营销建议呈现。"
+    "**主推两种调整方式**：① 提升免费资源额度（如上调包含资源 containResource 的流量/语音/短信赠送量，缓解"
+    "套外超量导致的高计费/流失）；② 降低月租费（如下调月费 prcMonthFee/固费 fixFee，提升性价比与续费意愿）。"
+    "**配置要素实值以 config_elements={config_elements} 为准**：这是该商品配置环节的真实取值（月费/固费/包含资源/"
+    "套外流量计费/语音/短信/套餐名等），建议值必须基于这些真实实值推导（如当前免费资源额度 X→建议提至 Y、"
+    "当前月租费 A→建议降至 B），严禁编造具体数字；"
+    "config_elements_available={config_elements_available}（0=未取到该商品配置记录）。"
+    "可选的其他配置要素须与该商品异常强相关并对其成因（示例字段口径：月费 prcMonthFee、固费 fixFee、"
+    "包含资源 containResource 的流量/语音、流量计费 billGprsCfg 的阈值 theshold 与超套计费 outChargeMode、"
+    "语音计费 billVoiceCfg、价格/折扣/促销优惠、宽带带宽等）；可参考 suggestions 与 alerts 的异常指标，"
+    "但严禁生硬套用或编造不相关字段；"
+    "无明确优化方向写「暂无」；未取到真实配置（available=0）且无可依据实值时，仅给出方向性建议、不写具体调整数值。\n"
+    "6. 【告警提示】取 alert_hints 的 level/提示语，归纳运行告警口径。\n"
+    "7. 【本体推理依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」"
     "（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n"
-    "7. 结尾一句运营结论 + 闭环引导：如需采纳预警建议发起优化工单可回复【发起优化工单】。\n"
+    "8. 结尾一句运营结论 + 闭环引导：如需采纳预警的配置要素优化建议，按工单调整该产销品的配置要素后"
+    "可回复【发起优化工单】。\n"
     "纪律：空写「无」；严禁原样拼接值串；严禁残留 { 占位符。\n"
     "输出要求：仅输出运营报告正文（对应出参 ops_summary）。",
     [inp("monitor_lines", "逐品监控明细（节点703）", ref_block=nid(703), ref_rel="monitor_lines"),
@@ -3539,7 +3577,9 @@ s7f.append(llm_node(706, "运营摘要生成(正常分支)",
      inp("metrics", "逐品指标概览（节点703，name/value/unit/trend/delta_pct）", ref_block=nid(703), ref_rel="metrics"),
      inp("metric_anomalies", "指标异常数据（节点703，name/value/delta_pct/trend/threshold_ref）", ref_block=nid(703), ref_rel="metric_anomalies"),
      inp("alert_hints", "告警提示（节点703，ruleId/level/hint）", ref_block=nid(703), ref_rel="alert_hints"),
-     inp("suggestions", "本体优化建议（节点703，ruleId/name/advice）", ref_block=nid(703), ref_rel="suggestions")],
+     inp("suggestions", "本体优化建议（节点703，ruleId/name/advice）", ref_block=nid(703), ref_rel="suggestions"),
+     inp("config_elements", "逐品配置要素实值（节点714，offer_id/offer_name/config_elements）", ref_block=nid(714), ref_rel="config_elements"),
+     inp("config_elements_available", "配置要素获取标记（节点714，1=取到/0=未取到）", ref_block=nid(714), ref_rel="config_elements_available")],
     [out("ops_summary", "运营报告正文")]))
 # xsbot-panel 独立代码节点（异常分支）
 s7f.append(panel_code_node(707, "构建页面地址面板(异常)", "07",
@@ -3594,7 +3634,8 @@ s7f.append(end_node(710, "结束(正常-运营报告)",
     "> **建议处理：** 如需采纳监控预警建议发起优化工单，请回复【发起优化工单】；如需刷新可回复【查询监控】\n\n{panel}"))
 files7f = workflow(
     "产销品-监控运维", "子工作流7（入参 req_id+chat_id 必填，offer_id 非必填；重设计：重逻辑下沉后端聚合端点 /product/monitor/analyze，工作流仅 10 节点、单 HTTP 聚合节点；告警分级由后端 OWL/SWRL product-alert.ttl(R-E00~E04) 推理，逐品分级+告警推送+建工单+根因一次返回）。query_product_monitor（自研模拟）→监控聚合分析（POST /product/monitor/analyze；接口不可达时按 702 出参本地兜底；输出 any_abnormal/monitor_lines/summary/告警与工单计数）→异常判定→异常分支：LLM 处置报告→面板→结束；正常分支：LLM 运营摘要→面板→结束。", "wf_sub_07", s7f,
-    [edge(701,702), edge(702,703), edge(703,704), edge(704,706,0), edge(704,705,-1),
+    [edge(701,702), edge(702,703), edge(703,713), edge(713,714), edge(714,704),
+     edge(704,706,0), edge(704,705,-1),
      edge(705,707), edge(707,711), edge(711,709), edge(706,708), edge(708,712), edge(712,710)])
 
 s8f = []

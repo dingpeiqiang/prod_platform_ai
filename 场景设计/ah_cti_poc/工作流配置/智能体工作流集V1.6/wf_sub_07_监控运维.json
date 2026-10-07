@@ -429,6 +429,129 @@
         "type": 6
       },
       {
+        "outputs": [
+          {
+            "name": "total",
+            "cname": "记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（list[0].result_json 为配置结果原文，含 plan_json）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求单号（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000701",
+              "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取配置环节结果",
+          "code": "query_node_result",
+          "description": "节点结果存储查询（复用）：按 req_id+node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地配置JSON原文，逐品含 offer_id/offer_name/plan_json），作为【配置要素优化建议】的真实值依据；total=0 表示该品未走配置环节/无配置记录",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000713",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,config_elements",
+            "name": "config_elements",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000714,config_elements_available",
+            "name": "config_elements_available",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict, List\n\nCONFIG_ELEM_FIELDS = ('prcMonthFee', 'fixFee', 'fixValidity', 'containResource',\n                      'theshold', 'outChargeMode', 'chargeStandard', 'outCharge', 'resourceType')\n\ndef _as_dict(v):\n    return v if isinstance(v, dict) else {}\n\ndef _offers_of(obj):\n    # 批量落地去重后的 config 结果：优先取 offers[]，旧单品平面对象包装为 1 品\n    if not isinstance(obj, dict):\n        return []\n    offers = obj.get('offers')\n    if isinstance(offers, list):\n        return [o for o in offers if isinstance(o, dict)]\n    return [obj] if obj.get('offer_id') or obj.get('offerId') or obj.get('plan_json') else []\n\ndef _scalar(v):\n    if v is None:\n        return ''\n    if isinstance(v, (dict, list)):\n        return ''\n    s = str(v).strip()\n    if not s or s in ('{', '}'):\n        return ''\n    return s\n\ndef _lookup(leaf, keys):\n    for k in keys:\n        v = _scalar(leaf.get(k) if isinstance(leaf, dict) else None)\n        if v:\n            return v\n    return ''\n\ndef _collect_fees(optional, elems):\n    # 计费叶子（参考 collectPayloadFeeValues 键对齐）\n    if not isinstance(optional, dict):\n        return\n    print_c = _as_dict(optional.get('printContent'))\n    acct = _as_dict(optional.get('acctMonth'))\n    gprs = _as_dict(optional.get('billGprsCfg'))\n    voice = _as_dict(optional.get('billVoiceCfg'))\n    sms = _as_dict(optional.get('billSmsCfg'))\n    def put(key, val):\n        if val and key not in elems:\n            elems[key] = val\n    put('套餐档位(月费/固费)', _lookup(acct, ('fixFee',)) or _lookup(print_c, ('prcMonthFee',)))\n    put('套餐有效期', _lookup(acct, ('fixValidity',)))\n    put('包含资源(国内通用流量/语音/短信)', _lookup(print_c, ('containResource',)))\n    put('套外流量-计费标准', _lookup(gprs, ('outChargeMode',)) or _lookup(print_c, ('chargeStandard',)))\n    put('套外流量-阈值', _lookup(gprs, ('theshold',)))\n    put('套外语音-计费', _lookup(voice, ('outCharge',)))\n    put('套外短信-计费', _lookup(sms, ('outCharge',)))\n    put('语音赠送量', _lookup(voice, ('theshold',)))\n    put('短信赠送量', _lookup(sms, ('theshold',)))\n\ndef _base_name(plan):\n    base = _as_dict(plan.get('baseInfo'))\n    return _lookup(base, ('prodPrcName', 'name'))\n\ndef _plan_elements(plan):\n    if not isinstance(plan, dict):\n        return {}\n    elems = {}\n    # 配置落地形态：plan_json 顶层 optionalInfo/baseInfo\n    _collect_fees(_as_dict(plan.get('optionalInfo')), elems)\n    # 需求分析模板轨形态：payload.optionalInfo\n    _collect_fees(_as_dict(_as_dict(plan.get('payload')).get('optionalInfo')), elems)\n    # 套餐名（baseInfo 主信息叶子，配置报文口径）\n    name = _base_name(plan)\n    if not name:\n        name = _base_name(_as_dict(plan.get('payload')))\n    if name:\n        elems.setdefault('套餐名称', name)\n    return elems\n\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    result_json = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                result_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            result_json = str(arr.get('result_json') or '')\n    except Exception:\n        result_json = ''\n    if not result_json:\n        result_json = raw\n    out_list = []\n    try:\n        obj = json.loads(result_json)\n    except Exception:\n        obj = None\n    if isinstance(obj, dict):\n        for o in _offers_of(obj):\n            plan = _as_dict(o.get('plan_json'))\n            if not isinstance(plan, dict) and isinstance(o.get('payload'), dict):\n                plan = _as_dict(o.get('payload'))\n            elems = _plan_elements(plan)\n            item = {'offer_id': str(o.get('offer_id') or o.get('offerId') or ''),\n                    'offer_name': str(o.get('offer_name') or elems.get('套餐名称') or '')}\n            item['config_elements'] = elems\n            out_list.append(item)\n    config_elements = json.dumps(out_list, ensure_ascii=False)\n    available = '1' if out_list and any(it['config_elements'] for it in out_list) else '0'\n    ret: Output = {\n        'config_elements': config_elements,\n        'config_elements_available': available\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000713",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点713查询出参 list（记录数组JSON，取 [0].result_json 解析逐品 plan_json）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000713",
+              "a1b2c3d4-0000-4000-8000-000000000713,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000713,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取配置要素实值"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000714",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
         "flowJson": null,
         "inputs": {
           "condition": [
@@ -518,7 +641,7 @@
           "title": "异常判定"
         },
         "position": {
-          "x": 1095,
+          "x": 1815,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000704",
@@ -555,7 +678,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，reasoning_chain={reasoning_chain}。\n输出结构（严格按序，标题照抄）：\n1. 一句总述（发现异常商品数、异常指标数、已推送告警数、已建工单数）。\n2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，如「12.3 万元（-20.00%↓）」。指标按 metrics 中该品的各 metric 取值，禁止编造。\n3. 【监控预警】取 alerts 数组**逐条**渲染，共 {alert_count} 条；每条格式：\n   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，**逐字引用，禁止增删改写**；\n   - **建议**：alert.advice（由本体 R-O 推理给出）；\n   - **采纳**：alert.cta。\n   alerts 为空时，本节按 alert_hints 归纳一句。\n4. 【指标异常数据】取 metric_anomalies，逐行「商品·指标 name：value unit，环比 delta_pct（trend），依据 threshold_ref」；无异常写「无」。\n5. 【本体分级依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n6. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），依据 alert_hints 与分级依据。\n7. 一句闭环引导：可回复【发起优化工单】采纳预警建议发起销售品优化工单，执行后回复【查询监控】回检。\n纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字；禁止原样拼接值串。\n输出要求：仅输出报告正文（对应出参 alert_report）。"
+              "content": "你是产销品监控运维智能体。基于监控聚合分析结果输出面向用户的异常处置报告（Markdown）。输入：any_abnormal={any_abnormal}，alert_count={alert_count}，work_order_count={work_order_count}，monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，reasoning_chain={reasoning_chain}。\n输出结构（严格按序，标题照抄）：\n1. 一句总述（发现异常商品数、异常指标数、已推送告警数、已建工单数）。\n2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，如「12.3 万元（-20.00%↓）」。指标按 metrics 中该品的各 metric 取值，禁止编造。\n3. 【监控预警】取 alerts 数组**逐条**渲染，共 {alert_count} 条；每条格式：\n   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，**逐字引用，禁止增删改写**；\n   - **建议**：alert.advice（由本体 R-O 推理给出）；\n   - **采纳**：alert.cta。\n   alerts 为空时，本节按 alert_hints 归纳一句。\n4. 【配置要素优化建议】(重点)针对每个异常商品，从产销品**自身配置要素**给优化方向——逐项「调整哪个配置要素→调到什么方向→预期改善哪个指标」，优先于泛化渠道/营销建议。**主推两种调整方式**：①提升免费资源额度（上调包含资源 containResource 的流量/语音/短信赠送量，缓解套外高计费/流失）；②降低月租费（下调月费 prcMonthFee/固费 fixFee，提升性价比与续费意愿）。**建议值必须以 config_elements={config_elements} 的真实实值为准推导（如免费资源额度 X→提至 Y、月租费 A→降至 B），严禁编造数字**；config_elements_available={config_elements_available}（0=未取到）。其他配置要素须与该商品异常强相关（示例：月费 prcMonthFee、固费 fixFee、包含资源 containResource、流量计费 billGprsCfg 的阈值 theshold 与超套计费 outChargeMode、语音计费 billVoiceCfg、折扣/促销、宽带带宽等），可参考 suggestions 与 alerts 的异常指标，严禁生硬套用或编造不相关字段；无明确优化方向写「暂无」；available=0 且无实值时仅给方向性建议、不写具体数值。\n5. 【指标异常数据】取 metric_anomalies，逐行「商品·指标 name：value unit，环比 delta_pct（trend），依据 threshold_ref」；无异常写「无」。\n6. 【本体分级依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n7. 【分级与 SLA】按等级说明处置时限（P0 立即/P1 当日/P2 观察），依据 alert_hints 与分级依据。\n8. 一句闭环引导：可回复【发起优化工单】采纳预警的配置要素优化建议，按工单调整该产销品的配置要素后回复【查询监控】回检。\n纪律：所有字段替换为实际数据；空写「无」；严禁残留 { 占位符或提示词指令文字；禁止原样拼接值串。\n输出要求：仅输出报告正文（对应出参 alert_report）。"
             }
           ],
           "inputParameters": [
@@ -712,6 +835,34 @@
                 "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "config_elements",
+              "name": "config_elements",
+              "description": "逐品配置要素实值（节点714，offer_id/offer_name/config_elements）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,config_elements"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,config_elements"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "config_elements_available",
+              "name": "config_elements_available",
+              "description": "配置要素获取标记（节点714，1=取到/0=未取到）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,config_elements_available"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,config_elements_available"
             }
           ]
         },
@@ -725,7 +876,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1455,
+          "x": 2175,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000705",
@@ -748,7 +899,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品监控运维智能体。基于监控数据输出面向用户的中文运营报告。输入：monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，reasoning_chain={reasoning_chain}。\n输出结构（严格按序，标题照抄）：\n1. 一句总述（本次监控商品数、运行告警数、监控预警数）。\n2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，如「12.3 万元（-20.00%↓）」；禁止编造。\n3. 【逐品运行监控明细】逐行引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级）。\n4. 【监控预警】取 alerts 数组**逐条**渲染；每条格式：\n   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，**逐字引用，禁止增删改写**；\n   - **建议**：alert.advice（由本体 R-O 推理给出）；\n   - **采纳**：alert.cta。\n   alerts 为空时，本节写「未触发监控预警」。\n5. 【告警提示】取 alert_hints 的 level/提示语，归纳运行告警口径。\n6. 【本体推理依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n7. 结尾一句运营结论 + 闭环引导：如需采纳预警建议发起优化工单可回复【发起优化工单】。\n纪律：空写「无」；严禁原样拼接值串；严禁残留 { 占位符。\n输出要求：仅输出运营报告正文（对应出参 ops_summary）。"
+              "content": "你是产销品监控运维智能体。基于监控数据输出面向用户的中文运营报告。输入：monitor_lines={monitor_lines}，summary={summary}，alerts={alerts}，metrics={metrics}，metric_anomalies={metric_anomalies}，alert_hints={alert_hints}，suggestions={suggestions}，reasoning_chain={reasoning_chain}。\n输出结构（严格按序，标题照抄）：\n1. 一句总述（本次监控商品数、运行告警数、监控预警数）。\n2. 【商品运营指标】先用一张 Markdown 表结构化逐品运营指标：表头「商品 | 收入 | 订单量 | 新增用户 | 流失用户 | ARPU | 绑定率 | 活跃用户 | 净增用户」，每品一行；每格取 metrics 对应 metric 的 value+unit，并将 trend/delta_pct 附在值后，如「12.3 万元（-20.00%↓）」；禁止编造。\n3. 【逐品运行监控明细】逐行引用 monitor_lines（商品、订单量及趋势、异常量及趋势、计费差错率、等级）。\n4. 【监控预警】取 alerts 数组**逐条**渲染；每条格式：\n   - **预警N · 商品**：取 alert.offer_name 与 alert.name（ruleId）；\n   - **预警分析（本体推理链）**：逐行引用 alert.reasoning_chain 的「ruleId：condition → conclusion」，**逐字引用，禁止增删改写**；\n   - **建议**：alert.advice（由本体 R-O 推理给出）；\n   - **采纳**：alert.cta。\n   alerts 为空时，本节写「未触发监控预警」。\n5. 【配置要素优化建议】(重点，预警优化的落点)针对存在监控预警/指标异常的商品，从产销品**自身配置要素**出发给优化方向——逐项说明「调整哪个配置要素→调到什么方向→预期改善哪个指标」，并优先于泛化的渠道/营销建议呈现。**主推两种调整方式**：① 提升免费资源额度（如上调包含资源 containResource 的流量/语音/短信赠送量，缓解套外超量导致的高计费/流失）；② 降低月租费（如下调月费 prcMonthFee/固费 fixFee，提升性价比与续费意愿）。**配置要素实值以 config_elements={config_elements} 为准**：这是该商品配置环节的真实取值（月费/固费/包含资源/套外流量计费/语音/短信/套餐名等），建议值必须基于这些真实实值推导（如当前免费资源额度 X→建议提至 Y、当前月租费 A→建议降至 B），严禁编造具体数字；config_elements_available={config_elements_available}（0=未取到该商品配置记录）。可选的其他配置要素须与该商品异常强相关并对其成因（示例字段口径：月费 prcMonthFee、固费 fixFee、包含资源 containResource 的流量/语音、流量计费 billGprsCfg 的阈值 theshold 与超套计费 outChargeMode、语音计费 billVoiceCfg、价格/折扣/促销优惠、宽带带宽等）；可参考 suggestions 与 alerts 的异常指标，但严禁生硬套用或编造不相关字段；无明确优化方向写「暂无」；未取到真实配置（available=0）且无可依据实值时，仅给出方向性建议、不写具体调整数值。\n6. 【告警提示】取 alert_hints 的 level/提示语，归纳运行告警口径。\n7. 【本体推理依据】逐字引用 reasoning_chain 各行「规则 ruleId：condition → conclusion」（**只引用 reasoning_chain 已有内容，禁止自行编号，禁止改写成 R001/R002**）；为空时省略。\n8. 结尾一句运营结论 + 闭环引导：如需采纳预警的配置要素优化建议，按工单调整该产销品的配置要素后可回复【发起优化工单】。\n纪律：空写「无」；严禁原样拼接值串；严禁残留 { 占位符。\n输出要求：仅输出运营报告正文（对应出参 ops_summary）。"
             }
           ],
           "inputParameters": [
@@ -863,6 +1014,34 @@
                 "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
               ],
               "currValue": "a1b2c3d4-0000-4000-8000-000000000703,suggestions"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "config_elements",
+              "name": "config_elements",
+              "description": "逐品配置要素实值（节点714，offer_id/offer_name/config_elements）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,config_elements"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,config_elements"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000714",
+              "relName": "config_elements_available",
+              "name": "config_elements_available",
+              "description": "配置要素获取标记（节点714，1=取到/0=未取到）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000714",
+                "a1b2c3d4-0000-4000-8000-000000000714,config_elements_available"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000714,config_elements_available"
             }
           ]
         },
@@ -876,7 +1055,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 1455,
+          "x": 2175,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000706",
@@ -973,7 +1152,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000707",
         "position": {
-          "x": 1815,
+          "x": 2535,
           "y": 430
         },
         "dependencyData": [],
@@ -1057,7 +1236,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000711",
         "position": {
-          "x": 2175,
+          "x": 2895,
           "y": 430
         },
         "dependencyData": [],
@@ -1154,7 +1333,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000708",
         "position": {
-          "x": 1815,
+          "x": 2535,
           "y": 170
         },
         "dependencyData": [],
@@ -1238,7 +1417,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000712",
         "position": {
-          "x": 2175,
+          "x": 2895,
           "y": 170
         },
         "dependencyData": [],
@@ -1382,7 +1561,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 3255,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000709",
@@ -1455,7 +1634,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2535,
+          "x": 3255,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000710",
@@ -1475,8 +1654,18 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000704",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000713",
         "startId": "a1b2c3d4-0000-4000-8000-000000000703"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000714",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000713"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000704",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000714"
       },
       {
         "sourcePort": 0,
