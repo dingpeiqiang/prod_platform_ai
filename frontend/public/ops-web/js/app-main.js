@@ -80,6 +80,8 @@
         const q = window.__WB_QUERY || (window.__WB_QUERY = {});
         q.offer_id = p.code || '';
         q.name = p.name || '';
+        // 同步全局实例（运营视图等独立模块读取），避免监控页签标题停留在旧商品
+        window.__WB_INSTANCE = { name: p.name, code: p.code };
         this.activeProductId = p.id;
         if (p.name || p.code) document.title = (p.name || p.code) + ' · 配置工作台';
         try { window.dispatchEvent(new CustomEvent('wb-product-change', { detail: p })); } catch (e) {}

@@ -188,6 +188,9 @@
       var id = 'req-' + (key || ('idx' + idx)) + '-' + idx;
       var product = {
         id: id,
+        // offer_seq 必须落到商品实例：各页签按 offer_seq 从共享 nodeResults 中定位本品记录，
+        // 缺失时会回落到首个销售品，导致多商品切换后内容不匹配。
+        offer_seq: (res.offerSeq !== undefined && res.offerSeq !== null && res.offerSeq !== '') ? res.offerSeq : '',
         name: res.name || '',
         code: res.code || '',
         fee: res.fee || '',

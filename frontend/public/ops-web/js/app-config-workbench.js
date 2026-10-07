@@ -48,9 +48,15 @@ const copyMode = ref(false)
 const copyWorkOrderId = ref('')
 const isArchive = computed(() => !!props.archiveSnapshot && !copyMode.value)
 const dialogueMode = computed(() => !!props.parsedFields)
-// 动态预览模式：对话式配置与只读档案（存量快照）都按 formData 实际值渲染手机预览/免填单/短信模板，
-// 避免"畅享59元青春版"签 launch 静态示例文案泄漏到查询助手的档案调阅视图中
-const dynamicPreview = computed(() => dialogueMode.value || isArchive.value)
+// 是否存在真实商品实例（URL/req_id 外链解析出的逐品，含外链占位）。存在即按该商品实际字段渲染各页签，
+// 避免多商品切换时预览/权益等仍显示 launch 静态示例（畅享59元青春版）。
+const hasProductInstance = computed(() => {
+  const p = currentProduct.value || {}
+  return !!(p.id || p.name || p.code)
+})
+// 动态预览模式：对话式配置、只读档案（存量快照）、以及外链多商品均按 formData/商品实际值渲染
+// 手机预览/免填单/短信模板，避免静态示例文案泄漏到具体商品视图。
+const dynamicPreview = computed(() => dialogueMode.value || isArchive.value || hasProductInstance.value)
 // 批量配置模式：批量上下文存在且非只读档案
 const batchMode = computed(() => !!props.batchContext && !isArchive.value)
 // 对话式配置独立状态：仅在该场景内流转（草稿→待审核），不读写产品运营助手全局 launch 状态。
@@ -737,17 +743,18 @@ const phoneNavTitle = computed(() => {
 // ========== 信息预览 Tab 数据 —— 统一从 formData 取当前配置值，确保与对话式配置工作台一致==========
 const previewFee = computed(() => {
   const v = formData.monthlyFee
-  return v !== undefined && v !== '' ? String(v).replace(/\.00$/, '') : '59'
+  if (v !== undefined && v !== '') return String(v).replace(/\.00$/, '')
+  return String(productInstance.value.fee || '').replace(/\.00$/, '')
 })
 // 预览区商品名：优先取表单里用户实际编辑后的名称（改名后手机预览/免填单/短信模板同步更新，
 const previewName = computed(() => {
   const v = String(formData.prodName ?? formData.prodPrcName ?? productInfo.value.prodPrcName ?? '').trim()
   return v || productInfo.value.prodPrcName
 })
-const previewFlowUnit = computed(() => formData.flowUnit || 'GB')
-const previewFlowAmount = computed(() => formData.flowAmount || '40')
-const previewVoiceAmount = computed(() => formData.voiceAmount || '100')
-const previewSmsAmount = computed(() => formData.smsAmount || '')
+const previewFlowUnit = computed(() => formData.flowUnit || productInstance.value.flowUnit || 'GB')
+const previewFlowAmount = computed(() => formData.flowAmount || productInstance.value.flow || '')
+const previewVoiceAmount = computed(() => formData.voiceAmount || productInstance.value.voice || '')
+const previewSmsAmount = computed(() => formData.smsAmount || productInstance.value.sms || '')
 const previewFlowOvercharge = computed(() => formData.flowOvercharge || '0.29元/MB')
 const previewVoiceOvercharge = computed(() => formData.voiceOvercharge || '0.15元/分钟')
 const previewSmsOvercharge = computed(() => formData.smsOvercharge || '')
@@ -791,6 +798,13 @@ const equityList = computed(() => {
       color: palette[i % palette.length],
     }))
   }
+  // 无权益配置表时：按当前商品实际资源生成权益项（避免回落到与本品无关的固定权益）
+  const palette = ['#06a0ff', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444']
+  const items = []
+  if (previewFlowAmount.value) items.push({ name: '国内通用流量', desc: previewFlowAmount.value + (previewFlowUnit.value || 'GB') + ' · 当月未用自动结转至次月', short: '流' })
+  if (previewVoiceAmount.value) items.push({ name: '国内通话', desc: previewVoiceAmount.value + '分钟 · 国内主叫', short: '语' })
+  if (previewSmsAmount.value) items.push({ name: '国内短信', desc: previewSmsAmount.value + '条 · 国内点对点短信', short: '短' })
+  if (items.length) return items.map((it, i) => ({ ...it, color: palette[i % palette.length] }))
   return [
     { name: '腾讯视频月卡', desc: '热门综艺抢先省', short: '规', color: '#06a0ff' },
     { name: '爱奇艺月单', desc: '热播剧集随心省', short: '套', color: '#00be5f' },
@@ -819,7 +833,7 @@ const freeFillItems = computed(() => {
       { label: '有效月', value: optionLabel('validity', formData.validity) || '长期有效' },
       { label: '续订方式', value: optionLabel('renewMethod', formData.renewMethod) || '自动续订' },
       { label: '同时订购', value: `${formData.orderTimes || '1'}次` },
-      { label: '套餐固定费', value: `${formData.monthlyFee || '49'}元` },
+      { label: '套餐固定费', value: `${previewFee.value || '--'}元` },
     ]
   }
   const section = previewSections.value.find((s) => s.key === 'free-fill-preview')
@@ -1084,7 +1098,7 @@ const productInstance = computed(() => {
   const name = String(formData.prodName ?? formData.prodPrcName ?? productInfo.value.prodPrcName ?? '').trim()
     || p.name || q.name || q.offer_name || '待命名商品'
   const code = num(formData.prodCode) || num(p.code) || num(productInfo.value.workOrderId) || num(q.offer_id) || 'SP' + Date.now().toString().slice(-8)
-  const fee = num(formData.monthlyFee) || num(p.fee) || '49'
+  const fee = num(formData.monthlyFee) || num(p.fee) || ''
   const flow = num(formData.flowAmount) || num(p.flow) || ''
   const flowUnit = num(formData.flowUnit) || num(p.flowUnit) || 'GB'
   const voice = num(formData.voiceAmount) || num(p.voice) || ''
