@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-审批工单查询",
-  "flowRemark": "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→LLM 工单摘要归纳（V1.6.1 修正）：工单概览（工单级，一次）+商品列表（逐品）+审批矩阵（工单级，一次，逐字引用 approval_matrix[] 禁止编造）+按**节点级 stage/status** 判定衔接（四条件互斥：驳回/需求阶段未过→等待需求审核/需求阶段全过→引导进入需求分析（下一步非上线审批）/全部通过→已上架）；**work_order_type=optimize 为监控优化工单，独立措辞**；**禁止用工单级 approval_type 判业务阶段**（工单含 requirement/launch 节点，approval_type 恒为 requirement）；**禁止追加总结性语句**，收尾以正文结束（纪律5.1）。",
+  "flowRemark": "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→**审批矩阵与衔接生成（节点803，确定性代码）**：按节点级 stage/status 判业务阶段（需求阶段全待审核→整段省略；需求已通过+launch待审核→仅打印需求节点；work_order_type 空值=需求/上线工单而非优化工单；衔接规则 0/①②③④ 完整闭环）+LLM 概览与商品列表（节点807，仅叙述性文字，工单状态采用 803 判定 wo_desc）→结束（narrative+matrix+linkage 拼接，杜绝 LLM 幻觉）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -196,7 +196,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000806",
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 300
         },
         "dependencyData": [],
@@ -205,8 +205,68 @@
       {
         "outputs": [
           {
-            "name": "approval_summary",
-            "description": "审批工单摘要",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000803,summary_tail",
+            "name": "summary_tail",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000803,wo_desc",
+            "name": "wo_desc",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000803,stage",
+            "name": "stage",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000803,matrix_text",
+            "name": "matrix_text",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000803,linkage_text",
+            "name": "linkage_text",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\n\ndef _load(v):\n    if isinstance(v, list):\n        return v\n    if isinstance(v, dict):\n        return [v]\n    if not isinstance(v, str) or not v.strip():\n        return []\n    try:\n        o = json.loads(v)\n        if isinstance(o, dict) and isinstance(o.get('offers'), list):\n            return o['offers']\n        return o if isinstance(o, list) else ([o] if isinstance(o, dict) else [])\n    except Exception:\n        return []\n\ndef _passed(n):\n    return '已通过' in str(n.get('status') or '')\n\ndef _rejected(n):\n    s = str(n.get('status') or '')\n    return ('驳回' in s) or ('未通过' in s) or ('拒绝' in s)\n\ndef _started(n):\n    return str(n.get('status') or '').strip() not in ('', '待审核', '未开始', '待处理')\n\nSTAGE_CN = {'requirement': '需求', 'launch': '上线'}\n\nasync def main(args):\n    p = args.params\n    offers = _load(p.get('offers'))\n    first = offers[0] if offers else {}\n    if not offers:\n        result: Output = {'summary_tail': '', 'wo_desc': '', 'stage': '',\n                          'matrix_text': '', 'linkage_text': ''}\n        return result\n    wo_type = str(first.get('work_order_type') or '')\n    nodes = first.get('approval_matrix')\n    if isinstance(nodes, str):\n        try:\n            nodes = json.loads(nodes)\n        except Exception:\n            nodes = None\n    nodes = [n for n in nodes if isinstance(n, dict)] if isinstance(nodes, list) and nodes else []\n    stages = []\n    for n in nodes:\n        st = str(n.get('stage') or '')\n        if st not in stages:\n            stages.append(st)\n    if wo_type == 'optimize':\n        wo_desc = '优化工单'\n    elif 'launch' in stages and 'requirement' not in stages:\n        wo_desc = '上线工单'\n    else:\n        wo_desc = '需求工单'\n    stage_text = '/'.join(STAGE_CN.get(s, s) for s in stages) or '需求'\n    keep = []\n    for st in stages:\n        sn = [n for n in nodes if str(n.get('stage') or '') == st]\n        if not any(_started(n) for n in sn):\n            continue\n        for n in sn:\n            keep.append((STAGE_CN.get(st, st), n))\n            if not _passed(n):\n                break\n    if keep:\n        m = ['| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |',\n             '| :---: | :--- | :--- | :--- | :--- | :--- | :--- |']\n        for i, (sc, n) in enumerate(keep, 1):\n            m.append('| %d | %s | %s | %s | %s | %s | %s |'\n                     % (i, sc, str(n.get('node_name') or ''), str(n.get('approver') or ''),\n                        str(n.get('status') or ''), str(n.get('opinion') or ''),\n                        str(n.get('update_time') or '')))\n        matrix_text = '\\n'.join(m)\n    else:\n        matrix_text = ''\n    current = next((n for n in nodes if not _passed(n)), None)\n    rej = next((n for n in nodes if _rejected(n)), None)\n    if wo_type == 'optimize':\n        if rej:\n            linkage = '优化工单审批未通过：节点【%s】已驳回，意见：%s' % (\n                str(rej.get('node_name') or ''), str(rej.get('opinion') or ''))\n        elif current:\n            linkage = '优化工单审批中，当前待【%s】审批人审批' % str(current.get('node_name') or '')\n        else:\n            linkage = '优化工单审批已通过，请回复【查询监控】回检'\n    elif rej:\n        linkage = '审批未通过：节点【%s】已驳回，意见：%s，可修改执行方案后重新发起' % (\n            str(rej.get('node_name') or ''), str(rej.get('opinion') or ''))\n    elif current:\n        if str(current.get('stage') or '') == 'requirement':\n            linkage = '等待需求审核，通过后方可进入需求分析'\n        else:\n            req_done = all(_passed(n) for n in nodes if str(n.get('stage') or '') == 'requirement')\n            linkage = ('需求审核已通过，可进入需求分析（回复【开始配置】）；后续将进入上线审批'\n                       if req_done else '等待需求审核，通过后方可进入需求分析')\n    elif 'launch' in stages:\n        linkage = '审批已通过，销售品上架完成'\n    else:\n        linkage = '需求审核已通过，可进入需求分析（回复【开始配置】）'\n    summary_tail = (matrix_text + '\\n\\n' + linkage) if matrix_text else linkage\n    result: Output = {\n        'summary_tail': summary_tail,\n        'wo_desc': wo_desc,\n        'stage': stage_text,\n        'matrix_text': matrix_text,\n        'linkage_text': linkage,\n    }\n    return result\n",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
+            "relName": "offers",
+            "name": "offers",
+            "description": "逐品审批工单明细（节点802）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000802",
+              "a1b2c3d4-0000-4000-8000-000000000802,offers"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000802,offers"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "审批矩阵与衔接生成"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000803",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "narrative_text",
+            "description": "工单概览与商品列表",
             "type": "string",
             "content": ""
           }
@@ -218,7 +278,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/work_order_type/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态，≠单品状态）。\n**结构要点**：一张工单（approval_id）含多个商品，approval_id/approval_type/current_node/approval_matrix 为工单级共享；approval_matrix[] 每节点含 node_seq/node_name/approver/stage/status/opinion/update_time，其中 stage 才是业务阶段信号（requirement=需求；launch=上线）。**禁止用工单级 approval_type 判断当前业务阶段**（工单同含 requirement 与 launch 节点）。work_order_type=optimize 即监控优化工单。\n\n按 flow-D D-1 输出：\n**一、工单概览（工单级，只输出一次）**\n审批单号「approval_id」｜需求单号 {req_id}｜工单状态：「work_order_type=optimize→优化工单，否则需求工单/上线工单」｜覆盖商品：{per_offer 数量} 款\n**二、商品列表（逐品一行）**\n对 per_offer 每一项输出：销售品「offer_id」｜状态：「该商品 status」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n**三、审批矩阵（工单级，只打印一次；逐字引用 approval_matrix[]，禁止编造）**\n| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n| :---: | :--- | :--- | :--- | :--- | :--- |\n（**某业务阶段所有节点均「待审核/未开始/空」=该阶段未开始，整段不打印**；打印所有「已开始阶段」（该阶段至少一节点非待审核）的节点，且各已开始阶段内只打印到该阶段首个非「已通过」节点（含，其后节点不打印），阶段内全通过则全打印。先取矩阵首个非「已通过」节点为当前节点。例：需求已通过、上线5节点全「待审核」→只打印需求节点；无矩阵省略）\n\n**四、业务阶段衔接（自上而下匹配，**只命中一条**；按矩阵节点级 status 判定，禁止用工单级 approval_type）**：\n先找矩阵中**第一个 status≠「已通过」的节点**为「当前节点」，逐条判断命中即停：\n0）work_order_type=optimize → **不套用①②③④**：任一节点驳回→\"优化工单审批未通过：节点【驳回节点名称】已驳回，意见：驳回意见\"；有未通过节点→\"优化工单审批中，当前待【当前节点名称】（审批人）审批\"；全通过→\"优化工单审批已通过 ✅，请回复【查询监控】回检\"。停止。\n① 存在任一节点 status=驳回（或含「未通过」「拒绝」）→ 仅输出：\"审批未通过：节点【驳回节点名称】已驳回，意见：驳回意见\"，并提示\"可修改执行方案后重新发起\"。停止，不再输出其他衔接。\n② 当前节点存在且其 stage=requirement（需求阶段尚有未通过节点）→ 仅输出：\"等待需求审核，通过后方可进入需求分析\"。停止。\n③ 需求阶段节点全部已通过（requirement 节点均 status=已通过，当前节点 stage=launch）→ 仅输出：\"需求审核已通过，可进入需求分析（回复【开始配置】）；后续将进入上线审批\"。**关键：需求审核通过后下一步是需求分析，不是上线审批**。停止。\n④ 不存在未通过节点（全部 status=已通过）且含 launch 阶段节点 → 仅输出：\"审批已通过，销售品上架完成 ✅\"，并引导后续可查询监控运维。停止。\n查无审批单（per_offer 为空）时仅输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n输出要求：**仅输出**审批工单摘要（approval_summary），**禁止**追加总结语、寒暄、多余标题；收尾以衔接块正文结束，禁止以矩阵表格收尾。"
+              "content": "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，逐品含 approval_id/req_id/offer_id/status/current_node/approver/opinion/update_time/work_order_type/approval_matrix），req_id={req_id}，wo_desc={wo_desc}（已按工单类型严格判定的结果：优化工单/需求工单/上线工单，直接采用）。\n按 flow-D D-1 输出**工单概览与逐品商品列表**（叙述性文字；**不要生成审批矩阵，不要生成业务阶段衔接**——矩阵与衔接由系统另行拼接，你只需输出以下两部分）：\n**一、工单概览（工单级，只输出一次）**\n审批单号「per_offer 首项 approval_id」｜需求单号 {req_id}｜工单状态：「{wo_desc}」｜覆盖商品：{per_offer 数量} 款\n**二、商品列表（逐品一行）**\n对 per_offer 每一项输出：销售品「offer_id」｜状态：「该商品 status」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n若 per_offer 为空：仅输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n输出要求：**仅输出**上述概览与商品列表正文（对应出参 narrative_text），**禁止**追加审批矩阵、衔接、总结语、寒暄、空行；收尾以商品列表最后一行结束。"
             }
           ],
           "inputParameters": [
@@ -251,18 +311,18 @@
               "currValue": "a1b2c3d4-0000-4000-8000-000000000802,req_id"
             },
             {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000802",
-              "relName": "status",
-              "name": "status",
-              "description": "整批状态（节点802）",
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000803",
+              "relName": "wo_desc",
+              "name": "wo_desc",
+              "description": "工单类型判定（节点803）",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000802",
-                "a1b2c3d4-0000-4000-8000-000000000802,status"
+                "a1b2c3d4-0000-4000-8000-000000000803",
+                "a1b2c3d4-0000-4000-8000-000000000803,wo_desc"
               ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000802,status"
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000803,wo_desc"
             }
           ]
         },
@@ -276,10 +336,10 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 735,
+          "x": 1095,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000803",
+        "id": "a1b2c3d4-0000-4000-8000-000000000807",
         "dependencyData": [],
         "type": 1
       },
@@ -373,7 +433,7 @@
         "language": 1,
         "id": "a1b2c3d4-0000-4000-8000-000000000805",
         "position": {
-          "x": 1455,
+          "x": 1815,
           "y": 300
         },
         "dependencyData": [],
@@ -383,7 +443,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "{approval_summary}\n\n{panel}"
+          "content": "{narrative_text}\n\n{summary_tail}\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -393,18 +453,32 @@
         "flowJson": null,
         "inputs": [
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000807",
+            "relName": "narrative_text",
+            "name": "narrative_text",
+            "description": "工单概览与商品列表",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000807",
+              "a1b2c3d4-0000-4000-8000-000000000807,narrative_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000807,narrative_text"
+          },
+          {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000803",
-            "relName": "approval_summary",
-            "name": "approval_summary",
-            "description": "审批工单摘要",
+            "relName": "summary_tail",
+            "name": "summary_tail",
+            "description": "审批矩阵与衔接（节点803）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000803",
-              "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+              "a1b2c3d4-0000-4000-8000-000000000803,summary_tail"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000803,approval_summary"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000803,summary_tail"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000805",
@@ -432,7 +506,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1815,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000804",
@@ -452,8 +526,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000806",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000807",
         "startId": "a1b2c3d4-0000-4000-8000-000000000803"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000806",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000807"
       },
       {
         "sourcePort": null,

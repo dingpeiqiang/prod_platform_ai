@@ -1240,6 +1240,17 @@ CODE_CONFIG_SUMMARY = (
     "        head += '\\n' + fusion_note\n"
     "    return head\n"
     "\n"
+    "def _status_display(status):\n"
+    "    # 空值回退：节点103 status 可能为空（如无方案/未落地），避免结束节点模板泄漏裸占位符\n"
+    "    st = str(status or '').strip().upper()\n"
+    "    if st == 'SUCCESS':\n"
+    "        return 'SUCCESS（全部成功）'\n"
+    "    if st == 'PARTIAL':\n"
+    "        return 'PARTIAL（部分成功）'\n"
+    "    if st == 'FAIL':\n"
+    "        return 'FAIL（全部失败）'\n"
+    "    return st or '未通过'\n"
+    "\n"
     "def _nextstep(status, offers):\n"
     "    st = str(status or '').strip().upper()\n"
     "    all_success = True\n"
@@ -1290,13 +1301,14 @@ CODE_CONFIG_SUMMARY = (
     "            'report': _report(offers),\n"
     "            'headline': _headline(offers, fusion_echo, fusion_note),\n"
     "            'nextstep': _nextstep(status, offers),\n"
+    "            'status_display': _status_display(status),\n"
     "        }\n"
     "        return ret\n"
     "    if not cfg:\n"
-    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False), 'report': '无', 'headline': '智能配置完成：无可展示商品', 'nextstep': '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。'}\n"
+    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False), 'report': '无', 'headline': '智能配置完成：无可展示商品', 'nextstep': '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。', 'status_display': _status_display(status)}\n"
     "        return ret\n"
     "    one_sum = _summary_of(cfg)\n"
-    "    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False), 'report': _report([cfg]), 'headline': _headline([cfg], '', ''), 'nextstep': _nextstep(status, [cfg])}\n"
+    "    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False), 'report': _report([cfg]), 'headline': _headline([cfg], '', ''), 'nextstep': _nextstep(status, [cfg]), 'status_display': _status_display(status)}\n"
     "    return ret"
 )
 
@@ -1398,6 +1410,22 @@ s2f.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点102查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
     [code_out("record_json", 106), code_out("req_id", 106), code_out("offer_id", 106), code_out("offers", 106)],
     pos=(735, 300)))
+# 115 加载方案前置校验：无《加载方案》（nodes 106 offers=="[]"）时不进入配置，
+# 直接引导用户先跑需求分析（wf_sub_01）生成方案，避免空方案触发 save_product_config 脏写与裸占位符输出。
+s2f.append(selector_node2(115, "加载方案前置校验",
+    [dep_node(106, "提取执行方案原文", ["offers"])],
+    [(-1, [cond_item(cond_ref(106, "offers", "提取执行方案原文"), 1, cond_str("[]"))])],
+    pos=(915, 300)))
+# 116 无方案提示面板：复用 xsbot-panel 渲染引导结束节点 {panel}（chat_id 来自开始节点）
+s2f.append(panel_code_node(116, "构建页面地址面板(无方案)", "02",
+    panel_inputs(101, req_seq=101), biz_title="落地配置看板", pos=(1095, 170)))
+# 117 结束(未找到加载方案)：清晰前置提示，不泄漏 status 占位符
+s2f.append(end_node(117, "结束(未找到加载方案)",
+    [inp("req_id", "需求单号（节点106提取）", ref_block=nid(106), ref_rel="req_id"),
+     inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(116), ref_rel="panel")],
+    "【环节3/8·智能配置】未找到该需求单号的《加载方案》，本次未执行配置。\n"
+    "【下一步】请先回复【需求分析】（或【分析需求】）生成《加载方案》并确认后，再回复【开始配置】进行智能配置（环节3/8）。\n\n"
+    "{panel}", pos=(1095, 170)))
 # 111 生成商品编码（V3.12 多商品）：逐品补齐 9 位 900 编码（存量重配透传既有编码），
 # 输出 offers[]（每元素含 offer_id）注入 save_product_config 批量落地
 s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
@@ -1426,7 +1454,8 @@ s2f.append(code_node(108, "配置要点简介", CODE_CONFIG_SUMMARY,
      inp("status", "整批落地状态（节点103出参 status，用于 nextstep 文案分档）", ref_block=nid(103), ref_rel="status"),
      inp("roster", "权威名册（节点111 offers，含 name/quantity；按 offer_seq 合并进 config offers[]）", ref_block=nid(111), ref_rel="offers")],
     [code_out("config_summary", 108), code_out("offers", 108), code_out("config_json", 108),
-     code_out("report", 108), code_out("headline", 108), code_out("nextstep", 108)],
+     code_out("report", 108), code_out("headline", 108), code_out("nextstep", 108),
+     code_out("status_display", 108)],
     pos=(2175, 300)))
 # 写入门禁：契约§4——config 仅当整批落地 status==SUCCESS（全品通过）才写入；
 # status!=SUCCESS（PARTIAL/FAIL）跳过硬写，走未写库结束分支，避免脏写 config 蒙混下游。
@@ -1449,11 +1478,11 @@ s2f.append(panel_code_node(109, "构建页面地址面板", "02",
 s2f.append(panel_code_node(113, "构建页面地址面板(未写库)", "02",
     panel_inputs(101, off_seq=111, off_rel="offer_id", req_seq=101), biz_title="落地配置看板", pos=(2895, 170)))
 s2f.append(end_node(114, "结束(配置未通过-未写config)",
-    [inp("status", "整批落地状态（节点103）", ref_block=nid(103), ref_rel="status"),
+    [inp("status_display", "整批落地状态（节点108回退渲染，空值不泄漏占位符）", ref_block=nid(108), ref_rel="status_display"),
      inp("save_result", "逐品聚合明细（商品名/四类写入结果/要点/脚本下载）", ref_block=nid(108), ref_rel="report"),
      inp("offer_id", "首品销售品ID（节点111）", ref_block=nid(111), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(113), ref_rel="panel")],
-    "【环节3/8·智能配置】配置未全部通过：status={status}\n写入结果：{save_result}\n\n"
+    "【环节3/8·智能配置】配置未全部通过：status={status_display}\n写入结果：{save_result}\n\n"
     "整批存在 PARTIAL/FAIL，本次未写入 config（config 仍为空），无法推进稽核/测试/审批。\n"
     "【下一步】请按落地失败明细修正后重新回复\"下一步\"发起配置（环节3）。\n\n"
     "{panel}", pos=(3255, 170)))
@@ -1466,7 +1495,7 @@ s2f.append(end_node(104, "结束(配置落地完成)",
     "{headline}\n状态：{status}\n\n{report}\n\n{nextstep}\n\n{panel}", pos=(3615, 300)))
 files2f = workflow(
     "产销品-智能配置", "子工作流2（V3.12 多商品）：智能配置（配置落地）。单入参 req_id 自查链路：query_node_result 按 req_id+requirement 读取执行方案→代码节点提取需求商品数组 offers[]→生成商品编码（逐品：新增品生成9位900编码/存量重配透传既有编码）→save_product_config 批量落地（后端逐品聚合返回 offers[]）→配置要点简介（逐品渲染 report/headline/nextstep，含融合概况与脚本下载）→写入门禁（status==SUCCESS）→存储 node_name=config（result_json 含 req_id+offers[]）/未通过走未写库结束。", "wf_sub_02", s2f,
-    [edge(101,102), edge(102,106), edge(106,111), edge(111,103), edge(103,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
+    [edge(101,102), edge(102,106), edge(106,115), edge(115,116,-1), edge(115,111,0), edge(116,117), edge(111,103), edge(103,108), edge(108,112), edge(112,105,-1), edge(112,113,0), edge(113,114), edge(105,109), edge(109,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（融合组扩展）：组维度稽核——LLM 提示词增加组维度回显与
@@ -3621,33 +3650,138 @@ s8f.append(code_node(806, "审批首品提取", (
     inp("req_id", "需求单号（节点802）", ref_block=nid(802), ref_rel="req_id")],
     [code_out("req_id", 806), code_out("offer_id", 806), code_out("approval_id", 806),
      code_out("approval_type", 806), code_out("offers", 806)]))
-s8f.append(llm_node(803, "状态摘要归纳",
-    "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，每项含 approval_id/req_id/offer_id/status/approval_type/work_order_type/current_node/approver/opinion/update_time/approval_matrix），req_id={req_id}，status={status}（整批状态，≠单品状态）。\n"
-    "**结构要点**：一张工单（approval_id）含多个商品，approval_id/approval_type/current_node/approval_matrix 为工单级共享；approval_matrix[] 每节点含 node_seq/node_name/approver/stage/status/opinion/update_time，其中 stage 才是业务阶段信号（requirement=需求；launch=上线）。**禁止用工单级 approval_type 判断当前业务阶段**（工单同含 requirement 与 launch 节点）。work_order_type=optimize 即监控优化工单。\n"
-    "\n"
-    "按 flow-D D-1 输出：\n"
+# V1.6.2 修复：审批矩阵与业务阶段衔接改为【确定性代码节点803】生成（剔除 LLM 幻觉），
+# LLM 807 仅负责工单概览+商品列表叙述性文字；结束节点按 narrative+matrix+linkage 拼接，
+# 彻底避免 LLM 误判 work_order_type 空值、越界打印 launch 待审核节点等问题。
+s8f.append(code_node(803, "审批矩阵与衔接生成",
+    r'''import json
+from typing import Any, Dict
+
+def _load(v):
+    if isinstance(v, list):
+        return v
+    if isinstance(v, dict):
+        return [v]
+    if not isinstance(v, str) or not v.strip():
+        return []
+    try:
+        o = json.loads(v)
+        if isinstance(o, dict) and isinstance(o.get('offers'), list):
+            return o['offers']
+        return o if isinstance(o, list) else ([o] if isinstance(o, dict) else [])
+    except Exception:
+        return []
+
+def _passed(n):
+    return '已通过' in str(n.get('status') or '')
+
+def _rejected(n):
+    s = str(n.get('status') or '')
+    return ('驳回' in s) or ('未通过' in s) or ('拒绝' in s)
+
+def _started(n):
+    return str(n.get('status') or '').strip() not in ('', '待审核', '未开始', '待处理')
+
+STAGE_CN = {'requirement': '需求', 'launch': '上线'}
+
+async def main(args):
+    p = args.params
+    offers = _load(p.get('offers'))
+    first = offers[0] if offers else {}
+    if not offers:
+        result: Output = {'summary_tail': '', 'wo_desc': '', 'stage': '',
+                          'matrix_text': '', 'linkage_text': ''}
+        return result
+    wo_type = str(first.get('work_order_type') or '')
+    nodes = first.get('approval_matrix')
+    if isinstance(nodes, str):
+        try:
+            nodes = json.loads(nodes)
+        except Exception:
+            nodes = None
+    nodes = [n for n in nodes if isinstance(n, dict)] if isinstance(nodes, list) and nodes else []
+    stages = []
+    for n in nodes:
+        st = str(n.get('stage') or '')
+        if st not in stages:
+            stages.append(st)
+    if wo_type == 'optimize':
+        wo_desc = '优化工单'
+    elif 'launch' in stages and 'requirement' not in stages:
+        wo_desc = '上线工单'
+    else:
+        wo_desc = '需求工单'
+    stage_text = '/'.join(STAGE_CN.get(s, s) for s in stages) or '需求'
+    keep = []
+    for st in stages:
+        sn = [n for n in nodes if str(n.get('stage') or '') == st]
+        if not any(_started(n) for n in sn):
+            continue
+        for n in sn:
+            keep.append((STAGE_CN.get(st, st), n))
+            if not _passed(n):
+                break
+    if keep:
+        m = ['| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |',
+             '| :---: | :--- | :--- | :--- | :--- | :--- | :--- |']
+        for i, (sc, n) in enumerate(keep, 1):
+            m.append('| %d | %s | %s | %s | %s | %s | %s |'
+                     % (i, sc, str(n.get('node_name') or ''), str(n.get('approver') or ''),
+                        str(n.get('status') or ''), str(n.get('opinion') or ''),
+                        str(n.get('update_time') or '')))
+        matrix_text = '\n'.join(m)
+    else:
+        matrix_text = ''
+    current = next((n for n in nodes if not _passed(n)), None)
+    rej = next((n for n in nodes if _rejected(n)), None)
+    if wo_type == 'optimize':
+        if rej:
+            linkage = '优化工单审批未通过：节点【%s】已驳回，意见：%s' % (
+                str(rej.get('node_name') or ''), str(rej.get('opinion') or ''))
+        elif current:
+            linkage = '优化工单审批中，当前待【%s】审批人审批' % str(current.get('node_name') or '')
+        else:
+            linkage = '优化工单审批已通过，请回复【查询监控】回检'
+    elif rej:
+        linkage = '审批未通过：节点【%s】已驳回，意见：%s，可修改执行方案后重新发起' % (
+            str(rej.get('node_name') or ''), str(rej.get('opinion') or ''))
+    elif current:
+        if str(current.get('stage') or '') == 'requirement':
+            linkage = '等待需求审核，通过后方可进入需求分析'
+        else:
+            req_done = all(_passed(n) for n in nodes if str(n.get('stage') or '') == 'requirement')
+            linkage = ('需求审核已通过，可进入需求分析（回复【开始配置】）；后续将进入上线审批'
+                       if req_done else '等待需求审核，通过后方可进入需求分析')
+    elif 'launch' in stages:
+        linkage = '审批已通过，销售品上架完成'
+    else:
+        linkage = '需求审核已通过，可进入需求分析（回复【开始配置】）'
+    summary_tail = (matrix_text + '\n\n' + linkage) if matrix_text else linkage
+    result: Output = {
+        'summary_tail': summary_tail,
+        'wo_desc': wo_desc,
+        'stage': stage_text,
+        'matrix_text': matrix_text,
+        'linkage_text': linkage,
+    }
+    return result
+''',
+    [inp("offers", "逐品审批工单明细（节点802）", ref_block=nid(802), ref_rel="offers")],
+    [code_out("summary_tail", 803), code_out("wo_desc", 803), code_out("stage", 803),
+     code_out("matrix_text", 803), code_out("linkage_text", 803)]))
+s8f.append(llm_node(807, "状态摘要归纳",
+    "你是产销品审批工单查询智能体。输入 per_offer={per_offer}（JSON 数组，逐品含 approval_id/req_id/offer_id/status/current_node/approver/opinion/update_time/work_order_type/approval_matrix），req_id={req_id}，wo_desc={wo_desc}（已按工单类型严格判定的结果：优化工单/需求工单/上线工单，直接采用）。\n"
+    "按 flow-D D-1 输出**工单概览与逐品商品列表**（叙述性文字；**不要生成审批矩阵，不要生成业务阶段衔接**——矩阵与衔接由系统另行拼接，你只需输出以下两部分）：\n"
     "**一、工单概览（工单级，只输出一次）**\n"
-    "审批单号「approval_id」｜需求单号 {req_id}｜工单状态：「work_order_type=optimize→优化工单，否则需求工单/上线工单」｜覆盖商品：{per_offer 数量} 款\n"
+    "审批单号「per_offer 首项 approval_id」｜需求单号 {req_id}｜工单状态：「{wo_desc}」｜覆盖商品：{per_offer 数量} 款\n"
     "**二、商品列表（逐品一行）**\n"
     "对 per_offer 每一项输出：销售品「offer_id」｜状态：「该商品 status」｜当前环节：「current_node」（审批人「approver」）｜最近意见：「opinion」｜更新时间：「update_time」\n"
-    "**三、审批矩阵（工单级，只打印一次；逐字引用 approval_matrix[]，禁止编造）**\n"
-    "| 序号 | 业务阶段 | 审批节点 | 审批角色 | 状态 | 审批意见 | 更新时间 |\n"
-    "| :---: | :--- | :--- | :--- | :--- | :--- |\n"
-    "（**某业务阶段所有节点均「待审核/未开始/空」=该阶段未开始，整段不打印**；打印所有「已开始阶段」（该阶段至少一节点非待审核）的节点，且各已开始阶段内只打印到该阶段首个非「已通过」节点（含，其后节点不打印），阶段内全通过则全打印。先取矩阵首个非「已通过」节点为当前节点。例：需求已通过、上线5节点全「待审核」→只打印需求节点；无矩阵省略）\n"
-    "\n"
-    "**四、业务阶段衔接（自上而下匹配，**只命中一条**；按矩阵节点级 status 判定，禁止用工单级 approval_type）**：\n"
-    "先找矩阵中**第一个 status≠「已通过」的节点**为「当前节点」，逐条判断命中即停：\n"
-    "0）work_order_type=optimize → **不套用①②③④**：任一节点驳回→\"优化工单审批未通过：节点【驳回节点名称】已驳回，意见：驳回意见\"；有未通过节点→\"优化工单审批中，当前待【当前节点名称】（审批人）审批\"；全通过→\"优化工单审批已通过 ✅，请回复【查询监控】回检\"。停止。\n"
-    "① 存在任一节点 status=驳回（或含「未通过」「拒绝」）→ 仅输出：\"审批未通过：节点【驳回节点名称】已驳回，意见：驳回意见\"，并提示\"可修改执行方案后重新发起\"。停止，不再输出其他衔接。\n"
-    "② 当前节点存在且其 stage=requirement（需求阶段尚有未通过节点）→ 仅输出：\"等待需求审核，通过后方可进入需求分析\"。停止。\n"
-    "③ 需求阶段节点全部已通过（requirement 节点均 status=已通过，当前节点 stage=launch）→ 仅输出：\"需求审核已通过，可进入需求分析（回复【开始配置】）；后续将进入上线审批\"。**关键：需求审核通过后下一步是需求分析，不是上线审批**。停止。\n"
-    "④ 不存在未通过节点（全部 status=已通过）且含 launch 阶段节点 → 仅输出：\"审批已通过，销售品上架完成 ✅\"，并引导后续可查询监控运维。停止。\n"
-    "查无审批单（per_offer 为空）时仅输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
-    "输出要求：**仅输出**审批工单摘要（approval_summary），**禁止**追加总结语、寒暄、多余标题；收尾以衔接块正文结束，禁止以矩阵表格收尾。",
+    "若 per_offer 为空：仅输出\"未找到该需求单号的审批工单，请确认是否已发起审批\"。\n"
+    "输出要求：**仅输出**上述概览与商品列表正文（对应出参 narrative_text），**禁止**追加审批矩阵、衔接、总结语、寒暄、空行；收尾以商品列表最后一行结束。",
     [inp("per_offer", "逐品审批工单明细（节点802）", ref_block=nid(802), ref_rel="offers"),
      inp("req_id", "需求单号（节点802）", ref_block=nid(802), ref_rel="req_id"),
-     inp("status", "整批状态（节点802）", ref_block=nid(802), ref_rel="status")],
-    [out("approval_summary", "审批工单摘要")]))
+     inp("wo_desc", "工单类型判定（节点803）", ref_block=nid(803), ref_rel="wo_desc")],
+    [out("narrative_text", "工单概览与商品列表")]))
 # xsbot-panel 独立代码节点（offer_id/req_id 取自审批首品提取节点806；chat_id 取自开始节点；
 # resolve_step=True：由 approval_data（节点802 offers，含审批矩阵）解析真实业务进度，写入 url 的 step_stage 供页面步骤条定位）
 s8f.append(panel_code_node(805, "构建页面地址面板", "08",
@@ -3656,12 +3790,13 @@ s8f.append(panel_code_node(805, "构建页面地址面板", "08",
            ref_block=nid(802), ref_rel="offers")],
     biz_title="上线审批看板", resolve_step=True))
 s8f.append(end_node(804, "结束(查询完成)",
-    [inp("approval_summary", "审批工单摘要", ref_block=nid(803), ref_rel="approval_summary"),
+    [inp("narrative_text", "工单概览与商品列表", ref_block=nid(807), ref_rel="narrative_text"),
+     inp("summary_tail", "审批矩阵与衔接（节点803）", ref_block=nid(803), ref_rel="summary_tail"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(805), ref_rel="panel")],
-    "{approval_summary}\n\n{panel}"))
+    "{narrative_text}\n\n{summary_tail}\n\n{panel}"))
 files8f = workflow(
-    "产销品-审批工单查询", "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→LLM 工单摘要归纳（V1.6.1 修正）：工单概览（工单级，一次）+商品列表（逐品）+审批矩阵（工单级，一次，逐字引用 approval_matrix[] 禁止编造）+按**节点级 stage/status** 判定衔接（四条件互斥：驳回/需求阶段未过→等待需求审核/需求阶段全过→引导进入需求分析（下一步非上线审批）/全部通过→已上架）；**work_order_type=optimize 为监控优化工单，独立措辞**；**禁止用工单级 approval_type 判业务阶段**（工单含 requirement/launch 节点，approval_type 恒为 requirement）；**禁止追加总结性语句**，收尾以正文结束（纪律5.1）。", "wf_sub_08", s8f,
-    [edge(801,802), edge(802,803), edge(803,806), edge(806,805), edge(805,804)])
+    "产销品-审批工单查询", "子工作流8（入参仅 req_id + chat_id；V3.12 多商品：按 req_id 聚合返回 offers[]，逐品回显）。query_approval_status（req_id 关联主键反查审批工单，chat_id 会话透传，多商品聚合返回 offers[]）→审批首品提取（节点806，取首个商品字段供面板）→**审批矩阵与衔接生成（节点803，确定性代码）**：按节点级 stage/status 判业务阶段（需求阶段全待审核→整段省略；需求已通过+launch待审核→仅打印需求节点；work_order_type 空值=需求/上线工单而非优化工单；衔接规则 0/①②③④ 完整闭环）+LLM 概览与商品列表（节点807，仅叙述性文字，工单状态采用 803 判定 wo_desc）→结束（narrative+matrix+linkage 拼接，杜绝 LLM 幻觉）。", "wf_sub_08", s8f,
+    [edge(801,802), edge(802,803), edge(803,807), edge(807,806), edge(806,805), edge(805,804)])
 
 # ============================================================
 # wf_sub_09 存量产品查询（阶段5 新增：D-4 只读，query_offer 内嵌代码节点 + 多命中收敛/唯一回显/未命中追问）
