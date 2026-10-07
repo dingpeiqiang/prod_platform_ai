@@ -55,6 +55,28 @@ class InterfaceAdapterTest {
     }
 
     @Test
+    @DisplayName("B1 上传：传入真实 offers[] 时 sales_id 按真实销售品构造（不再用硬编码 900117029~032）")
+    void b1UploadUsesRealOffers() {
+        Map<String, Object> body = interfaceFacade.auditFileUpload(Map.of(
+                "fileName", "audit.xlsx",
+                "offers", List.of(
+                        Map.of("ofr_id", "901000111", "offer_name", "真实套餐A"),
+                        Map.of("ofr_id", "901000222", "offer_name", "真实套餐B"))));
+        Assertions.assertEquals("0", body.get("resultCode"), "应成功：" + body.get("resultMsg"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> salesId = (Map<String, Object>) body.get("sales_id");
+        Assertions.assertNotNull(salesId);
+        Assertions.assertEquals(2, salesId.size(), "应按真实 offers 出 2 档：" + salesId);
+        Assertions.assertTrue(salesId.containsKey("真实套餐A"));
+        Assertions.assertTrue(salesId.containsKey("真实套餐B"));
+        boolean noHardcoded = salesId.values().stream()
+                .map(v -> (Map<?, ?>) v)
+                .map(m -> String.valueOf(m.get("offerId")))
+                .allMatch(id -> !List.of("900117029", "900117030", "900117031", "900117032").contains(id));
+        Assertions.assertTrue(noHardcoded, "不应回退硬编码四档：" + salesId);
+    }
+
+    @Test
     @DisplayName("B2 通知：返回 request_id 与 sales_id")
     void b2Notify() {
         Map<String, Object> body = interfaceFacade.auditAsyncNotify(

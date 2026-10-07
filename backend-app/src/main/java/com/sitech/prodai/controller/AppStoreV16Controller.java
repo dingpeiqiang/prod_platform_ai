@@ -135,6 +135,8 @@ public class AppStoreV16Controller {
         // mock 模式：忽略该两字段，仍按内置确定性报文返回（行为零变化）。
         call.put("req_id", reqId);
         call.put("chat_id", MapOps.str(req.get("chat_id")));
+        // 真实销售品行（按 req_id 还原）：供 mock/real 适配层构造 sales_id 清单，避免 mock 返回硬编码清单
+        call.put("offers", offers);
         try {
             call.put("bytes", auditExcelGenerator.generate(offers, relations));
             call.put("fileName", MapOps.str(req.getOrDefault("fileName", "稽核需求.xlsx")));

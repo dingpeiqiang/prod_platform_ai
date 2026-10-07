@@ -17,8 +17,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>
  * A1（相似度分析）与 C1~C4（测试发起/场景/进度/结果）包装现有 {@link OfferSimV16Service}
  * （18 销售品种子 + 融合组种子），入参兼容 camelCase（工作流裸传）与 snake_case；
- * B1~B4（智能稽核上传/异步通知/结果插入/SQL 查询）为现场新增能力，此处以内置确定性 mock
- * 按接口规范出参结构生成（含 900117029~032 四档），不依赖外部文件。
+ * B1~B4（智能稽核上传/异步通知/结果插入/SQL 查询）为现场新增能力。B1 上传时若请求携带按 req_id
+ * 还原的真实 offers[]，则按真实销售品构造 sales_id 清单；offers 缺失时回退内置确定性四档 mock
+ * （900117029~032），保证无数据联调链路仍可用。
  * <p>
  * 出参结构与 {@link EopInterfaceAdapter} 归一后结构完全一致（§4.5.5 第 4 点），保证 mock/real 同构。
  */
@@ -27,7 +28,7 @@ public class MockInterfaceAdapter implements InterfaceFacade {
     private static final Logger log = LoggerFactory.getLogger(MockInterfaceAdapter.class);
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
-    /** B2 内置 mock 四档销售品（与需求文档 900117029~032 对齐，确定性）。 */
+    /** B1 内置 mock 四档销售品（仅当请求未携带真实 offers[] 时回退，确定性）。 */
     private static final List<String[]> MOCK_OFFERS = List.of(
             new String[]{"900117029", "5G畅享融合套餐129元档", "0"},
             new String[]{"900117030", "5G畅享融合套餐159元档", "1"},
@@ -127,20 +128,52 @@ public class MockInterfaceAdapter implements InterfaceFacade {
                 body.put("file_name", staged);
             }
         }
-        Map<String, Object> salesId = new LinkedHashMap<>();
-        for (String[] row : MOCK_OFFERS) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("offerId", row[0]);
-            item.put("location", Integer.parseInt(row[2]));
-            item.put("sheet_name", "套餐");
-            salesId.put(row[1], item);
-        }
+        Map<String, Object> salesId = buildSalesId(req.get("offers"));
         body.put("sales_id", salesId);
         body.put("resultCode", "0");
-        body.put("resultMsg", "文件解析成功，识别销售品 " + MOCK_OFFERS.size() + " 个"
+        body.put("resultMsg", "文件解析成功，识别销售品 " + salesId.size() + " 个"
                 + (fileName.isBlank() ? "" : "（" + fileName + "）"));
-        log.info("[MockInterfaceAdapter] B1 上传 mock 解析: file_id={}, offers={}", fileId, MOCK_OFFERS.size());
+        log.info("[MockInterfaceAdapter] B1 上传 mock 解析: file_id={}, offers={}", fileId, salesId.size());
         return body;
+    }
+
+    /**
+     * 由真实还原的 offers[]（{ofr_id/offer_id, offer_name, ...}）构造 sales_id 清单
+     * （销售品名 → {offerId, location, sheet_name}），保持与 EOP 回执同构；
+     * offers 缺失/为空时回退内置 {@link #MOCK_OFFERS}，保证联调链路可用。
+     */
+    private Map<String, Object> buildSalesId(Object offersRaw) {
+        Map<String, Object> salesId = new LinkedHashMap<>();
+        List<Map<String, Object>> offers = MapOps.castListOfMaps(offersRaw);
+        int idx = 0;
+        for (Map<String, Object> offer : offers) {
+            if (offer == null || offer.isEmpty()) {
+                continue;
+            }
+            String offerId = firstNonBlank(firstNonBlank(MapOps.str(offer.get("ofr_id")), MapOps.str(offer.get("offer_id"))),
+                    MapOps.str(offer.get("offerId")));
+            String name = firstNonBlank(firstNonBlank(MapOps.str(offer.get("offer_name")), MapOps.str(offer.get("offerName"))),
+                    firstNonBlank(MapOps.str(offer.get("name")), offerId));
+            if (offerId.isBlank() && name.isBlank()) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offerId", offerId);
+            item.put("location", idx);
+            item.put("sheet_name", "套餐");
+            salesId.put(name.isBlank() ? offerId : name, item);
+            idx++;
+        }
+        if (salesId.isEmpty()) {
+            for (String[] row : MOCK_OFFERS) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("offerId", row[0]);
+                item.put("location", Integer.parseInt(row[2]));
+                item.put("sheet_name", "套餐");
+                salesId.put(row[1], item);
+            }
+        }
+        return salesId;
     }
 
     /* ================= B2 异步报告生成并通知（内置确定性 mock） ================= */
