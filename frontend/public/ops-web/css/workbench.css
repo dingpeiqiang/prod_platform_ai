@@ -79,6 +79,7 @@
 .badge-green { background: #ecfdf5; color: #16a34a; }
 .badge-blue { background: #eff6ff; color: #2563eb; }
 .badge-amber { background: #fffbeb; color: #d97706; }
+.badge-red { background: #fef2f2; color: #dc2626; }
 .rv-strip { display: flex; flex-wrap: wrap; gap: 24px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
 .rv-grid { display: grid; gap: 0; margin-bottom: 16px; }
 .rv-grid.grid-2 { grid-template-columns: 1fr 1fr; }
