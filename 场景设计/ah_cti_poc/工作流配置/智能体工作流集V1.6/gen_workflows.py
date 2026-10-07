@@ -3754,17 +3754,19 @@ s11f.append(plugin_node(1104, "发起需求工单审批", "submit_release_approv
 # LLM 回执渲染（逐字引用出参，禁止编造）
 s11f.append(llm_node(1105, "审批发起回执渲染",
     "你是产销品需求工单审批发起助手。基于提交结果（req_id={req_id}，approval_id={approval_id}，status={status}），**先判定提交是否成功**：仅当 approval_id 非空且 status 不属于（FAIL/失败/error/空）时视为成功，否则视为失败。\n"
+    "【状态中文化】接口 status 原文常为英文，先按映射转为中文展示，避免直接回显英文造成误解：SUCCESS/OK/PASS → 已提交（审批处理中）；PROCESSING/PENDING/进行中 → 审批处理中；FAIL/ERROR/失败 → 提交失败（附原文）；其他 → 原样回显英文并在括号内保留原文。仅当映射不到时保留原文，严禁编造。\n"
     "【成功口径】（approval_id 非空且 status 正常）输出：\n"
     "【环节1/8·需求提报】✅ 需求工单审批已发起\n"
     "- 需求单号：{req_id}\n"
-    "- 需求工单审批单号：{approval_id}，状态：{status}\n"
+    "- 需求工单审批单号：{approval_id}\n"
+    "- 提交状态：{中文状态}（原文：{status}）\n"
     "- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n"
     "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
     "【环节1/8·需求提报】❌ 需求工单审批发起失败\n"
     "- 需求单号：{req_id}\n"
     "- 失败原因：审批服务未返回有效审批单号（approval_id 为空，status={status}）\n"
     "- 建议：请确认需求提报已完成，回复【重新执行】后重试；若持续失败请联系管理员。\n"
-    "约束：逐字引用出参，严禁编造审批单号/状态，严禁在失败时输出任何✅成功措辞。\n"
+    "约束：逐字引用出参并保留原文，严禁编造审批单号/状态，严禁在失败时输出任何✅成功措辞。\n"
     "输出要求：仅输出审批发起回执正文（对应出参 approval_receipt），不输出其他多余文字。",
     [inp("req_id", "需求单号", ref_block=nid(1101), ref_rel="req_id"),
      inp("approval_id", "审批单号", ref_block=nid(1104), ref_rel="approval_id"),
