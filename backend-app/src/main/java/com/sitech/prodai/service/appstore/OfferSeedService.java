@@ -235,8 +235,15 @@ public class OfferSeedService {
     public List<Map<String, Object>> matchSimilar(String businessDesc, int topN, String templateId) {
         String text = businessDesc == null ? "" : businessDesc;
         String lower = text.toLowerCase(Locale.ROOT);
+        // 模板类型栅栏：家庭/融合模板（familyBasePrc）允许命中融合品；其余单品/附加模板
+        // （personMainPrc/personAddPrc/broadBandMainPrc/broadBandOptSpeedPrc/familyAddPrc）一律排除融合品，
+        // 避免"个人主套餐"需求误命中融合套餐（如 5G-A融合套餐299元）而把融合组注入单品方案。
+        boolean fusionAllowed = fusionAllowedForTemplate(templateId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> offer : offers.values()) {
+            if (!fusionAllowed && "fusion".equalsIgnoreCase(MapOps.str(offer.get("offer_type")))) {
+                continue;
+            }
             double score = scoreOffer(lower, offer);
             if (score <= 0) {
                 continue;
@@ -269,6 +276,19 @@ public class OfferSeedService {
     public Map<String, Object> matchBestSimilar(String businessDesc) {
         List<Map<String, Object>> list = matchSimilar(businessDesc, 1);
         return list.isEmpty() ? null : list.get(0);
+    }
+
+    /**
+     * 模板是否面向融合/家庭组（允许命中融合品 offer_type=fusion）。
+     * <p>
+     * 仅家庭基础套餐 familyBasePrc 属组结构模板；其余单品/附加模板（个人主 personMainPrc、
+     * 个人附加 personAddPrc、宽带主 broadBandMainPrc、宽带加速 broadBandOptSpeedPrc、家庭附加
+     * familyAddPrc）均为单商品，命中融合品会导致方案合并误注入融合组（member_fee_pending）。
+     * 模板未知/为空时按宽松处理（允许命中，保持默认行为不回归）。
+     */
+    private static boolean fusionAllowedForTemplate(String templateId) {
+        return templateId == null || templateId.isBlank()
+                || "familyBasePrc".equalsIgnoreCase(templateId);
     }
 
     /* ---------------- 种子 → 新 24 字段同构转换（V3.0） ---------------- */

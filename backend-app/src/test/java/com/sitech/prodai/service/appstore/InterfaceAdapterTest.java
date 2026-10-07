@@ -248,4 +248,45 @@ class InterfaceAdapterTest {
                     "每项应携带衍生补全的 offerModel：" + row.get("similarOfferId"));
         }
     }
+
+    @Test
+    @DisplayName("A1 相似度：personMainPrc（个人主套餐）模板排除融合品，不得命中融合套餐900102307")
+    void a1SimilarPersonMainPrcExcludesFusion() {
+        Map<String, Object> body = interfaceFacade.similarOfferQuery(Map.of(
+                "business_desc", "新增5G-C套餐299元，12个月有效期，次月1日生效，含220GB全国通用流量与2000分钟全国通话",
+                "templateId", "personMainPrc"));
+        Assertions.assertEquals("0", body.get("resultCode"), "应成功：" + body.get("resultMsg"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("similarOfferList");
+        Assertions.assertNotNull(list);
+        Assertions.assertFalse(list.isEmpty(), "个人主套餐模板应仍能命中同类型单品/基础套餐");
+        for (Map<String, Object> row : list) {
+            String id = MapOps.str(row.get("similarOfferId"));
+            Assertions.assertFalse("900102307".equals(id), "不应命中融合套餐 900102307：" + row);
+            Assertions.assertFalse(MapOps.str(row.get("similarityDesc")).contains("融合"),
+                    "相似命中描述不应含融合子类：" + row);
+        }
+        // 主推荐应为单品/基础（同步价档 299 元），且不出融合组 offer_group
+        Assertions.assertNull(body.get("offer_group"),
+                "个人主套餐模板命中单品不应下发 offer_group 融合组：" + body.get("offer_group"));
+        String best = MapOps.str(((Map<?, ?>) body.get("similarOffer")).get("similarOfferId"));
+        Assertions.assertEquals("900102310", best, "299元单品套餐 900102310 应为最佳匹配");
+    }
+
+    @Test
+    @DisplayName("A1 相似度：familyBasePrc（家庭/融合）模板仍允许命中融合套餐并下发 offer_group")
+    void a1SimilarFamilyBaseAllowsFusion() {
+        Map<String, Object> body = interfaceFacade.similarOfferQuery(Map.of(
+                "business_desc", "新增5G-A融合套餐299元，含宽带与天翼高清",
+                "templateId", "familyBasePrc"));
+        Assertions.assertEquals("0", body.get("resultCode"), "应成功：" + body.get("resultMsg"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> list = (List<Map<String, Object>>) body.get("similarOfferList");
+        Assertions.assertNotNull(list);
+        Assertions.assertFalse(list.isEmpty());
+        // 主推荐应允许为融合套餐，且可下发 offer_group
+        String best = MapOps.str(((Map<?, ?>) body.get("similarOffer")).get("similarOfferId"));
+        Assertions.assertTrue(List.of("900102307", "900113046", "900102306", "900102313", "900113044").contains(best),
+                "家庭/融合模板主推荐应可为融合品：" + best);
+    }
 }

@@ -1813,20 +1813,12 @@ s5f.append(code_node(414, "资费校准商品列表", CODE_OFFER_LIST,
      inp("result_offers", "逐品校验结果（节点402出参 offers，含 offer_seq/pass）", ref_block=nid(402), ref_rel="offers")],
     [code_out("offer_list_text", 414)], pos=(520, 260)))
 s5f.append(llm_node(403, "风险解读",
-    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}，逐行「序号. 名称（销售品ID）：结论」，序号与 offer_seq 对齐）仅供取名，**商品列表回显由结束节点确定性输出、此处不重复输出**：\n"
-    "0）多商品分组：compare_list/risk_list 行含 offer_seq 键时，按 offer_seq 升序为每个商品输出一个小节，小节标题「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 中同序号行的名称；单商品（无 offer_seq 键）不输出小节标题。\n"
-    "1）比对信息（取该商品 compare_list 非空时必出）：Markdown表格，列为 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项比对项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 同时为空或空串时该行整体省略，仅一侧有值则照常输出；比对信息标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥该品总数一半时（E27），有值行照常输出，校准结论行引用 E27 固定文案（系统侧未返回比对明细），不中断、不改变 pass 判定，禁止编造系统侧值。\n"
-    "2）融合组维度（V4.0）：compare_list 行含 member_role 键时，比对表按 member_role 分组输出（组间空行分隔或按成员独立小表，8 项比对项目名不变，行数=Σ各成员有值行）；空值行省略规则逐成员内执行；E27 阈值逐成员内计算（某成员两侧皆空行数 ≥ 该成员行数一半 → 该成员小节引用 E27 固定文案），禁止跨成员加总稀释或误判。\n"
-    "3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属），说明每条风险的影响与处置建议；某品 risk_list 为空时输出「未发现叠加/互斥冲突」。\n"
-    "3.5）推理依据（取该商品所属 reasoning_chain={reasoning_chain}，行内含 ruleId/condition/conclusion）：「**本体推理依据：**」+ 将该品 reasoning_chain **逐行原样**以「规则 ruleId：condition → conclusion」短句列出。**严格约束：只依据 reasoning_chain 行，禁止自行编号（不要编 R001/R002…）、禁止把 compare_list 的 8 项比对项当作规则复述、禁止增删规则**；reasoning_chain 为空时省略本段，非空但某品无对应行时该品省略本段。\n"
-    "4）校准结论行：「**校准结论：**」+ 该品全部比对项 result==一致 时输出「资费配置与计费规则完全一致」，存在不一致时逐条列出。\n"
-    "5）商品列表：**不再**单独回显商品列表（结束节点负责），直接输出各商品小节。\n"
-    "可引用资费规则库知识作为解释依据，但不得新增风险结论。compare_list 与 risk_list 均为空时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n"
-    "输出要求：仅输出以上内容（对应出参 risk_summary，多商品时按 offer_seq 分组），不输出其他多余文字。",
+    "将资费比对明细（compare_list={compare_list}）与资费风险清单（risk_list={risk_list}）翻译为业务语言，输出风险解读。多商品时 compare_list/risk_list 为逐品聚合（行内含 offer_seq 键），须**按商品分组**输出；另附资费校准商品列表（offer_list_text={offer_list_text}）仅供取名；另附引擎逐品权威判定（offers={offers}，每品 offer_seq/pass，pass=1 通过/pass=0 不通过）。**引擎 pass 为唯一权威判定，本解读（含校准结论）必须与 pass 完全一致，严禁自相矛盾**；**商品列表回显由结束节点确定性输出、此处不重复输出**：\n0）多商品分组：按 offer_seq 升序为每个商品输出一节「## 商品{offer_seq}（{该品名称}）」，名称取 offer_list_text 同序号行；单商品不输出小节标题。每小节标题下第一行标注「**引擎判定：通过/不通过**」（按 offers 该 offer_seq 的 pass）。\n1）比对信息（该品 compare_list 非空时必出）：表格列 项目|套餐描述（需求）|计费配置描述（系统）|比对结果；8 项项目名不变（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）；行内 requirement_desc 与 billing_desc 均空时整体省略，仅一侧有值照常输出；标题写「比对信息（实际行数/该品compare_list总数项，本销售品不涉及项已省略）：」；两侧皆空行数≥总数一半（E27）时有值行照常输出、结论行引用 E27 固定文案，不改变 pass 判定，禁止编造系统侧值。\n2）融合组（V4.0）：compare_list 行含 member_role 键时按 member_role 分组输出，8 项名不变，行数=Σ各成员有值行；空值省略逐成员内执行；E27 逐成员内计算，禁止跨成员加总稀释或误判。\n3）风险解读：risk_list 逐条翻译为业务语言（含 offer_seq 归属）；某品 risk_list 为空时输出「未发现叠加/互斥冲突」，但**risk_list 为空不等于 pass=1，若该品 pass=0 须补写「引擎判定不通过但未返回风险明细」，严禁借空 risk_list 暗示通过**。\n3.5）推理依据：取该品所属 reasoning_chain={reasoning_chain}（含 ruleId/condition/conclusion），逐行原样以「规则 ruleId：condition → conclusion」列出；**严格约束：只依据 reasoning_chain 行，禁止自行编号（禁编 R001/R002…）、禁把 8 项比对项当规则复述、禁增删**；reasoning_chain 为空时省略。\n4）校准结论行（**以权威 pass 为准**）：「**校准结论：**」按该品 pass：\n- pass=1 且全部比对项一致 →「资费配置与计费规则完全一致，引擎判定通过」；\n- pass=1 但存在比对不一致 →「存在明细不一致，但引擎判定通过，需人工复核」并逐条列出；\n- pass=0 →**禁止输出「完全一致/通过」**，输出「资费校准未通过（pass=0），未写入 fee」+原因（取 risk_list 的 risk_desc；compare_list 不一致逐条列出；均未体现则补写「差异超出 8 项比对明细或涉融合组/叠加互斥，请核对工作台完整配置」）。\n5）**不再**单独回显商品列表（结束节点负责），直接输出各商品小节（各小节含引擎判定标注）。\n可引用资费规则库知识作解释依据，但不得新增风险结论、不得否定权威 pass。compare_list 与 risk_list 均空且对应品 pass=1 时，结论行输出「资费校准通过，未发现叠加/互斥冲突」。\n输出要求：仅输出以上内容（出参 risk_summary，多商品按 offer_seq 分组），不输出多余文字。",
     [inp("risk_list", "引用节点402风险清单（逐品聚合）", ref_block=nid(402), ref_rel="risk_list"),
      inp("compare_list", "引用节点402资费比对明细（逐品聚合，融合组行含member_role）", ref_block=nid(402), ref_rel="compare_list"),
      inp("reasoning_chain", "引用节点402 SWRL 推理链（逐规则 ruleId/condition/conclusion）", ref_block=nid(402), ref_rel="reasoning_chain"),
-     inp("offer_list_text", "资费校准商品列表文本（节点414确定性渲染）", ref_block=nid(414), ref_rel="offer_list_text")],
+     inp("offer_list_text", "资费校准商品列表文本（节点414确定性渲染）", ref_block=nid(414), ref_rel="offer_list_text"),
+     inp("offers", "引擎逐品权威判定（节点402出参 offers，每品含 offer_seq/pass；pass=1 通过/pass=0 不通过，为校准结论唯一权威依据）", ref_block=nid(402), ref_rel="offers")],
     [out("risk_summary", "风险解读（多商品按 offer_seq 分组；商品列表由结束节点输出，此处不重复）")]))
 # 计费校验结论聚合：插件仅逐品返回 offers[].pass，顶层 pass/risk_list/compare_list 为空；
 # 本节点从 offers[] 确定性聚合顶层结论，供结束节点 {pass} 与后续封包引用（避免空值）。
