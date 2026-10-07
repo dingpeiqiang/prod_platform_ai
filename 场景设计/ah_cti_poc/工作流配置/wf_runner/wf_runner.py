@@ -1103,7 +1103,11 @@ class WorkflowRunner:
                    "".join(random.choices(string.digits, k=3))
         if nm == "chat_id":
             return "CHAT-MOCK-0001"
-        # 其余按描述给一份中文默认样例
+        # 非必填且未提供 → 取空（可空字段如 reporter/offer_id/name/keyword），
+        # 避免示例占位符泄漏进真实输出（如需求提报单「提报人」字段）
+        if not (ip or {}).get("required"):
+            return ""
+        # 仅对必填但确实缺省/未覆盖的入参给一份中文默认样例（便于 demo 定位）
         return f"【样例】{nm}（可 --set {nm}=... 覆盖）"
 
     # -------------------------------------------------- 单节点分发
