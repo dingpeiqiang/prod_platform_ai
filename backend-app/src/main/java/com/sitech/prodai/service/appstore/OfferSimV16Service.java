@@ -1275,14 +1275,20 @@ public class OfferSimV16Service {
             return risks;
         }
         Map<String, Map<String, String>> valueByRole = new LinkedHashMap<>();
-        valueByRole.put("主卡套餐", flatValuesOf(castMap(plan.get("main_offer")).get("fields")));
+        // 主卡套餐价格字段取自主 plan_json 计费叶子（套餐档位），而非 main_offer.fields（融合配置不携带价格）
+        valueByRole.put("主卡套餐", memberMainValues(plan));
         for (Map<String, Object> m : castMapList(plan.get("member_offers"))) {
-            valueByRole.put(MapOps.str(m.get("role")), flatValuesOf(m.get("fields")));
+            valueByRole.put(MapOps.str(m.get("role")), memberFieldValues(m));
         }
         for (Map.Entry<String, Map<String, String>> e : valueByRole.entrySet()) {
             for (String feeField : List.of("月功能费", "套餐档位", "宽带月功能费")) {
+                // 仅对成员自身声明的价格字段判缺：宽带/高清只声明速率/路数时不视为价格缺失；
+                // "省内自定" 视为可接受（与 groupFeeCompareList 一致），仅值缺失/待补充判 pending。
+                if (!e.getValue().containsKey(feeField)) {
+                    continue;
+                }
                 String v = e.getValue().get(feeField);
-                if (v == null || v.isBlank() || "待补充".equals(v) || "省内自定".equals(v)) {
+                if (v == null || v.isBlank()) {
                     Map<String, Object> risk = new LinkedHashMap<>();
                     risk.put("risk_type", "member_fee_pending");
                     risk.put("risk_desc", "成员[" + e.getKey() + "]价格类字段\"" + feeField + "\"待补充，整体按出口A 处置");
@@ -1292,6 +1298,35 @@ public class OfferSimV16Service {
             }
         }
         return risks;
+    }
+
+    /**
+     * 成员价格/配置字段平面映射：融合配置的 member_offers 用 preset map（键值即字段），
+     * 非融合成员用 fields 数组；二者兼容统一读取，占位值归一为空。
+     */
+    private Map<String, String> memberFieldValues(Map<String, Object> member) {
+        Object preset = member.get("preset");
+        if (preset instanceof Map<?, ?> pm) {
+            Map<String, String> values = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> m : pm.entrySet()) {
+                String key = String.valueOf(m.getKey());
+                if (!key.isBlank()) {
+                    values.putIfAbsent(key, blankIfPlaceholder(m.getValue()));
+                }
+            }
+            return values;
+        }
+        return flatValuesOf(member.get("fields"));
+    }
+
+    /** 主卡套餐价格字段：从主 plan_json 取套餐档位（计费叶子已并入 planFieldValues 的 optionalInfo 解析） */
+    private Map<String, String> memberMainValues(Map<String, Object> plan) {
+        Map<String, String> values = new LinkedHashMap<>();
+        String tier = fieldOf(plan, "套餐档位");
+        if (!tier.isBlank()) {
+            values.put("套餐档位", tier);
+        }
+        return values;
     }
 
     /** fields 数组 → field->value 平面映射（占位值归一为空） */
@@ -1322,7 +1357,7 @@ public class OfferSimV16Service {
         }
         for (Map<String, Object> m : castMapList(plan.get("member_offers"))) {
             String role = MapOps.str(m.get("role"));
-            Map<String, String> values = flatValuesOf(m.get("fields"));
+            Map<String, String> values = memberFieldValues(m);
             // 成员有值行逐项生成（空值行省略，E27 阈值按成员内判定由脚本侧完成）
             List<String[]> memberRows = List.of(
                     new String[]{"产品名称", "产品名称"},

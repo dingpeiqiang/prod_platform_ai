@@ -121,6 +121,62 @@ class BillingRulesSwrlTest {
         Assertions.assertTrue(reasoning.stream()
                         .filter(r -> "R-C09".equals(r.get("ruleId")))
                         .anyMatch(r -> MapOps.str(r.get("condition")).contains("199")),
-                "R-C09 通过行应带实际固费取值：" + reasoning);
+                "R-C09 ͨ����Ӧ��ʵ�ʹ̷�ȡֵ��" + reasoning);
+    }
+    private Map<String, Object> fusionGroupItem(String planJson, String offerId, String offerName) {
+        Map<String, Object> productConfig = new java.util.LinkedHashMap<>();
+        productConfig.put("offer_id", offerId);
+        productConfig.put("offer_name", offerName);
+        productConfig.put("plan_json", planJson);
+        Map<String, Object> element = new java.util.LinkedHashMap<>();
+        element.put("offer_seq", 1);
+        element.put("offer_id", offerId);
+        element.put("product_config", simJson(productConfig));
+        return element;
+    }
+
+    @Test
+    @DisplayName("融合组配置（成员 preset 价格+主套餐档位+省内自定）不应报 member_fee_pending")
+    void fusionGroupNoMemberFeePending() {
+        String planJson = "{\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199元/月\"}},"
+                + "\"main_offer\":{\"role\":\"主卡套餐\",\"offer_id\":\"900113046\",\"name\":\"5G-A融合套餐199元\"},"
+                + "\"member_offers\":["
+                + "{\"role\":\"宽带\",\"offer_id\":\"省内自定\",\"required\":true,\"preset\":{\"宽带速率\":\"1000M起\",\"配置口径\":\"省内自行配置\"}},"
+                + "{\"role\":\"天翼高清\",\"offer_id\":\"省内自定\",\"required\":true,\"preset\":{\"路数\":\"1路\",\"配置口径\":\"省内自行配置\"}},"
+                + "{\"role\":\"副卡功能费\",\"offer_id\":\"7320110001600005\",\"required\":false,\"preset\":{\"月功能费\":\"10元\",\"张数\":\"省内自定\",\"配置口径\":\"省公司可以按需配置\"}}"
+                + "],\"req_id\":\"PLAN20260101000000006\"}";
+        Map<String, Object> body = sim.billingRulesVerifyBatch(Map.of(
+                "req_id", "PLAN20260101000000006",
+                "check_scene", "all",
+                "offers", List.of(fusionGroupItem(planJson, "900113046", "5G-A融合套餐199元"))));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
+        Map<String, Object> item = offers.get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> risks = (List<Map<String, Object>>) item.get("risk_list");
+        Assertions.assertTrue(risks.stream().noneMatch(r -> "member_fee_pending".equals(r.get("risk_type"))),
+                "融合组价格已确定，不应产生 member_fee_pending：" + risks);
+    }
+
+    @Test
+    @DisplayName("融合组成员真缺失费用（preset 声明但值待补充）仍应拦截 member_fee_pending")
+    void fusionGroupGenuineMissingFeeStillPending() {
+        String planJson = "{\"optionalInfo\":{\"printContent\":{\"prcMonthFee\":\"199元/月\"}},"
+                + "\"main_offer\":{\"role\":\"主卡套餐\",\"offer_id\":\"900113046\",\"name\":\"5G-A融合套餐199元\"},"
+                + "\"member_offers\":["
+                + "{\"role\":\"副卡功能费\",\"offer_id\":\"7320110001600005\",\"required\":false,\"preset\":{\"月功能费\":\"待补充\",\"配置口径\":\"省公司可以按需配置\"}}"
+                + "],\"req_id\":\"PLAN20260101000000007\"}";
+        Map<String, Object> body = sim.billingRulesVerifyBatch(Map.of(
+                "req_id", "PLAN20260101000000007",
+                "check_scene", "all",
+                "offers", List.of(fusionGroupItem(planJson, "900113046", "5G-A融合套餐199元"))));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> offers = (List<Map<String, Object>>) body.get("offers");
+        Map<String, Object> item = offers.get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> risks = (List<Map<String, Object>>) item.get("risk_list");
+        Assertions.assertTrue(risks.stream().anyMatch(r -> "member_fee_pending".equals(r.get("risk_type"))
+                        && MapOps.str(r.get("risk_desc")).contains("月功能费")),
+                "成员声明 月功能费 值为待补充 时应拦截 member_fee_pending：" + risks);
     }
 }
