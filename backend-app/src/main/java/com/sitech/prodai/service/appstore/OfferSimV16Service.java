@@ -2130,7 +2130,7 @@ public class OfferSimV16Service {
     private List<String> sceneNbrsOf(Map<String, Object> offer) {
         List<String> scenes = new ArrayList<>();
         scenes.add("S_O_TC");
-        if (!"rights".equals(offer.get("series"))) {
+        if (MapOps.truthy(offer.get("allow_sub_card"))) {
             scenes.add("S_ADD_CARD");
         }
         scenes.add("S_U_TC");
