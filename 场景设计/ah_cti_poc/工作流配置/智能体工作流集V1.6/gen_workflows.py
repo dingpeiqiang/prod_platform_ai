@@ -3233,7 +3233,7 @@ s6f.append(end_node(616, "结束(审批已提交)",
     "{approval_section}\n\n"
     "{panel}"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 渲染审批结果正文(提交成功展示真实矩阵/被拒如实展示原因，不伪造矩阵)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵；审批进度由工作台『上线审批矩阵』自动更新，不再引导查询指令；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全)→CODE_FMT_APPROVAL 渲染审批结果正文(提交成功展示真实矩阵/被拒如实展示原因，不伪造矩阵)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵；审批进度由工作台自动更新；模拟审批约10s后自动通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
      edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,618), edge(618,619), edge(619,616)])

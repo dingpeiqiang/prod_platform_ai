@@ -3332,10 +3332,11 @@ _PROMPT_REQUIRED_PHRASES = {
     "803": ["其中 stage 才是业务阶段信号", "禁止用工单级 approval_type 判断当前业务阶段",
             "需求审核已通过，可进入需求分析", "work_order_type=optimize", "优化工单审批中，当前待"],
 }
-# 平台对顶层 flowRemark 有字节上限（UTF-8 字节数）。实测：wf_sub_08 flowRemark 恰为
-# 1000 字节可导入；一旦新增内容超过 1000 字节即被平台拒绝（与提示词是否改动无关）。
-# 曾误判为「提示词长度」问题，实为 flowRemark 顶格后任何追加都会越界。取 1000 硬拦截。
-_MAX_FLOW_REMARK_BYTES = 1000
+# 平台对顶层 flowRemark 有字节上限（UTF-8 字节数）。实测校准（2026-10）：
+#   wf_sub_00 flowRemark = 863 字节 → 可导入；wf_sub_06 曾达 965 字节 → 平台拒绝导入。
+#   故真实阈值介于 863~965，早前注释误称「1000 可导入」（wf_sub_08 实为 796，非 1000）。
+#   取 900 硬拦截，留安全余量并覆盖当前全部可导入工作流（最大 863）。超限即导入失败，须精简。
+_MAX_FLOW_REMARK_BYTES = 900
 
 
 def _code_return_keys(code):
