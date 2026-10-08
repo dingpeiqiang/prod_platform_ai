@@ -1236,6 +1236,25 @@ let _approvalFallbackTimer = null
 const stopNodePolling = () => {
   if (_nodePollTimer) { clearInterval(_nodePollTimer); _nodePollTimer = null }
 }
+
+// 规格稽核结果「后端驱动」：面板按周期调 POST /audit/poll-result，由后端读 audit_pending → 轮询 B4 →
+// 整批 pass==1 时写 node_name=spec。替代原对话主动查询（wf_sub_12），用户无需手动回复「查询稽核结果」。
+// 节流 5s：避免与 2s 的 result/query 轮询同频过度打后端；单次请求由后端保持幂等无状态。
+let _auditDriveAt = 0
+const driveAuditPoll = () => {
+  const q = window.__WB_QUERY || {}
+  const reqId = String(q.req_id || '')
+  if (!reqId) return
+  if (!auditExpected() || hasNodeResult('spec')) return
+  if (Date.now() - _auditDriveAt < 5000) return
+  _auditDriveAt = Date.now()
+  const base = (window.__WB_API_BASE || (location.pathname.indexOf('/prod-ai/') === 0 ? '/prod-ai' : '')) + '/api/v1/appstore'
+  fetch(base + '/audit/poll-result', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ req_id: reqId }),
+  }).catch(() => {})
+}
 // 需求审批进度轮询：按 req_id 周期性查询后端审批进度，将 approval_matrix 写入 demandApprovalMatrix，
 // 驱动「需求审批矩阵」动态刷新（需求审核节点 进行中→已通过），直至需求阶段通过或超时（60s）停止。
 let _demandApprovalPollTimer = null
@@ -1275,10 +1294,11 @@ const startDemandApprovalPolling = () => {
 }
 const startNodePolling = () => {
   const canRefresh = typeof window.__WB_REFRESH_RESULT === 'function' && window.__WB_HAS_REQ
-  // 兜底：5s 后仍未完成（后端无产出/降级）则前端置完成，避免「进行中」无限停留
+  // 兜底：仅对「未发起稽核/测试」的场景 5s 后置完成（避免静态视图无限停留）。
+  // 已发起（存在 pending 临时态）时改由后端异步产出 spec/test 驱动，不强转，真实反映「进行中」。
   const armFallback = () => {
-    if (auditExpected()) _auditFallbackTimer = setTimeout(() => { if (!auditView.value.ready) auditSimDone.value = true }, 5000)
-    if (testExpected()) _testFallbackTimer = setTimeout(() => { if (!testRepView.value.ready) testSimDone.value = true }, 5000)
+    if (auditExpected() && !hasNodeResult('audit_pending')) _auditFallbackTimer = setTimeout(() => { if (!auditView.value.ready) auditSimDone.value = true }, 5000)
+    if (testExpected() && !hasNodeResult('test_pending')) _testFallbackTimer = setTimeout(() => { if (!testRepView.value.ready) testSimDone.value = true }, 5000)
     if (approvalExpected()) _approvalFallbackTimer = setTimeout(() => { if (!approvalView.value.ready) approvalSimDone.value = true }, 5000)
   }
   armFallback()
@@ -1291,11 +1311,17 @@ const startNodePolling = () => {
     try { await window.__WB_REFRESH_RESULT() } catch (e) {}
     // 首次接口降级后可能由轮询才解析出真实商品，同步当前商品引用
     if (window.__WB_PRODUCT) currentProduct.value = window.__WB_PRODUCT
+    // 稽核结果后端驱动：spec 未就绪时按周期催后端轮询落库（不再依赖用户主动查询）
+    driveAuditPoll()
     nodeTick.value++
     const needAudit = auditExpected() && !hasNodeResult('spec')
     const needTest = testExpected() && !hasNodeResult('test')
     const needApproval = approvalExpected() && !hasNodeResult('report') && !(window.__WB_QUERY && window.__WB_QUERY.approval_nodes)
-    if ((!needAudit && !needTest && !needApproval) || Date.now() - startedAt > 60000) stopNodePolling()
+    // 稽核为异步处理（最长约 30 分钟），其未完成时不因 60s 窗口停止轮询（由 spec 落地或撤离页面终止）；
+    // 测试/审批沿用 60s 窗口，避免无谓空转。
+    const auditStillRunning = needAudit && hasNodeResult('audit_pending')
+    const overtime = Date.now() - startedAt > 60000
+    if ((!needAudit && !needTest && !needApproval) || (overtime && !auditStillRunning)) stopNodePolling()
   }, 2000)
 }
 onMounted(startNodePolling)

@@ -52,6 +52,7 @@ public class AppStoreV16Controller {
     private final AppStoreInterfaceProperties interfaceProperties;
     private final OpsRulesService opsRules;
     private final OpsSwrlReasoner opsSwrlReasoner;
+    private final com.sitech.prodai.service.appstore.AuditPollService auditPollService;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
@@ -64,7 +65,8 @@ public class AppStoreV16Controller {
                                  InterfaceFacade interfaceFacade,
                                  AppStoreInterfaceProperties interfaceProperties,
                                  OpsRulesService opsRules,
-                                 OpsSwrlReasoner opsSwrlReasoner) {
+                                 OpsSwrlReasoner opsSwrlReasoner,
+                                 com.sitech.prodai.service.appstore.AuditPollService auditPollService) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
@@ -78,6 +80,7 @@ public class AppStoreV16Controller {
         this.interfaceProperties = interfaceProperties;
         this.opsRules = opsRules;
         this.opsSwrlReasoner = opsSwrlReasoner;
+        this.auditPollService = auditPollService;
     }
 
     /* ================= 模板 schema 下发 get_template_schema ================= */
@@ -244,6 +247,12 @@ public class AppStoreV16Controller {
     @PostMapping("/audit/sql-query")
     public Map<String, Object> auditSqlQuery(@RequestBody Map<String, Object> req) {
         return interfaceFacade.auditSqlQuery(req);
+    }
+
+    @Operation(summary = "稽核结果轮询并落地", description = "环节4b 后端化：按 req_id 读 audit_pending 取 requestIds → 单次探测 B4 完成态（sqlId=20260626001）→ 完成后查最终结论（20260626002）→ 整批 pass==1 时写 node_name=spec。供前台面板周期调用，替代对话主动查询")
+    @PostMapping("/audit/poll-result")
+    public Map<String, Object> auditPollResult(@RequestBody Map<String, Object> req) {
+        return auditPollService.pollOnce(MapOps.str(req.get("req_id")));
     }
 
     /* ================= 接口2：实时规格稽核 realtime_spec_audit ================= */
