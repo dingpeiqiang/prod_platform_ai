@@ -56,7 +56,7 @@
   .msg-toast.error { background: #f5222d; }
 
   /* ===== 演示页微调：字段名与来源标签（已解析/AI推荐）同排；控件保持撑满整行，标签列加宽使其右缩 ===== */
-  .form-label { flex-wrap: nowrap; }
+  .form-label { flex-wrap: wrap; }
   .form-label .label-text { white-space: nowrap; }
   .form-label .field-tag { flex-shrink: 0; margin-left: 2px; }
   .base-field-row .form-label { width: 180px; }
@@ -373,10 +373,9 @@
   margin-bottom: 12px;
 }
 .base-field-row .form-label {
-  width: 140px;
+  width: 180px;
   flex-shrink: 0;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  flex-wrap: wrap;
   align-items: center;
 }
 .base-field-row .form-control {

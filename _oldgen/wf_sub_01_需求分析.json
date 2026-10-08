@@ -1353,7 +1353,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n请核对以上方案：\n- 回复【确认执行】：将串行执行 智能配置→稽核→资费校准→自动测试 四个环节；\n- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。\n\n{panel}"
+          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n请核对以上方案：\n- 回复【确认执行】：将执行 智能配置；\n- 如需调整：请直接说明修改意见（待补充字段需补充后才能进入配置）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
