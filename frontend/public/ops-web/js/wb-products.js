@@ -285,8 +285,8 @@
     return { byNode: byNode, offers: roster, raw: p.raw || {} };
   };
 
-  // 按 req_id 拉取节点结果并解析；失败/超时静默保留已设置的值
-  window.__WB_DATA_READY = (function(){
+  // 按 req_id 拉取节点结果并解析；失败/超时静默保留已设置的值。首屏与轮询共用同一实现。
+  function fetchResultOnce(){
     if (!reqId) return Promise.resolve(window.__WB_PRODUCT);
     var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var timer = setTimeout(function(){ if (controller) controller.abort(); }, 5000);
@@ -307,5 +307,13 @@
         return window.__WB_PRODUCT;
       })
       .then(function(p){ clearTimeout(timer); return p; });
-  })();
+  }
+
+  window.__WB_HAS_REQ = !!reqId;
+
+  window.__WB_DATA_READY = fetchResultOnce();
+
+  // 供工作台外链轮询：规格稽核(spec)/自动化测试(test) 后端完成后重新拉取节点结果，
+  // 使「进行中」在前端与后端保持同步地转为「完成」（后端无产出时由前端兜底）。
+  window.__WB_REFRESH_RESULT = fetchResultOnce;
 })();
