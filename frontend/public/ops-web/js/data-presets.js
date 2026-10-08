@@ -1700,12 +1700,94 @@ const campusProductConfig = {
       return s;
     });
   })({ launchProductConfig: launchProductConfig });
+
+  /* ===== 融合套餐专属配置（融合成员信息）=====
+     仅当当前商品为融合套餐（商品名含「融合」）时，追加到「配置信息」页签的资源配置内，
+     展示家庭套餐信息、手机成员信息、宽带成员信息、副卡/共享规则。
+     结构对齐 resourceSections（key/title/icon/fields），字段值优先由节点结果回填，
+     缺失时回落此处示例值，保证页面不空。 */
+  const familyMemberSections = [
+    {
+      key: 'family-base-info',
+      title: '家庭套餐信息',
+      icon: 'fa-house-chimney',
+      fields: [
+        {
+          key: 'familyTeamType', label: '家庭套餐类型', value: '全家福', type: 'select',
+          options: [{ value: '全家福', label: '全家福' }, { value: 'F套餐', label: 'F套餐' }],
+        },
+        {
+          key: 'familyIfFloors', label: '是否有保底', value: '是', type: 'select',
+          options: [{ value: '是', label: '是' }, { value: '否', label: '否' }],
+        },
+        {
+          key: 'familyPayFlag', label: '是否统一付费', value: '是', type: 'select',
+          options: [{ value: '是', label: '是' }, { value: '否', label: '否' }],
+        },
+        { key: 'familyCategory', label: '家庭套餐类别', value: '融合套餐', type: 'select',
+          options: [{ value: '家庭网', label: '家庭网' }, { value: '融合套餐', label: '融合套餐' }] },
+        { key: 'familyRoleMin', label: '成员数下限', value: '1', type: 'number', unit: '个' },
+        { key: 'familyRoleMax', label: '成员数上限', value: '9', type: 'number', unit: '个' },
+      ],
+    },
+    {
+      key: 'family-phone-member',
+      title: '手机成员信息',
+      icon: 'fa-mobile-screen-button',
+      fields: [
+        { key: 'phoneMbrMin', label: '手机成员下限', value: '1', type: 'number', unit: '个' },
+        { key: 'phoneMbrMax', label: '手机成员上限', value: '5', type: 'number', unit: '个' },
+        { key: 'phoneFreeMbrCnt', label: '免费成员数', value: '2', type: 'number', unit: '个' },
+        { key: 'phoneMbrFee', label: '手机成员月费', value: '10', type: 'number', unit: '元' },
+        {
+          key: 'phoneIfChangeBasePrc', label: '手机成员可改基础套餐', value: '否', type: 'select',
+          options: [{ value: '是', label: '是' }, { value: '否', label: '否' }],
+        },
+        { key: 'phoneInProdPrcId', label: '成员可转入资费', value: '', type: 'text' },
+        { key: 'phoneOutProdPrcId', label: '成员可转出资费', value: '', type: 'text' },
+      ],
+    },
+    {
+      key: 'family-broadband-member',
+      title: '宽带成员信息',
+      icon: 'fa-wifi',
+      fields: [
+        { key: 'kdMbrMin', label: '宽带成员下限', value: '0', type: 'number', unit: '条' },
+        { key: 'kdMbrMax', label: '宽带成员上限', value: '1', type: 'number', unit: '条' },
+        {
+          key: 'mainKd', label: '主宽带速率', value: '1000M起', type: 'select',
+          options: [
+            { value: '300M', label: '300M' },
+            { value: '500M', label: '500M' },
+            { value: '1000M起', label: '1000M起' },
+          ],
+        },
+        { key: 'tvPrc', label: '电视资费', value: '天翼高清1路', type: 'text' },
+        { key: 'secondKdPrc', label: '第二路宽带资费', value: '', type: 'text' },
+        { key: 'thirdKdPrc', label: '第三路宽带资费', value: '', type: 'text' },
+      ],
+    },
+    {
+      key: 'family-subcard-rule',
+      title: '副卡/共享规则',
+      icon: 'fa-share-nodes',
+      fields: [
+        {
+          key: 'allowSubCard', label: '允许办理副卡', value: '是', type: 'select',
+          options: [{ value: '是', label: '是' }, { value: '否', label: '否' }],
+        },
+        { key: 'subCardShareRule', label: '共享规则', value: '副卡可共享主卡语音、流量、网速权益和卫星权益；应用权益不共享', type: 'text' },
+      ],
+    },
+  ];
+
   global.__CFG = {
     launchProductConfig: typeof launchProductConfig !== 'undefined' ? launchProductConfig : null,
     testReport: typeof testReport !== 'undefined' ? testReport : null,
     filing: typeof filing !== 'undefined' ? filing : null,
     salesChannel: typeof salesChannel !== 'undefined' ? salesChannel : null,
     campusProductConfig: typeof campusProductConfig !== 'undefined' ? campusProductConfig : null,
+    familyMemberSections: familyMemberSections,
   };
 })(window);
 (function(global){

@@ -308,6 +308,51 @@ const config = computed(() => {
   if (props.schemaConfig && !props.archiveSnapshot) return props.schemaConfig
   return launchProductConfig
 })
+
+// ========== 融合套餐识别 ==========
+// 按套餐名称含「融合」判定当前商品是否为融合套餐（名称来源：表单实际编辑值 > 商品实例 > 头部标题）。
+// 融合套餐需在「配置信息」页签额外展示融合成员信息（手机成员/宽带成员/副卡共享/家庭基础信息）。
+const isFusionProduct = computed(() => {
+  const name = String(
+    formData.prodName ?? formData.prodPrcName
+    ?? (currentProduct.value && currentProduct.value.name)
+    ?? productInfo.value.prodPrcName ?? ''
+  )
+  return name.indexOf('融合') >= 0
+})
+
+// ========== 融合成员信息 sections ==========
+// 融合套餐专属：结构来自 window.__CFG.familyMemberSections，字段值优先由节点结果
+// （配置环节 raw / 需求提报单 offers[] 中的 in_fee 宽带/天翼高清、sub_card 共享规则）回填，
+// 缺失时保留 schema 内示例值。仅当 isFusionProduct 为真时渲染。
+const fusionSections = computed(() => {
+  if (!isFusionProduct.value) return []
+  const base = (window.__CFG && window.__CFG.familyMemberSections) || []
+  // 深拷贝，避免不同商品间共享同一份 schema 造成相互污染
+  const sections = base.map((s) => ({ ...s, fields: (s.fields || []).map((f) => ({ ...f })) }))
+
+  // 节点结果取值：从当前商品的 raw（配置环节）与 offers 中提取融合成员相关信息
+  const p = currentProduct.value || {}
+  const parse = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v) } catch (e) { return null } }
+  const raw = parse(p.raw) || (typeof p.raw === 'object' ? p.raw : {}) || {}
+  const inFee = raw.in_fee || {}
+  const subCard = raw.sub_card || {}
+  const overrides = {
+    mainKd: inFee['宽带'] || '',
+    tvPrc: inFee['天翼高清'] || '',
+    allowSubCard: (() => {
+      if (subCard['允许办理'] === true) return '是'
+      if (subCard['允许办理'] === false) return '否'
+      return ''
+    })(),
+    subCardShareRule: subCard['共享规则'] || '',
+  }
+  // 仅用非空节点值覆盖示例值
+  sections.forEach((s) => (s.fields || []).forEach((f) => {
+    if (overrides[f.key] !== undefined && overrides[f.key] !== '') f.value = overrides[f.key]
+  }))
+  return sections
+})
 const formData = reactive({})
 const modifiedFields = reactive({})
 
@@ -376,6 +421,7 @@ const initFormData = () => {
       ...(config.value.resourceSections || []).map((s) => s.fields),
       ...(config.value.marketingSections || []).map((s) => s.fields),
       ...(config.value.salesSections || []).map((s) => s.fields),
+      ...(fusionSections.value || []).map((s) => s.fields),
     ].forEach((fields) => {
       ;(fields || []).forEach((field) => applyField(field.key, field))
     })
@@ -392,6 +438,7 @@ const initFormData = () => {
       ...(config.value.resourceSections || []).map((s) => s.fields),
       ...(config.value.marketingSections || []).map((s) => s.fields),
       ...(config.value.salesSections || []).map((s) => s.fields),
+      ...(fusionSections.value || []).map((s) => s.fields),
     ].forEach((fields) => {
       ;(fields || []).forEach((field) => {
         if (field.type === 'table') {
@@ -430,6 +477,12 @@ const initFormData = () => {
       } else {
         formData[field.key] = field.value
       }
+    })
+  })
+  // 融合成员信息（融合套餐专属）：填入 formData，供「配置信息」页签新增卡片渲染与编辑。
+  fusionSections.value.forEach((section) => {
+    section.fields.forEach((field) => {
+      formData[field.key] = field.value
     })
   })
   // 多商品：以当前选中商品的身份/资源值覆盖模板默认值，使各页签随商品切换联动。
@@ -491,8 +544,8 @@ const baseFields = computed(() =>
   Object.entries(config.value.baseInfo).map(([key, field]) => ({ key, ...field }))
 )
 
-// 资源配置 sections
-const resourceSections = computed(() => config.value.resourceSections)
+// 资源配置 sections（融合套餐额外追加融合成员信息 sections）
+const resourceSections = computed(() => [...config.value.resourceSections, ...fusionSections.value])
 
 // 营销资源 sections
 const marketingSections = computed(() => config.value.marketingSections)
@@ -505,6 +558,16 @@ const expandedSections = reactive({})
 ;[...config.value.resourceSections, ...config.value.marketingSections, ...config.value.salesSections].forEach((s) => {
   expandedSections[s.key] = true
 })
+// 融合成员信息 sections：切换商品/融合态变化时补齐折叠默认展开，并把字段默认值填入 formData
+// （确保商品名改为含「融合」后新增卡片即时可用；已初始化的值不覆盖，避免抹掉用户输入）。
+watch(fusionSections, (sections) => {
+  sections.forEach((s) => {
+    if (expandedSections[s.key] === undefined) expandedSections[s.key] = true
+    ;(s.fields || []).forEach((field) => {
+      if (formData[field.key] === undefined) formData[field.key] = field.value
+    })
+  })
+}, { immediate: true })
 
 const toggleSection = (key) => {
   expandedSections[key] = !expandedSections[key]
@@ -770,6 +833,7 @@ const findField = (key) => {
     ...(config.value.resourceSections || []).flatMap((s) => s.fields),
     ...(config.value.marketingSections || []).flatMap((s) => s.fields),
     ...(config.value.salesSections || []).flatMap((s) => s.fields),
+    ...(fusionSections.value || []).flatMap((s) => s.fields),
   ]
   return all.find((f) => f.key === key)
 }
@@ -1385,7 +1449,14 @@ const auditView = computed(() => {
   return {
     tick: nodeTick.value,
     ready,
-    object: 'offer_id = ' + productInstance.value.code,
+    object: (() => {
+      const nm = String(productInstance.value.name || '').trim()
+      const code = String(productInstance.value.code || '').trim()
+      const named = nm && nm !== '待命名商品'
+      if (named && code) return nm + '（offer_id = ' + code + '）'
+      if (named) return nm
+      return code ? ('offer_id = ' + code) : '—'
+    })(),
     status: passed ? '通过' : '未通过',
     time: productInstance.value.today,
     conclusion: suggest || ('稽核通过：配置符合本次落地销售品 新增销售品' + productInstance.value.code + ' 规则、'),

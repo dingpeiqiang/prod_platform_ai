@@ -62,11 +62,12 @@
           const n = parseInt(ss, 10);
           if (!isNaN(n) && n >= 0 && n < this.navs.length) return n;
         }
-        // 自动化测试环节（06/04）：按测试完成态动态定位——
+        // 自动化测试环节（06）：按测试完成态动态定位——
         // 测试进行中（仅 test_pending 临时态、尚无 test 结论）停在「销售品自动测试」(5)；
         // 测试完成后（后端落库 node_name=test）自动推进到「受理验证」(6)。
+        // 注：stage=04 为「上线审批」环节（见 stage-map.json），不属自动化测试，走下方静态映射定位到 7。
         const st = this.stage || '';
-        if (st === '06' || st === '04') {
+        if (st === '06') {
           return this.hasNodeResult('test') ? 6 : 5;
         }
         // 静态回落映射（口径对齐 gen_workflows 步骤条 num 索引，与读取 stage-map.json）

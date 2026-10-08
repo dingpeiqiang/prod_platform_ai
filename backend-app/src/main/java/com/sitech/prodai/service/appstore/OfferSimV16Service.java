@@ -1880,7 +1880,7 @@ public class OfferSimV16Service {
                 return camelFail("40404", "未找到该需求单关联的销售品（req_id=" + reqId + "）");
             }
         }
-        int seedNum = Math.abs(offerId.hashCode());
+        int seedNum = offerId.hashCode() & 0x7fffffff;
         int orderCount = 100 + seedNum % 900;
         int errorCount = monitorErrorInjection.contains(offerId) ? 3 : 0;
         double feeErrorRate = errorCount > 0 ? 0.012 : (seedNum % 5) / 1000.0;
@@ -1944,21 +1944,22 @@ public class OfferSimV16Service {
             String unit = meta[2];
             String ruleId = meta[3];
             int salt = Integer.parseInt(meta[4]);
-            int h = Math.abs((offerId + key).hashCode());
+            int h = (offerId + key).hashCode() & 0x7fffffff;
+            long mix = (long) seedNum + h;
             // 基准量：量纲化确定性取值，保证正数且数量级合理
             double value = switch (key) {
-                case "revenue" -> 50000 + (seedNum + h) % 450000;
+                case "revenue" -> 50000 + mix % 450000;
                 case "order_cnt" -> orderCount;
-                case "new_users" -> 200 + (seedNum + h) % 1800;
-                case "churn_users" -> 50 + (seedNum + h) % 450;
-                case "active_users" -> 8000 + (seedNum + h) % 52000;
+                case "new_users" -> 200 + mix % 1800;
+                case "churn_users" -> 50 + mix % 450;
+                case "active_users" -> 8000 + mix % 52000;
                 case "arpu" -> 40 + (h % 600) / 10.0;
                 case "attach_rate" -> 20 + (h % 400) / 10.0;
-                case "net_growth" -> -200 + (seedNum + h) % 1600;
+                case "net_growth" -> -200 + mix % 1600;
                 default -> 0.0;
             };
             // 环比 delta：确定性 + 劣化放大
-            double baseDelta = ((h + salt * 7) % 41 - 20) / 100.0;
+            double baseDelta = ((long) h + (long) salt * 7) % 41 / 100.0 - 0.20;
             double delta = degrade && isDegradeMetric(key) ? baseDelta - 0.08 : baseDelta;
             delta = Math.round(delta * 10000) / 10000.0;
             Map<String, Object> ruleCfg = opsRules.metricAnomalyRule(key);

@@ -48,6 +48,29 @@ const DRAFT_TO_TEMPLATE_FIELDS = {
   regionScope: 'groupId',
 }
 
+/**
+ * 模板字段码 → 草稿取值键的候选序列（按顺序回退，命中即取）。
+ * 模板 fixFee（套餐固定费）前端草稿可能存于 fixedFeeAmount 或 monthlyFee，
+ * 单一别名无法覆盖，故允许多候选回退，避免字段渲染为空。
+ */
+const TEMPLATE_FIELD_DRAFT_SOURCES = {
+  fixFee: ['fixedFeeAmount', 'monthlyFee'],
+  prodPrcName: ['offerName', 'offeringName'],
+  groupId: ['regionScope'],
+  prcMonthFee: ['monthlyFee'],
+}
+
+/** 收集某个模板字段码可读取的草稿键：直接同名 + 显式多候选 + DRAFT_TO_TEMPLATE_FIELDS 反查 */
+function draftKeysForTemplateField(fieldCode) {
+  const keys = [fieldCode]
+  const explicit = TEMPLATE_FIELD_DRAFT_SOURCES[fieldCode]
+  if (Array.isArray(explicit)) keys.push(...explicit)
+  for (const [draftKey, target] of Object.entries(DRAFT_TO_TEMPLATE_FIELDS)) {
+    if (target === fieldCode) keys.push(draftKey)
+  }
+  return keys
+}
+
 /** 异步拉取单个品类模板 schema 入缓存；失败静默（调用方走 mock 降级） */
 async function ensureTemplateSchema(categoryCode) {
   if (!categoryCode || templateSchemaCache.has(categoryCode) || templateFetchInflight.has(categoryCode)) {
@@ -78,13 +101,11 @@ async function prefetchTemplateSchemas() {
 /** 用草稿值填充模板 schema：fieldCode 精确匹配 + 别名映射；保留模板默认值与 sections */
 function mergeDraftIntoTemplateSchema(cached, draft) {
   const fill = draft.fillSources || {}
-  const aliasByTarget = Object.fromEntries(
-    Object.entries(DRAFT_TO_TEMPLATE_FIELDS).map(([k, v]) => [v, k]),
-  )
   const resolveValue = (fieldCode) => {
-    if (draft[fieldCode] != null && draft[fieldCode] !== '') return draft[fieldCode]
-    const aliasKey = aliasByTarget[fieldCode]
-    if (aliasKey && draft[aliasKey] != null && draft[aliasKey] !== '') return draft[aliasKey]
+    for (const key of draftKeysForTemplateField(fieldCode)) {
+      const v = draft[key]
+      if (v != null && v !== '') return v
+    }
     return undefined
   }
   return {
