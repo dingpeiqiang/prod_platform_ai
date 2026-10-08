@@ -4,8 +4,8 @@
   "default_tab": "config",
   "stages": {
     "00": { "tab": "demand",    "title": "需求提报单",   "view": "stage" },
-    "01": { "tab": "scheme",    "title": "配置方案",     "view": "stage" },
-    "02": { "tab": "config",    "title": "落地配置看板", "view": "stage" },
+    "01": { "tab": "config",    "title": "需求分析",     "view": "stage" },
+    "02": { "tab": "summary",   "title": "智能配置",     "view": "stage" },
     "03": { "tab": "audit",     "title": "规格稽核",     "view": "stage" },
     "04": { "tab": "approval",  "title": "上线审批",     "view": "stage" },
     "05": { "tab": "calibrate", "title": "资费校准",     "view": "stage" },
