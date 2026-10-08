@@ -36,6 +36,10 @@
     python wf_runner.py --verify --offline              # 离线 mock 回归（快进沙箱）
     python wf_runner.py --verify --log-dir logs/verify_20260922
 
+    # 链式串跑主干（同一 req_id 贯穿）；--chain-skip 可跳过查询子流验证「不发查询词」链路
+    python wf_runner.py --chain --chain-text "办一个59元畅享套餐"
+    python wf_runner.py --chain --chain-skip wf_sub_12,wf_sub_13,wf_sub_08
+
 默认行为
 -------
 **默认真实执行**（联网调用插件与 LLM），且**严格模式**：任一环节真实调用失败
@@ -1781,6 +1785,14 @@ def _run_chain(args) -> int:
     """
     names = list(getattr(args, "chain_order", None) or CHAIN_ORDER)
     names = [n for n in names if _workflow_exists(n)]
+    # --chain-skip：剔除指定环节（如 12/13/08 查询子流），验证「不调用查询工作流」时主干串链不报错。
+    skip_raw = getattr(args, "chain_skip", "") or ""
+    skip = {s.strip() for s in re.split(r"[,\s]+", skip_raw) if s.strip()}
+    if skip:
+        dropped = [n for n in names if n in skip]
+        names = [n for n in names if n not in skip]
+        if dropped:
+            print(f"{C.GREY}--chain-skip 跳过环节: {', '.join(dropped)}{C.RESET}")
     if not names:
         print(f"{C.RED}未发现链式工作流（{WF_DIR}）{C.RESET}")
         return 1
@@ -2745,6 +2757,9 @@ def main(argv=None):
     ap.add_argument("--chain-set", action="append", default=[], metavar="[WF:]K=V",
                     help="链式串跑时预置入参，可多次：K=V 作用于首环节，"
                          "wf_sub_XX:K=V 作用于指定环节（如 wf_sub_02:action=确认执行）")
+    ap.add_argument("--chain-skip", default="", metavar="WF[,WF]",
+                    help="链式串跑时跳过指定环节（逗号/空格分隔），如 wf_sub_12,wf_sub_13,wf_sub_08；"
+                         "用于验证「不调用查询工作流」时主干节点串联是否报错")
     ap.add_argument("--demo", action="store_true",
                     help="对话式端到端演示（LLM 编排）：回放演示剧本 V3.0 用户回合，"
                          "由真实 LLM 读主智能体提示词自主决定直调哪个子工作流/拒绝推进，"

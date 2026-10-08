@@ -1009,8 +1009,8 @@ s01.append(end_node(118, "结束(方案质量未通过)",
     "【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n"
     "【待补充必填】{pending_required}\n"
     "⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n"
-    "【下一步】请补充/修正上述待补充或命中不足字段后重新分析（回复【重新分析】），"
-    "或直接说明修改意见；质量达标后方可回复【确认执行】。\n\n{panel}"))
+    "【下一步】请先补充/修正上述待补充字段，回复【重新分析】重新生成方案；"
+    "方案质量达标后，回复【确认执行】即可进入智能配置。\n\n{panel}"))
 s01.append(end_node(111, "结束(方案已生成)",
     [inp("req_id", "需求单号/方案批次号", ref_block=nid(101), ref_rel="req_id"),
      inp("table_text", "配置方案表格", ref_block=nid(109), ref_rel="table_text"),
@@ -1268,8 +1268,8 @@ CODE_CONFIG_SUMMARY = (
     "                all_success = False\n"
     "                break\n"
     "    if st == 'SUCCESS' and all_success:\n"
-    "        return '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。'\n"
-    "    return '【下一步】本次存在部分/失败项，请核对上述明细；确认无误后回复【下一步】继续发起【规格稽核】（环节4/8）。'\n"
+    "        return '【下一步】回复【下一步】即可发起【规格稽核】。'\n"
+    "    return '【下一步】本次存在部分或失败项，请先按上方明细核对处理；确认无误后回复【下一步】发起【规格稽核】。'\n"
     "\n"
     "async def main(args):\n"
     "    p = args.params\n"
@@ -1306,7 +1306,7 @@ CODE_CONFIG_SUMMARY = (
     "        }\n"
     "        return ret\n"
     "    if not cfg:\n"
-    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False), 'report': '无', 'headline': '智能配置完成：无可展示商品', 'nextstep': '【下一步】回复【下一步】继续发起【规格稽核】（环节4/8）。', 'status_display': _status_display(status)}\n"
+    "        ret: Output = {'config_summary': '', 'offers': '[]', 'config_json': json.dumps({'req_id': req_id, 'offers': []}, ensure_ascii=False), 'report': '无', 'headline': '智能配置完成：无可展示商品', 'nextstep': '【下一步】回复【下一步】即可发起【规格稽核】。', 'status_display': _status_display(status)}\n"
     "        return ret\n"
     "    one_sum = _summary_of(cfg)\n"
     "    ret: Output = {'config_summary': one_sum, 'offers': json.dumps([{'offer_seq': 1, 'config_summary': one_sum}], ensure_ascii=False), 'config_json': json.dumps({'req_id': req_id, 'offers': [cfg]}, ensure_ascii=False), 'report': _report([cfg]), 'headline': _headline([cfg], '', ''), 'nextstep': _nextstep(status, [cfg]), 'status_display': _status_display(status)}\n"
@@ -1425,8 +1425,7 @@ s2f.append(end_node(117, "结束(未找到加载方案)",
     [inp("req_id", "需求单号（节点106提取）", ref_block=nid(106), ref_rel="req_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(116), ref_rel="panel")],
     "【环节3/8·智能配置】未找到该需求单号的《加载方案》，本次未执行配置。\n"
-    "【下一步】请先回复【需求分析】（或【分析需求】）生成《加载方案》并确认后，再回复【开始配置】进行智能配置（环节3/8）。\n\n"
-    "{panel}", pos=(1095, 170)))
+    "【下一步】请先回复【需求分析】生成《加载方案》并确认后，再回复【开始配置】进行智能配置。\n\n{panel}", pos=(1095, 170)))
 # 111 生成商品编码（V3.12 多商品）：逐品补齐 9 位 900 编码（存量重配透传既有编码），
 # 输出 offers[]（每元素含 offer_id）注入 save_product_config 批量落地
 s2f.append(code_node(111, "生成商品编码", CODE_GEN_OFFER_ID,
@@ -1484,8 +1483,8 @@ s2f.append(end_node(114, "结束(配置未通过-未写config)",
      inp("offer_id", "首品销售品ID（节点111）", ref_block=nid(111), ref_rel="offer_id"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(113), ref_rel="panel")],
     "【环节3/8·智能配置】配置未全部通过：status={status_display}\n写入结果：{save_result}\n\n"
-    "整批存在 PARTIAL/FAIL，本次未写入 config（config 仍为空），无法推进稽核/测试/审批。\n"
-    "【下一步】请按落地失败明细修正后重新回复\"下一步\"发起配置（环节3）。\n\n"
+    "整批存在部分或失败项，尚未生成正式配置，暂无法进入规格稽核。\n"
+    "【下一步】请按上方失败明细修正后，回复【下一步】重新发起配置。\n\n"
     "{panel}", pos=(3255, 170)))
 s2f.append(end_node(104, "结束(配置落地完成)",
     [inp("headline", "开头汇总行（商品数量/单品名 + 融合概况）", ref_block=nid(108), ref_rel="headline"),
@@ -1585,8 +1584,8 @@ s3f.append(end_node(213, "结束(稽核发起失败-未写audit_pending)",
     "【环节4/8·规格稽核】稽核发起失败：requestIds 为空\n\n"
     "文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n"
     "稽核销售品列表：\n{sales_list_text}\n\n"
-    "发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n"
-    "【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"))
+    "稽核未成功发起，暂无法查询稽核结论。\n"
+    "【下一步】请核对配置或重新上传后，回复\"下一步\"重新发起稽核。\n\n{panel}"))
 s3f.append(end_node(210, "结束(稽核已发起)",
     [inp("requestIds", "全部 requestId 集合（节点203）", ref_block=nid(203), ref_rel="requestIds"),
      inp("file_id", "上传文件ID（节点208封包）", ref_block=nid(208), ref_rel="file_id"),
@@ -1701,8 +1700,8 @@ s12f.append(end_node(2213, "结束(稽核处理中-未写spec)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2216), ref_rel="panel")],
     "【环节4/8·规格稽核】查询稽核结果：完成={completed}\n"
     "{fail_reason}\n\n"
-    "稽核尚未完成，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n"
-    "【下一步】请稍后回复\"查询稽核结果\"续查；若持续无进展请联系人工核查稽核发起（环节4a）。\n\n"
+    "稽核尚未完成，暂未生成稽核结论，无法进入资费校准和上线审批。\n"
+    "【下一步】请稍后回复\"查询稽核结果\"查看进度；若长时间无进展，请联系人工核查稽核发起。\n\n"
     "{panel}"))
 # 未通过分支结束（未写 spec）：展示 ❌ 明细 + 面板，引导整改后重新发起
 s12f.append(panel_code_node(2215, "构建页面地址面板(未通过)", "03",
@@ -1714,8 +1713,8 @@ s12f.append(end_node(2214, "结束(稽核未通过-未写spec)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2215), ref_rel="panel")],
     "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}（未通过）\n\n"
     "{audit_suggest}\n\n"
-    "稽核未通过，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n"
-    "【下一步】请按上述 ❌ 明细整改配置后，重新回复\"下一步\"发起稽核（环节4a）。\n\n"
+    "稽核未通过，暂未生成稽核结论，无法进入资费校准和上线审批。\n"
+    "【下一步】请按上方 ❌ 明细整改配置后，回复\"下一步\"重新发起稽核。\n\n"
     "{panel}"))
 s12f.append(end_node(2210, "结束(稽核查询完成)",
     [inp("pass", "稽核结论（节点2205）", ref_block=nid(2205), ref_rel="pass"),
@@ -1726,7 +1725,7 @@ s12f.append(end_node(2210, "结束(稽核查询完成)",
     "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}\n\n"
     "{audit_suggest}\n\n"
     "稽核销售品列表：\n{sales_list_text}\n\n"
-    "【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n"
+    "【下一步】稽核通过可回复\"下一步\"进入资费校准；未通过请按上方 ❌ 明细整改后重新发起稽核。\n\n"
     "{panel}"))
 files12f = workflow(
     "产销品-规格稽核查询", "子工作流12（环节4b 稽核轮询，两阶段拆分后半；可重复触发）：自查 audit_pending 取 requestIds→CODE_POLL_AUDIT 短窗口轮询 B4 audit_sql_query(sqlId=20260626001，间隔5s/上限60次=5分钟)→**【门禁A】completed==true 才继续**→查 20260626002 取最终 error_list/audit_summary→七项固定检查项明细→结构化封包→**【门禁B】pass==1 才 save(node_name=spec)**。completed!=true 或 pass!=1 均不写 spec（跳过存储直接结束），杜绝空壳 spec 蒙混下游；窗口耗尽非错误，输出处理中引导续查；连续5次失败终止转人工。", "wf_sub_12", s12f,
@@ -1938,8 +1937,8 @@ s5f.append(end_node(413, "结束(资费未通过-未写fee)",
     "【环节5/8·资费校准】资费校验未全部通过：pass={pass}\n\n"
     "**资费校准商品列表：**\n{offer_list_text}\n\n"
     "{risk_summary}\n\n"
-    "整批存在不一致，本次未写入 fee，无法推进上线审批。\n"
-    "【下一步】请按上文比对明细修正计费配置后重新回复\"下一步\"校准（环节5）。\n\n{panel}"))
+    "整批存在不一致，暂未生成资费校准结论，无法进入上线审批。\n"
+    "【下一步】请按上方比对明细修正计费配置后，回复\"下一步\"重新校准。\n\n{panel}"))
 s5f.append(end_node(404, "结束(资费校准完成)",
     [inp("pass", "校验结论（节点410聚合）", ref_block=nid(410), ref_rel="pass"),
      inp("risk_list", "风险清单（节点410聚合）", ref_block=nid(410), ref_rel="risk_list"),
@@ -1950,7 +1949,7 @@ s5f.append(end_node(404, "结束(资费校准完成)",
     "【环节5/8·资费校准】资费校准完成：pass={pass}\n\n"
     "**资费校准商品列表：**\n{offer_list_text}\n\n"
     "{risk_summary}\n\n"
-    "【下一步】可回复\"下一步\"推进后续环节。\n\n{panel}"))
+    "【下一步】回复\"下一步\"即可进入自动测试。\n\n{panel}"))
 files5f = workflow(
     "产销品-资费校准", "子工作流5（V3.12 多商品）：资费校准。单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→check_billing_rule 批量校验（check_scene=all，后端逐品聚合返回 offers[]/risk_list/compare_list）→计费结论聚合（从 offers[] 聚合顶层 pass/risk_list）→风险解读（多商品按 offer_seq 分组：比对表按商品分组、融合组再按 member_role 分组，E27 阈值逐成员内计算）→结构化封包（compare_list/risk_list+offers[]+risk_summary 合成 envelope）；结束前存储 node_name=fee。单商品路径零变化。", "wf_sub_05", s5f,
     [edge(401,406), edge(406,407), edge(407,402), edge(402,414), edge(414,403), edge(403,410),
@@ -2572,8 +2571,8 @@ s4f.append(end_node(324, "结束(测试发起失败-未写test_pending)",
     "【环节6/8·自动测试】测试发起未全部成功\n\n"
     "■ 整批状态：{status}\n"
     "■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n"
-    "■ 结论：整批存在 PARTIAL/FAIL，本次未写入 test_pending，无法轮询结论。\n"
-    "■ 下一步：请修正后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"))
+    "■ 结论：整批存在部分或失败项，暂未生成测试结论，无法查询测试结果。\n"
+    "【下一步】请按上方明细修正后，回复\"下一步\"重新发起测试。\n\n{panel}"))
 s4f.append(end_node(307, "结束(测试已发起)",
     [inp("offers_text", "逐品场景执行状态结构化文本（节点330）", ref_block=nid(330), ref_rel="offers_text"),
      inp("offer_count", "逐品数量（节点330）", ref_block=nid(330), ref_rel="offer_count"),
@@ -2700,8 +2699,8 @@ s13f.append(end_node(2323, "结束(测试处理中-进度仪表盘)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2325), ref_rel="panel")],
     "【环节6/8·自动测试】查询测试结果\n\n"
     "■ 商品测试进度：\n{progress_text}\n\n"
-    "测试尚未完成，本次未写入测试结论（test 仍为空），无法推进上线审批。\n"
-    "【下一步】请稍后回复\"查询测试结果\"续查；若持续无进展请联系人工核查测试发起（环节6a）。\n\n"
+    "测试尚未完成，暂未生成测试结论，无法进入上线审批。\n"
+    "【下一步】请稍后回复\"查询测试结果\"查看进度；若长时间无进展，请联系人工核查测试发起。\n\n"
     "{panel}"))
 # 2310 结束（终态·通过：已写 test，结构化测试结果展示）
 s13f.append(end_node(2310, "结束(测试结果结构化展示)",
@@ -2722,8 +2721,8 @@ s13f.append(end_node(2327, "结束(测试未通过-未写test)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(2326), ref_rel="panel")],
     "【环节6/8·自动测试】测试结果查询完成（测试未通过：失败场景 {scene_failed} 个）\n\n"
     "{test_report}\n\n"
-    "■ 结论：存在失败场景，本次未写入测试最终态（test 仍为空），无法推进上线审批。\n"
-    "【下一步】请按上述 ❌ 明细整改配置后重新回复\"下一步\"发起测试（环节6a）。\n\n"
+    "■ 结论：存在失败场景，暂未生成测试结论，无法进入上线审批。\n"
+    "【下一步】请按上方 ❌ 明细整改配置后，回复\"下一步\"重新发起测试。\n\n"
     "{panel}"))
 files13f = workflow(
     "产销品-测试查询结果", "子工作流13（环节6b 测试查询，两阶段查询·可重复触发）：自查 test_pending 取 globalId→2304 CODE_PROGRESS_LITE 按 globalId【单次查询】真实 EOP progress 报文→2321【终态判定】is_final==true（done==true 或 finishedSceneCount>=totalSceneCount>0，含全失败）→未终态则输出「进度仪表盘」并结束引导续查；终态则 C4 get_test_result→2332 提取归一化 testScenes/测点→2333 构建结构化测试结果报告→2334【通过判定】scene_failed==0 视为通过→通过则封包+save(node_name=test，最终态，供上线审批四环节门禁)→结束展示；未通过（存在失败场景）不写 test，展示报告并引导整改。", "wf_sub_13", s13f,
@@ -3981,7 +3980,7 @@ s11f.append(llm_node(1105, "审批发起回执渲染",
     "- 需求单号：{req_id}\n"
     "- 需求工单审批单号：{approval_id}\n"
     "- 提交状态：{中文状态}（原文：{status}）\n"
-    "- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后可进入【需求分析】（环节2/8）生成《加载方案》。\n"
+    "- 下一步建议：可回复【查询审批进度】查看审批进度；审批通过后，回复【需求分析】生成《加载方案》。\n"
     "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
     "【环节1/8·需求提报】❌ 需求工单审批发起失败\n"
     "- 需求单号：{req_id}\n"
@@ -4077,7 +4076,7 @@ s14f.append(llm_node(1405, "优化工单发起回执渲染",
     "- 需求单号：{req_id}\n"
     "- 优化工单审批单号：{approval_id}，状态：{status}\n"
     "- 建议依据：源自本体 R-O01~R-O05 推理给出的销售品优化建议\n"
-    "- 下一步建议：可回复【查询审批进度】查看审批状态；审批通过后按工单执行优化并回复【查询监控】回检。\n"
+    "- 下一步建议：可回复【查询审批进度】查看审批进度；审批通过后按工单执行优化，并回复【查询监控】回检。\n"
     "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
     "【环节9/9·监控运维】❌ 优化工单审批发起失败\n"
     "- 需求单号：{req_id}\n"

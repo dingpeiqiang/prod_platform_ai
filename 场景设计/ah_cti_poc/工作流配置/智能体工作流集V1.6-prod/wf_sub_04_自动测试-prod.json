@@ -833,7 +833,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试发起未全部成功\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 结论：整批存在 PARTIAL/FAIL，本次未写入 test_pending，无法轮询结论。\n■ 下一步：请修正后重新回复\"下一步\"发起测试（环节6a）。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试发起未全部成功\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 结论：整批存在部分或失败项，暂未生成测试结论，无法查询测试结果。\n【下一步】请按上方明细修正后，回复\"下一步\"重新发起测试。\n\n{panel}"
         },
         "settings": {
           "stream": false,

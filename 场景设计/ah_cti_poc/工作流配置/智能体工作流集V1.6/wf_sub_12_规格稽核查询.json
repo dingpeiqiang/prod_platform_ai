@@ -980,7 +980,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】查询稽核结果：完成={completed}\n{fail_reason}\n\n稽核尚未完成，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n【下一步】请稍后回复\"查询稽核结果\"续查；若持续无进展请联系人工核查稽核发起（环节4a）。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】查询稽核结果：完成={completed}\n{fail_reason}\n\n稽核尚未完成，暂未生成稽核结论，无法进入资费校准和上线审批。\n【下一步】请稍后回复\"查询稽核结果\"查看进度；若长时间无进展，请联系人工核查稽核发起。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -1149,7 +1149,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}（未通过）\n\n{audit_suggest}\n\n稽核未通过，本次未写入规格稽核结论（spec 仍为空），无法推进环节5/上线审批。\n【下一步】请按上述 ❌ 明细整改配置后，重新回复\"下一步\"发起稽核（环节4a）。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}（未通过）\n\n{audit_suggest}\n\n稽核未通过，暂未生成稽核结论，无法进入资费校准和上线审批。\n【下一步】请按上方 ❌ 明细整改配置后，回复\"下一步\"重新发起稽核。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -1236,7 +1236,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}\n\n{audit_suggest}\n\n稽核销售品列表：\n{sales_list_text}\n\n【下一步】pass=1 可回复\"下一步\"推进环节5 资费校准；pass=0 请按上述 ❌ 明细整改后重新发起稽核。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】查询稽核结果：稽核结论 pass={pass}\n\n{audit_suggest}\n\n稽核销售品列表：\n{sales_list_text}\n\n【下一步】稽核通过可回复\"下一步\"进入资费校准；未通过请按上方 ❌ 明细整改后重新发起稽核。\n\n{panel}"
         },
         "settings": {
           "stream": false,

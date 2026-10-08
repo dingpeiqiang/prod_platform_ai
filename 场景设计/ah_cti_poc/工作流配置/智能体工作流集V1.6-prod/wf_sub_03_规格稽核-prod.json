@@ -907,7 +907,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】稽核发起失败：requestIds 为空\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n发起未产出 requestIds，本次未写入 audit_pending，无法轮询结论。\n【下一步】请核查配置/上传后重新回复\"下一步\"发起稽核。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核发起失败：requestIds 为空\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n稽核未成功发起，暂无法查询稽核结论。\n【下一步】请核对配置或重新上传后，回复\"下一步\"重新发起稽核。\n\n{panel}"
         },
         "settings": {
           "stream": false,

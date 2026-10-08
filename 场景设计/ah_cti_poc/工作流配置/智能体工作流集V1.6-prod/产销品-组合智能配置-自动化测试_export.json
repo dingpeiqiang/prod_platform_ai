@@ -657,7 +657,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，您可以直接发起上线审批。"
+          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，回复【发起上线审批】即可提交审批。"
         },
         "settings": {
           "stream": false,
@@ -716,7 +716,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上述整改项完成处理后重新执行。"
+          "content": "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上方整改项处理完成后重新执行对应环节。"
         },
         "settings": {
           "stream": false,

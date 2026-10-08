@@ -3119,11 +3119,11 @@ sc.append(llm_node(909, "执行结果报告(存在异常)",
 sc.append(end_node(910, "结束(全部通过-提示发起审批)",
     [inp("combo_report", "执行结果汇总报告", ref_block=nid(908), ref_rel="combo_report"),
      inp("req_id", "执行主干批次号", ref_block=nid(901), ref_rel="req_id")],
-    "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，您可以直接发起上线审批。"))
+    "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，回复【发起上线审批】即可提交审批。"))
 sc.append(end_node(911, "结束(存在异常-提示整改)",
     [inp("combo_report", "执行结果汇总报告", ref_block=nid(909), ref_rel="combo_report"),
      inp("req_id", "执行主干批次号", ref_block=nid(901), ref_rel="req_id")],
-    "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上述整改项完成处理后重新执行。"))
+    "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上方整改项处理完成后重新执行对应环节。"))
 files["产销品-组合智能配置-自动化测试_export.json"] = workflow(
     "产销品-智能配置-自动化测试", "组合主流程（V2.4 优化：结构化汇总+审批指引）：智能配置→规格稽核→自动测试→资费校准四环节串行（单入参 req_id 贯穿，环节存储下沉子工作流）→执行结果汇总（代码节点解析各环节输出：offer_id/落地状态/稽核结论/测试结论/资费结论，结构化输出汇总表 summary_md+汇总JSON summary_json+整体结论 all_pass）→整体结论判断（存在异常走 port=-1 分支；port=0 兜底全部通过）→两分支各自 LLM 报告生成（按固定模板结构化展示每个环节执行结果）→结束输出报告：全部通过提示用户发起上线审批，存在异常逐条列出整改项并提示重新执行。", "wf_combo_exec", sc,
     [edge(901,902), edge(902,903), edge(903,904), edge(904,905), edge(905,906),
@@ -3154,7 +3154,7 @@ MERGED_END_CONTENT = (
     "【规格稽核】pass={spec_pass}\n{audit_suggest}\n\n"
     "【自动测试】总体结论：{test_passed}（globalId：{global_id}）\n{test_report}\n\n"
     "【资费校准】pass={fee_pass}\n{risk_summary}\n\n"
-    "【下一步】若四环节均无异常，您可以直接发起上线审批；如存在异常，请按上述整改建议/风险提示处理后重新执行。"
+    "【下一步】四环节均无异常时，回复【发起上线审批】即可提交审批；存在异常时，请按上方整改建议/风险提示处理完成后重新执行。"
 )
 
 sm = []
@@ -3441,7 +3441,12 @@ def validate_workflow(data, filename="<workflow>"):
 
 
 if __name__ == "__main__":
+    # wf_sub_* 的产出以 gen_workflows.py（唯一生成入口）为准；本模块 __main__ 仅负责
+    # 写出其独有的 *_export.json，跳过 wf_sub_*，避免二次执行覆盖 gen_workflows 的
+    # 最新产物（历史曾因先跑 gen、后跑本模块，使 wf_sub_03/04/05 回退旧设计）。
     for fn, data in files.items():
+        if fn.startswith("wf_sub_"):
+            continue
         data = apply_layout(data)
         with io.open(os.path.join(BASE, fn), "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)

@@ -1297,7 +1297,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n【下一步】请补充/修正上述待补充或命中不足字段后重新分析（回复【重新分析】），或直接说明修改意见；质量达标后方可回复【确认执行】。\n\n{panel}"
+          "content": "《产销品配置方案》已生成并保存（需求单号：{req_id}，模板：{template_id}）\n\n{table_text}\n\n【要素提取质量校验】门禁：{quality_gate}；统计：{ve_stats}（为空省略）\n\n【待补充必填】{pending_required}\n⚠️ 方案质量门禁**未通过**（可提取命中率低于阈值），已保存但**暂不引导进入配置**。\n【下一步】请先补充/修正上述待补充字段，回复【重新分析】重新生成方案；方案质量达标后，回复【确认执行】即可进入智能配置。\n\n{panel}"
         },
         "settings": {
           "stream": false,
