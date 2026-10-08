@@ -1202,6 +1202,8 @@ const nodeTick = ref(0)
 const auditSimDone = ref(false)
 const testSimDone = ref(false)
 const approvalSimDone = ref(false)
+// 需求审批矩阵演示态：需求提报页挂载 5s 后置真，矩阵由「审批中」自动转「已通过」（纯前端演示，不依赖后端）。
+const demandApprovalDone = ref(false)
 const stageRank = (() => {
   const s = String((window.__WB_QUERY && window.__WB_QUERY.stage) || '')
   if (s === '') return 99 // 整体视图：全部环节都视为已到达
@@ -1230,6 +1232,7 @@ let _nodePollTimer = null
 let _auditFallbackTimer = null
 let _testFallbackTimer = null
 let _approvalFallbackTimer = null
+let _demandApprovalTimer = null
 const stopNodePolling = () => {
   if (_nodePollTimer) { clearInterval(_nodePollTimer); _nodePollTimer = null }
 }
@@ -1240,6 +1243,9 @@ const startNodePolling = () => {
     if (auditExpected()) _auditFallbackTimer = setTimeout(() => { if (!auditView.value.ready) auditSimDone.value = true }, 5000)
     if (testExpected()) _testFallbackTimer = setTimeout(() => { if (!testRepView.value.ready) testSimDone.value = true }, 5000)
     if (approvalExpected()) _approvalFallbackTimer = setTimeout(() => { if (!approvalView.value.ready) approvalSimDone.value = true }, 5000)
+    // 需求审批矩阵演示：需求提报页（stage=00）挂载 5s 后由「审批中」自动转「已通过」
+    const dq = String((window.__WB_QUERY && window.__WB_QUERY.stage) || '')
+    if (dq === '00') _demandApprovalTimer = setTimeout(() => { demandApprovalDone.value = true }, 5000)
   }
   armFallback()
   if (!canRefresh) return
@@ -1261,6 +1267,7 @@ onUnmounted(() => {
   if (_auditFallbackTimer) clearTimeout(_auditFallbackTimer)
   if (_testFallbackTimer) clearTimeout(_testFallbackTimer)
   if (_approvalFallbackTimer) clearTimeout(_approvalFallbackTimer)
+  if (_demandApprovalTimer) clearTimeout(_demandApprovalTimer)
 })
 
 // 稽核报告页签 —— 优先取规格稽核节点（spec）保存内容，缺失回落静态兜底。
@@ -1565,14 +1572,19 @@ const demandApprovalView = computed(() => {
   const reportNode = nc.byNode.report
   // 是否已发起需求审批：出现需求/上线阶段节点、report 审批节点，或处于需求/优化审批类环节
   const started = reqNodes.length > 0 || hasLaunch || !!reportNode || ['11', '12'].indexOf(s) >= 0
+  // 演示口径：需求提报页（stage=00）不再回落到「待审核」，固定以虚拟演示数据呈现「审批中」矩阵，
+  // 首个节点审批中、其余待审核（无需工作流透传 approval_nodes，纯前端演示）。
+  const demoApproval = s === '00' || s === ''
+  // 演示流转：需求提报页挂载 5s 后置真，虚拟矩阵由「审批中」自动转「已通过」（见 onMounted）。
+  const demoDone = demoApproval && demandApprovalDone.value
   const isPassed = (n) => String(n && n.status || '').indexOf('已通过') >= 0
   const isRejected = (n) => {
     const st = String(n && n.status || '')
     return st.indexOf('驳回') >= 0 || st.indexOf('未通过') >= 0 || st.indexOf('拒绝') >= 0
   }
   const reqAllPass = reqNodes.length > 0 && reqNodes.every(isPassed)
-  // 需求阶段全部通过：上线阶段已开启，或真实节点全通过，或 report 审批通过
-  const allPass = hasLaunch || reqAllPass
+  // 需求阶段全部通过：上线阶段已开启，或真实节点全通过，或 report 审批通过，或演示流转完成
+  const allPass = hasLaunch || reqAllPass || demoDone
   const rejected = reqNodes.filter(isRejected)[0] || anodes.filter(isRejected)[0]
   // 组装矩阵行：优先真实节点（截断到首个未通过），否则按已发起与否填充兜底节点状态
   const rows = (() => {
@@ -1583,7 +1595,8 @@ const demandApprovalView = computed(() => {
       let status = '待审核'
       let opinion = ''
       if (allPass) { status = '已通过'; opinion = '审核通过，同意上架' }
-      else if (started) {
+      else if (started || demoApproval) {
+        // 已发起或需求提报演示态：首个节点审批中、已通过的在前、其余待审核
         const firstOpen = DEMAND_APPROVAL_FALLBACK.findIndex((x, idx) => !isPassed(reqNodes[idx]))
         status = (firstOpen >= 0 && i === firstOpen) ? '审批中' : (i < firstOpen ? '已通过' : '待审核')
       }
@@ -1600,9 +1613,10 @@ const demandApprovalView = computed(() => {
   } else if (rejected) {
     status = '已驳回'; badgeClass = 'badge-fail'; statusColor = '#dc2626'
     note = '需求审核未通过：节点【' + (rejected.node || '') + '】已驳回，意见：' + (rejected.opinion || '') + '；可修改后重新发起。'
-  } else if (started) {
+  } else if (started || demoApproval) {
     status = '审批中'; badgeClass = 'badge-amber'; statusColor = '#d97706'
     const waiting = reqNodes.find((n) => !isPassed(n) && !isRejected(n)) || reqNodes[reqNodes.length - 1]
+      || DEMAND_APPROVAL_FALLBACK[0]
     note = waiting ? ('需求审批中，当前待【' + (waiting.node || '') + '】审批。') : '需求审批流转中，请等待当前节点审批。'
   }
   return {
