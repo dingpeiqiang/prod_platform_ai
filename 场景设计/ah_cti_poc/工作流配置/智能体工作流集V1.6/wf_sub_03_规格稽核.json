@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导【查询稽核结果】（4b 走 wf_sub_12，pass==1 才写 spec）。",
+  "flowRemark": "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导\"下一步\"进入环节5 资费校准（查询稽核结果 wf_sub_12 为可选显式指令，pass==1 才写 spec）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -1036,7 +1036,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}）\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n> 接口④为异步处理（最长 30 分钟）。请回复【查询稽核结果】拉取稽核结论（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}）\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n> 接口④为异步处理（最长 30 分钟）。\n【下一步】可回复\"下一步\"进入【环节5/8·资费校准】；如需单独拉取本次稽核结论，可回复【查询稽核结果】（未完成会提示稍后续查）。\n\n{panel}"
         },
         "settings": {
           "stream": false,
