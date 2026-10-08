@@ -1622,10 +1622,10 @@ const approvalView = computed(() => {
     ready,
     tick,
     nodes: [
-      ['1', '需求', '产品经理审核', '产品经理', '已通过', '审核通过，同意上枀', productInstance.value.now],
-      ['2', '需求', '资费主管审核', '资费主管', '已通过', '审核通过，同意上枀', productInstance.value.now],
-      ['3', '需求', '运营审核', '运营专员', '已通过', '审核通过，同意上枀', productInstance.value.now],
-      ['4', '上线', '上线审批', 'IT支撑', '已通过', '审核通过，同意上枀', productInstance.value.now],
+      ['1', '需求', '产品经理审核', '产品经理', '已通过', '审核通过，同意上架', productInstance.value.now],
+      ['2', '需求', '资费主管审核', '资费主管', '已通过', '审核通过，同意上架', productInstance.value.now],
+      ['3', '需求', '运营审核', '运营专员', '已通过', '审核通过，同意上架', productInstance.value.now],
+      ['4', '上线', '上线审批', 'IT支撑', '已通过', '审核通过，同意上架', productInstance.value.now],
     ],
     note: reportText || '审批已通过，销售品上架完成 ✅（审批通过即视为销售品已自动上线，无需二次确认）、',
   }
