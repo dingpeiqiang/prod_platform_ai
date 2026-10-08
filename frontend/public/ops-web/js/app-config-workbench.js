@@ -1202,8 +1202,9 @@ const nodeTick = ref(0)
 const auditSimDone = ref(false)
 const testSimDone = ref(false)
 const approvalSimDone = ref(false)
-// 需求审批矩阵演示态：需求提报页挂载 5s 后置真，矩阵由「审批中」自动转「已通过」（纯前端演示，不依赖后端）。
-const demandApprovalDone = ref(false)
+// 需求审批矩阵：动态轮询后端审批进度（GET /approval/status?req_id=...），由返回的 approval_matrix
+// 实时驱动「需求审核」节点状态（进行中→已通过），非倒计时硬跳。matrix 为 null 时回落静态兜底。
+const demandApprovalMatrix = ref(null)
 const stageRank = (() => {
   const s = String((window.__WB_QUERY && window.__WB_QUERY.stage) || '')
   if (s === '') return 99 // 整体视图：全部环节都视为已到达
@@ -1232,9 +1233,45 @@ let _nodePollTimer = null
 let _auditFallbackTimer = null
 let _testFallbackTimer = null
 let _approvalFallbackTimer = null
-let _demandApprovalTimer = null
 const stopNodePolling = () => {
   if (_nodePollTimer) { clearInterval(_nodePollTimer); _nodePollTimer = null }
+}
+// 需求审批进度轮询：按 req_id 周期性查询后端审批进度，将 approval_matrix 写入 demandApprovalMatrix，
+// 驱动「需求审批矩阵」动态刷新（需求审核节点 进行中→已通过），直至需求阶段通过或超时（60s）停止。
+let _demandApprovalPollTimer = null
+const stopDemandApprovalPolling = () => {
+  if (_demandApprovalPollTimer) { clearInterval(_demandApprovalPollTimer); _demandApprovalPollTimer = null }
+}
+const startDemandApprovalPolling = () => {
+  const q = window.__WB_QUERY || {}
+  if (String(q.demand_approval || '') !== '1') return
+  const reqId = String(q.req_id || '')
+  if (!reqId) return
+  const base = (window.__WB_API_BASE || (location.pathname.indexOf('/prod-ai/') === 0 ? '/prod-ai' : '')) + '/api/v1/appstore'
+  const url = base + '/approval/status?req_id=' + encodeURIComponent(reqId) + '&chat_id=' + encodeURIComponent(String(q.chatId || q.chat_id || ''))
+  const startedAt = Date.now()
+  const pollOnce = () => {
+    fetch(url, { method: 'GET' })
+      .then((r) => (r && r.ok ? r.json() : null))
+      .then((data) => {
+        // 批量信封：审批进度在 offers[0]（工单级，各元素冗余同一 approval_matrix）
+        const item = data && Array.isArray(data.offers) && data.offers.length ? data.offers[0] : data
+        const matrix = item && Array.isArray(item.approval_matrix) ? item.approval_matrix : null
+        if (matrix && matrix.length) {
+          demandApprovalMatrix.value = matrix
+          // 需求阶段通过（或无 requirement 节点未通过）或工单终态「通过」→ 停止轮询
+          const reqNodes = matrix.filter((n) => String(n.stage || '') === 'requirement')
+          const reqPassed = reqNodes.length > 0 && reqNodes.every((n) => String(n.status || '').indexOf('已通过') >= 0)
+          if (reqPassed || String((item && item.status) || '') === '通过') stopDemandApprovalPolling()
+        }
+      })
+      .catch(() => {})
+  }
+  pollOnce()
+  _demandApprovalPollTimer = setInterval(() => {
+    pollOnce()
+    if (Date.now() - startedAt > 60000) stopDemandApprovalPolling()
+  }, 2000)
 }
 const startNodePolling = () => {
   const canRefresh = typeof window.__WB_REFRESH_RESULT === 'function' && window.__WB_HAS_REQ
@@ -1243,11 +1280,11 @@ const startNodePolling = () => {
     if (auditExpected()) _auditFallbackTimer = setTimeout(() => { if (!auditView.value.ready) auditSimDone.value = true }, 5000)
     if (testExpected()) _testFallbackTimer = setTimeout(() => { if (!testRepView.value.ready) testSimDone.value = true }, 5000)
     if (approvalExpected()) _approvalFallbackTimer = setTimeout(() => { if (!approvalView.value.ready) approvalSimDone.value = true }, 5000)
-    // 需求审批矩阵演示：需求提报页（stage=00）挂载 5s 后由「审批中」自动转「已通过」
-    const dq = String((window.__WB_QUERY && window.__WB_QUERY.stage) || '')
-    if (dq === '00') _demandApprovalTimer = setTimeout(() => { demandApprovalDone.value = true }, 5000)
   }
   armFallback()
+  // 需求审批矩阵动态进度：仅当 url 带 demand_approval=1（已发起）时启动轮询，
+  // 周期性拉取后端审批进度（approval_matrix 随 10s 惰性流转），真实反映「需求审核 进行中→已通过」。
+  startDemandApprovalPolling()
   if (!canRefresh) return
   const startedAt = Date.now()
   _nodePollTimer = setInterval(async () => {
@@ -1264,10 +1301,10 @@ const startNodePolling = () => {
 onMounted(startNodePolling)
 onUnmounted(() => {
   stopNodePolling()
+  stopDemandApprovalPolling()
   if (_auditFallbackTimer) clearTimeout(_auditFallbackTimer)
   if (_testFallbackTimer) clearTimeout(_testFallbackTimer)
   if (_approvalFallbackTimer) clearTimeout(_approvalFallbackTimer)
-  if (_demandApprovalTimer) clearTimeout(_demandApprovalTimer)
 })
 
 // 稽核报告页签 —— 优先取规格稽核节点（spec）保存内容，缺失回落静态兜底。
@@ -1567,39 +1604,42 @@ const demandApprovalView = computed(() => {
     const arr = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : []
     if (Array.isArray(arr)) anodes = arr.filter((n) => n && typeof n === 'object')
   } catch (e) { anodes = [] }
-  const reqNodes = anodes.filter((n) => String(n.stage || '') === '需求')
-  const hasLaunch = anodes.some((n) => String(n.stage || '') === '上线')
-  const reportNode = nc.byNode.report
-  // 是否已发起需求审批：出现需求/上线阶段节点、report 审批节点，或处于需求/优化审批类环节
-  const started = reqNodes.length > 0 || hasLaunch || !!reportNode || ['11', '12'].indexOf(s) >= 0
-  // 演示口径：需求提报页（stage=00）不再回落到「待审核」，固定以虚拟演示数据呈现「审批中」矩阵，
-  // 首个节点审批中、其余待审核（无需工作流透传 approval_nodes，纯前端演示）。
-  const demoApproval = s === '00' || s === ''
-  // 演示流转：需求提报页挂载 5s 后置真，虚拟矩阵由「审批中」自动转「已通过」（见 onMounted）。
-  const demoDone = demoApproval && demandApprovalDone.value
   const isPassed = (n) => String(n && n.status || '').indexOf('已通过') >= 0
   const isRejected = (n) => {
     const st = String(n && n.status || '')
     return st.indexOf('驳回') >= 0 || st.indexOf('未通过') >= 0 || st.indexOf('拒绝') >= 0
   }
+  const reportNode = nc.byNode.report
+  // 已发起标记：工作流在「已发起需求审批」后于 url 追加 demand_approval=1；未发起时无此标记。
+  const demoApproval = String(q.demand_approval || '') === '1'
+  // 轮询后端审批矩阵（需求阶段要求节点是否全部通过），驱动固定虚拟节点流转
+  const liveMatrix = demandApprovalMatrix.value
+  const liveReqNodes = Array.isArray(liveMatrix) ? liveMatrix.filter((n) => String(n.stage || '') === 'requirement') : []
+  const liveReqPassed = liveReqNodes.length > 0 && liveReqNodes.every(isPassed)
+  const reqNodes = anodes.filter((n) => String(n.stage || '') === '需求')
+  const launchNodes = anodes.filter((n) => String(n.stage || '') === '上线')
+  const hasLaunch = launchNodes.some((n) => {
+    const st = String(n.status || '')
+    return st !== '' && st.indexOf('待审核') < 0 && st.indexOf('未开始') < 0
+  })
+  // 是否已发起需求审批：出现需求/上线阶段节点、report 审批节点，或处于需求/优化审批类环节，或 URL 带已发起标记
+  const started = reqNodes.length > 0 || hasLaunch || !!reportNode || ['11', '12'].indexOf(s) >= 0 || demoApproval
   const reqAllPass = reqNodes.length > 0 && reqNodes.every(isPassed)
-  // 需求阶段全部通过：上线阶段已开启，或真实节点全通过，或 report 审批通过，或演示流转完成
-  const allPass = hasLaunch || reqAllPass || demoDone
   const rejected = reqNodes.filter(isRejected)[0] || anodes.filter(isRejected)[0]
-  // 组装矩阵行：优先真实节点（截断到首个未通过），否则按已发起与否填充兜底节点状态
+  // 需求阶段全部通过：上线阶段已开启，或真实节点全通过，或轮询到需求审批已通过
+  const allPass = hasLaunch || reqAllPass || liveReqPassed
+  // 组装矩阵行：优先真实节点（URL 透传），否则用固定 3 个虚拟节点 + 轮询流转状态
   const rows = (() => {
     if (reqNodes.length) {
       return reqNodes.map((n, i) => [n.seq || (i + 1), n.stage || '需求', n.node || '', n.role || '', n.status || '', n.opinion || '', n.time || ''])
     }
+    // 已发起且未全部通过：首个节点审批中、其余待审核
+    const firstOpen = demoApproval && !allPass ? 0 : -1
     return DEMAND_APPROVAL_FALLBACK.map((n, i) => {
       let status = '待审核'
       let opinion = ''
       if (allPass) { status = '已通过'; opinion = '审核通过，同意上架' }
-      else if (started || demoApproval) {
-        // 已发起或需求提报演示态：首个节点审批中、已通过的在前、其余待审核
-        const firstOpen = DEMAND_APPROVAL_FALLBACK.findIndex((x, idx) => !isPassed(reqNodes[idx]))
-        status = (firstOpen >= 0 && i === firstOpen) ? '审批中' : (i < firstOpen ? '已通过' : '待审核')
-      }
+      else if (firstOpen >= 0) { status = i === firstOpen ? '审批中' : (i < firstOpen ? '已通过' : '待审核') }
       return [n.seq, n.stage, n.node, n.role, status, opinion, (status === '待审核' ? '' : productInstance.value.now)]
     })
   })()
@@ -1613,7 +1653,7 @@ const demandApprovalView = computed(() => {
   } else if (rejected) {
     status = '已驳回'; badgeClass = 'badge-fail'; statusColor = '#dc2626'
     note = '需求审核未通过：节点【' + (rejected.node || '') + '】已驳回，意见：' + (rejected.opinion || '') + '；可修改后重新发起。'
-  } else if (started || demoApproval) {
+  } else if (started) {
     status = '审批中'; badgeClass = 'badge-amber'; statusColor = '#d97706'
     const waiting = reqNodes.find((n) => !isPassed(n) && !isRejected(n)) || reqNodes[reqNodes.length - 1]
       || DEMAND_APPROVAL_FALLBACK[0]

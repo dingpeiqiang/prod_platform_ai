@@ -74,7 +74,7 @@ def _stage_view(stage):
     return st.get("view") or "stage"
 
 
-def gen_panel_code(stage, biz_title=None, resolve_step=False):
+def gen_panel_code(stage, biz_title=None, resolve_step=False, demand_approval=False):
     """构建 xsbot-panel 片段的代码节点源码（type=6 内联 Python，供 panel_code_node 使用）。
     对齐参考示例：**单面板**（一个 url + 一个 title），url 用环节业务页
     config-workbench.html?stage=<N>&view=<view>，chatId 运行期以 chat_id 实值填充，req_id 透传供页面定位；
@@ -233,6 +233,12 @@ def gen_panel_code(stage, biz_title=None, resolve_step=False):
         "        qs = ('?offer_id=' + offer_id + '&name=' + offer_name + '&chatId=' + chat_id "
         "+ '&req_id=' + req_id + '&stage=%s&view=%s')" % (stage, view),
     ]
+    if demand_approval:
+        # 需求审批已发起标记：供页面「需求审批矩阵」以演示数据呈现「审批中→已通过」流转；
+        # 未发起时 URL 无此标记，页面显示「待发起」，避免未发起就出现审批矩阵。
+        body += [
+            "    qs += '&demand_approval=1'",
+        ]
     if resolve_step:
         body += [
             "    step_stage = _step_stage(p.get('approval_data'))",
@@ -290,10 +296,12 @@ def panel_inputs(chat_seq, off_seq=None, off_rel='offer_id', name_seq=None, name
     return refs
 
 
-def panel_code_node(seq, title, stage, in_refs, biz_title=None, pos=(650, 300), resolve_step=False):
+def panel_code_node(seq, title, stage, in_refs, biz_title=None, pos=(650, 300), resolve_step=False,
+                    demand_approval=False):
     """type=6 代码节点：独立构建单面板 xsbot-panel 片段，输出 panel 供结束节点 {panel} 引用。
-    resolve_step=True 时（审批进度查询专用）额外注入 _step_stage 计算逻辑，由 approval_data 入参驱动。"""
-    return code_node(seq, title, gen_panel_code(stage, biz_title, resolve_step), in_refs,
+    resolve_step=True 时（审批进度查询专用）额外注入 _step_stage 计算逻辑，由 approval_data 入参驱动。
+    demand_approval=True 时（需求/优化审批发起专用）在 url 追加 demand_approval=1 标记，供页面以演示数据呈现审批矩阵流转。"""
+    return code_node(seq, title, gen_panel_code(stage, biz_title, resolve_step, demand_approval), in_refs,
                      [code_out("panel", seq)], pos=pos)
 
 
@@ -3993,8 +4001,9 @@ s11f.append(llm_node(1105, "审批发起回执渲染",
      inp("status", "提交状态", ref_block=nid(1104), ref_rel="status")],
     [out("approval_receipt", "审批发起回执正文")]))
 # xsbot-panel 独立代码节点（无 offer 场景，页面以 req_id 定位）
+# demand_approval=True：url 追加 demand_approval=1 标记，供页面「需求审批矩阵」以演示数据呈现「审批中→已通过」流转
 s11f.append(panel_code_node(1109, "构建页面地址面板", "00",
-    panel_inputs(1101, req_seq=1101), biz_title="需求工单审批"))
+    panel_inputs(1101, req_seq=1101), biz_title="需求工单审批", demand_approval=True))
 s11f.append(end_node(1106, "结束(需求审批已发起)",
     [inp("approval_receipt", "审批发起回执正文", ref_block=nid(1105), ref_rel="approval_receipt"),
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(1109), ref_rel="panel")],
