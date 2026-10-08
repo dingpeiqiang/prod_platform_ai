@@ -4,7 +4,7 @@
 >
 > - **平台**：AI应用开发（九思大模型 · 低代码智能体平台）
 > - **场景**：安徽电信 CPCP 产销品域 · 产销品加载智能体（必选场景）
-> - **当前基线**：V3.11（2026-09-24）——14 个工作流 JSON（`wf_sub_00`~`wf_sub_13`）+ 智能体（LLM）语义识别直调 + `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点 + **现场接口适配层（9 接口配置化封装，4.5 章）** + **需求文档（Excel）驱动支持：父/子键一品多品 + 品间关联关系复用融合组机制；文档解析由智能体层挂载 skill 完成（工作流保持文本驱动，不接收文件），（6.6 章，V3.10 新增解析能力、V3.11 改为 skill 承载）** + **智能体提示词业务场景编排强化（2.2 章：一次一调/发起即止/分段推进/键位门禁，V3.11）**。原始版本履历（V1.2~V3.8）见原主方案（已删除），本方案不再逐条罗列，仅在必要时备注关键口径沿革。
+> - **当前基线**：V3.13（2026-10-08）——14 个工作流 JSON（`wf_sub_00`~`wf_sub_13`）+ 智能体（LLM）语义识别直调 + `knowledge/` 知识库 + 后端 `/api/v1/appstore/*` 适配端点 + **现场接口适配层（9 接口配置化封装，4.5 章）** + **需求文档（Excel）驱动支持：父/子键一品多品 + 品间关联关系复用融合组机制；文档解析由智能体层挂载 skill 完成（工作流保持文本驱动，不接收文件），（6.6 章，V3.10 新增解析能力、V3.11 改为 skill 承载）** + **页面自动巡检（环节4/6 结果与审批进度由配置工作台页面自动巡检获取，智能体不直调 wf_sub_12/13/08，V3.13）** + **智能体提示词业务场景编排强化（2.2 章：一次一调/发起即止/巡检自动取结果/键位门禁，V3.13）**。原始版本履历（V1.2~V3.8）见原主方案（已删除），本方案不再逐条罗列，仅在必要时备注关键口径沿革。
 > - **相关文档**：《工作流JSON开发规范》（`工作流配置/`）、《知识文档来源与采编指南》《端到端演示剧本》《本体应用方案》、`cpcp_product_ontology.ttl`、《SitechAI开发平台配置规范》。
 
 ---
@@ -30,19 +30,19 @@
 | 1 | 需求提报 + 需求工单审批 | `wf_sub_00`（止于确认点）+ `wf_sub_11`（发起需求审批）※ .xlsx 上传时解析由智能体 skill 前置完成 | 用户上传 .xlsx → **智能体挂载 skill 解析为多品结构化文本**（工作流不接收文件）→ 作为 `requirement_text` 直调 `wf_sub_00`：LLM 要素提取（多品）→ CODE_RENDER_REQ 渲染提报单 →**止于确认点**；用户回复【发起需求审批】后由 `wf_sub_11` 发起 `submit_release_approval`(approval-type=requirement) | 提报单就绪 / 审批单号 |
 | 2 | 需求分析 | `wf_sub_01`（模板轨） | 要素提取 → validate_elements 质量门禁 → merge_nested → validate_nested 本体校验闸 → render_table → 保存 requirement → **输出方案止于确认点** | plan_json / plan_md |
 | 3 | 智能配置 | `wf_sub_02` | 自查 requirement → save_product_config → CODE_FUSION_GROUP_ECHO 融合成员回显 | status==SUCCESS/PARTIAL |
-| 4 | 规格稽核 | `wf_sub_03`（4a 发起）+ `wf_sub_12`（4b 轮询查询） | 上传稽核Excel → 逐品异步通知+落库（秒级返回）→ 用户触发 4b：SQL 轮询 → 取结果，归一 error_list（含 group 类目） | pass==1（`spec` 落库后） |
+| 4 | 规格稽核 | `wf_sub_03`（4a 发起）+ 页面自动巡检（4b 结果取回，后端查询承载） | 上传稽核Excel → 逐品异步通知+落库（秒级返回）→ **页面自动巡检触发 4b**：SQL 轮询 → 取结果，归一 error_list（含 group 类目） | pass==1（`spec` 落库后） |
 | 5 | 资费校准 | `wf_sub_05`（成员分组） | 自查 config → check_billing_rule（check_scene=all，member_role 分组） | pass==1 |
-| 6 | 自动测试（含受理验证） | `wf_sub_04`（6a 发起）+ `wf_sub_13`（6b 轮询查询） | 自查 config → 6a：offer_test 发起 + get_test_scenes 取场景（秒级返回）；6b：CODE_POLL_PROGRESS 轮询 → get_test_result → CODE_MAP_FIXED_CASES（31 条固定用例）→ 九章节报告 → 报告下载；**受理验证为其子集**（逐场景 orderId/offerInstId 结论随报告输出，不独立成节） | test_passed==通过（`test` 落库后） |
-| 7 | 上线审批 | `wf_sub_06`（双轨） | CODE_SUMMARY_APPROVAL 汇总 → submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流）；审批状态由 wf_sub_08 查询 | approval_id / status |
+| 6 | 自动测试（含受理验证） | `wf_sub_04`（6a 发起）+ 页面自动巡检（6b 结果取回，后端查询承载） | 自查 config → 6a：offer_test 发起 + get_test_scenes 取场景（秒级返回）；6b：页面巡检触发后端短窗口轮询 → get_test_result → CODE_MAP_FIXED_CASES（31 条固定用例）→ 九章节报告 → 报告下载；**受理验证为其子集**（逐场景 orderId/offerInstId 结论随报告输出，不独立成节） | test_passed==通过（`test` 落库后） |
+| 7 | 上线审批 | `wf_sub_06`（双轨） | CODE_SUMMARY_APPROVAL 汇总 → submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流）；审批状态由页面自动巡检呈现 | approval_id / status |
 | 8 | 监控运维 | `wf_sub_07` | query_product_monitor → 异常分支 CODE_OP_ROOT_CAUSE 根因推理 + CODE_OP_CREATE_WO 建工单闭环 | 指标 / 工单号 |
 
-> 辅助子流（不占环节编号）：`wf_sub_08` 审批进度查询（双轨）、`wf_sub_09` 存量产品查询（只读）、`wf_sub_10` 存量合规扫描。
+> 辅助子流（不占环节编号）：`wf_sub_08` 审批进度查询（双轨，页面自动巡检触发）、`wf_sub_09` 存量产品查询（只读）、`wf_sub_10` 存量合规扫描。
 
 ### 1.3 总体架构（平台能力映射）
 
 | 平台能力 | 在本场景中的角色 |
 | --- | --- |
-| 智能体（助手） | 产销品加载智能体统一入口（对话式 + 流程式调度中枢）；由智能体（LLM）按 3.2 提示词【意图→工作流映射表】**语义识别直调** 14 个子工作流（逐环节步进推进；需求工单审批须用户明确确认后才发起）；**上传 .xlsx 时由智能体挂载 skill 解析文档为结构化文本**（工作流不接收文件）；流程结束后承接**消息查询**（审批进度/监控结果）与**异常处置引导**（重新执行/修改执行方案） |
+| 智能体（助手） | 产销品加载智能体统一入口（对话式 + 流程式调度中枢）；由智能体（LLM）按 3.2 提示词【意图→工作流映射表】**语义识别直调** 14 个子工作流（逐环节步进推进；需求工单审批须用户明确确认后才发起）；**上传 .xlsx 时由智能体挂载 skill 解析文档为结构化文本**（工作流不接收文件）；环节结果查询（稽核/测试/审批进度）由**配置工作台页面自动巡检**（前端轮询 `result/query` + 后端查询端点），智能体不再直调查询子流，仅承接**监控结果查询**与**异常处置引导**（重新执行/修改执行方案） |
 | 工作流 | 承载 8 个业务环节的 14 个子工作流 JSON（`wf_sub_00`~`wf_sub_13`；req_id 单必填入参自查链路，无意图调度主流程）；子流内部含环节结果存储节点（save_node_result） |
 | 插件/工具 | 封装 HTTP API 能力接口（相似度分析/智能稽核/智能测试等 13 工具 + 8 个后端适配端点 + 节点结果存储查询插件，共 22 个），全部自研模拟实现（兼容《产品信息.txt》18 个销售品） |
 | 知识库 | `knowledge/` 目录：K1 业务规范 / K2 资费规则 / K3 测试规范 / K4 存量销售品资料 / K5 FAQ + `ontology-fields.json`、`seed_offer_groups.json`、templates 注册表、存量产品目录、K5 存量报文等结构化资产 |
@@ -77,21 +77,24 @@
 | 功能介绍 | 覆盖需求提报→需求分析（五列模块表格《加载方案》）→智能配置→规格稽核→资费校准→自动测试（含受理验证）→上线审批→监控运维的 **8 环节**全流程（**逐环节步进推进，非一次贯通**） |
 | 模型配置 | 温度 0.2（严谨输出）、top_p 0.5、max_tokens 2048、多轮对话 20 轮；LLM 节点统一 `qwen3-30b-a3b` |
 | 开场白 | "您好，我是产销品加载智能体，可协助您完成销售品从需求提报、加载方案生成、确认后智能配置、稽核校准、自动测试到上线审批、监控运维的全流程。请上传需求文档或直接描述需求，我将为您生成《加载方案》。" |
-| 引导问题 | 1) 我要上新四档 5G 畅享套餐，请先提报需求再生成加载方案 2) 确认配置刚才的产销品加载方案 3) 查询刚才那个销售品的审批进度 4) 查询销售品 900102308 的运行监控结果 5) 重新执行失败的环节 |
+| 引导问题 | 1) 我要上新四档 5G 畅享套餐，请先提报需求再生成加载方案 2) 确认配置刚才的产销品加载方案 3) 发起上线审批 4) 查询销售品 900102308 的运行监控结果 5) 重新执行失败的环节 |
 | 答案为空提示 | "抱歉，我仅支持产销品加载相关业务，请更换问题或联系管理员。" |
 
 ### 2.2 提示词【角色 + 技能 + 意图映射表 + 限制】（职责分层）
 
 > **职责分层口径**：智能体（LLM）**只负责三件事**——① 语义识别（按【意图→工作流映射表】直调子工作流）；② 业务理解/补全（需求分析提取要素、补全字段、生成《加载方案》）；③ 结果表达（按固定模板输出环节结果、下一步建议、异常引导、汇总块）。**确定性技术细节不进提示词**：req_id（需求单号）生成与透传、环节结果落库（node_name 结果键）、环节成败判定（status/pass/test_passed 成功态字段）、fail_node（失败环节编码）续跑、审批四环节硬校验——由子流自查链路（query_node_result 结果查询）+ type=6 代码节点 + 后端硬校验兜底（见第 5 章）。全流程 8 环节口径、步进式人机协同。
 >
-> **业务场景编排强化口径（V3.11 提示词优化）**：本轮优化聚焦"意图→工作流"的**编排确定性**，将编排规则显式化为六个可直接执行的约束——① **一次一调**：一条用户消息只直调一个子流，同轮不重复直调；② **发起即止**：凡"发起"类子流（wf_sub_00/03/04/11）返回后止于反馈点，下一环节需用户下一条消息驱动；③ **分段推进**：环节4/8 与环节6/8 各拆"发起段+查询段"两段，映射表以 4a/4b/6a/6b 独立列出行，避免把"下一步"误判为查询、或把"查询结果"误判为重复发起；④ **键位门禁**：`spec`（环节4 查询段 pass==1）与 `test`（环节6 查询段 test_passed==通过）落库是推进环节5/环节7 的硬前置，映射表与【限制】第 5 条同步显式列出主干顺序 `02→03→12→05→04→13`；⑤ **审批双轨消歧**：含"需求"的审批意图→`wf_sub_11`（提报后），含"上线/裸发起审批"→`wf_sub_06`（主干全成后），**阶段判定优先于字面匹配**，防"发起需求审批"误命中上线审批流（wf_sub_06）；⑥ **首调守卫（环节顺序门禁，V3.12 新增）**：会话开头、上下文中**尚无 `req_id`** 时，首条需求消息**必须先调 `wf_sub_00`（需求提报）**，**严禁**直接调 `wf_sub_01`（需求分析）——否则 `wf_sub_01` 自查 `requirement_report`（需求提报记录）为空，会报"未找到该需求单号的需求提报记录"（见【限制】第 12 条）。
+> **业务场景编排强化口径（V3.13 提示词优化，页面自动巡检）**：本轮优化聚焦"环节推进由页面自动巡检驱动"，将编排规则显式化为四个可直接执行的约束——① **一次一调**：一条用户消息只直调一个子流，同轮不重复直调；② **发起即止**：凡"发起"类子流（wf_sub_00/03/04/11）返回后止于反馈点，下一环节由页面自动巡检推进；③ **巡检自动取结果**：环节4/8 稽核与环节6/8 测试的**结果查询（4b/6b）由配置工作台页面自动巡检**（前端轮询 `result/query` 取 `spec`/`test` 落库结果）驱动，**智能体不再直调 `wf_sub_12`（稽核查询）/`wf_sub_13`（测试查询）/`wf_sub_08`（审批查询）**，也不引导用户回复查询类关键词；④ **键位门禁**：`spec`（环节4 巡检落库 pass==1）与 `test`（环节6 巡检落库 test_passed==通过）落库是推进环节5/环节7 的硬前置，主干顺序 `02→03（→页面巡检落spec）→05→04（→页面巡检落test）`；前端按需调用后端 `/audit/sql/query` 与 `/test/offer/progress`·`/test/offer/result` 完成轮询，无需 LLM 介入。**首调守卫保持不变**：会话开头、上下文中**尚无 `req_id`** 时，首条需求消息**必须先调 `wf_sub_00`（需求提报）**，**严禁**直接调 `wf_sub_01`（需求分析）。
 
 ```
 【角色】
 你是安徽电信产销品加载智能体，负责销售品从需求到上线的端到端加载。你只做三件事：①识别意图、直调子工作流；②按返回结果表达；③异常引导。落地动作全由子工作流完成；每次只调一个子流；先判定、再直调。
 
-【子工作流】wf_sub_00 提报 / 01 分析 / 02 配置 / 03 稽核发起 / 04 测试发起 / 05 资费校准 / 06 上线审批 / 07 监控运维 / 08 审批进度查询 / 09 存量查询 / 10 存量合规 / 11 发起需求审批 / 12 稽核查询 / 13 测试查询 / 14 发起优化工单。
+【子工作流】wf_sub_00 提报 / 01 分析 / 02 配置 / 03 稽核发起 / 04 测试发起 / 05 资费校准 / 06 上线审批 / 07 监控运维 / 09 存量查询 / 10 存量合规 / 11 发起需求审批 / 14 发起优化工单。
 【关键键】req_id 需求单号（唯一键，沿用透传不重生成）｜config/spec/fee/test 环节结果键（推进只看是否齐全）｜pass==1 通过、test_passed==通过。
+
+【页面自动巡检（结果获取无需你参与）】
+环节4 稽核结果、环节6 测试结果、审批进度**由配置工作台页面自动巡检获取**：页面轮询 `result/query` 拉取 `spec`/`test`/`report` 落库结果并自动翻转页签，前端按需调用后端 `/audit/sql/query`、`/test/offer/progress`、`/test/offer/result`、审批查询端点完成轮询。**你不直调 wf_sub_12/wf_sub_13/wf_sub_08，也不引导用户回复"查询XX结果/审批进度"类关键词**；用户主动询问进度时，如实说明"页面正在自动巡检，请稍候"或引用已落库结果，不自行发起查询调用。
 
 【路由表（唯一判据，逐行比对，命中即直调）】
 主入口（无 req_id 或提报阶段）：
@@ -101,33 +104,31 @@
 | 需求分析/分析需求/生成加载方案/看方案（已有 req_id） | wf_sub_01 | 有 req_id |
 | 发起需求审批/需求工单审批 | wf_sub_11 | 已有 req_id，否则提示先提报 |
 | 确认配置/开始配置/确认执行方案 | wf_sub_02 | 方案已确认，否则先 01 |
-主干（按 02→03→12→05→04→13 顺序推进）：
+主干（按 02→03（页面巡检落 spec）→05→04（页面巡检落 test）→06 顺序推进）：
 | 下一步/继续/同意（环4未发起） | wf_sub_03 | 已配置，否则先 02 |
-| 查询稽核结果/稽核好了吗 | wf_sub_12 | 已发起稽核，否则先 03 |
-| 下一步/继续（环4已过、环5未做） | wf_sub_05 | spec 通过 |
+| 下一步/继续（环4已完成、环5未做） | wf_sub_05 | spec 已落库（页面巡检已完成稽核） |
 | 下一步/继续（环5已过、环6未发起） | wf_sub_04 | 资费已过 |
-| 查询测试结果/测试好了吗 | wf_sub_13 | 已发起测试，否则先 04 |
 | 发起上线审批/提交上线审批/裸发起审批 | wf_sub_06 | 四环节齐全，否则提示缺哪环节 |
 辅助/旁路（只读或独立，不受主干门禁）：
-| 查询审批进度/审批到哪一步/审批状态 | wf_sub_08 | 有 req_id |
 | 查询监控运维/运行监控 | wf_sub_07 | 有 offer_id 或 req_id |
 | 采纳优化建议/发起优化工单 | wf_sub_14 | 监控已出优化建议，否则先 07 |
 | 查询存量产品 | wf_sub_09 | 无 |
 | 存量合规扫描 | wf_sub_10 | 无 |
-| 重新执行/继续失败环节 | 按 fail_node：STAGE1→02 / STAGE2→03·12 / STAGE3→05 / STAGE4→04·13 |
+| 重新执行/继续失败环节 | 按 fail_node：STAGE1→02 / STAGE2→03（续由页面巡检） / STAGE3→05 / STAGE4→04（续由页面巡检） |
+| 查询稽核结果/查询测试结果/审批进度（用户主动问） | reply_only（引用页面巡检已落库结果，不直调查询子流） |
 | 纯知识问答/超范围 | reply_only（K1~K5，超范围按答案为空） |
 
 【三条硬规则】
 1. **必须调用**：命中路由表且前置可满足 → 一律 action=call_workflow，**严禁只回话不调用**；前置不满足时**改调其前置子流**（仍要调用），不是只回复。reply_only 仅限三种：纯问答/超范围、两难反问、拒绝越门禁（如"不用确认直接配置"）。
 2. **首轮判 req_id**：无 req_id 时，任何需求类消息（含"生成方案/需求分析/分析需求"）**一律先调 wf_sub_00**，绝不调 01（01 无提报记录会报错）；有 req_id 且说"分析/方案"才调 01。口诀：先提报后分析，无 req_id 必先提报。
-3. **审批先判查询/发起**：含查询词（查询/查看/进度/状态）→ wf_sub_08（只读）；否则含"需求"→11、"优化"→14、"上线/裸审批"→06。调度 06 前四环节须齐，未齐则提示缺哪环节。严禁把"查询审批进度"当发起。
+3. **审批只判发起**：审批进度由页面自动巡检，**你不直调 wf_sub_08**；发起类仅含"需求"→11、"优化"→14、"上线/裸审批"→06。调度 06 前四环节须齐，未齐则提示缺哪环节。用户问"审批到哪一步/审批状态"时 reply_only 引用页面巡检结果，不发起查询调用。
 
-【携带与止步】每个子流只带 req_id（沿用）；环4另带 chat_id；查询另带 offer_id。凡"发起"类（00/03/04/11/06）返回后止于反馈点，等用户下条消息推进。
+【携带与止步】每个子流只带 req_id（沿用）；环4发起另带 chat_id、环6发起另带 offer_id。凡"发起"类（00/03/04/11/06）返回后止于反馈点，结果由页面自动巡检呈现，等用户下条消息推进。
 
 【表达铁律】
 - 结果与子流出参一一对应，禁虚构/推断成败。
 - 待补充字段只逐字引用出参 pending_required（空则"无待补充"），不自行列模板必填项。
-- 稽核明细只引用 wf_sub_12 的 audit_suggest/error_list（空则"全部通过"），不臆造稽核项。
+- 稽核明细只引用页面巡检已落库的 audit_suggest/error_list（空则"全部通过"），不臆造稽核项。
 - 需求未提及的字段不自行补默认（尤其不臆断"全省/22地市"）。
 - 环节异常即中断，按"环节/原因/明细/建议"引导重新执行。
 
@@ -208,13 +209,13 @@
 | 需求提报（环节1/8） | 收集需求（文本/Excel 需求文档）、生成需求工单；审批须用户明确确认后才发起 | **上传 .xlsx 时由智能体挂载 skill 解析为多品结构化文本**（工作流 start 节点不接收文件）；skill 产物作为 `requirement_text` 直调 `wf_sub_00`：LLM 要素提取（多品）→ CODE_RENDER_REQ 渲染提报单 + "是否发起【需求工单审批】？"，止于确认点；用户回复【发起需求审批】后由 `wf_sub_11` 承接：自查 requirement_report → 提取原文 → `submit_release_approval`(approval-type=requirement) |
 | 需求分析（环节2/8） | 业务要素→配置字段映射，生成《加载方案》并存储；生成后止于确认点 | `wf_sub_01` 模板轨：要素提取 → CODE_VALIDATE_ELEMENTS 质量门禁 → CODE_MERGE_NESTED → CODE_OP_VALIDATE_NESTED 本体校验闸 → CODE_RENDER_TABLE → 保存 requirement → 输出方案即止于确认点 |
 | 用户确认 | 人工确认执行方案后再配置落地 | 智能体提示词【限制】识别确认语义（未命中确认不调度 `wf_sub_02`） |
-| 执行主干（步进式） | 配置→稽核→资费→测试逐环节推进 | 智能体语义识别"确认配置"后逐环节调度 `wf_sub_02`→`wf_sub_03`→`wf_sub_05`→`wf_sub_04`（每环节止于反馈点，失败即中断）；稽核/测试环节再经用户触发各自轮询流 `wf_sub_12`/`wf_sub_13` 取结果；异常按 fail_node 续跑 |
+| 执行主干（步进式） | 配置→稽核→资费→测试逐环节推进 | 智能体语义识别"确认配置"后逐环节调度 `wf_sub_02`→`wf_sub_03`→`wf_sub_05`→`wf_sub_04`（每环节止于反馈点，失败即中断）；稽核/测试结果由**配置工作台页面自动巡检**（前端轮询 `result/query` + 后端查询端点）取回并落 `spec`/`test`；异常按 fail_node 续跑 |
 | 智能配置（环节3/8） | 按 req_id 自查执行方案 JSON 并落地 CRM | `wf_sub_02`：自查 requirement → `save_product_config` → CODE_FUSION_GROUP_ECHO 融合成员回显 |
-| 规格稽核（环节4/8） | 配置落地后发起稽核并轮询取结果 | `wf_sub_03`（4a 稽核发起：上传 Excel→逐品异步通知+落库，秒级返回）+ `wf_sub_12`（4b 轮询查询：SQL 轮询→取结果→归一 error_list，可重复触发；`spec` 仅完成后写入）详见 4.5.3 场景B |
+| 规格稽核（环节4/8） | 配置落地后发起稽核并由页面巡检取结果 | `wf_sub_03`（4a 稽核发起：上传 Excel→逐品异步通知+落库，秒级返回）+ **页面自动巡检**（4b：前端轮询 `result/query` + 后端 `/audit/sql/query`：SQL 轮询→取结果→归一 error_list，完成 pass==1 后落 `spec`）详见 4.5.3 场景B |
 | 资费校准（环节5/8） | 校验计费逻辑、优惠叠加冲突 | `wf_sub_05`（成员分组）：`check_billing_rule`(check_scene=all) |
-| 自动测试（环节6/8，含受理验证） | 发起测试→轮询→取结果，报告含受理验证结论 | `wf_sub_04`（6a 发起：`offer_test`+`get_test_scenes`，秒级返回）+ `wf_sub_13`（6b 轮询查询：CODE_POLL_PROGRESS/`get_test_result` + CODE_MAP_FIXED_CASES + 九章节报告 + 报告下载，可重复触发；`test` 仅完成后写入）详见 4.5.3 场景C |
-| 上线审批（环节7/8） | 汇总报告、推送审批；**推送即结束（不轮询/不分流）**；审批状态由 `wf_sub_08` 事后查询 | `wf_sub_06`（双轨）：CODE_SUMMARY_APPROVAL → `submit_release_approval` → 推送后即结束，返回 approval_id/status |
-| 审批进度查询（辅助） | 查询审批单当前状态（双轨） | `wf_sub_08` + `query_approval_status` |
+| 自动测试（环节6/8，含受理验证） | 发起测试→页面巡检取结果，报告含受理验证结论 | `wf_sub_04`（6a 发起：`offer_test`+`get_test_scenes`，秒级返回）+ **页面自动巡检**（6b：前端轮询 `result/query` + 后端 `/test/offer/progress`、`/test/offer/result`：CODE_POLL_PROGRESS 式轮询 + CODE_MAP_FIXED_CASES + 九章节报告 + 报告下载，完成 test_passed==通过 后落 `test`）详见 4.5.3 场景C |
+| 上线审批（环节7/8） | 汇总报告、推送审批；**推送即结束（不轮询/不分流）**；审批状态由页面自动巡检呈现 | `wf_sub_06`（双轨）：CODE_SUMMARY_APPROVAL → `submit_release_approval` → 推送后即结束，返回 approval_id/status |
+| 审批进度查询（辅助） | 查询审批单当前状态（双轨） | **页面自动巡检**（前端按需调审批查询端点）+ `query_approval_status` 后端支撑 |
 | 存量产品查询（辅助） | 查询存量/在售销售品（只读） | `wf_sub_09` + CODE_OP_QUERY_OFFER |
 | 存量合规扫描（辅助） | 存量销售品上架合规扫描 | `wf_sub_10` + CODE_OP_SHELF_COMPLIANCE（/shelf-compliance） |
 | 监控运维（环节8/8） | 上线后持续监控，异常根因推理+建工单闭环 | `wf_sub_07`：`query_product_monitor` → 异常时 CODE_OP_ROOT_CAUSE（/ops/root-cause）+ CODE_OP_CREATE_WO（/ops/work-orders） |
@@ -232,7 +233,7 @@
 | 5 | `get_test_progress` | 轮询测试步骤、是否完成/失败（done/failed/failIndex） | C3 `...576` |
 | 6 | `get_test_result` | 查询逐场景测点比对明细；`orderId`/`offerInstId` 为受理生成的订单号/实例 ID（受理验证依据） | C4 `...856` |
 | — | （新增）`audit_file_upload` / `audit_async_notify` / `audit_insert_result` | 智能稽核发起三接口代理：上传解析销售品清单→逐品异步通知→落库（4a 发起流 wf_sub_03，秒级返回） | B1 `...064` / B2 `...912` / B3 `...840` |
-| — | （新增）`audit_sql_query` | 智能稽核轮询/取结果代理：SQL 轮询完成态 + 取最终结果（4b 轮询流 wf_sub_12，可重复触发） | B4 `...032` |
+| — | （新增）`audit_sql_query` | 智能稽核轮询/取结果代理：SQL 轮询完成态 + 取最终结果（环节4b **页面自动巡检触发的后端查询**，可重复触发） | B4 `...032` |
 
 #### B. 平台复用插件（不自研）
 
@@ -312,7 +313,7 @@
 | 2e requirement_parse_xlsx | POST /api/v1/appstore/requirement/parse-xlsx | file(.xlsx) | requirement{offers[{offer_seq,ofr_id,offer_name,sheet_name,fields{...}}], relations[{a_ofr_id,a_name,relation,z_ofr_id,z_name}], source_sheets[]} | **V3.10 新增**；需求文档→结构化需求（多品 + 关联关系 + 宽表列，6.6 章 G1）；**V3.11 由智能体挂载 skill 调用（工作流层不接收文件，不再由任何子流节点调用）**；文件非法/无销售品 → E41 |
 | 3 offer_test | POST /api/v1/appstore/test/offer/start | offerId | globalId(50+14位+10位随机) | 发起动作；resultCode=1 终止（E10）；现场映射 C1 |
 | 4 get_test_scenes | POST /api/v1/appstore/test/offer/scenes | globalId | testScenes[]（S_O_TC/S_ADD_CARD/S_U_TC...） | 空场景列表终止（E11）；现场映射 C2 |
-| 5 get_test_progress | POST /api/v1/appstore/test/offer/progress | globalId | totalSteps/activeIndex/done/failed/failIndex | 由 CODE_POLL_PROGRESS 轮询；现场映射 C3 |
+| 5 get_test_progress | POST /api/v1/appstore/test/offer/progress | globalId | totalSteps/activeIndex/done/failed/failIndex | 由页面自动巡检（后端短窗口轮询）调用；现场映射 C3 |
 | 6 get_test_result | POST /api/v1/appstore/test/offer/result | globalId | testScenes[] / orderId / offerInstId | done=true 后查询；受理凭证；现场映射 C4 |
 | 7 save_product_config | POST /api/v1/appstore/product/config/save | req_id, plan_json(原文透传), operator | offer_id / status / save_result / script_url | 不设确认门禁（V2.2 移除）；幂等；script_url 绝对 URL |
 | 8 check_billing_rule | POST /api/v1/appstore/billing/rules/verify | config_json, check_scene(fee/overlay/superposition/all) | pass / risk_list[] / compare_list[]（8 项比对） | pass=0 中断（E9） |
@@ -352,11 +353,11 @@ globalId 格式（50+19 位）；实时稽核 60s 内同步返回；工具6 orde
 | B1 | 智能稽核文件上传 `...064` | `/api/ah/cpcp/upload` | **新增** `audit_file_upload` | 环节4a wf_sub_03 | 入参 `req_id/chat_id`，后端按 req_id 查需求与配置信息**生成稽核 Excel** 后上传→`file_id`/`sales_id{}`；mock 返回预置清单 |
 | B2 | 异步报告生成并通知 `...912` | `/api/ah/cpcp/async_report_notify_direct` | **新增** `audit_async_notify` | 环节4a wf_sub_03 | GET 传 `sales_id/location/sheet_name/file_id`→`request_id` |
 | B3 | 插入 AI 稽核结果 `...840` | `/api/ahhui/cpcp/insertAiAuditResult` | **新增** `audit_insert_result` | 环节4a wf_sub_03 | `records[]`→`resultCode`；**紧跟 B2 调用**（AI 回调前置落库） |
-| B4 | 通用 SQL 查询 `...032` | `/api/ah/slzx/invokeInfo/executeSqlService` | **新增** `audit_sql_query` | 环节4b wf_sub_12 | `sqlId=20260626001`（轮询完成 N/Y）/`20260626002`（取结果）；`params=requestIds:i1,i2,...`；由 CODE_POLL_AUDIT 短窗口轮询 |
+| B4 | 通用 SQL 查询 `...032` | `/api/ah/slzx/invokeInfo/executeSqlService` | **新增** `audit_sql_query` | 环节4b 页面巡检（后端查询承载） | `sqlId=20260626001`（轮询完成 N/Y）/`20260626002`（取结果）；`params=requestIds:i1,i2,...`；由后端短窗口轮询（页面自动巡检触发） |
 | C1 | 销售品测试发起 `...080` | `/api/anhui/cpcp/offerTest` | 工具3 `offer_test` | 环节6a wf_sub_04 | 入参一致；出参 `resultObject.globalId`→既有 `globalId` |
 | C2 | 查询测试场景 `...880` | `/api/anhui/cpcp/getTestScenes` | 工具4 `get_test_scenes` | 环节6a wf_sub_04 | 出参 `resultObject.testScenes[]`→既有 `testScenes` |
-| C3 | 查询测试进度 `...576` | `/api/anhui/cpcp/getTestProgress` | 工具5 `get_test_progress` | 环节6b wf_sub_13 | 出参 `resultObject.*`→既有 done/failed/failIndex；CODE_POLL_PROGRESS 不变 |
-| C4 | 查询测试结果 `...856` | `/api/anhui/cpcp/getTestResult` | 工具6 `get_test_result` | 环节6b wf_sub_13 | 出参 `resultObject.testScenes/orderId/offerInstId/offerName`（逐场景受理凭证）→既有字段 |
+| C3 | 查询测试进度 `...576` | `/api/anhui/cpcp/getTestProgress` | 工具5 `get_test_progress` | 环节6b 页面巡检（后端查询承载） | 出参 `resultObject.*`→既有 done/failed/failIndex；后端短窗口轮询（页面自动巡检触发） |
+| C4 | 查询测试结果 `...856` | `/api/anhui/cpcp/getTestResult` | 工具6 `get_test_result` | 环节6b 页面巡检（后端查询承载） | 出参 `resultObject.testScenes/orderId/offerInstId/offerName`（逐场景受理凭证）→既有字段 |
 
 > **未变更接口**（规范未覆盖，保持自研）：工具2 `realtime_spec_audit` 退出环节4 主链路（见 4.5.3，保留供单测/兜底）、工具7 `save_product_config`、工具8 `check_billing_rule`、工具9 `submit_release_approval`、工具10/11/13、节点结果存储。现场若另有对应接口，按同款模式增补映射即可。
 
@@ -371,12 +372,12 @@ wf_sub_01 节点105 → A1 相似度分析（信封：{businessDesc}）
 落点：环节2 需求分析《加载方案》生成（取值链：原始需求→相似产品→本体默认值→待补充）
 ```
 
-**场景B · 智能稽核**（环节4 规格稽核，拆为发起流 `wf_sub_03` + 轮询流 `wf_sub_12` 两阶段交互）
+**场景B · 智能稽核**（环节4 规格稽核，拆为发起流 `wf_sub_03`（智能体直调）+ 轮询段（配置工作台页面自动巡检））
 
-> **动机**：接口④为异步轮询（最长 30 分钟），若与前置链路同子流会长时间阻塞一次调用；拆为"发起"与"轮询查询"两条子流，用户分两次交互驱动，轮询单次窗口缩短（默认 5 分钟/60 次），未完成则引导续查。
+> **动机**：接口④为异步轮询（最长 30 分钟），若与前置链路同子流会长时间阻塞一次调用；故拆为"发起"与"轮询取结果"两段——**发**由智能体直调 `wf_sub_03`（秒级返回），**轮询取结果由配置工作台页面自动巡检**（前端轮询 `result/query` + 后端 `/audit/sql/query`），轮询单次窗口缩短（默认 5 分钟/60 次），未完成则页面续轮询，**智能体不再直调 `wf_sub_12`**。
 
 ```
-【阶段4a · 稽核发起 wf_sub_03】（秒级返回）
+【阶段4a · 稽核发起 wf_sub_03】（秒级返回，智能体直调）
 用户触发稽核（传入 req_id + chat_id）
         │
         ▼  B1 智能稽核文件上传（后端按 req_id 查需求与配置信息生成稽核 Excel 后上传）
@@ -389,47 +390,47 @@ file_id + sales_id{ 销售品名:{offerId, location, sheet_name} }
         ▼  汇总 requestIds
    save_node_result(node_name=audit_pending, requestIds/sales_id清单)   ← 临时态
    输出"稽核已发起（requestIds=...）"止于反馈点
-        ▼（用户回复【查询稽核结果】/【下一步】）
-【阶段4b · 稽核轮询查询 wf_sub_12】（可重复触发）
-   自查 audit_pending 取 requestIds
+        ▼（配置工作台页面自动巡检：前端轮询 result/query + 后端 /audit/sql/query）
+【阶段4b · 稽核轮询取结果（页面自动巡检，后端查询承载）】
+   后端按 req_id 取 audit_pending 的 requestIds
         ▼
-   B4 通用SQL查询(sqlId=20260626001, params=requestIds:id1,id2,...) → isAllFinished  ← CODE_POLL_AUDIT 短窗口轮询
-        │   isAllFinished=N → 单次窗口内间隔轮询；窗口耗尽 → 输出"稽核处理中，请稍后回复【查询稽核结果】"（不写 spec，非中断）
+   B4 通用SQL查询(sqlId=20260626001, params=requestIds:id1,id2,...) → isAllFinished  ← 短窗口轮询
+        │   isAllFinished=N → 单次窗口内间隔轮询；窗口耗尽 → 页面续轮询（不写 spec，非中断）
         ▼   isAllFinished=Y
    B4 通用SQL查询(sqlId=20260626002, params=requestIds:...) → 最终稽核结果
         ▼  映射 error_list[]（含 group 类目）/audit_summary
-   pass=1 → save_node_result(node_name=spec) + 输出结果（允许推进环节5）
+   pass=1 → save_node_result(node_name=spec) + 页面翻转显示结果（允许推进环节5）
    pass=0 → 中断引导（E8，不写 spec）
         ▼
 用户确认后进入环节5 资费校准（wf_sub_05 不变）
 ```
-- **门禁**：`spec` 仅在阶段4b 完成且 pass==1 时写入；环节5 自查与审批四环节硬校验以 `spec` 为准，故稽核未完成不允许推进。
-- **轮询纪律**：B4 单次窗口间隔 5s、上限 60 次（5 分钟）；连续 5 次失败终止（E38c）。窗口耗尽非错误，输出处理中引导续查。
-- **多品顺序**：POC 顺序处理 sales_id 清单（每品 B2+B3），请求集合以逗号拼接，①②③④ 均在发起流一次完成。
+- **门禁**：`spec` 仅在阶段4b 巡检完成且 pass==1 时写入（由后端/页面落库）；环节5 自查与审批四环节硬校验以 `spec` 为准，故稽核未完成不允许推进。
+- **轮询纪律**：B4 单次窗口间隔 5s、上限 60 次（5 分钟）；连续 5 次失败终止（E38c）。窗口耗尽非错误，页面续轮询。
+- **多品顺序**：POC 顺序处理 sales_id 清单（每品 B2+B3），请求集合以逗号拼接，①②③ 均在发起流一次完成。
 
-**场景C · 智能测试**（环节6 自动测试，四接口信封适配；拆为发起流 `wf_sub_04`(6a) + 轮询流 `wf_sub_13`(6b) 两阶段交互）
+**场景C · 智能测试**（环节6 自动测试，四接口信封适配；拆为发起流 `wf_sub_04`（智能体直调）+ 轮询段（配置工作台页面自动巡检））
 
-> **动机**：与智能稽核同构——测试平台异步执行（原轮询上限 30 分钟），若同子流会长时间阻塞一次调用；拆为"发起"与"轮询查询"两条子流，用户分两次交互驱动，轮询单次窗口缩短（默认 5 分钟/60 次），未完成则引导续查，未完成不写 `test` 键、不允许推进上线审批。
+> **动机**：与智能稽核同构——测试平台异步执行（原轮询上限 30 分钟），若同子流会长时间阻塞一次调用；**发**由智能体直调 `wf_sub_04`（秒级返回），**轮询取结果由页面自动巡检**（前端轮询 `result/query` + 后端 `/test/offer/progress`、`/test/offer/result`），轮询单次窗口缩短（默认 5 分钟/60 次），未完成则页面续轮询，未完成不写 `test` 键、不允许推进上线审批，**智能体不再直调 `wf_sub_13`**。
 
 ```
-【阶段6a · 测试发起 wf_sub_04】（秒级返回）
+【阶段6a · 测试发起 wf_sub_04】（秒级返回，智能体直调）
 wf_sub_04 自查 config → C1 测试发起{offerId} → globalId
    → C2 查询测试场景{globalId} → testScenes[]（含各场景 orderId/offerInstId 归属）
    → save(node_name=test_pending：globalId/testScenes)   ← 临时态
    输出"测试已发起（globalId=...，场景N个）"止于反馈点
-        ▼（用户回复【查询测试结果】/【下一步】）
-【阶段6b · 测试轮询查询 wf_sub_13】（可重复触发）
-   自查 test_pending 取 globalId
+        ▼（配置工作台页面自动巡检：前端轮询 result/query + 后端 /test/offer/progress、/test/offer/result）
+【阶段6b · 测试轮询取结果（页面自动巡检，后端查询承载）】
+   后端按 req_id 取 test_pending 的 globalId
         ▼
-   C3 查询测试进度{globalId} → done/failed/failIndex  ← CODE_POLL_PROGRESS 短窗口轮询（间隔5s/上限60次=5分钟）
-        │   未完成 → 输出"测试处理中，请稍后回复【查询测试结果】"（不写 test，非中断）
+   C3 查询测试进度{globalId} → done/failed/failIndex  ← 短窗口轮询（间隔5s/上限60次=5分钟）
+        │   未完成 → 页面续轮询（不写 test，非中断）
         ▼   done=true
    C4 查询测试结果{globalId} → testScenes[]/orderId/offerInstId/offerName（逐场景受理凭证）
         ▼
    CODE_MAP_FIXED_CASES(31条固定用例) → 九章节报告 → save(node_name=test)（test_passed==通过 才写）
 ```
-- **门禁**：`test` 仅在阶段6b 完成且 test_passed==通过 时写入；上线审批 `submit_release_approval` 四环节硬校验以 `test` 为准，故测试未完成不允许推进。
-- **轮询纪律**：C3 单次窗口间隔 5s、上限 60 次（5 分钟）；连续 5 次失败终止（E40c）。窗口耗尽非错误，输出处理中引导续查。
+- **门禁**：`test` 仅在阶段6b 巡检完成且 test_passed==通过 时写入（由后端/页面落库）；上线审批 `submit_release_approval` 四环节硬校验以 `test` 为准，故测试未完成不允许推进。
+- **轮询纪律**：C3 单次窗口间隔 5s、上限 60 次（5 分钟）；连续 5 次失败终止（E40c）。窗口耗尽非错误，页面续轮询。
 
 #### 4.5.4 配置化切换设计（开发 mock ↔ 现场 real，基于 application.yml）
 
@@ -449,8 +450,8 @@ wf_sub_04 自查 config → C1 测试发起{offerId} → globalId
 | `prodai.appstore.interface.eop.sign` | `123` | 签名占位（备注 10，现场若有真实签名算法在此扩展） |
 | `prodai.appstore.interface.eop.upload-file-field` | `file` | 上传表单字段名（规范 B1 备注 1，默认 `file`） |
 | `prodai.appstore.interface.eop.timeout-ms` | `60000` | real 接口调用超时 |
-| `prodai.appstore.interface.poll.audit.interval-ms` / `max` | `5000` / `60` | 稽核轮询单次窗口（5s×60=5 分钟，窗口耗尽输出"处理中"引导续查，非中断） |
-| `prodai.appstore.interface.poll.test.interval-ms` / `max` | `5000` / `60` | 测试轮询单次窗口（5s×60=5 分钟，窗口耗尽输出"处理中"引导续查，非中断；取代原 30 分钟单窗口口径） |
+| `prodai.appstore.interface.poll.audit.interval-ms` / `max` | `5000` / `60` | 稽核轮询单次窗口（5s×60=5 分钟，页面自动巡检触发、窗口耗尽页面续轮询，非中断） |
+| `prodai.appstore.interface.poll.test.interval-ms` / `max` | `5000` / `60` | 测试轮询单次窗口（5s×60=5 分钟，页面自动巡检触发、窗口耗尽页面续轮询，非中断；取代原 30 分钟单窗口口径） |
 
 **application.yml（主配置，公共默认值）**：
 ```yaml
@@ -534,26 +535,26 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 环节3/8 直调 wf_sub_02 → status==SUCCESS/PARTIAL 打印结果+下一步建议 → **止于反馈点**
   ▼（用户回复【下一步】/【继续】）
 环节4/8 直调 wf_sub_03（4a 稽核发起：上传Excel→逐品异步通知+落库，秒级返回）→ 打印"稽核已发起"+下一步建议 → **止于反馈点**
-  ▼（用户回复【查询稽核结果】→ 直调 wf_sub_12；未完成输出"处理中"可再次触发；完成 pass==1 写 spec）
-环节4/8 直调 wf_sub_12（4b 轮询查询）→ pass==1 打印结果+下一步建议 → **止于反馈点**（未完成不写 spec，不允许推进）
+  ▼（页面自动巡检：前端轮询 result/query + 后端 /audit/sql/query；完成 pass==1 后端落 spec）
+环节4/8 页面巡检完成落 spec → 打印结果+下一步建议 → **止于反馈点**（未完成不写 spec，不允许推进）
   ▼
 环节5/8 直调 wf_sub_05 → pass==1 打印结果+下一步建议 → **止于反馈点**
   ▼
 环节6/8 直调 wf_sub_04（6a 测试发起：offer_test→get_test_scenes，秒级返回）→ 打印"测试已发起（场景N个）"+下一步建议 → **止于反馈点**
-  ▼（用户回复【查询测试结果】→ 直调 wf_sub_13；未完成输出"处理中"可再次触发；完成 test_passed==通过 写 test）
-环节6/8 直调 wf_sub_13（6b 轮询查询）→ test_passed==通过 打印结果（含受理验证小节）→ 止于汇总点（未完成不写 test，不允许推进）
+  ▼（页面自动巡检：前端轮询 result/query + 后端 /test/offer/progress、/test/offer/result；完成 test_passed==通过 后端落 test）
+环节6/8 页面巡检完成落 test → test_passed==通过 打印结果（含受理验证小节）→ 止于汇总点（未完成不写 test，不允许推进）
   ▼
 ⑦ 智能体汇总打印成功详情 + 提示"是否发起上线审批"
 用户回复"发起审批" → wf_sub_06（串行自查 5 类环节结果 → 报告 → submit_release_approval 推送
-  → 推送即结束，返回 approval_id/status；不轮询/不分流，审批状态由 wf_sub_08 事后查询）
+  → 推送即结束，返回 approval_id/status；不轮询/不分流，审批状态由页面自动巡检查询）
 ```
 
 **调度要点（确定性契约权威描述）**：
 1. **确认门禁**：`wf_sub_01` 输出方案即止于确认点，未命中确认语义前不调度 `wf_sub_02`；后端 `save_product_config` 不再校验 confirmed/CONFIRMED 标记。`submit_release_approval` 仍硬校验四环节结果齐全（跳步必被拒）。
 2. **逐环节步进推进纪律**：02→03→05→04 严格按序，严禁并行/跳过；每环节必须得到用户反馈才调度下一环节，仅失败/异常中断；环节成败由子流/代码节点按出参字段裁决（status/pass/test_passed）。
 3. **结果存储**：wf_sub_02~05 各内置 save_node_result（req_id=入参，node_name=config/spec/fee/test），成功即自动落库。
-4. **续跑**：`重新执行`按 fail_node 从失败环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03（发起）/wf_sub_12（轮询续查）、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04（发起）/wf_sub_13（轮询续查）），已成功环节按存储回放不重复调用写接口。
-5. **消息查询**：审批进度/监控结果由智能体直调 `query_approval_status`、`query_product_monitor`。
+4. **续跑**：`重新执行`按 fail_node 从失败环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03（发起，结果由页面巡检续查）、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04（发起，结果由页面巡检续查）），已成功环节按存储回放不重复调用写接口。
+5. **结果获取（V3.13 页面自动巡检）**：环节4 稽核结果、环节6 测试结果、审批进度由**配置工作台页面自动巡检**（前端轮询 `result/query` + 按需调后端查询端点），智能体**不直调** `wf_sub_12`/`wf_sub_13`/`wf_sub_08`；监控结果由智能体直调 `query_product_monitor`（`wf_sub_07`）。
 6. **两个二次确认点**：需求工单审批（提报单就绪止于确认点，用户回复【发起需求审批】后 `wf_sub_11` 发起）、上线审批（执行主干全成后用户确认发起）。
 
 **结果打印/异常处置/成功汇总三套模板（LLM 输出统一格式）**：
@@ -564,9 +565,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
   orderId/offerInstId）}
 - 下一步建议：确认后可继续进入【下一环节】——请回复【下一步】/【继续】推进（末环节改为输入"发起审批"）
 
-【环节4/8·规格稽核】✅ 执行成功（pass==1 固定格式，禁止出现失败项）
-- 稽核结论：{逐字引用 wf_sub_12.audit_summary，如"全部销售品稽核通过（mock）"}
-- 稽核明细：{逐字引用 wf_sub_12.audit_suggest 七项清单，全部 ✅；禁止自造总数/通过数/失败数}
+【环节4/8·规格稽核】✅ 执行成功（pass==1 固定格式，禁止出现失败项；由页面自动巡检取回结果）
+- 稽核结论：{逐字引用页面巡检已落库的 audit_summary，如"全部销售品稽核通过（mock）"}
+- 稽核明细：{逐字引用页面巡检已落库的 audit_suggest 七项清单，全部 ✅；禁止自造总数/通过数/失败数}
 - 下一步建议：请回复【下一步】/【继续】进入【环节5/8·资费校准】
 
 【环节N/8·{名称}】❌ 执行异常（仅在出参确有失败项时使用）
@@ -582,17 +583,18 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 是否发起上线审批？回复【发起审批】将提交审批流；回复【暂不】可稍后继续。
 ```
 
-**工作台呈现层（配置工作台前端，免发查询词）**：
+**工作台页面自动巡检层（配置工作台前端，免发查询词，V3.13 起为结果获取主通道）**：
 
-> 对话主链路不变（仍由 LLM 触发 `wf_sub_12`/`wf_sub_13` 落 spec/test）——本节补述**前端工作台**在用户不发查询词时的自动呈现口径。
+> **口径变更（V3.13）**：环节4 稽核结果、环节6 测试结果、审批进度的获取**由 LLM 触发查询子流改为前端页面自动巡检**——对话主链路不再由 LLM 直调 `wf_sub_12`/`wf_sub_13`/`wf_sub_08`，用户也无需回复查询类关键词；页面打开相应页签即自动轮询取结果并翻转。
 
-- **页签自动翻转**：配置工作台打开相应页签时，前端按 `stage` 推断该页签对应的 pending 节点（审批类见 `report`、稽核见 `audit_pending`、测试见 `test_pending`），并轮询 `GET /api/v1/appstore/result/query?req_id=&latest_only=1`；拉取到最终结果（`spec`/`test`）或 `report` 节点即把当前页签由「进行中」翻转为「完成」，**只翻转当前页签、不自动跳转**。
+- **页签自动翻转**：配置工作台打开相应页签时，前端按 `stage` 推断该页签对应的 pending 节点（审批类见 `report`、稽核见 `audit_pending`、测试见 `test_pending`），并轮询 `GET /api/v1/appstore/result/query?req_id=&latest_only=1`；同时按需调用后端查询端点（稽核 `/audit/sql/query`、测试 `/test/offer/progress`+`/test/offer/result`、审批查询端点）完成异步轮询；拉取到最终结果（`spec`/`test`）或 `report` 节点即把当前页签由「进行中」翻转为「完成」，**只翻转当前页签、不自动跳转**。
+- **落库键门禁**：页面巡检到稽核 `pass==1`/测试 `test_passed==通过` 时，后端按 `req_id` 落 `spec`/`test` 键；环节5/环节7 才允许推进（门禁口径不变，仅"取结果"由后端+页面完成，不再经 LLM 查询子流）。
 - **兜底**：5s 内无新产出则按兜底判定一次，避免长轮询空转；翻转后停止轮询。
-- **口径**：前端仅做呈现层翻转（模拟），不改工作流结构与后端契约；`approval_nodes` 仍来自 URL，`result/query` 只更新 `nodeResults` 不更新 `__WB_QUERY`。
+- **口径**：前端与后端仅做呈现层翻转与结果落库（模拟），不改工作流结构与契约；`approval_nodes` 仍来自 URL，`result/query` 只更新 `nodeResults` 不更新 `__WB_QUERY`。
 
 ### 5.2 14 个子工作流清单（当前实现基线）
 
-> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 轮询流 `wf_sub_12`（4b）；自动测试拆为发起流 `wf_sub_04`（6a）+ 轮询流 `wf_sub_13`（6b），两阶段交互。V3.11 需求文档解析**不由工作流承担**（工作流 start 节点无法接收文件/附件），改由智能体挂载 skill 解析为结构化文本后作为 `requirement_text` 传入 `wf_sub_00`。**
+> 位于 `场景设计/ah_cti_poc/工作流配置/智能体工作流集V1.6/`，由 `gen_workflows.py` 确定性生成（禁止手改 JSON），共 **14 个 JSON**（`wf_sub_00`~`wf_sub_13`）。各子流统一 **req_id 单必填入参**，内部 query_node_result 自查上游 + 结束前 save_node_result 落库；确定性逻辑内嵌 type=6 代码节点。**V3.10 智能稽核拆为发起流 `wf_sub_03`（4a）+ 结果取回（4b，页面自动巡检，后端查询承载）；自动测试拆为发起流 `wf_sub_04`（6a）+ 结果取回（6b，页面自动巡检，后端查询承载）。V3.13 起环节4/6 结果与审批进度由配置工作台页面自动巡检获取，智能体不直调 `wf_sub_12`/`wf_sub_13`/`wf_sub_08`（其仍保留为后端查询承载脚本）。V3.11 需求文档解析**不由工作流承担**（工作流 start 节点无法接收文件/附件），改由智能体挂载 skill 解析为结构化文本后作为 `requirement_text` 传入 `wf_sub_00`。**
 
 | 子工作流 | 编码 | 入参 | 关键链路 / 代码节点 |
 | --- | --- | --- | --- |
@@ -601,24 +603,24 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 需求分析（环节2/8，模板轨，止于确认点） | `wf_sub_01` | req_id | CODE_EXTRACT_RECORD → 相似查询(节点105) → CODE_GET_TEMPLATE(节点106) → 要素提取 LLM → CODE_VALIDATE_ELEMENTS(节点108 质量闸) → CODE_MERGE_NESTED(节点109) → CODE_OP_VALIDATE_NESTED(节点110 本体校验闸 /validate-nested) → CODE_RENDER_TABLE(节点111) → 保存 requirement → **输出方案止于确认点** |
 | 智能配置（环节3/8） | `wf_sub_02` | req_id | 自查 requirement → CODE_EXTRACT_RECORD → save_product_config → CODE_FUSION_GROUP_ECHO 融合成员回显 → save(node=config) |
 | 稽核发起（环节4a/8） | `wf_sub_03` | req_id, chat_id | 自查 config → CODE_EXTRACT_RECORD 取 offer_id → **`audit_file_upload`（B1：后端按 req_id 查需求与配置信息生成稽核 Excel 后上传，解析 sales_id）→ 逐品 `audit_async_notify`（B2）+ `audit_insert_result`（B3）** → 汇总 requestIds → save(node=**audit_pending**：requestIds/sales_id 清单) → **秒级返回"稽核已发起"止于反馈点**（不轮询） |
-| 稽核轮询查询（环节4b/8，可重复触发） | `wf_sub_12` | req_id | 自查 **audit_pending** 取 requestIds → **CODE_POLL_AUDIT**（短窗口轮询 `audit_sql_query` sqlId=20260626001，读 `isAllFinished`）→ 完成则 `audit_sql_query`（sqlId=20260626002 取结果）→ 归一 error_list（含 group 类目）→ 整改建议 → **pass==1 才 save(node=spec)**；未完成输出"处理中"引导续查（不写 spec） |
+| 稽核轮询取结果（环节4b/8，页面自动巡检 · 后端查询承载） | `wf_sub_12` | req_id | 后端按 req_id 取 **audit_pending** 的 requestIds → **短窗口轮询 `audit_sql_query`（sqlId=20260626001，读 `isAllFinished`）** → 完成则 `audit_sql_query`（sqlId=20260626002 取结果）→ 归一 error_list（含 group 类目）→ 整改建议 → **pass==1 才 save(node=spec)**；未完成页面续轮询（不写 spec）。**由配置工作台页面自动巡检触发，智能体不直调** |
 | 资费校准（环节5/8，成员分组） | `wf_sub_05` | req_id | 自查 config → CODE_EXTRACT_RECORD → check_billing_rule(check_scene=all, member_role 分组) → 风险解读 → save(node=fee) |
 | 自动测试（环节6/8，含受理验证） | `wf_sub_04` | req_id | 自查 config → **C1 `offer_test` 发起（取 globalId）→ C2 `get_test_scenes` 取场景集合** → save(node=**test_pending**：globalId/testScenes) → **秒级返回"测试已发起"+场景清单止于反馈点**（不轮询） |
-| 测试轮询查询（环节6/8，可重复触发） | `wf_sub_13` | req_id | 自查 **test_pending** 取 globalId → **CODE_POLL_PROGRESS**（短窗口轮询 C3 `get_test_progress`，读 done/failed/failIndex）→ 完成则 C4 `get_test_result` → CODE_MAP_FIXED_CASES(节点315：31 条固定用例/九章节报告，受理验证逐场景) → CODE_DOWNLOAD_TEST_REPORT → **test_passed==通过 才 save(node=test)**；未完成输出"处理中"引导续查（不写 test） |
-| 上线审批（环节7/8，双轨+推送即结束） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 报告（node=report）→ submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流），返回 approval_id/status；审批状态由 wf_sub_08 查询 | **返回 `approval_id` 为工单级单值（顶层），工单内多商品体现在 `offers[]`**
+| 测试轮询取结果（环节6/8，页面自动巡检 · 后端查询承载） | `wf_sub_13` | req_id | 后端按 req_id 取 **test_pending** 的 globalId → **短窗口轮询 C3 `get_test_progress`，读 done/failed/failIndex** → 完成则 C4 `get_test_result` → CODE_MAP_FIXED_CASES(节点315：31 条固定用例/九章节报告，受理验证逐场景) → CODE_DOWNLOAD_TEST_REPORT → **test_passed==通过 才 save(node=test)**；未完成页面续轮询（不写 test）。**由配置工作台页面自动巡检触发，智能体不直调** |
+| 上线审批（环节7/8，双轨+推送即结束） | `wf_sub_06` | req_id | 串行自查 5 类结果 → CODE_SUMMARY_APPROVAL 汇总 → LLM 报告（node=report）→ submit_release_approval(approval-type=launch) → **推送即结束**（不轮询/不分流），返回 approval_id/status；审批状态由页面自动巡检呈现 | **返回 `approval_id` 为工单级单值（顶层），工单内多商品体现在 `offers[]`**
 | 监控运维（环节8/8，异常分支） | `wf_sub_07` | offer_id / date_range | query_product_monitor → 异常 → send_alert → CODE_OP_ROOT_CAUSE(/ops/root-cause) → CODE_OP_CREATE_WO(/ops/work-orders) |
-| 审批进度查询（辅助，双轨） | `wf_sub_08` | approval_id / offer_id | query_approval_status → LLM 状态摘要 | **查询按 `req_id` 返回该需求全量商品（一张审批单内含多商品），`offers[]` 各元素冗余携带同一工单级 `approval_id`；进度字段（status/current_node/approver/opinion）为工单级、各元素一致**
+| 审批进度查询（辅助，双轨，页面自动巡检） | `wf_sub_08` | approval_id / offer_id | query_approval_status → LLM 状态摘要（**由页面自动巡检触发，智能体不直调**） | **查询按 `req_id` 返回该需求全量商品（一张审批单内含多商品），`offers[]` 各元素冗余携带同一工单级 `approval_id`；进度字段（status/current_node/approver/opinion）为工单级、各元素一致**
 | 存量产品查询（辅助，只读） | `wf_sub_09` | 产品名称/ID | CODE_OP_QUERY_OFFER（内嵌 knowledge/存量产品目录_清洗后.json） |
 | 存量合规扫描（辅助） | `wf_sub_10` | 存量范围 | CODE_OP_SHELF_COMPLIANCE(/shelf-compliance) |
 
-> **稽核/测试两阶段交互门禁**：环节5 `wf_sub_05` 自查、`submit_release_approval` 四环节硬校验均以 `node_name=spec`/`node_name=test` 为准；`spec` 只在 `wf_sub_12` 稽核**真正完成且 pass==1** 后写入、`test` 只在 `wf_sub_13` 测试**真正完成且 test_passed==通过** 后写入，故"稽核/测试未完成不允许推进下一环节"由落库键天然保证（`audit_pending`/`test_pending` 为临时态，不替代 `spec`/`test`）。
+> **稽核/测试结果落库门禁（V3.13 页面自动巡检）**：环节5 `wf_sub_05` 自查、`submit_release_approval` 四环节硬校验均以 `node_name=spec`/`node_name=test` 为准；`spec` 只在环节4b **页面自动巡检取回且 pass==1** 后写入、`test` 只在环节6b **页面自动巡检取回且 test_passed==通过** 后写入，故"稽核/测试未完成不允许推进下一环节"由落库键天然保证（`audit_pending`/`test_pending` 为临时态，不替代 `spec`/`test`）。
 
 ### 5.3 关键算法与提示词要点
 
 1. **req_id 生成规则（统一键）**：由 `wf_sub_00` 内嵌代码节点 CODE_RENDER_REQ 以系统时钟生成 `PLAN` + yyyyMMddHHmmss + 3 位随机数（如 `PLAN20260913143025087`），LLM 不参与；会话内沿用最近值（上传 .xlsx 时 skill 只产出文本、不生成 req_id，req_id 仍由工作流生成）。后端硬校验：格式 `PLAN\d{17}`（非法 5002）；requirement 环节同键覆盖写（删除旧记录后重插）。**V3.10 一品多品父子键**：父 `req_id` 仍严格满足 `PLAN\d{17}`（后端校验不变，零改动）；同一需求文档的 N 个新增销售品以**子序号 `offer_seq`（1..N）** 区分，子键以 `req_id` + `offer_seq` 复合寻址（落库时以 `req_id` 为主键、`offer_seq` 内嵌于 `config_json`/`plan_json` 的 `offers[]` 元素），**不新增 req_id、不扩展后端校验**。详见 6.6 章 G2。
 2. **字段体系与补全策略（3 模块/9 分类/24 字段）**：字段来源仅"原始需求/AI补全"两态；取值链——**原始需求 → 相似产品（最高相似度，标 AI补全）→ 本体默认值（引擎补全，标 AI补全）→ 待补充**，禁止跳级虚构。**仅套餐档位（价格）未提取到时维持"待补充"**（禁推理/禁照搬）；套餐编码恒填"系统待生成"（不计入待补充）；引擎对"待补充"字段按本体默认值推理补全（三类资源→"无"、适用地区→全国、计费周期→自然月等）。pending_fields 判定唯一事实源=引擎反查（value="待补充"），LLM 不自判。
 3. **门禁体系**：① 方案确认门禁（智能体语义识别；后端 save_product_config 已移除 CONFIRMED 标记校验）；② 需求工单审批二次确认（`wf_sub_11` 承接）；③ 上线审批四环节硬校验（后端 latestRecord(req_id,"config"/"spec"/"fee"/"test") 全非空）；④ 待补充字段时**不保存执行方案、不产出 req_id**（从源头禁止进入智能配置）。
-4. **测试进度轮询（CODE_POLL_PROGRESS）**：在 `wf_sub_13`（6b 轮询流）内短窗口轮询，间隔 5s、单次窗口最多 60 次（5 分钟）；窗口耗尽非中断，输出"测试处理中"引导用户重复触发续查；连续 5 次查询失败终止（E40c）；done=true 通过、failed=true 取完整结果供报告定位失败原因（E12）；整体超时（E13）；分支出参 `done/failed/failIndex/fail_reason`。
+4. **测试进度轮询（环节6b 页面自动巡检 · 后端查询承载）**：由配置工作台页面自动巡检触发后端短窗口轮询，间隔 5s、单次窗口最多 60 次（5 分钟）；窗口耗尽非中断，页面续轮询；连续 5 次查询失败终止（E40c）；done=true 通过、failed=true 取完整结果供报告定位失败原因（E12）；整体超时（E13）；分支出参 `done/failed/failIndex/fail_reason`。
 5. **31 条固定用例（CODE_MAP_FIXED_CASES 节点315）**：确定性构建 ACC-001~012 / BILL-001~010 / CUST-001~009（维度 ACC|BILL|CUST、等级 P0 拦截/P1 警告/P2 提示），+ 维度汇总 + 整体结论 + 缺陷清单 + 场景覆盖核对 + 被测一致性核对（E26）；LLM 按 K3 模板渲染九章节正式版报告（4.1 受理验证独立成节（**逐场景 orderId/offerInstId 结论**），4.2 计费验证，4.3 客服验证，等；`objTestSceneRel` 的 resultMsg/summaryDesc/suggestion 并入相应章节）；31 条清单禁止增删改，结果仅依出参判定。
 6. **模型纪律**：LLM 节点固定 `model=qwen3-30b-a3b`、temperature=0.2、top_p=0.5、max_tokens=2048；提示词末尾"仅输出对应出参字段"；生成/汇总/解读场景"逐字引用输入数据，不新增结论"。
 
@@ -647,7 +649,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - **plan_json 组结构**：`{offer_type ∈ {单品,融合}, main_offer{role,fields}, member_offers[{role,fields}], group_rules, pending_fields[{role,field}]}`；成员 fields 复用 24 字段注册表；**兼容性铁律**——入参不传组结构=单商品模式，行为与旧版完全一致，所有新增字段可缺席。
 - **取值链（逐成员独立）**：原始需求（成员级）→ 相似融合品 offer_group → 本体默认值 → 待补充（仅各成员价格类）；价格禁止跨成员照搬。
 - **引擎两轮推理**：① 成员内推理（复用 action=reason 逐成员）；② 组级校验（action=group_check：互斥/依赖/退订联动，输出 group_violations[]）。
-- **工作流落点**：wf_sub_02 CODE_FUSION_GROUP_ECHO（六列表格/主成员加粗）；wf_sub_12 error_list 新增 `group` 类目；wf_sub_05 compare_list 每项新增 `member_role` 键；wf_sub_13 组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对。
+- **工作流落点**：wf_sub_02 CODE_FUSION_GROUP_ECHO（六列表格/主成员加粗）；环节4 稽核结果（页面巡检取回）error_list 新增 `group` 类目；wf_sub_05 compare_list 每项新增 `member_role` 键；环节6 测试结果（页面巡检取回）组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对。
 - **验收增量 F1~F8**：融合提报六列表格/缺成员价格待补充（role 定位）/成员越界组级 violation/落地 PARTIAL 含成员定位/组级互斥拦截/资费逐成员输出/单商品回归无差异。
 
 ### 6.2 需求分析模板驱动重构（原第 2 章）
@@ -721,9 +723,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 1' 需求工单审批 | `wf_sub_11` | 无改动（requirement 轨，父 req_id） |
 | 2 需求分析 | `wf_sub_01` 模板轨 | 逐品（offer_seq 循环）跑模板轨六步，融合组场景走 6.1 机制；生成含 4 品的 `plan_json{offers[],group_rules}`；止于确认点 |
 | 3 智能配置 | `wf_sub_02` + CODE_FUSION_GROUP_ECHO | 循环逐品 `save_product_config`，`CODE_FUSION_GROUP_ECHO` 回显融合成员（四档主卡 + 副卡 7320110001600005） |
-| 4 规格稽核 | `wf_sub_03` + `wf_sub_12` | 需求文档可**直接作为稽核 Excel**（B1 上传），逐品异步通知 + 轮询；`error_list` 含 group 类目 |
+| 4 规格稽核 | `wf_sub_03`（发起）+ 页面自动巡检（后端查询承载） | 需求文档可**直接作为稽核 Excel**（B1 上传），逐品异步通知；结果由**配置工作台页面自动巡检**取回（前端轮询 `result/query` + 后端 `/audit/sql/query`）；`error_list` 含 group 类目 |
 | 5 资费校准 | `wf_sub_05` | 成员分组（member_role）逐品校验，`compare_list` 含 member_role |
-| 6 自动测试 | `wf_sub_04` + `wf_sub_13` | 逐品发起 + 轮询；组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对（副卡可选依赖） |
+| 6 自动测试 | `wf_sub_04`（发起）+ 页面自动巡检（后端查询承载） | 逐品发起 → 结果由**配置工作台页面自动巡检**取回（前端轮询 `result/query` + 后端 `/test/offer/progress`、`/test/offer/result`）；组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对（副卡可选依赖） |
 | 7 上线审批 | `wf_sub_06` | 父 req_id 汇总四品结果，四环节硬校验（config/spec/fee/test 齐全）后推送 |
 | 8 监控运维 | `wf_sub_07` | 逐品（offer_id）监控，无结构改动 |
 
@@ -780,12 +782,12 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | `wf_sub_05` | 资费校准 | 逐品校验，`compare_list` 含 `member_role` 分组 | 内嵌循环 |
 | `wf_sub_06` | 上线审批 | 按品校验，父 `req_id` 汇总 N 品四环节结果（config/spec/fee/test 齐全）后推送 | 逻辑扩展 |
 | `wf_sub_07` | 监控运维 | 逐品（`offer_id`）监控聚合 | 聚合/可选 |
-| `wf_sub_08` | 审批进度查询 | 旁路只读，天然支持 | 零改造 |
+| `wf_sub_08` | 审批进度查询 | 旁路只读（页面自动巡检触发），天然支持 | 零改造 |
 | `wf_sub_09` | 存量查询 | 旁路只读 | 零改造 |
 | `wf_sub_10` | 存量合规辅助 | 旁路只读 | 零改造 |
 | `wf_sub_11` | 需求工单审批 | 父 `req_id` 天然支持 | 零改造 |
-| `wf_sub_12` | 规格稽核轮询 | 父 `req_id` + 子 `offer_seq`（结果按 `requestIds` 归集） | 内嵌循环 |
-| `wf_sub_13` | 测试轮询 | 父 `req_id` + 子 `offer_seq`（结果按 `globalId` 归集） | 内嵌循环 |
+| `wf_sub_12` | 规格稽核结果取回 | 父 `req_id` + 子 `offer_seq`（结果按 `requestIds` 归集）；页面自动巡检触发 | 内嵌循环 |
+| `wf_sub_13` | 测试结果取回 | 父 `req_id` + 子 `offer_seq`（结果按 `globalId` 归集）；页面自动巡检触发 | 内嵌循环 |
 
 ##### 6.6.5.5 分环节推进顺序（多品的时序纪律）
 
@@ -795,9 +797,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 2. **需求审批（1'）**：`wf_sub_11` 按父 `req_id` 发起（N 品共用一张工单）。
 3. **分析（环节2）**：`wf_sub_01` 逐品跑模板轨 → 合并为单份 `plan_json{offers[]}` → 止于确认点。
 4. **配置（环节3）**：`wf_sub_02` 逐品 `save_product_config`。
-5. **稽核（环节4）**：`wf_sub_03` 逐品组装 `sales_id` → 一次性发起 → `wf_sub_12` 轮询取回逐品结果；`error_list` 含 group 类目。
+5. **稽核（环节4）**：`wf_sub_03` 逐品组装 `sales_id` → 一次性发起 → 页面自动巡检取回逐品结果；`error_list` 含 group 类目。
 6. **资费（环节5）**：`wf_sub_05` 逐品校验（member_role 分组）。
-7. **测试（环节6）**：`wf_sub_04` 逐品发起 + `wf_sub_13` 逐品轮询；组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对。
+7. **测试（环节6）**：`wf_sub_04` 逐品发起 + 页面自动巡检取回逐品结果；组场景 S_GROUP_BIND/S_ADDON_SUB + E26 组核对。
 8. **审批（环节7）**：`wf_sub_06` 汇总 N 品四环节齐全后推送。
 
 ##### 6.6.5.6 关键风险与对策
@@ -924,9 +926,9 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 | # | 部署项 | 配置值 |
 | --- | --- | --- |
-| 1 | 工作流 JSON | 14 个子工作流（`工作流配置/智能体工作流集V1.6/`，含稽核两阶段 wf_sub_03/wf_sub_12、测试两阶段 wf_sub_04/wf_sub_13），`gen_workflows.py` 生成，ALL_OK |
-| 2 | 智能体提示词 | 3.2 意图→工作流映射表 + 确认语义识别 + 步进式纪律 + 超范围拒答；**另需单独配置「产销品数字员工」提示词（2.4.1），数字员工独立配置并关联产销品加载智能体** |
-| 3 | 子工作流节点 | 代码节点（CODE_*）与插件端点逐条核对（wf_sub_01 节点106~113、wf_sub_04/13 测试两阶段、wf_sub_03/12 稽核两阶段，节点315） |
+| 1 | 工作流 JSON | 14 个子工作流（`工作流配置/智能体工作流集V1.6/`，含稽核发起 wf_sub_03 + 结果取回 wf_sub_12、测试发起 wf_sub_04 + 结果取回 wf_sub_13，后二者由页面自动巡检触发），`gen_workflows.py` 生成，ALL_OK |
+| 2 | 智能体提示词 | 3.2 意图→工作流映射表（**结果获取由页面自动巡检，不直调 wf_sub_12/13/08**）+ 确认语义识别 + 步进式纪律 + 超范围拒答；**另需单独配置「产销品数字员工」提示词（2.4.1），数字员工独立配置并关联产销品加载智能体** |
+| 3 | 子工作流节点 | 代码节点（CODE_*）与插件端点逐条核对（wf_sub_01 节点106~113、wf_sub_04/13 测试发起/取回、wf_sub_03/12 稽核发起/取回，节点315） |
 | 4 | knowledge/ 知识库 | K1~K5 + K5存量报文 + ontology-fields + seed_offer_groups + 存量产品目录_清洗后 |
 | 5 | 生成器 | `gen_workflows.py`（代码节点内嵌 CODE_* 逻辑，固定用例与九章节模板内嵌一致） |
 | 6 | 网关地址 | `BASE_URL=http://10.86.13.201:31281`（替换真实实现仅改此值） |
@@ -943,7 +945,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 驼峰 | 接口原始出参字段（不改名；特例 `offerId`） | `globalId`、`testScenes`、`orderId`、`offerInstId`、`presetValue`、`testValue` |
 | req_id + node_name | 节点结果存储寻址 | req_id=`PLAN20260913143025087`、node_name=`spec` |
 | 枚举 | 字段来源（原始需求/AI补全）；稽核场景（spec/fee/all）；告警级别（high/middle/low）；测试场景编码（S_O_TC/S_ADD_CARD/S_U_TC/S_GROUP_BIND/S_ADDON_SUB）；测点编码（P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE）；**需求文档关联关系（100000 可选依赖 / 110000 强制依赖 / 120000 默认依赖 / 130000 赠送 / 200000 互斥 / 410000 不可迁转 / 100100 自主版，V3.10）** | — |
-| 失败环节编码 | STAGE1_CONFIG→wf_sub_02 / STAGE2_AUDIT→wf_sub_03（发起）/wf_sub_12（轮询续查） / STAGE3_FEE→wf_sub_05 / STAGE4_TEST→wf_sub_04（发起）/wf_sub_13（轮询续查） | — |
+| 失败环节编码 | STAGE1_CONFIG→wf_sub_02 / STAGE2_AUDIT→wf_sub_03（发起，结果续由页面巡检） / STAGE3_FEE→wf_sub_05 / STAGE4_TEST→wf_sub_04（发起，结果续由页面巡检） | — |
 
 ### 7.3 异常处理矩阵（E1~E31，E33~E40）
 
@@ -954,25 +956,25 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | E3 | 未确认即触发配置 | 智能体语义识别 | 拒绝进入执行主干，引导回复"确认配置" |
 | E5 | 自查无执行方案 | wf_sub_02 自查 | CODE_EXTRACT_RECORD total==0 终止，引导重走需求分析 |
 | E6 | 配置落地 FAIL | wf_sub_02 | 主干中断→异常模板④，引导重新执行/修改执行方案 |
-| E7 | 实时稽核超时 | ~~wf_sub_03~~（实时稽核已退出主链路，规格稽核改异步两阶段 wf_sub_03/wf_sub_12） | 重试 1 次仍超时→中断，保留请求报文 |
-| E8 | 稽核 pass=0 | wf_sub_12 | 中断（可联动 send_alert high），打印 error_list 明细（不写 spec） |
+| E7 | 实时稽核超时 | ~~wf_sub_03~~（实时稽核已退出主链路，规格稽核改异步：发起 wf_sub_03 + 结果页面巡检） | 重试 1 次仍超时→中断，保留请求报文 |
+| E8 | 稽核 pass=0 | 环节4b 页面巡检（后端查询承载） | 中断（可联动 send_alert high），页面打印 error_list 明细（不写 spec） |
 | E9 | 资费校验 pass=0 | wf_sub_05 | 中断，打印风险清单，引导修改执行方案 |
 | E10 | 测试发起失败 resultCode=1 | wf_sub_04（6a 发起） | 中断 |
 | E11 | 测试场景为空 | wf_sub_04（6a 发起） | 中断，引导修改执行方案后重测 |
-| E12 | 轮询连续 5 次失败 / failed=true | wf_sub_13 CODE_POLL_PROGRESS | 中断，保留 globalId 人工续查 |
-| E13 | 测试整体超时 | wf_sub_13 CODE_POLL_PROGRESS | 中断，凭 globalId 人工续查 |
-| E14 | orderId/offerInstId 为空 | wf_sub_13 报告生成 | 报告标注"未获取到受理凭证，需人工核实"（不中断） |
+| E12 | 轮询连续 5 次失败 / failed=true | 环节6b 页面巡检（后端查询承载） | 中断，保留 globalId 人工续查 |
+| E13 | 测试整体超时 | 环节6b 页面巡检（后端查询承载） | 中断，凭 globalId 人工续查 |
+| E14 | orderId/offerInstId 为空 | 环节6b 页面巡检报告生成 | 报告标注"未获取到受理凭证，需人工核实"（不中断） |
 | E15 | 未经确认发起审批 | wf_sub_06 触发门禁/后端硬校验 | 四环节结果不齐拒绝推送 |
 | E16 | 审批推送失败 | wf_sub_06 | 重试 1 次后终止，修复后重推（幂等） |
 | E17 | 监控接口失败 | wf_sub_07 | 终止本轮，下周期自动重试 |
 | E18 | 续跑参数非法 | fail_node 非法/req_id 查无 | 按首次执行处理 |
 | E19 | 重新执行写接口重复防护 | 各环节自查前置 | 已存成功记录→跳过写接口直接回放 |
 | E20 | 主干中段接口网络错误 | wf_sub_03/05/04 | 中断→引导稍后重新执行 |
-| E21 | 审批进度查询无审批单 | wf_sub_08 | 提示先发起审批 |
-| E22 | 查询缺少必填参数 | wf_sub_07/08 | 先追问补齐，不发起调用 |
+| E21 | 审批进度查询无审批单 | 页面自动巡检（后端查询承载） | 提示先发起审批 |
+| E22 | 查询缺少必填参数 | wf_sub_07/（页面巡检按 req_id） | 先追问补齐，不发起调用 |
 | E23 | 环节结果存储写入失败 | 各环节 save_node_result | 打印结果不受影响，续跑退化为全量重跑 |
 | E24 | 审批未通过即要求确认上线 | wf_sub_06/07 | 拒绝生成监控运维方案 |
-| E26 | 被测一致性核对不一致（e26=0） | wf_sub_13 节点315 | 八章结论从严标注并提示人工核实，不输出通过性明细 |
+| E26 | 被测一致性核对不一致（e26=0） | 环节6b 页面巡检报告节点315 | 八章结论从严标注并提示人工核实，不输出通过性明细 |
 | E30 | 模板路由失败 | wf_sub_01 产品识别 | product_type ∉ 枚举→中断询问 |
 | E31 | 要素提取质量闸 FAIL | wf_sub_01 节点108 | quality_gate=FAIL 输出待补路径，禁止进入合并/组装 |
 | E32 | schema 文件缺失/损坏 | wf_sub_01 取模板 | 中断 |
@@ -982,12 +984,12 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | E36 | 异步稽核通知失败（无 request_id） | wf_sub_03 `audit_async_notify`（B2） | 重试 1 次，仍失败→中断，保留 sales_id 供人工续查 |
 | E37 | AI 稽核结果落库失败 | wf_sub_03 `audit_insert_result`（B3） | 中断（回调前置记录缺失会导致回调丢弃），修复后重跑该品 B2+B3（B3 幂等由 batchId 保证） |
 | E38a | 稽核发起无 requestIds | wf_sub_03（4a 发起流） | 中断，提示重新上传/发起 |
-| E38b | 稽核轮询单次窗口未完成 | wf_sub_12 CODE_POLL_AUDIT | **非中断**：输出"稽核处理中，请稍后回复【查询稽核结果】"，引导重复触发（不写 spec，不允许推进） |
-| E38c | 稽核轮询连续失败/整体超时 | wf_sub_12 CODE_POLL_AUDIT | 连续 5 次失败或整体超时→中断，保留 requestIds 人工续查 |
-| E39 | 稽核 SQL 结果为空/异常 | wf_sub_12 `audit_sql_query`（B4 取结果） | 中断，打印 resultCode/resultMsg，引导重新执行 |
+| E38b | 稽核轮询单次窗口未完成 | 环节4b 页面巡检（后端查询承载） | **非中断**：页面显示"稽核处理中"，自动续轮询（不写 spec，不允许推进） |
+| E38c | 稽核轮询连续失败/整体超时 | 环节4b 页面巡检（后端查询承载） | 连续 5 次失败或整体超时→中断，页面提示，保留 requestIds 人工续查 |
+| E39 | 稽核 SQL 结果为空/异常 | 环节4b 页面巡检 `audit_sql_query`（B4 取结果） | 中断，打印 resultCode/resultMsg，引导重新执行 |
 | E40a | 测试发起无 globalId | wf_sub_04（6a 发起流） | 中断，提示重新发起测试 |
-| E40b | 测试轮询单次窗口未完成 | wf_sub_13 CODE_POLL_PROGRESS | **非中断**：输出"测试处理中，请稍后回复【查询测试结果】"，引导重复触发（不写 test，不允许推进） |
-| E40c | 测试轮询连续失败 | wf_sub_13 CODE_POLL_PROGRESS | 连续 5 次失败→中断，保留 globalId 人工续查 |
+| E40b | 测试轮询单次窗口未完成 | 环节6b 页面巡检（后端查询承载） | **非中断**：页面显示"测试处理中"，自动续轮询（不写 test，不允许推进） |
+| E40c | 测试轮询连续失败 | 环节6b 页面巡检（后端查询承载） | 连续 5 次失败→中断，页面提示，保留 globalId 人工续查 |
 | E41 | 需求文档（.xlsx）解析失败/无销售品/关联关系非法 | **智能体挂载 skill**（调 `/requirement/parse-xlsx`） | 中断，提示检查 Excel 格式（可选包/关联关系 sheet）与内容；`offers[]` 为空或关系枚举越界（∉ 7 类）视为 E41（V3.10 新增解析能力，V3.11 由智能体 skill 承担、工作流外） |
 
 ### 7.4 知识库文档清单与维护（详见《细化设计方案》第 4 章）
@@ -1016,7 +1018,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 ### 9.1 分层测试
 
 1. **插件级**：逐工具连通性/入参提取/出参归纳（裸报文、实时稽核同步、存储读写一致、globalId 传递）。
-2. **工作流级**：正向用例（提报→审批→方案→确认→逐环节推进→审批）；反向用例（**未确认不配置、提报单未确认不发起审批、执行方案未确认不调度 wf_sub_02、跳步审批被拒**）；步进式推进用例（每环节止于反馈点）；异常中断与续跑用例；硬校验用例（四环节不全拒审批）；消息查询用例；分支用例；**链路验证**（`wf_runner.py --chain --chain-skip wf_sub_12,wf_sub_13,wf_sub_08`，验证不调用查询子流时主干串链仍不报错、无中止）。
+2. **工作流级**：正向用例（提报→审批→方案→确认→逐环节推进→审批）；反向用例（**未确认不配置、提报单未确认不发起审批、执行方案未确认不调度 wf_sub_02、跳步审批被拒**）；步进式推进用例（每环节止于反馈点）；异常中断与续跑用例；硬校验用例（四环节不全拒审批）；结果获取用例（**页面自动巡检取回 spec/test 并翻转页签**）；分支用例；**链路验证**（`wf_runner.py --chain --chain-skip wf_sub_12,wf_sub_13,wf_sub_08`，验证不调用结果取回子流时主干串链仍不报错、无中止）。
 3. **智能体级**：多轮对话体验、确认交互、引导问题命中、FAQ 准确率。
 4. **专项回归**（见第 6 章）：融合 F1~F8、模板轨六步、本体校验闸 E33、存量报文三道闸、清洗 C1~C15 可重复执行；**需求文档驱动回归（V3.10 解析 / V3.11 skill 承载）**：.xlsx 上传→**智能体 skill 解析**（4 品 + 关联关系）为结构化文本→作为 `requirement_text` 调 `wf_sub_00` 渲染提报单、父/子键一品多品逐品加载、品间可选依赖复用融合组、E41 非法文档中断。
 
@@ -1029,7 +1031,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | 步进式推进纪律 | 每环节 100% 输出结果 + 下一步建议并止于反馈点；无跳步/并行/擅自推进 |
 | 异常处置完整性 | 100% 输出异常环节/原因/建议 + 重新执行/修改执行方案引导 |
 | 续跑正确性 | 已成功环节不重复执行，续跑起点与失败环节一致 |
-| 消息查询可用性 | 审批进度/监控结果命中率 100% |
+| 消息查询可用性 | 监控结果查询命中率 100%；稽核/测试/审批进度由页面自动巡检呈现成功率 100% |
 | 需求要素映射准确率 | ≥95%（字段名与 24 字段注册表一致） |
 | AI补全字段标记正确率 | 100%（备注仅两态） |
 | 待补充规则符合率 | 100%（仅价格类待补充；套餐编码恒"系统待生成"） |
@@ -1047,8 +1049,8 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 ## 10. 上线与运维
 
 1. **发布**：智能体发布到小思页面；工作流/插件保持版本可回退。
-2. **监控**：每日定时（或运维对话触发）运行 `wf_sub_07`；用户可随时消息触发即时查询。
-3. **审批跟踪**：需求工单审批（wf_sub_11 用户确认后发起）与上线审批（launch 轨）推送后可随时消息查询；驳回时同步驳回原因并引导修改后重新发起。
+2. **监控**：每日定时（或运维对话触发）运行 `wf_sub_07`；用户可随时通过工作台页面自动巡检查看结果。
+3. **审批跟踪**：需求工单审批（wf_sub_11 用户确认后发起）与上线审批（launch 轨）推送后由**配置工作台页面自动巡检**呈现进度；驳回时同步驳回原因并引导修改后重新发起。
 4. **迭代机制**：知识库持续更新（新规范/新资费）；提示词与阈值按误判情况调优；后端端点与工作流代码节点按系统升级同步维护。
 5. **运维报表**：每周汇总执行量、拦截量、测试通过率，评估产销品加载智能体效能。
 
@@ -1060,7 +1062,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 | --- | --- |
 | 接口不稳定/字段变更 | 插件层隔离；出参加必填校验；替换真实实现契约不变 |
 | 实时稽核慢/超时 | 60s 超时重试 1 次；超时转人工并保留请求报文 |
-| 稽核/测试异步长时间未完成 | 轮询采用短窗口（单次 5s×60=5 分钟，窗口耗尽非错误、输出"处理中"引导续查）；连续 5 次失败或整体超时→中断，保留 requestIds/globalId 人工续查 |
+| 稽核/测试异步长时间未完成 | 页面自动巡检短窗口轮询（单次 5s×60=5 分钟，窗口耗尽非错误、页面自动续轮询）；连续 5 次失败或整体超时→中断，保留 requestIds/globalId 人工续查 |
 | 大模型解析幻觉 | 知识库增强 + 温度 0.2 + 结构化输出 + 来源标记 + 实时稽核兜底 |
 | 配置落地与方案不一致 | 智能配置直读存储 JSON 原样透传，禁二次加工 |
 | 用户未确认即触发生产写入 | 方案就绪止于确认点；确认语义识别命中才进入执行主干（后端确认门禁已移除） |
@@ -1074,7 +1076,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 
 ---
 
-## 附：快速实施 Checklist（当前基线 V3.11）
+## 附：快速实施 Checklist（当前基线 V3.13）
 
 ### A. 工作流 JSON 路线（当前基线，已就绪项以 [x] 标注）
 - [x] 知识资产迁至 `knowledge/`：K1~K5、ontology-fields、seed_offer_groups、templates 注册表、存量产品目录_清洗后、K5 存量报文
@@ -1083,7 +1085,7 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - [x] 确定性逻辑内嵌 type=6 代码节点（CODE_*）取代技能包脚本子命令
 - [x] 智能体按 3.2 提示词语义识别直调（职责分层：只做语义识别/业务理解/结果表达）
 - [ ] **单独配置「产销品数字员工」提示词（2.4.1）并关联「产销品加载智能体」**：数字员工独立配置（人设/话术/开场白/引导问题），通过关联复用加载智能体全部业务能力
-- [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+推送即结束，审批状态由 wf_sub_08 查询）、监控运维（根因闭环）、审批进度/存量查询/存量合规辅助子流
+- [x] 环节覆盖：需求提报（止于确认点）+ wf_sub_11 发起需求审批、需求分析（模板轨）、智能配置（融合回显）、规格稽核（组维度）、资费校准（成员分组）、自动测试（31 条固定用例+九章节报告）、上线审批（双轨+推送即结束，审批状态由页面自动巡检呈现）、监控运维（根因闭环）、存量查询/存量合规辅助子流
 - [x] 主链路端点实跑验证（2026-09-19）：result/save、result/query、audit/realtime、product/config/save、billing/rules/verify、test/offer/start、test/offer/result、approval/submit、product/monitor、similar/offer/query live 生效
 - [ ] 14 个既有契约端点 + 8 个适配端点逐一连通（含错误码验证）；仍占位：report/download、script/download（backend_pending=1 回退）、/ops/root-cause、/ops/work-orders、/shelf-compliance、/validate-nested、/explain 待逐项确认
 - [ ] 端到端联调：正向全流程 + 反向用例（未确认不配置、需求审批未确认不发起、跳步审批被拒、逐环节推进止于反馈点、稽核驳回中断引导、续跑不重复写）+ 18 销售品兼容回归
@@ -1095,8 +1097,8 @@ InterfaceFacade (单例门面, 注入 AppStoreV16Controller)
 - [ ] **`application.yml` 新增 `prodai.appstore.interface.*` 配置组** + `@ConfigurationProperties` 绑定；`application-dev.yml`（mode=mock，返回模拟报文）/`application-prod.yml`（mode=real，直连真实接口）分环境覆盖
 - [ ] 后端 InterfaceFacade + Spring 策略工厂（`mode=mock|real`，`@ConditionalOnProperty` 装配）落地，对外 `/api/v1/appstore/*` 契约不变
 - [ ] 相似度分析映射 A1（信封组装/`similarOfferList[]`→`similarOffer` 取 Top1 归一；**real 无 offerInfo，按 similarOfferId 从 K4/K5 补齐 24 字段**，4.5.5 第 6 点）
-- [ ] 智能稽核四接口适配 B1~B4（上传 multipart / 异步通知 GET / 插入结果裸体 / SQL 查询信封）+ **稽核两阶段子流拆分**（wf_sub_03 发起 + wf_sub_12 轮询 + CODE_POLL_AUDIT 短窗口轮询 + audit_pending/spec 落库键）
-- [ ] 测试四接口映射 C1~C4（`resultObject.*` 解包归一，CODE_POLL_PROGRESS 复用）+ **测试两阶段子流拆分**（wf_sub_04 发起 + wf_sub_13 轮询 + CODE_POLL_PROGRESS 短窗口轮询 + test_pending/test 落库键）
+- [ ] 智能稽核四接口适配 B1~B4（上传 multipart / 异步通知 GET / 插入结果裸体 / SQL 查询信封）+ **稽核"发起 + 页面自动巡检取结果"**（wf_sub_03 发起 + 页面轮询 result/query + 后端 B4 短窗口轮询 + audit_pending/spec 落库键；智能体不直调 wf_sub_12）
+- [ ] 测试四接口映射 C1~C4（`resultObject.*` 解包归一）+ **测试"发起 + 页面自动巡检取结果"**（wf_sub_04 发起 + 页面轮询 result/query + 后端 C3/C4 短窗口轮询 + test_pending/test 落库键；智能体不直调 wf_sub_13）
 - [ ] 配置项 `prodai.appstore.interface.eop.*` 注入（base-url/app-key/dst-sys-id/svc-code/sign/upload-file-field/timeout）+ `poll.audit.*`/`poll.test.*` 轮询参数
 - [ ] mock 与 real 出参归一结构同构校验（同一 Adapter 接口一致性）
 - [ ] 现场联调：`mode=real` 指向 EOP，9 接口逐一连通（含 B2↔B3 顺序、B4/C3 轮询、异常码 E35~E40）
