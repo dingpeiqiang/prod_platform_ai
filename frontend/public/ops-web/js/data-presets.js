@@ -1618,7 +1618,6 @@ const campusProductConfig = {
       saleEndDate: Object.assign({ value: '2099-12-31', required: true, label: '销售终止日月', type: 'text' }, A()),
       pubChannel: Object.assign({ value: '营业厅、APP', required: true, label: '发布渠道' }, P()),
       pubCity: Object.assign({ value: '全省', required: true, label: '发布地市', type: 'select', options: selOpts(['全省', '非全省']) }, R()),
-      pubCityDetail: Object.assign({ value: '22个地市', required: true, label: '发布地市明细' }, R()),
     };
 
     // ---- 资源配置模块：仅保留 语音/流量/短信，按 语音→流量→短信 排序 ----

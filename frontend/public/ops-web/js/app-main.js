@@ -25,15 +25,35 @@
         </div>
       </nav>
     `,
-    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'], stage: '', stepStage: '' }; },
+    data(){ return { navs: ['需求提报','需求分析','销售品智能配置','配置规格稽核','资费校准','销售品自动测试','受理验证','上线审批','监控运维'], stage: '', stepStage: '', nodeResults: {} }; },
     created(){
       const q = window.__WB_QUERY || {};
       this.stage = q.stage || '';
       // step_stage：审批进度查询子流（stage=08）由工作流按真实审批矩阵计算的业务进度索引，
       // 与 stage（页面默认 Tab 选择）解耦，避免步骤条无条件停在「上线审批」。
       this.stepStage = (q.step_stage !== undefined && q.step_stage !== null && q.step_stage !== '') ? String(q.step_stage) : '';
+      this.nodeResults = (window.__WB_PRODUCT && window.__WB_PRODUCT.nodeResults) || {};
+    },
+    mounted(){
+      // 商品解析/轮询（wb-product-change）后同步节点结果，驱动自动测试→受理验证的步骤条推进。
+      this._onProductChange = () => {
+        this.nodeResults = (window.__WB_PRODUCT && window.__WB_PRODUCT.nodeResults) || {};
+      };
+      window.addEventListener('wb-product-change', this._onProductChange);
+    },
+    unmounted(){
+      if (this._onProductChange) window.removeEventListener('wb-product-change', this._onProductChange);
     },
     computed: {
+      // 节点结果中是否存在某 node_name（值可能为对象/JSON 字符串，空对象视为未产出）。
+      hasNodeResult(){
+        return (name) => {
+          const raw = (this.nodeResults || {})[name];
+          if (!raw) return false;
+          const obj = typeof raw === 'object' ? raw : (() => { try { return JSON.parse(raw) } catch (e) { return null } })();
+          return !!(obj && Object.keys(obj).length);
+        };
+      },
       // stage -> 导航步进索引（环节口径：08/09/10 辅助子流按就近展示；00 提报与 11 需求工单发起/审批同属「需求提报」环节）
       activeIndex(){
         // step_stage 优先：工作流已按真实审批进度给出业务步骤索引（如 08 审批查询可能落在 0/1/7/8）
@@ -42,10 +62,16 @@
           const n = parseInt(ss, 10);
           if (!isNaN(n) && n >= 0 && n < this.navs.length) return n;
         }
+        // 自动化测试环节（06/04）：按测试完成态动态定位——
+        // 测试进行中（仅 test_pending 临时态、尚无 test 结论）停在「销售品自动测试」(5)；
+        // 测试完成后（后端落库 node_name=test）自动推进到「受理验证」(6)。
+        const st = this.stage || '';
+        if (st === '06' || st === '04') {
+          return this.hasNodeResult('test') ? 6 : 5;
+        }
         // 静态回落映射（口径对齐 gen_workflows 步骤条 num 索引，与读取 stage-map.json）
         // 0需求提报 1需求分析 2智能配置 3规格稽核 4资费校准 5自动测试 6受理验证 7上线审批 8监控运维
         var map = { '00':0, '11':0, '01':1, '02':2, '03':3, '04':7, '05':4, '06':5, '07':8, '08':7, '09':8, '10':8, '12':8 };
-        var st = this.stage || '';
         return map[st] !== undefined ? map[st] : 2;
       }
     }
