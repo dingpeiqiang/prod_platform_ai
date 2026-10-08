@@ -53,6 +53,7 @@ public class AppStoreV16Controller {
     private final OpsRulesService opsRules;
     private final OpsSwrlReasoner opsSwrlReasoner;
     private final com.sitech.prodai.service.appstore.AuditPollService auditPollService;
+    private final com.sitech.prodai.service.appstore.TestPollService testPollService;
 
     public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
                                  FieldOntologyService fieldOntologyService,
@@ -66,7 +67,8 @@ public class AppStoreV16Controller {
                                  AppStoreInterfaceProperties interfaceProperties,
                                  OpsRulesService opsRules,
                                  OpsSwrlReasoner opsSwrlReasoner,
-                                 com.sitech.prodai.service.appstore.AuditPollService auditPollService) {
+                                 com.sitech.prodai.service.appstore.AuditPollService auditPollService,
+                                 com.sitech.prodai.service.appstore.TestPollService testPollService) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
         this.fieldOntologyService = fieldOntologyService;
@@ -81,6 +83,7 @@ public class AppStoreV16Controller {
         this.opsRules = opsRules;
         this.opsSwrlReasoner = opsSwrlReasoner;
         this.auditPollService = auditPollService;
+        this.testPollService = testPollService;
     }
 
     /* ================= 模板 schema 下发 get_template_schema ================= */
@@ -490,6 +493,12 @@ public class AppStoreV16Controller {
                 .header("Content-Disposition", "attachment; filename=test_report_" + global_id + ".md")
                 .header("Content-Type", "text/markdown; charset=utf-8")
                 .body(report);
+    }
+
+    @Operation(summary = "测试结果轮询并落地", description = "环节6b 后端化：按 req_id 读 test_pending 取 globalId → 单次探测 C3 终态（done==true 或 全部场景执行完）→ 终态后查 C4 测试结果 → scene_failed==0 时写 node_name=test。供前台面板周期调用，替代对话主动查询")
+    @PostMapping("/test/poll-result")
+    public Map<String, Object> testPollResult(@RequestBody Map<String, Object> req) {
+        return testPollService.pollOnce(MapOps.str(req.get("req_id")));
     }
 
     /* ================= 接口8：计费规则校验 check_billing_rule ================= */
