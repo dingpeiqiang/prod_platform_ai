@@ -1088,6 +1088,14 @@ const nodeContent = () => {
   return { byNode, node, offerOf, pick, asObj }
 }
 
+// 本地系统时间格式化（YYYY-MM-DD HH:mm:ss），避免 toISOString 的 UTC 时区偏差
+const localDateTime = (d) => {
+  const dt = d || new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return dt.getFullYear() + '-' + p(dt.getMonth() + 1) + '-' + p(dt.getDate())
+    + ' ' + p(dt.getHours()) + ':' + p(dt.getMinutes()) + ':' + p(dt.getSeconds())
+}
+
 // ===== 商品实例数据源（单一来源）：所有页签的数据统一由它派生 =====
 // 实例身份取自 ①URL 外链（offer_id/name/req_id）②已配置的表单值（formData）③全局 launch 档案。
 // 切换不同商品（换 URL 参数 / 修改表单）即全量联动初始化各页签，而非各页签各自一小撮演示数据。
@@ -1106,7 +1114,7 @@ const productInstance = computed(() => {
   const applicant = '产销品域 / 产商品中心'
   const department = '产销品域 / 产商品中心'
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const now = localDateTime()
   const resources = [flow ? flow + flowUnit + '流量' : '', voice ? voice + '分钟语音' : '', sms ? sms + '条短信' : ''].filter(Boolean).join('、')
   // 需求提报单原文（requirement_report）——用于需求页签动态填值
   const reqReport = nodeContent().offerOf(nodeContent().byNode.requirement_report)

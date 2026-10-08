@@ -1036,7 +1036,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}）\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n> 接口④为异步处理（最长 30 分钟）。\n【下一步】可回复\"下一步\"进入【环节5/8·资费校准】；如需单独拉取本次稽核结论，可回复【查询稽核结果】（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节4/8·规格稽核】稽核已发起（requestIds={requestIds}）\n\n文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n稽核销售品列表：\n{sales_list_text}\n\n> 接口④为异步处理（最长 30 分钟）。\n【下一步】可回复\"下一步\"进入【环节5/8·资费校准】。\n\n{panel}"
         },
         "settings": {
           "stream": false,

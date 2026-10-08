@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-自动测试",
-  "flowRemark": "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，全品通过才写 test）。",
+  "flowRemark": "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导\"下一步\"进入环节7 上线审批（查询测试结果 wf_sub_13 为可选显式指令，全品通过才写 test）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -833,7 +833,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试发起未全部成功\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 结论：整批存在部分或失败项，暂未生成测试结论，无法查询测试结果。\n【下一步】请按上方明细修正后，回复\"下一步\"重新发起测试。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试发起未全部成功\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 结论：整批存在部分或失败项，暂未生成测试结论。\n【下一步】请按上方明细修正后，回复\"下一步\"重新发起测试。\n\n{panel}"
         },
         "settings": {
           "stream": false,
@@ -948,7 +948,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "【环节6/8·自动测试】测试已发起\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n■ 提示：场景状态为发起态（待执行）；测试平台异步执行，请回复【查询测试结果】拉取逐场景执行结论（未完成会提示稍后续查）。\n\n{panel}"
+          "content": "【环节6/8·自动测试】测试已发起\n\n■ 整批状态：{status}\n■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n> 测试平台异步执行（后台轮询中，完成将自动落地测试结论）。\n【下一步】可回复\"下一步\"进入【环节7/8·上线审批】。\n\n{panel}"
         },
         "settings": {
           "stream": false,

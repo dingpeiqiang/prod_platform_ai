@@ -1606,7 +1606,7 @@ s3f.append(end_node(210, "结束(稽核已发起)",
     "文件id：{file_id}\n文件名：{file_name}\n下载链接：{download_url}\n\n"
     "稽核销售品列表：\n{sales_list_text}\n\n"
      "> 接口④为异步处理（最长 30 分钟）。\n"
-     "【下一步】可回复\"下一步\"进入【环节5/8·资费校准】；如需单独拉取本次稽核结论，可回复【查询稽核结果】（未完成会提示稍后续查）。\n\n"
+     "【下一步】可回复\"下一步\"进入【环节5/8·资费校准】。\n\n"
      "{panel}"))
 files3f = workflow(
     "产销品-规格稽核", "子工作流3（环节4a 稽核发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取 offer_id→B1 audit_file_upload（后端按 req_id 查需求+配置生成稽核 Excel 后上传，入参仅 req_id+chat_id）→B2 audit_async_notify（逐品）→B3 audit_insert_result（紧跟 B2）→汇总 requestIds→save(node_name=audit_pending，临时态)→结束止于反馈点，引导\"下一步\"进入环节5 资费校准（查询稽核结果 wf_sub_12 为可选显式指令，pass==1 才写 spec）。", "wf_sub_03", s3f,
@@ -2580,7 +2580,7 @@ s4f.append(end_node(324, "结束(测试发起失败-未写test_pending)",
     "【环节6/8·自动测试】测试发起未全部成功\n\n"
     "■ 整批状态：{status}\n"
     "■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n"
-    "■ 结论：整批存在部分或失败项，暂未生成测试结论，无法查询测试结果。\n"
+    "■ 结论：整批存在部分或失败项，暂未生成测试结论。\n"
     "【下一步】请按上方明细修正后，回复\"下一步\"重新发起测试。\n\n{panel}"))
 s4f.append(end_node(307, "结束(测试已发起)",
     [inp("offers_text", "逐品场景执行状态结构化文本（节点330）", ref_block=nid(330), ref_rel="offers_text"),
@@ -2592,10 +2592,11 @@ s4f.append(end_node(307, "结束(测试已发起)",
     "【环节6/8·自动测试】测试已发起\n\n"
     "■ 整批状态：{status}\n"
     "■ 商品测试场景执行状态（共 {offer_count} 品 / {scene_count} 个场景）：\n{offers_text}\n\n"
-    "■ 提示：场景状态为发起态（待执行）；测试平台异步执行，请回复【查询测试结果】拉取逐场景执行结论（未完成会提示稍后续查）。\n\n"
-    "{panel}"))
+     "> 测试平台异步执行（后台轮询中，完成将自动落地测试结论）。\n"
+     "【下一步】可回复\"下一步\"进入【环节7/8·上线审批】。\n\n"
+     "{panel}"))
 files4f = workflow(
-    "产销品-自动测试", "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导【查询测试结果】（6b 走 wf_sub_13，全品通过才写 test）。", "wf_sub_04", s4f,
+    "产销品-自动测试", "子工作流4（V3.12 多商品，环节6a 测试发起，两阶段拆分）：单入参 req_id 自查链路：query_node_result 按 req_id+config 读取→代码节点提取需求商品数组 offers[]→C1 offer_test 批量发起（逐品聚合返回 offers[]，含 globalId）→C2 get_test_scenes 批量取场景（逐品聚合返回 offers[]，含 testScenes）→封包（req_id+offers[]）→save(node_name=test_pending，临时态)→结束止于反馈点，引导\"下一步\"进入环节7 上线审批（查询测试结果 wf_sub_13 为可选显式指令，全品通过才写 test）。", "wf_sub_04", s4f,
     [edge(301,309), edge(309,310), edge(310,302), edge(302,303),
      edge(303,330), edge(330,308), edge(308,322), edge(322,305,-1), edge(322,323,0),
      edge(323,324), edge(305,321), edge(321,307)])
