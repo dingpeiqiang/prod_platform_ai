@@ -120,6 +120,23 @@
 .rv-subtab { padding: 5px 16px; border-radius: 6px; font-size: 13px; color: #64748b; cursor: pointer; transition: all .15s; }
 .rv-subtab.active { background: #fff; color: #2563eb; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 
+/* ===== 加载方案：结构化方案详情 ===== */
+.rv-sec { margin-bottom: 14px; }
+.rv-sec-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 8px; }
+.rv-sec-title::before { content: ''; width: 3px; height: 13px; border-radius: 2px; background: #2563eb; }
+.rv-sec-title .rv-sec-sub { font-size: 11.5px; font-weight: 500; color: #94a3b8; }
+.rv-points { display: flex; flex-wrap: wrap; gap: 8px; }
+.rv-point { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 999px; font-size: 12.5px; color: #334155; }
+.rv-point::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #2563eb; flex-shrink: 0; }
+.rv-modules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.rv-module { display: flex; gap: 10px; padding: 10px 12px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; }
+.rv-mod-idx { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; background: #eff6ff; color: #2563eb; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.rv-mod-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rv-mod-name { font-size: 13px; font-weight: 600; color: #1f2937; }
+.rv-mod-desc { font-size: 12px; color: #64748b; line-height: 1.55; }
+.rv-sum-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+@media (max-width: 720px) { .rv-modules, .rv-sum-2 { grid-template-columns: 1fr; } }
+
 /* ===== 运营视图：运营视图 内联容器（同文档渲染，样式已作用域化） ===== */
 .rv-wrap { padding: 0 !important; border: 0 !important; background: transparent !important; }
 /* 保持设计宽度不缩放，容器内横向滚动查看，避免 zoom 压缩导致文字/图表模糊（宽度收窄以提升紧凑度） */
