@@ -144,6 +144,54 @@ async function main() {
   ok(vm4.approval.value.ready === true, 'D: 有 approval_nodes 直接 ready');
   disposeVm();
 
+  // ===== 用例 E：需求提报单内嵌「需求审批矩阵」随 URL/节点状态自动更新 =====
+  console.log('CASE E: 需求审批矩阵只读自动更新');
+  // E1 未发起：无 approval_nodes、非审批环节 → 待发起，节点全待审核
+  resetCtx('00', {}, { id: 'req-5', name: '测试商品5', code: 'OFFER5', nodeResults: {} });
+  global.window.__WB_REFRESH_RESULT = () => Promise.resolve(PRODUCT);
+  const vm5 = mountComponent();
+  await sleep(200);
+  ok(vm5.demandApproval.value.visible === true, 'E1: 需求审批矩阵可见');
+  ok(vm5.demandApproval.value.status === '待发起', 'E1: 未发起时为「待发起」');
+  ok(vm5.demandApproval.value.rows.every((r) => r[4] === '待审核'), 'E1: 未发起时节点全为「待审核」');
+  disposeVm();
+
+  // E2 已发起未完成：URL 供需求阶段首个已通过、次节点审批中 → 状态审批中
+  resetCtx('11', {}, { id: 'req-6', name: '测试商品6', code: 'OFFER6', nodeResults: {} });
+  QUERY.approval_nodes = JSON.stringify([
+    { seq: 1, stage: '需求', node: '产品经理审核', role: '产品经理', status: '已通过', opinion: '同意' },
+    { seq: 2, stage: '需求', node: '资费主管审核', role: '资费主管', status: '审批中' },
+  ]);
+  const vm6 = mountComponent();
+  await sleep(200);
+  ok(vm6.demandApproval.value.status === '审批中', 'E2: 部分通过时为「审批中」');
+  ok(vm6.demandApproval.value.rows[0][4] === '已通过', 'E2: 首节点沿用真实「已通过」');
+  ok(vm6.demandApproval.value.rows.length === 2, 'E2: 仅渲染需求阶段真实节点');
+  disposeVm();
+
+  // E3 需求阶段全通过（出现上线阶段）→ 已通过
+  resetCtx('11', {}, { id: 'req-7', name: '测试商品7', code: 'OFFER7', nodeResults: {} });
+  QUERY.approval_nodes = JSON.stringify([
+    { seq: 1, stage: '需求', node: '产品经理审核', role: '产品经理', status: '已通过' },
+    { seq: 2, stage: '需求', node: '资费主管审核', role: '资费主管', status: '已通过' },
+    { seq: 4, stage: '上线', node: '上线审批', role: 'IT支撑', status: '审批中' },
+  ]);
+  const vm7 = mountComponent();
+  await sleep(200);
+  ok(vm7.demandApproval.value.status === '已通过', 'E3: 需求全通过（上线已开启）为「已通过」');
+  disposeVm();
+
+  // E4 驳回 → 已驳回
+  resetCtx('11', {}, { id: 'req-8', name: '测试商品8', code: 'OFFER8', nodeResults: {} });
+  QUERY.approval_nodes = JSON.stringify([
+    { seq: 1, stage: '需求', node: '产品经理审核', role: '产品经理', status: '已驳回', opinion: '资源不足' },
+  ]);
+  const vm8 = mountComponent();
+  await sleep(200);
+  ok(vm8.demandApproval.value.status === '已驳回', 'E4: 驳回节点为「已驳回」');
+  ok(vm8.demandApproval.value.note.indexOf('产品经理审核') >= 0, 'E4: 结论条含驳回节点');
+  disposeVm();
+
   console.log('\n结果: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 }

@@ -3224,7 +3224,7 @@ s6f.append(code_node(618, "格式化审批结果", CODE_FMT_APPROVAL,
 s6f.append(panel_code_node(619, "构建页面地址面板", "04",
     panel_inputs(601, off_seq=612, off_rel="offer_id", req_seq=601, offers_seq=612),
     biz_title="上线审批"))
-# 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批状态由【查询审批进度】事后查询
+# 616 结束：审批推送后即结束（V6.0 起去除轮询/分流）；审批进度由工作台『上线审批矩阵』自动更新
 # （后端模拟自动流转：提交 10s 后"审批中"→"通过（上架完成）"，查询时惰性推进）
 # 正文由节点618 approval_section 按「提交成功/提交被拒」二选一渲染，避免占位符泄漏与伪造矩阵。
 s6f.append(end_node(616, "结束(审批已提交)",
@@ -3233,7 +3233,7 @@ s6f.append(end_node(616, "结束(审批已提交)",
     "{approval_section}\n\n"
     "{panel}"))
 files6f = workflow(
-    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 渲染审批结果正文(提交成功展示真实矩阵/被拒如实展示原因，不伪造矩阵)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵，引导回复【查询审批进度】查询审批状态；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
+    "产销品-上线审批", "子工作流6（双轨 approval-type=launch；V3.12 多商品；V6.0 去除轮询/分流：审批推送后即结束）。单入参 req_id：串行自查5类环节结果(config/spec/fee/test/requirement，各配提取代码节点)→CODE_SUMMARY_APPROVAL 合成结构化汇总(含 offer_id/逐品 offers[] 与各环节结论)→LLM 生成《上线审批建议》(结构化 Markdown：环节8标题头+校验看板+风险+整体结论+AI审批建议)→存储 report→submit_release_approval 批量推送(approval-type=launch；后端硬门禁 approve_confirmed=true+req_id四环节齐全，逐品聚合返回)→CODE_FMT_APPROVAL 渲染审批结果正文(提交成功展示真实矩阵/被拒如实展示原因，不伪造矩阵)→xsbot-panel 面板(stage=04)→结束(展示审批单号/提交状态/审批矩阵；审批进度由工作台『上线审批矩阵』自动更新，不再引导查询指令；后端模拟审批提交约10s后自动流转为通过)。", "wf_sub_06", s6f,
     [edge(601,602), edge(602,603), edge(603,604), edge(604,605), edge(605,606),
      edge(606,607), edge(607,608), edge(608,609), edge(609,610), edge(610,611),
      edge(611,612), edge(612,613), edge(613,614), edge(614,615), edge(615,618), edge(618,619), edge(619,616)])
@@ -3980,7 +3980,7 @@ s11f.append(llm_node(1105, "审批发起回执渲染",
     "- 需求单号：{req_id}\n"
     "- 需求工单审批单号：{approval_id}\n"
     "- 提交状态：{中文状态}（原文：{status}）\n"
-    "- 下一步建议：可回复【查询审批进度】查看审批进度；审批通过后，回复【需求分析】生成《加载方案》。\n"
+    "- 下一步建议：审批通过后，回复【需求分析】生成《加载方案》，无需回复查询指令。\n"
     "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
     "【环节1/8·需求提报】❌ 需求工单审批发起失败\n"
     "- 需求单号：{req_id}\n"
@@ -4000,7 +4000,7 @@ s11f.append(end_node(1106, "结束(需求审批已发起)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(1109), ref_rel="panel")],
     "{approval_receipt}\n\n{panel}"))
 files11f = workflow(
-    "产销品-发起需求审批", "子工作流11（环节1 需求工单审批发起，确认后触发）：用户明确回复【发起需求审批】→ 自查需求工单 query_node_result(req_id+requirement_report) → 提取原文 → submit_release_approval(approval-type=requirement) → 回执+引导【查询审批进度】。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）. 审批进度查询走 wf_sub_08（双轨支持 requirement）。",
+    "产销品-发起需求审批", "子工作流11（环节1 需求工单审批发起，确认后触发）：用户明确回复【发起需求审批】→ 自查需求工单 query_node_result(req_id+requirement_report) → 提取原文 → submit_release_approval(approval-type=requirement) → 回执（审批进度由工作台『需求审批矩阵』自动更新，不再引导查询指令）。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）. 审批进度查询走 wf_sub_08（双轨支持 requirement）。",
     "wf_sub_11", s11f,
     [edge(1101,1102), edge(1102,1103), edge(1103,1107),
      edge(1107,1104,0), edge(1107,1108,-1),
@@ -4076,7 +4076,7 @@ s14f.append(llm_node(1405, "优化工单发起回执渲染",
     "- 需求单号：{req_id}\n"
     "- 优化工单审批单号：{approval_id}，状态：{status}\n"
     "- 建议依据：源自本体 R-O01~R-O05 推理给出的销售品优化建议\n"
-    "- 下一步建议：可回复【查询审批进度】查看审批进度；审批通过后按工单执行优化，并回复【查询监控】回检。\n"
+    "- 下一步建议：审批通过后按工单执行优化，并回复【查询监控】回检，无需回复查询指令。\n"
     "【失败口径】（approval_id 为空或 status=FAIL/失败）**严禁输出✅已发起**，必须输出：\n"
     "【环节9/9·监控运维】❌ 优化工单审批发起失败\n"
     "- 需求单号：{req_id}\n"
@@ -4096,7 +4096,7 @@ s14f.append(end_node(1406, "结束(优化工单已发起)",
      inp("panel", "xsbot-panel 页面地址片段", ref_block=nid(1409), ref_rel="panel")],
     "{optimize_receipt}\n\n{panel}"))
 files14f = workflow(
-    "产销品-发起优化工单", "子工作流14（环节9 监控运维延伸，采纳优化建议后触发）：用户明确回复【发起优化工单】→ 自查监控聚合结果 query_node_result(req_id+monitor) → 提取本体 R-O 优化建议原文 → 门禁 → submit_release_approval(approval-type=requirement+work_order_type=optimize) → 回执+引导【查询审批进度】。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）。审批进度查询走 wf_sub_08。",
+    "产销品-发起优化工单", "子工作流14（环节9 监控运维延伸，采纳优化建议后触发）：用户明确回复【发起优化工单】→ 自查监控聚合结果 query_node_result(req_id+monitor) → 提取本体 R-O 优化建议原文 → 门禁 → submit_release_approval(approval-type=requirement+work_order_type=optimize) → 回执（审批进度由工作台『优化工单审批矩阵』自动更新，不再引导查询指令）。approve_confirmed 固定 true，以用户明确确认为前提（确认门禁在调度层）。审批进度查询走 wf_sub_08。",
     "wf_sub_14", s14f,
     [edge(1401,1402), edge(1402,1403), edge(1403,1407),
      edge(1407,1410,0), edge(1407,1408,-1),

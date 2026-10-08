@@ -2101,7 +2101,7 @@ CODE_PACK_AUDIT_LAUNCH = (
 # 618 格式化审批结果：从 615 出参 offers[] 取真实 approval_matrix 渲染 Markdown 表格，
 # 并结合 615 的 approval_id/status/reason 产出「提交成功/提交被拒」二选一的完整正文片段
 # （approval_section）。无后端矩阵时不再伪造审批矩阵，避免误导；审批状态不在此轮询，
-# 由【查询审批进度】事后查询。
+# 由工作台『上线审批矩阵』自动更新。
 CODE_FMT_APPROVAL = (
     "import json\n"
     "\n"
@@ -2167,15 +2167,15 @@ CODE_FMT_APPROVAL = (
     "    approval_type = str(p.get('approval_type') or '').strip() or 'launch'\n"
     "    matrix_md = _render_matrix(_first_offer_with_matrix(offers))\n"
     "    if approval_id:\n"
-    "        # 提交成功：展示工单级审批单号 + 真实审批矩阵，引导事后查询进度\n"
+    "        # 提交成功：展示工单级审批单号 + 真实审批矩阵，审批进度由工作台自动更新\n"
     "        parts = ['### 上线审批已提交', '', '| 项 | 值 |', '| :--- | :--- |',\n"
     "                 '| 工单级审批单号 | %s |' % approval_id,\n"
     "                 '| 整批提交状态 | %s |' % (status or '审批中'),\n"
     "                 '| 审批类型 | %s |' % approval_type, '']\n"
     "        if matrix_md:\n"
     "            parts += ['**审批矩阵**', '', matrix_md, '']\n"
-    "        parts += ['> 审批已提交（不自动上线/不轮询，状态由【查询审批进度】事后查询）。', '>',\n"
-    "                  '> **建议处理：** 可回复【查询审批进度】随时查询当前审批状态（模拟审批约10秒后自动通过）。']\n"
+    "        parts += ['> 审批已提交（不自动上线/不轮询；审批进度由工作台『上线审批矩阵』自动更新，无需回复查询指令）。', '>',\n"
+    "                  '> **建议处理：** 待审批通过后销售品自动上架（模拟审批约10秒后自动通过）。']\n"
     "        approval_section = '\\n'.join(parts)\n"
     "    else:\n"
     "        # 提交被拒/门禁未通过：如实展示原因，不伪造审批单号与审批矩阵\n"
