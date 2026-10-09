@@ -242,11 +242,11 @@ export function createProductFormSchema(formData = {}) {
       {
         fieldCode: 'groupId', fieldName: '发布地市', fieldType: 'select', required: false, value: data.groupId,
         options: [
-          { label: '四川', value: '10001' },
-          { label: '成都', value: '10002' },
-          { label: '绵阳', value: '10003' },
-          { label: '德阳', value: '10004' },
-          { label: '南充', value: '10005' },
+          { label: '安徽', value: '10001' },
+          { label: '合肥', value: '10002' },
+          { label: '芜湖', value: '10003' },
+          { label: '蚌埠', value: '10004' },
+          { label: '淮南', value: '10005' },
         ],
       },
       { fieldCode: 'groupIdMessage', fieldName: '地市明细', fieldType: 'input', required: false, value: data.groupIdMessage, placeholder: '多个地市用逗号分隔' },

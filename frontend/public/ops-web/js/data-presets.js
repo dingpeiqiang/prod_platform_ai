@@ -461,7 +461,7 @@ const launchProductConfig = {
         {
           key: 'applicableArea',
           label: '适用地区',
-          value: 'sc',
+          value: 'ah',
           type: 'checkbox-group',
           tag: 'reuse',
           tagReason: '复用原套餐安徽省适用范围',
@@ -1389,7 +1389,7 @@ const campusProductConfig = {
         {
           key: 'applicableArea',
           label: '适用地区',
-          value: 'sc',
+          value: 'ah',
           type: 'checkbox-group',
           tag: 'ai',
           tagReason: '依据业务模板默认面向全省范围',

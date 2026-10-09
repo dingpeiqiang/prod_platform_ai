@@ -62,12 +62,28 @@
   // 从某销售品（配置环节 offer 或名册项）解析身份与资源字段，缺失即留空由调用方回填
   function buildOfferFields(off, roster){
     off = off || {};
-    var plan = parseJson(off.plan_json) || off.plan_json || {};
+    // 计划体来源多态：配置环节 plan_json（节点103）/ 执行方案 payload（节点114）/ plan / elements(_json)。
+    // 各来源均为合并后的计划体 JSON（含 baseInfo/optionalInfo），逐层解包取首个可用对象。
+    var plan = {};
+    ['plan_json', 'payload', 'plan', 'elements_json', 'elements', 'product_config'].some(function(k){
+      var got = parseJson(off[k]);
+      if (!got && off[k] && typeof off[k] === 'object') got = off[k];
+      if (!got || typeof got !== 'object' || Array.isArray(got)) return false;
+      // 兼容内层再包一层 {elements/payload/fields:{...}} 的形态
+      ['elements', 'payload', 'fields'].some(function(w){
+        var inner = parseJson(got[w]);
+        if (!inner && got[w] && typeof got[w] === 'object') inner = got[w];
+        if (inner && typeof inner === 'object' && !Array.isArray(inner) && Object.keys(inner).length){ got = inner; return true; }
+        return false;
+      });
+      plan = got;
+      return true;
+    });
     var opt = plan.optionalInfo || {};
     var base = plan.baseInfo || {};
     var name = String(off.name || '').trim() || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']);
     var code = pick(off, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']);
-    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(off, ['price']);
+    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(base, ['fixFee', 'prodPrcFixFee']) || pick(off, ['price']);
     var flow = pick(opt, ['billGprsCfg.theshold']);
     var flowUnit = pick(opt, ['billGprsCfg.unit']) || 'GB';
     var voice = pick(opt, ['billVoiceCfg.theshold']);
@@ -126,8 +142,14 @@
       });
       return offers;
     }
-    // 配置环节逐品明细（按 offer_seq 索引），供多商品逐品补全身份/资源
-    var cfgOffers = normalizeOffers(cfg);
+    // 逐品明细来源：优先配置环节 offers（offer_id/plan_json），缺失时回退执行方案等环节
+    // （requirement/spec/fee/test 的 offers[{offer_seq,payload}]），保证多商品逐品身份/资源/固定费可解析。
+    var detailNode = '';
+    ['config', 'requirement', 'spec', 'fee', 'test_pending', 'test', 'audit_pending'].some(function(nm){
+      if (normalizeOffers(byNode[nm]).length){ detailNode = nm; return true; }
+      return false;
+    });
+    var cfgOffers = normalizeOffers(detailNode ? byNode[detailNode] : cfg);
     mergeRoster(cfgOffers);
     var cfgBySeq = {};
     cfgOffers.forEach(function(o){ cfgBySeq[String(o.offer_seq)] = o; });
