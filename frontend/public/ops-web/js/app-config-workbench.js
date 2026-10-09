@@ -309,7 +309,8 @@ const config = computed(() => {
 })
 
 // ========== 融合套餐识别 ==========
-// 按套餐名称含「融合」判定当前商品是否为融合套餐（名称来源：表单实际编辑值 > 商品实例 > 头部标题）。
+// 判定当前商品是否为融合套餐：名称含「融合」；或需求提报单/名册中产品类型含「融合」、带成员清单（members）、
+// 属家庭基础套餐（与后端 CODE_RENDER_REQ 的 FUSION_PRODUCT_TYPES 口径一致，避免仅按名称漏判家庭类融合品）。
 // 融合套餐需在「配置信息」页签额外展示融合成员信息（手机成员/宽带成员/副卡共享/家庭基础信息）。
 const isFusionProduct = computed(() => {
   const name = String(
@@ -317,7 +318,20 @@ const isFusionProduct = computed(() => {
     ?? (currentProduct.value && currentProduct.value.name)
     ?? productInfo.value.prodPrcName ?? ''
   )
-  return name.indexOf('融合') >= 0
+  if (name.indexOf('融合') >= 0) return true
+  // 需求提报单/名册证据：产品类型含「融合」、家庭基础套餐，或携带融合成员清单
+  const p = currentProduct.value || {}
+  const offers = Array.isArray(p.offers) ? p.offers : []
+  const evidences = offers.length ? offers : [p]
+  return evidences.some((o) => {
+    if (!o || typeof o !== 'object') return false
+    const f = o.fields || o
+    const ptype = String(f.product_type ?? f.productType ?? o.product_type ?? o.productType ?? '')
+    if (ptype.indexOf('融合') >= 0 || ptype.indexOf('家庭基础') >= 0) return true
+    const members = f.members ?? o.members
+    if (Array.isArray(members) ? members.length : String(members ?? '').trim() !== '') return true
+    return false
+  })
 })
 
 // ========== 融合成员信息 sections ==========
@@ -919,6 +933,16 @@ const previewFusionMembers = computed(() => {
     return f ? f.value : ''
   }
   const rows = []
+  // 需求原文抽取的融合成员清单（主卡/宽带/天翼高清/副卡等）：优先取需求提报单 members 字段，显性呈现成员构成。
+  const nc = nodeContent()
+  const r = nc.offerOf(nc.byNode.requirement_report) || {}
+  const rawMembers = nc.pick(r, ['members', 'fields.members'])
+  if (rawMembers) {
+    const list = Array.isArray(rawMembers)
+      ? rawMembers.map((m) => (m && typeof m === 'object' ? (m.name || m.value || '') : String(m))).filter(Boolean)
+      : String(rawMembers).split(/[,，、;；]/).map((s) => s.trim()).filter(Boolean)
+    if (list.length) rows.push({ label: '融合成员清单', value: list.join('、') })
+  }
   const teamType = val('familyTeamType')
   const category = val('familyCategory')
   if (teamType || category) rows.push({ label: '家庭套餐', value: [teamType, category].filter(Boolean).join(' · ') })
@@ -1352,6 +1376,14 @@ const demandView = computed(() => {
         return f ? f.value : ''
       }
       const members = []
+      // 需求原文抽取的融合成员清单（主卡/宽带/天翼高清/副卡等）——优先取需求提报单 members 字段，显性呈现成员构成。
+      const rawMembers = nc.pick(r, ['members', 'fields.members'])
+      if (rawMembers) {
+        const list = Array.isArray(rawMembers)
+          ? rawMembers.map((m) => (m && typeof m === 'object' ? (m.name || m.value || '') : String(m))).filter(Boolean)
+          : String(rawMembers).split(/[,，、;；]/).map((s) => s.trim()).filter(Boolean)
+        if (list.length) members.push({ label: '融合成员清单', value: list.join('、') })
+      }
       const teamType = val('familyTeamType')
       const category = val('familyCategory')
       if (teamType || category) members.push({ label: '家庭套餐', value: [teamType, category].filter(Boolean).join(' · ') })
