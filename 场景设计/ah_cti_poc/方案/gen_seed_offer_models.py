@@ -92,6 +92,26 @@ LABEL_RESOLVERS = {
     "重复订购重复收费": lambda o: "否",
     "允许重复订购数量": lambda o: "1",
     "是否5G资费": lambda o: "是" if o.get("series") == "5g_a" else "否",
+    # 家庭/融合模板特有叶子（familyBasePrc）：存量 seed 无对应字段，按存量同类型产品
+    # 实例参数口径固化，避免相似检索衍生 offerModel 这些必填叶子留空而被误列待补充。
+    "家庭套餐类型": lambda o: "全家福",
+    "是否保底资费": lambda o: "否",
+    "资费有效周期": lambda o: "长期有效",
+    "资费有效期类型": lambda o: "月",
+    "资费有效期值": lambda o: "2",
+    "是否统付": lambda o: "是",
+    "协议期": lambda o: "36",
+    "家庭最大成员个数": lambda o: "6",
+    "家庭最小成员个数": lambda o: "1",
+    "允许办理家庭附加业务": lambda o: "允许办理家庭附加业务",
+    "是否变更主资费": lambda o: "是",
+    "手机最大成员数": lambda o: "5",
+    "手机最小成员数": lambda o: "1",
+    "免费手机共享成员个数（含关键人）": lambda o: "2",
+    "超出成员月租（元/月）": lambda o: "10",
+    "宽带最大成员数": lambda o: "3",
+    "宽带最小成员数": lambda o: "0",
+    "是否共享": lambda o: "是",
 }
 
 # 资源量分派：按叶子所在配置段决定取流量/语音/短信 seed 值
@@ -99,6 +119,12 @@ RESOURCE_BY_SECTION = {
     "billGprsCfg": lambda o: _num_only((o.get("in_fee") or {}).get("国内通用流量")),
     "billVoiceCfg": lambda o: _num_only((o.get("in_fee") or {}).get("国内语音拨打")),
     "billSmsCfg": lambda o: _sms_num(o),
+}
+
+# 家庭/融合成员带宽信息：主宽带/电视资费取自 seed in_fee 同名键（融合套餐含宽带、天翼高清）
+MEMBER_BY_SECTION = {
+    "broadBandMbrInfo.mainKd": lambda o: str((o.get("in_fee") or {}).get("宽带") or ""),
+    "broadBandMbrInfo.tvPrc": lambda o: str((o.get("in_fee") or {}).get("天翼高清") or ""),
 }
 
 
@@ -191,6 +217,19 @@ def resolve_leaf(sub, path, offer):
             val = resolver(offer)
             if val:
                 return val
+    # 家庭成员带宽叶子按完整路径取值（主宽带/电视），路径优先于同标签通用解析
+    if path in MEMBER_BY_SECTION:
+        val = MEMBER_BY_SECTION[path](offer)
+        if val:
+            return val
+    # 调整资源计算方式：同一 label 在流量/语音段枚举不同，取该叶子首个枚举项
+    if label == "调整资源计算方式":
+        enum = sub.get("enum") or []
+        if enum:
+            import re as _re
+            first = _re.split(r"[、，,/\n；;]", str(enum[0]))[0].strip()
+            if first:
+                return first
     if label in LABEL_RESOLVERS:
         fn = LABEL_RESOLVERS[label]
         if fn is not None:
