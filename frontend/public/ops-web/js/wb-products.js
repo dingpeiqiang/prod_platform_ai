@@ -59,6 +59,35 @@
     return '';
   }
 
+  // 计划体是否形似：含 baseInfo/optionalInfo 等计划键
+  function isPlanLike(o){
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+    return ['baseInfo', 'optionalInfo', 'releaseInfo', 'monthly_fee', 'monthlyFee', 'in_fee']
+      .some(function(k){ return o[k] !== undefined && o[k] !== null; });
+  }
+  // 计划体可能被模板 id 再包一层（如 {familyBasePrc:{baseInfo,optionalInfo}}、多模板
+  // {personMainPrc:{...},familyBasePrc:{...}}）。返回候选计划体数组：外层（若形似）优先，
+  // 其余内层对象按出现顺序追加，供调用方逐候选取值（多模板时命中 familyBasePrc 等含值体）。
+  function planCandidates(plan){
+    if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return [];
+    var arr = [];
+    if (isPlanLike(plan)) arr.push(plan);
+    Object.keys(plan).forEach(function(k){
+      var v = plan[k];
+      if (v && typeof v === 'object' && !Array.isArray(v) && isPlanLike(v) && arr.indexOf(v) < 0) arr.push(v);
+    });
+    if (!arr.length) arr.push(plan);
+    return arr;
+  }
+  // 逐候选计划体取值：任一候选命中即返回（配合多模板/模板包裹场景）
+  function pickPlan(plans, getter){
+    for (var i = 0; i < plans.length; i++){
+      var v = getter(plans[i]);
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    return '';
+  }
+
   // 从某销售品（配置环节 offer 或名册项）解析身份与资源字段，缺失即留空由调用方回填
   function buildOfferFields(off, roster){
     off = off || {};
@@ -79,17 +108,20 @@
       plan = got;
       return true;
     });
-    var opt = plan.optionalInfo || {};
-    var base = plan.baseInfo || {};
-    var name = String(off.name || '').trim() || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']);
+    // 模板包裹解包：部分计划体以模板 id 再包一层（如 {familyBasePrc:{baseInfo,optionalInfo}}、
+    // {personMainPrc:{...}}），收集候选计划体，逐候选取值。
+    var plans = planCandidates(plan);
+    var opt = (plans[0] || {}).optionalInfo || {};
+    var base = (plans[0] || {}).baseInfo || {};
+    var name = String(off.name || '').trim() || pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(p.baseInfo || {}, ['prodPrcName']); });
     var code = pick(off, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']);
-    var fee = pick(off, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(base, ['fixFee', 'prodPrcFixFee']) || pick(off, ['price']);
-    var flow = pick(opt, ['billGprsCfg.theshold']);
-    var flowUnit = pick(opt, ['billGprsCfg.unit']) || 'GB';
-    var voice = pick(opt, ['billVoiceCfg.theshold']);
-    var sms = pick(opt, ['billSmsCfg.theshold']);
+    var fee = pick(off, ['in_fee.档位']) || pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(p.baseInfo || {}, ['fixFee', 'prodPrcFixFee']) || pick(p, ['monthly_fee', 'monthlyFee', 'price']); }) || pick(off, ['monthly_fee', 'price']);
+    var flow = pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['billGprsCfg.theshold']); });
+    var flowUnit = pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['billGprsCfg.unit']); }) || 'GB';
+    var voice = pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['billVoiceCfg.theshold']); });
+    var sms = pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['billSmsCfg.theshold']); });
     // 资源可能为合并串（如「120GB国内流量,1000分钟语音」），据此兜底补齐流量/语音/短信
-    var res = pick(opt, ['printContent.containResource']) || pick(off, ['resources']);
+    var res = pickPlan(plans, function(p){ return pick(p.optionalInfo || {}, ['printContent.containResource']); }) || pick(off, ['resources']);
     if (res && (!flow || !voice)){
       var mFlow = res.match(/(\d+(?:\.\d+)?)\s*(TB|GB|MB)/i);
       var mVoice = res.match(/(\d+(?:\.\d+)?)\s*分钟/);
@@ -112,7 +144,9 @@
     });
     // 配置环节（config）优先：含 offer_id/offer_name/in_fee/plan_json，信息最全
     var cfg = byNode.config || {};
-    var plan = cfg.plan_json || {};
+    var plan0 = typeof cfg.plan_json === 'string' ? (parseJson(cfg.plan_json) || {}) : (cfg.plan_json || {});
+    var plans = planCandidates(plan0);
+    var plan = plans[0] || {};
     var opt = plan.optionalInfo || {};
     var base = plan.baseInfo || {};
     var requirement = byNode.requirement || {};
@@ -176,7 +210,7 @@
       var single = buildOfferFields(cfg, roster);
       single.name = single.name || pick(cfg, ['offer_name']) || pick(opt, ['SmsInstCfg.SvcName', 'printContent.prcName']) || pick(base, ['prodPrcName']) || pick(requirement, ['baseInfo.prodPrcName']);
       single.code = single.code || pick(cfg, ['offer_id', 'offerId']) || pick(base, ['prodPrcId', 'prodId']) || pick(requirement, ['baseInfo.prodPrcId', 'baseInfo.prodId']);
-      single.fee = single.fee || pick(cfg, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']);
+      single.fee = single.fee || pick(cfg, ['in_fee.档位']) || pick(opt, ['acctMonth.fixFee', 'printContent.prcMonthFee']) || pick(plan, ['monthly_fee', 'monthlyFee', 'price']);
       single.quantity = (single.quantity !== '' ) ? single.quantity : (pick(cfg, ['quantity']) || '');
       if (single.name || single.code) offerProducts.push(single);
     }
@@ -187,7 +221,7 @@
       name: primary.name || '', code: primary.code || '', fee: primary.fee || '',
       flow: primary.flow || '', flowUnit: primary.flowUnit || 'GB', voice: primary.voice || '', sms: primary.sms || '',
       quantity: primary.quantity || '', offers: roster, offerCount: roster.length,
-      products: offerProducts, plan: plan, raw: cfg, nodeResults: byNode
+      products: offerProducts, plan: plan0, raw: cfg, nodeResults: byNode
     };
   }
 

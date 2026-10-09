@@ -505,10 +505,80 @@ const applyProductSeed = () => {
     smsAmount: p.sms,
   }
   Object.keys(seed).forEach((key) => {
-    if (key in formData && seed[key] !== undefined) {
-      formData[key] = seed[key]
-    }
+    if (!(key in formData) || seed[key] === undefined) return
+    // 套餐固定费：多商品下解析层可能给出空串（p.fee 缺失），单独在下方兜底处理，
+    // 避免此处用空值清空表单、也避免沿用模板默认而显示错误档位。
+    // 其余字段保持原逻辑（商品存在即按实值覆盖，含空值，以防上一商品残留）。
+    if (key === 'monthlyFee') return
+    formData[key] = seed[key]
   })
+  // 套餐固定费：优先取商品解析值 p.fee；其为空时，从当前商品各工作流节点内容中按本品身份兜底推导；
+  // 都取不到则保留模板默认，绝不写入空值（修复多商品下套餐固定费总是为空）。
+  const feeSeed = seed.monthlyFee
+  if (feeSeed !== undefined && String(feeSeed).trim() !== '') {
+    formData.monthlyFee = feeSeed
+  } else {
+    const fee = deriveFeeFromNodes(p)
+    if (fee !== '') formData.monthlyFee = fee
+  }
+}
+// 从当前商品的节点内容中按商品身份（offer_seq / code）定位本品，兜底推导套餐固定费。
+// 说明：nodeContent() 定义在本文件后段（TDZ），此处不可引用，故局部实现等价的节点读取逻辑。
+const deriveFeeFromNodes = (p) => {
+  if (!p) return ''
+  const byNode = p.nodeResults || {}
+  const q = window.__WB_QUERY || {}
+  const wantSeq = p.offer_seq !== undefined && p.offer_seq !== null && p.offer_seq !== '' ? String(p.offer_seq) : ''
+  const wantId = String(p.code || q.offer_id || '').trim()
+  const asObj = (v) => {
+    if (!v) return null
+    if (typeof v === 'object') return v
+    try { return JSON.parse(v) } catch (e) { return null }
+  }
+  const offerOf = (rec) => {
+    const obj = asObj(rec)
+    if (!obj) return null
+    const arr = Array.isArray(obj) ? obj : (Array.isArray(obj.offers) ? obj.offers : null)
+    if (arr && arr.length) {
+      if (wantSeq) { const hit = arr.filter((o) => o && String(o.offer_seq) === wantSeq)[0]; if (hit) return hit }
+      if (wantId) { const hit = arr.filter((o) => o && String(o.offer_id || o.offerId) === wantId)[0]; if (hit) return hit }
+      return arr[0]
+    }
+    return obj
+  }
+  // 在若干候选对象上依次尝试点路径，返回首个非空标量（objs 可为对象或对象数组）
+  const pick = (objs, paths) => {
+    const list = Array.isArray(objs) ? objs : [objs]
+    for (const obj of list) {
+      if (!obj) continue
+      for (const path of paths) {
+        let cur = obj
+        for (const part of path.split('.')) { cur = cur == null ? null : cur[part] }
+        if (cur !== undefined && cur !== null && String(cur).trim() !== '') return cur
+      }
+    }
+    return ''
+  }
+  const nodes = ['requirement_report', 'requirement', 'config', 'spec', 'fee', 'test']
+  for (const nm of nodes) {
+    const offer = offerOf(byNode[nm])
+    if (!offer) continue
+    const fields = asObj(offer.fields) || offer.fields || {}
+    const planRaw = pick([offer, fields], ['plan_json', 'payload', 'plan', 'elements_json', 'elements'])
+    const plan = asObj(planRaw) || {}
+    const base = asObj(plan.baseInfo) || asObj(fields.baseInfo) || {}
+    const opt = asObj(plan.optionalInfo) || asObj(fields.optionalInfo) || {}
+    const fee = pick([offer, fields, base, opt], [
+      'price', 'fields.price',
+      'in_fee.档位',
+      'baseInfo.fixFee', 'fixFee', 'prodPrcFixFee',
+      'acctMonth.fixFee', 'optionalInfo.acctMonth.fixFee',
+      'printContent.prcMonthFee', 'optionalInfo.printContent.prcMonthFee',
+      'monthly_fee', 'monthlyFee',
+    ])
+    if (fee !== '') return fee
+  }
+  return ''
 }
 // 对话式配置：字段初始空值（标量空串 / 多选空数组 / 表格空数组）
 const emptyValue = (field) => {
