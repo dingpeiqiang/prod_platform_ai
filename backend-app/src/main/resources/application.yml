@@ -81,10 +81,8 @@ prodai:
     demo-enabled: false
     # classpath | http | jdbc | empty
     data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
-    # ABox 生产同步源（R5）：mock（默认，走 classpath/http）| jdbc（业务系统只读库直连）
-    abox-source: ${ABOX_SOURCE:mock}
-    # abox-source=jdbc 时生效：首次全量 + 定时刷新（分钟），失败自动回退 last-known-good
-    abox-sync-enabled: ${ABOX_SYNC_ENABLED:true}
+    # ABox 定时同步开关：仅 data-source=jdbc 时生效（首次全量 + 定时刷新，失败回退 last-known-good）
+    abox-sync-enabled: ${ABOX_SYNC_ENABLED:false}
     abox-sync-interval-minutes: ${ABOX_SYNC_INTERVAL_MINUTES:30}
     abox-jdbc-url: ${ABOX_JDBC_URL:}
     abox-jdbc-username: ${ABOX_JDBC_USERNAME:}

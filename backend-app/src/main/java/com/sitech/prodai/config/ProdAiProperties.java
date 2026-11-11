@@ -261,12 +261,9 @@ public class ProdAiProperties {
         /** 批量稽核 cron，默认每天 02:00。 */
         private String batchAuditCron = "0 0 2 * * ?";
         /**
-         * ABox 生产同步源（R5）：mock | jdbc。
-         * mock = 现状 classpath/HTTP 事实图（dev/demo）；jdbc = 业务系统只读库直连，
-         * 由 {@code ABoxSyncScheduler} 首次全量 + 定时刷新，失败自动回退 last-known-good。
+         * ABox JDBC 定时同步开关（R5）：仅在 {@code data-source=jdbc} 时生效。
+         * 开启后由 {@code ABoxSyncScheduler} 首次全量 + 定时刷新，失败自动回退 last-known-good。
          */
-        private String aboxSource = "mock";
-        /** ABox JDBC 同步开关（@Scheduled 定时刷新；aboxSource=jdbc 时生效）。 */
         private boolean aboxSyncEnabled = false;
         /** ABox 定时刷新间隔（分钟），默认 30 分钟。 */
         private int aboxSyncIntervalMinutes = 30;
@@ -434,14 +431,6 @@ public class ProdAiProperties {
 
         public void setBatchAuditCron(String batchAuditCron) {
             this.batchAuditCron = batchAuditCron == null ? "" : batchAuditCron;
-        }
-
-        public String getAboxSource() {
-            return aboxSource == null || aboxSource.isBlank() ? "mock" : aboxSource.trim().toLowerCase();
-        }
-
-        public void setAboxSource(String aboxSource) {
-            this.aboxSource = aboxSource;
         }
 
         public boolean isAboxSyncEnabled() {

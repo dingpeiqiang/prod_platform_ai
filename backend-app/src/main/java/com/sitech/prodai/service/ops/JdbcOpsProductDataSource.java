@@ -62,7 +62,7 @@ public class JdbcOpsProductDataSource implements OpsProductDataSource {
         ProdAiProperties.Ontology cfg = properties.getOntology();
         if (cfg.getAboxJdbcUrl().isBlank()) {
             throw new IllegalStateException(
-                    "prodai.ontology.abox-source=jdbc requires prodai.ontology.abox-jdbc-url. "
+                    "prodai.ontology.data-source=jdbc requires prodai.ontology.abox-jdbc-url. "
                             + "Refusing empty graph.");
         }
         List<Map<String, Object>> rows = queryShelfOfferings(cfg);

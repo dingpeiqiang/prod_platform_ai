@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * 按配置选择 classpath / http / empty / jdbc 数据源。
- * <p>jdbc（R5）：业务系统只读库直连（prodai.ontology.abox-source=jdbc），
+ * <p>jdbc（R5）：业务系统只读库直连（prodai.ontology.data-source=jdbc），
  * 经 OpsGraphSchemaValidator 校验后走 last-known-good 守卫，失败回退现行图谱。
  */
 @Service
@@ -57,8 +57,9 @@ public class OpsProductGraphLoader {
                         ? null : jdbcSourceProvider.getIfAvailable();
                 if (jdbcSource == null) {
                     throw new IllegalStateException(
-                            "prodai.ontology.data-source=jdbc but JdbcOpsProductDataSource bean is absent "
-                                    + "(check prodai.ontology.abox-source=jdbc).");
+                            "prodai.ontology.data-source=jdbc 但 JdbcOpsProductDataSource bean 未装配；"
+                                    + "该 bean 由 ABoxDataSourceConfig 在 data-source=jdbc 时自动装配，"
+                                    + "请检查配置是否被 profile/环境变量覆盖。");
                 }
                 Map<String, Object> raw = jdbcSource.loadRawGraph();
                 OpsGraphSchemaValidator.ValidationResult vr = OpsGraphSchemaValidator.validateAndNormalize(raw);

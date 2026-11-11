@@ -366,7 +366,7 @@ public class OntologyGraphManager {
         ));
         body.put("ruleSets", catalog.getOrDefault("ruleSets", Map.of()));
         body.put("engines", catalog.getOrDefault("engines", Map.of()));
-        // R5 可观测：ABox 同步状态（abox-source=jdbc 时由 ABoxSyncScheduler 提供；mock 源为 null）
+        // R5 可观测：ABox 同步状态（data-source=jdbc 时由 ABoxSyncScheduler 提供；mock 源为 null）
         body.putAll(aboxSyncStatus());
         return withModeMeta(body);
     }

@@ -1,5 +1,6 @@
 package com.sitech.prodai.service;
 
+import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.service.ProductOntologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,11 +16,12 @@ import java.util.Map;
  * ABox 生产同步调度器（R5）：定时把业务系统 JDBC 事实源刷新进事实图缓存。
  * <p>复用 {@link ProductOntologyService#reloadGraph()} 的 last-known-good 守卫
  * （LOAD→VALIDATE→SMOKE→COMMIT）：同步失败自动回退现行图谱，不影响在跑服务。
- * <p>启用条件：{@code prodai.ontology.abox-source=jdbc}（dev/demo 用 mock 不装配本类）。
+ * <p>启用条件：{@code prodai.ontology.abox-sync-enabled=true} 且 {@code data-source=jdbc}
+ * （第二个条件在构造期校验，非 jdbc 时本类不装配，避免「定时刷新却读不到业务库」的静默错配）。
  * 首次全量：应用启动后 initialDelay 1 分钟执行第一轮；此后按 fixedDelay 周期刷新。
  */
 @Component
-@ConditionalOnProperty(prefix = "prodai.ontology", name = "abox-source", havingValue = "jdbc")
+@ConditionalOnProperty(prefix = "prodai.ontology", name = "abox-sync-enabled", havingValue = "true")
 public class ABoxSyncScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(ABoxSyncScheduler.class);
@@ -32,9 +34,25 @@ public class ABoxSyncScheduler {
     private volatile boolean lastSyncOk;
     private volatile String lastSyncMessage = "not run yet";
 
-    public ABoxSyncScheduler(ProductOntologyService productOntologyService) {
+    public ABoxSyncScheduler(ProductOntologyService productOntologyService,
+                             ProdAiProperties properties) {
+        ProdAiProperties.Ontology cfg = properties.getOntology();
+        requireJdbcDataSource(cfg.getDataSource());
         this.productOntologyService = productOntologyService;
-        this.intervalMinutes = 30;
+        this.intervalMinutes = cfg.getAboxSyncIntervalMinutes();
+    }
+
+    /**
+     * 校验定时同步的前提：数据源必须是 jdbc。
+     * <p>abox-sync-enabled 与 data-source 是两个独立开关，只开前者会导致「定时刷新却读不到业务库」的静默错配，
+     * 故在装配期快速失败。抽成静态方法便于单测直接验证。
+     */
+    public static void requireJdbcDataSource(String dataSource) {
+        if (!"jdbc".equalsIgnoreCase(dataSource)) {
+            throw new IllegalStateException(
+                    "prodai.ontology.abox-sync-enabled=true 仅在 data-source=jdbc 时可用，当前 data-source="
+                            + dataSource + "。请设置 ONTOLOGY_DATA_SOURCE=jdbc 或关闭 abox-sync-enabled。");
+        }
     }
 
     /** 装配后回接：把同步状态视图挂到图谱摘要（getGraphSummary → abox_* 字段）。 */

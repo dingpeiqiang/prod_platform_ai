@@ -8,9 +8,9 @@ prodai:
   ontology:
     demo-enabled: false
     data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
-    # R5：生产可切 ABox JDBC 只读同步（默认 mock 保持现状；切 jdbc 需配 ABOX_JDBC_URL）
-    abox-source: ${ABOX_SOURCE:mock}
-    abox-sync-enabled: ${ABOX_SYNC_ENABLED:true}
+    # R5：生产可切业务库只读直连（data-source=jdbc，需配 ABOX_JDBC_URL）
+    #      是否定时刷新由 abox-sync-enabled 控制（仅 data-source=jdbc 时生效）
+    abox-sync-enabled: ${ABOX_SYNC_ENABLED:false}
     abox-sync-interval-minutes: ${ABOX_SYNC_INTERVAL_MINUTES:30}
     abox-jdbc-url: ${ABOX_JDBC_URL:}
     abox-jdbc-username: ${ABOX_JDBC_USERNAME:}
