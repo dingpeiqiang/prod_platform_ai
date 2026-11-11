@@ -27,25 +27,26 @@ spring:
     time-zone: GMT+8
     deserialization:
       fail-on-unknown-properties: false
-  # 数据源：默认 H2 内嵌库（MySQL 兼容模式，无需外部数据库即可启动）；
-  # 生产/联调接 MySQL 时设置 SPRING_DATASOURCE_URL 指向 jdbc:mysql://... 即可整体切回
+  # 数据源：默认连 MySQL / GoldenDB 分布式库（10.88.154.215:8100/newpmsdb）；
+  # 本地离线开发可用 SPRING_DATASOURCE_URL 覆盖回 H2（jdbc:h2:file:...;MODE=MySQL）
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/prodplatformai;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;AUTO_SERVER=TRUE}
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
-  # H2 内嵌库：每次启动以 sql/h2/schema-h2.sql 建表并灌入种子数据（CREATE IF NOT EXISTS 幂等）
-  # 注意：spring.sql.init 是与 datasource 平级的顶级键，不要嵌进 datasource 下
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://10.88.154.215:8100/newpmsdb?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&zeroDateTimeBehavior=convertToNull}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:pmsadm}
+    password: ${SPRING_DATASOURCE_PASSWORD:pmsadm@123}
+    hikari:
+      # 分布式库跨机房建连较慢，放宽超时避免启动即失败
+      connection-timeout: 15000
+      validation-timeout: 5000
+      maximum-pool-size: 20
+  # 表结构与种子数据由 sql/mysql/ 脚本人工执行（分布式库需 distributed by 方言，
+  # 且执行账号需 DDL 权限）；应用启动不自动建表，故关闭 spring.sql.init。
   sql:
     init:
-      mode: ${SPRING_SQL_INIT_MODE:embedded}
-      platform: h2
-      schema-locations: classpath:sql/h2/schema-h2.sql
-      data-locations: classpath:sql/h2/data-h2.sql
-      continue-on-error: false
+      mode: ${SPRING_SQL_INIT_MODE:never}
   h2:
     console:
-      enabled: ${H2_CONSOLE_ENABLED:true}
+      enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
   # MyBatis Plus：替代原 JPA/Hibernate 配置
   # 注意：表结构由 sql/（MySQL）与 sql/h2/（H2）脚本管理（原 JPA ddl-auto 不再生效）
