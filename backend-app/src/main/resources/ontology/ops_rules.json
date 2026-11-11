@@ -512,6 +512,120 @@
         "engine": "java"
       }
     },
+    "propertyMapping": {
+      "description": "配置草稿/事实图 → 本体数据属性声明式映射；kind=decimal|boolean|string，transform 见 OpsSwrlReasoner#toBoolean/#toDecimal",
+      "properties": [
+        {
+          "property": "monthlyFee",
+          "kind": "decimal",
+          "sources": ["fixedFeeAmount|monthlyFee|chargePlan.fixedFeeAmount"],
+          "default": -1
+        },
+        {
+          "property": "oneTimeFee",
+          "kind": "decimal",
+          "sources": ["oneTimeFee"],
+          "default": 0
+        },
+        {
+          "property": "hasContract",
+          "kind": "boolean",
+          "sources": ["hasContract"]
+        },
+        {
+          "property": "repeatableFlag",
+          "kind": "boolean",
+          "sources": ["repeatable", "repeatChargeFlag"]
+        },
+        {
+          "property": "discountPercent",
+          "kind": "decimal",
+          "sources": ["discountPercent|prefDiscount"],
+          "default": -1,
+          "transform": "percent-normalize"
+        },
+        {
+          "property": "c06MissingName",
+          "kind": "boolean",
+          "sources": ["offeringName|offerName"],
+          "transform": "all-empty"
+        },
+        {
+          "property": "c06MissingCategory",
+          "kind": "boolean",
+          "sources": ["messageRootKey"],
+          "transform": "all-empty"
+        },
+        {
+          "property": "c06MissingFee",
+          "kind": "boolean",
+          "sources": ["fixedFeeAmount|monthlyFee|chargePlan.fixedFeeAmount"],
+          "transform": "all-empty"
+        },
+        {
+          "property": "c06MissingChannel",
+          "kind": "boolean",
+          "sources": ["channelScope|releaseScope.channelScope"],
+          "transform": "all-empty"
+        },
+        {
+          "property": "bindsExistingMainPkg",
+          "kind": "boolean",
+          "sources": ["bindExistingMainPkg"],
+          "transform": "all-nonempty"
+        },
+        {
+          "property": "sameMutexGroup",
+          "kind": "boolean",
+          "sources": ["_sameMutexGroup"]
+        },
+        {
+          "property": "hasPreferredDiscount",
+          "kind": "boolean",
+          "sources": ["discountPercent|prefDiscount"],
+          "default": -1,
+          "transform": "positive"
+        },
+        {
+          "property": "hasGiftFee",
+          "kind": "boolean",
+          "sources": ["freeFeeAmount|giftFee|prefFee"],
+          "default": -1,
+          "transform": "positive"
+        },
+        {
+          "property": "isAddonFlag",
+          "kind": "boolean",
+          "sources": ["offeringType"],
+          "equals": ["addon"]
+        },
+        {
+          "property": "isAddonFlag",
+          "kind": "boolean",
+          "sources": ["isMainOffer"],
+          "equals": ["false", "False", "FALSE"]
+        },
+        {
+          "property": "hasDependOn",
+          "kind": "boolean",
+          "sources": ["dependOn", "sourceOfferRef"],
+          "transform": "all-nonempty"
+        },
+        {
+          "property": "exemptionFlag",
+          "kind": "boolean",
+          "sources": ["bizScenario"],
+          "transform": "graph-contains",
+          "graphKey": "equityGiftWhitelist"
+        },
+        {
+          "property": "exemptionFlag",
+          "kind": "boolean",
+          "sources": ["channelScope"],
+          "equals": ["内部验证"]
+        }
+      ]
+    },
     "proposalMapping": {
       "R-CONF-001": {
         "impl": "R-C09",

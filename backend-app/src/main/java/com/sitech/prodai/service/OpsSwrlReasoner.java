@@ -11,6 +11,7 @@ import org.semanticweb.owlapi.model.IRI;
 import org.semanticweb.owlapi.model.OWLAnnotation;
 import org.semanticweb.owlapi.model.OWLAxiom;
 import org.semanticweb.owlapi.model.OWLClass;
+import org.semanticweb.owlapi.model.OWLClassExpression;
 import org.semanticweb.owlapi.model.OWLDataFactory;
 import org.semanticweb.owlapi.model.OWLDataProperty;
 import org.semanticweb.owlapi.model.OWLDataPropertyAssertionAxiom;
@@ -21,6 +22,8 @@ import org.semanticweb.owlapi.model.OWLObjectPropertyAssertionAxiom;
 import org.semanticweb.owlapi.model.OWLOntology;
 import org.semanticweb.owlapi.model.OWLOntologyManager;
 import org.semanticweb.owlapi.model.RemoveAxiom;
+import org.semanticweb.owlapi.model.SWRLAtom;
+import org.semanticweb.owlapi.model.SWRLClassAtom;
 import org.semanticweb.owlapi.model.SWRLRule;
 import org.semanticweb.owlapi.reasoner.NodeSet;
 import org.semanticweb.owlapi.vocab.OWL2Datatype;
@@ -37,6 +40,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * 产商品运营 OWL/SWRL 推理（Openllet）。
@@ -55,14 +59,63 @@ public class OpsSwrlReasoner {
     private static final Logger log = LoggerFactory.getLogger(OpsSwrlReasoner.class);
     private static final String NS = "http://prodai.sitech.com/ontology/product#";
     private static final String ALERT_NS = NS;
+
+    /**
+     * 规则 label 判定：兼容 product.ttl 的英文规则号与 scenarios TTL 的中文规则名。
+     * 空白实体在「结论类已合并」后是唯一能区分具体规则的锚点。
+     */
+    private static final Predicate<String> RULE_B01_ZERO_FEE =
+            labelMatches("R-B01.zeroFee", "零元资费风险");
+    private static final Predicate<String> RULE_B01_DISCOUNT =
+            labelMatches("R-B01.discount", "异常折扣定价");
+    private static final Predicate<String> RULE_B02 =
+            labelMatches("R-B02", "零元在架无合约");
+
+    private static final Predicate<String> RULE_C03_MUTEX =
+            labelMatches("R-C03.mutex", "互斥组冲突");
+    private static final Predicate<String> RULE_C03_DISCOUNT =
+            labelMatches("R-C03.discount", "R-C03.discountGift", "折扣赠费冲突");
+    private static final Predicate<String> RULE_C04 =
+            labelMatches("R-C04", "附加包缺主资费");
+    private static final Predicate<String> RULE_C05 =
+            labelMatches("R-C05", "零元高资费风险");
+    private static final Predicate<String> RULE_C06_NAME =
+            labelMatches("R-C06.name", "必填项-名称缺失");
+    private static final Predicate<String> RULE_C06_CATEGORY =
+            labelMatches("R-C06.category", "必填项-类别缺失");
+    private static final Predicate<String> RULE_C06_FEE =
+            labelMatches("R-C06.fee", "必填项-资费缺失");
+    private static final Predicate<String> RULE_C06_CHANNEL =
+            labelMatches("R-C06.channel", "必填项-渠道缺失");
+    private static final Predicate<String> RULE_C07 =
+            labelMatches("R-C07", "全额折扣可重复");
+    private static final Predicate<String> RULE_C09_BELOW =
+            labelMatches("R-C09.below", "固费低于下限");
+    private static final Predicate<String> RULE_C09_ABOVE =
+            labelMatches("R-C09.above", "固费高于上限");
+
+    private static Predicate<String> labelMatches(String... candidates) {
+        return label -> {
+            for (String c : candidates) {
+                if (c.equals(label)) return true;
+            }
+            return false;
+        };
+    }
     private static final String ALERT_OWL_PATH = "classpath:ontology/product.ttl";
 
     private final ResourceLoader resourceLoader;
     private final ProdAiProperties properties;
+    private final OpsRulesService opsRules;
+    /** 实例事实（ABox）实时读取：仅 {@link #reasonStoredConfigCompliance} 使用，可缺省。 */
+    private final OntologyInstanceFactsService instanceFacts;
 
-    public OpsSwrlReasoner(ResourceLoader resourceLoader, ProdAiProperties properties) {
+    public OpsSwrlReasoner(ResourceLoader resourceLoader, ProdAiProperties properties, OpsRulesService opsRules,
+                           OntologyInstanceFactsService instanceFacts) {
         this.resourceLoader = resourceLoader;
         this.properties = properties;
+        this.opsRules = opsRules;
+        this.instanceFacts = instanceFacts;
     }
 
     public record SwrlFireResult(
@@ -386,16 +439,16 @@ public class OpsSwrlReasoner {
             boolean suggestDelist = false;
             boolean urgent = false;
 
-            if (isType(reasoner, offeringInd, df, "ZeroFeeRiskOffering")) {
+            if (ruleFired(reasoner, offeringInd, df, ontology, RULE_B01_ZERO_FEE, "ZeroFeeRiskOffering")) {
                 fired.add("R-B01");
                 risks.add(riskFeature("R-B01", "零元资费", "月费与一次性费均为0且非权益赠送白名单"));
             }
-            if (isType(reasoner, offeringInd, df, "AbnormalDiscountOffering")) {
+            if (ruleFired(reasoner, offeringInd, df, ontology, RULE_B01_DISCOUNT, "AbnormalDiscountOffering")) {
                 if (!fired.contains("R-B01")) fired.add("R-B01");
                 risks.add(riskFeature("R-B01", "异常全额赠送", "折扣100% + 可重复订购 + 无目标客户群"));
                 riskLevel = "HIGH";
             }
-            if (isType(reasoner, offeringInd, df, "ZeroFeeNoContractOffering")) {
+            if (ruleFired(reasoner, offeringInd, df, ontology, RULE_B02, "ZeroFeeNoContractOffering")) {
                 fired.add("R-B02");
                 risks.add(riskFeature("R-B02", "零元无合约在架", "零元资费已上架且无合约约束"));
                 riskLevel = "HIGH";
@@ -452,15 +505,49 @@ public class OpsSwrlReasoner {
     }
 
     /**
+     * 配置草稿合规推理 —— 实例事实由存储实时装载。
+     * <p>
+     * 与 {@link #reasonConfigCompliance} 的唯一差别是事实来源：
+     * 先经 {@link OntologyInstanceFactsService} 从 H2/MySQL 的
+     * {@code pd_ai_ontology_instance} 实时读取该草稿的原始事实，再交给同一套 SWRL 流程。
+     * 读取到的字段即「表字段」，仍由 {@code ops_rules.config.propertyMapping} 声明式映射到本体属性。
+     *
+     * @param draftId 草稿主键（pd_ai_ontology_instance.id）
+     * @param graph   事实图（取 equityGiftWhitelist 等）
+     * @return 实例不存在时返回 fallback 结果，不回退 Java 规则
+     */
+    public ConfigComplianceResult reasonStoredConfigCompliance(
+            Long draftId,
+            Map<String, Object> graph,
+            Map<String, Object> c03,
+            Map<String, Object> c04,
+            Map<String, Object> c05,
+            Map<String, Object> c06,
+            Map<String, Object> c07,
+            Map<String, Object> c08,
+            Map<String, Object> c09,
+            double feeMin,
+            double feeMax
+    ) {
+        Map<String, Object> facts = instanceFacts == null ? Map.of() : instanceFacts.loadConfigFacts(draftId);
+        if (facts.isEmpty()) {
+            log.warn("[OpsSwrlReasoner] 实例事实为空，跳过推理 draftId={}", draftId);
+            return ConfigComplianceResult.fail("no-instance",
+                    "未找到配置实例事实：draftId=" + draftId);
+        }
+        return reasonConfigCompliance(facts, graph, c03, c04, c05, c06, c07, c08, c09, feeMin, feeMax);
+    }
+
+    /**
      * 配置草稿合规推理（R-C03~C09），基于 product.ttl 本体 SWRL 规则。
      * <p>
-     * 因 SWRL 无「缺失即假」的否定，调用方按 Java 语义预计算少量存在性/冲突布尔
-     * （c06Missing* / isAddonFlag / hasDependOn / sameMutexGroup / hasPreferredDiscount /
-     * hasGiftFee / inWhitelistFlag / internalTestFlag 等）作为事实断言；SWRL 承担
-     * 阈值比较、多条件合取与结论类归入，并回读 ConfigViolation 子类形成推理链。
+     * 分工：原表字段 → 本体数据属性的映射由 {@code ops_rules.config.propertyMapping} 声明式给出
+     * （见 {@link #assertMappedFacts}），Java 侧不含逐字段硬编码；
+     * 阈值比较与多条件合取由 SWRL 承担，违规归入 ConfigViolation 子类。
+     * 合规由违规族查询结果给出（开放世界下补集无法证明「不存在其它违规」）。
      *
      * @param draft  配置草稿（已 applyCategoryDefaults）
-     * @param graph  事实图（取 esistWhitelist 等）
+     * @param graph  事实图（取 equityGiftWhitelist 等）
      * @param c03~c09 ops_rules.config.rules 对应规则（enabled / 阈值）
      */
     public ConfigComplianceResult reasonConfigCompliance(
@@ -487,48 +574,12 @@ public class OpsSwrlReasoner {
 
             OWLNamedIndividual ind = ind(df, "config/" + offeringId);
             add(manager, ontology, df.getOWLClassAssertionAxiom(cls(df, "Offering"), ind));
-            add(manager, ontology, dataAssert(df, ind, "offeringId", offeringId));
-            add(manager, ontology, dataAssertFloat(df, ind, "fixedFeeAmount", num(MapOps.resolveFixedFee(draft))));            add(manager, ontology, dataAssertDecimal(df, ind, "oneTimeFee", num(draft.get("oneTimeFee"))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "hasContract", truthy(draft.get("hasContract"))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "repeatableOrderFlag",
-                    truthy(draft.get("repeatable")) || "是".equals(MapOps.str(draft.get("repeatChargeFlag")))));
+            // 原始事实 → 本体属性：完全由 ops_rules.config.propertyMapping 声明，Java 不再逐字段硬编码
+            assertMappedFacts(manager, ontology, df, ind, draft, graph,
+                    castListOfMaps(opsRules.configPropertyMapping().get("properties")));
 
             double discount = normalizeDiscount(MapOps.num(
                     firstNonEmpty(draft.get("discountPercent"), draft.get("prefDiscount")), -1));
-            add(manager, ontology, dataAssertDecimal(df, ind, "discountPercent", discount));
-
-            // R-C06 必填缺失（存在性由 Java 预计算）
-            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingName",
-                    empty(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingCategory", empty(draft.get("messageRootKey"))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingFee",
-                    empty(firstNonEmpty(draft.get("fixedFeeAmount"), draft.get("monthlyFee"),
-                            MapOps.castMap(draft.get("chargePlan")).get("fixedFeeAmount")))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "c06MissingChannel",
-                    empty(firstNonEmpty(draft.get("channelScope"),
-                            MapOps.castMap(draft.get("releaseScope")).get("channelScope")))));
-
-            // R-C03 互斥冲突
-            add(manager, ontology, dataAssertBoolean(df, ind, "bindsExistingMainPkg", !empty(draft.get("bindExistingMainPkg"))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "sameMutexGroup", truthy(draft.get("_sameMutexGroup"))));
-            add(manager, ontology, dataAssertBoolean(df, ind, "hasPreferredDiscount", discount > 0));
-            add(manager, ontology, dataAssertBoolean(df, ind, "hasGiftFee",
-                    num(firstNonEmpty(draft.get("freeFeeAmount"), draft.get("giftFee"), draft.get("prefFee")), -1) > 0));
-
-            // R-C04 附加缺依赖
-            boolean isAddon = "addon".equals(MapOps.str(draft.get("offeringType")))
-                    || Boolean.FALSE.equals(draft.get("isMainOffer"))
-                    || "false".equalsIgnoreCase(MapOps.str(draft.get("isMainOffer")));
-            add(manager, ontology, dataAssertBoolean(df, ind, "isAddonFlag", isAddon));
-            add(manager, ontology, dataAssertBoolean(df, ind, "hasDependOn",
-                    !empty(draft.get("dependOn")) || !empty(draft.get("sourceOfferRef"))));
-
-            // R-C05 高风险零固费
-            String scenario = MapOps.str(draft.get("bizScenario"));
-            List<Object> whitelist = MapOps.castList(graph.get("equityGiftWhitelist"));
-            add(manager, ontology, dataAssertBoolean(df, ind, "inWhitelistFlag", whitelist.contains(scenario)));
-            add(manager, ontology, dataAssertBoolean(df, ind, "internalTestFlag",
-                    "内部验证".equals(MapOps.str(draft.get("channelScope")))));
 
             // 阈值覆写（R-C07 / R-C09）
             Map<String, Double> thresholds = new LinkedHashMap<>();
@@ -553,56 +604,54 @@ public class OpsSwrlReasoner {
                 disabledRules.add("R-C06.channel");
             }
             if (!enabled(c07)) disabledRules.add("R-C07");
-            if (!enabled(c08)) disabledRules.add("R-C08");
             if (!enabled(c09)) {
                 disabledRules.add("R-C09.below");
                 disabledRules.add("R-C09.above");
             }
             disableRules(manager, ontology, disabledRules);
 
-            // 第一轮：判定 ConfigViolation 子类（先以 hasViolation=false 占位）
-            add(manager, ontology, dataAssertBoolean(df, ind, "hasViolation", false));
+            // 单轮推理：违规类由 SWRL 推出，合规由 OWL 补集（C08Compliant ≡ ¬ConfigViolation）直接得出
             OpenlletReasoner reasoner = reasonerFor(ontology);
             reasoner.prepareReasoner();
 
             List<Map<String, Object>> violations = new ArrayList<>();
             List<Map<String, Object>> reasoning = new ArrayList<>();
             List<String> fired = new ArrayList<>();
-            collectViolation(reasoner, df, ind, "R-C06", "C06MissingRequired", "必填缺失",
-                    c06, violations, reasoning, fired, fieldForC06(draft));
-            collectViolation(reasoner, df, ind, "R-C03", "C03MutualExclusiveConflict", "互斥/优惠冲突",
-                    c03, violations, reasoning, fired, !empty(draft.get("bindExistingMainPkg")) ? "mutexGroup" : "prefDiscount");
-            collectViolation(reasoner, df, ind, "R-C04", "C04OrphanAddon", "附加缺依赖",
-                    c04, violations, reasoning, fired, "dependOn");
-            collectViolation(reasoner, df, ind, "R-C05", "C05HighRiskZeroFee", "高风险零固费",
-                    c05, violations, reasoning, fired, "fixedFeeAmount");
-            collectViolation(reasoner, df, ind, "R-C07", "C07AbnormalDiscount", "异常优惠漏洞",
-                    c07, violations, reasoning, fired, "prefDiscount");
-            collectViolation(reasoner, df, ind, "R-C09", "C09FeeRangeViolation", "资费区间违规",
-                    c09, violations, reasoning, fired, "fixedFeeAmount");
+            collectViolation(reasoner, df, ind, ontology, "R-C06", new String[]{"C06MissingRequired"},
+                    "必填缺失",
+                    c06, violations, reasoning, fired, fieldForC06(draft), RULE_C06_NAME, RULE_C06_CATEGORY,
+                    RULE_C06_FEE, RULE_C06_CHANNEL);
+            collectViolation(reasoner, df, ind, ontology, "R-C03",
+                    new String[]{"C03MutualExclusiveConflict"}, "互斥/优惠冲突",
+                    c03, violations, reasoning, fired,
+                    !empty(draft.get("bindExistingMainPkg")) ? "mutexGroup" : "prefDiscount",
+                    RULE_C03_MUTEX, RULE_C03_DISCOUNT);
+            collectViolation(reasoner, df, ind, ontology, "R-C04", new String[]{"C04OrphanAddon"},
+                    "附加缺依赖",
+                    c04, violations, reasoning, fired, "dependOn", RULE_C04);
+            collectViolation(reasoner, df, ind, ontology, "R-C05", new String[]{"C05HighRiskZeroFee"},
+                    "高风险零固费",
+                    c05, violations, reasoning, fired, "fixedFeeAmount", RULE_C05);
+            collectViolation(reasoner, df, ind, ontology, "R-C07", new String[]{"C07AbnormalDiscount"},
+                    "异常优惠漏洞",
+                    c07, violations, reasoning, fired, "prefDiscount", RULE_C07);
+            collectViolation(reasoner, df, ind, ontology, "R-C09", new String[]{"C09FeeRangeViolation"},
+                    "资费区间违规",
+                    c09, violations, reasoning, fired, "fixedFeeAmount", RULE_C09_BELOW, RULE_C09_ABOVE);
 
-            // 第二轮：按是否命中违规断言 hasViolation，判定 R-C08 合规通过
+            // 合规判定：回读实例是否落入违规族 ConfigViolation（各违规规则的 SWRL head 显式断言该父类）。
+            // 开放世界假设下 OWL 无法以补集证明「不存在其它违规」，故合规只能由违规族查询结果给出，
+            // 而该查询结果完全来自本轮 SWRL 推理——外部不再注入任何判定布尔。
+            boolean inViolationFamily = isType(reasoner, ind, df, "ConfigViolation");
             reasoner.dispose();
-            if (enabled(c08)) {
-                OWLDataProperty hv = dataProp(df, "hasViolation");
-                for (OWLDataPropertyAssertionAxiom ax : ontology.dataPropertyAssertionAxioms(ind).toList()) {
-                    if (hv.equals(ax.getProperty().asOWLDataProperty())) {
-                        manager.applyChange(new RemoveAxiom(ontology, ax));
-                    }
-                }
-                add(manager, ontology, dataAssertBoolean(df, ind, "hasViolation", !violations.isEmpty()));
-                OpenlletReasoner reasoner2 = reasonerFor(ontology);
-                reasoner2.prepareReasoner();
-                if (reasoner2.getTypes(ind, true).containsEntity(cls(df, "C08Compliant"))) {
-                    fired.add("R-C08");
-                    reasoning.add(reasonRow("R-C08", "无 ConfigViolation 命中", "C08Compliant 合规通过"));
-                }
-                reasoner2.dispose();
-            }
 
-            boolean compliant = violations.stream().allMatch(v -> !"HIGH".equals(ruleLevel(v)));
+            boolean compliant = enabled(c08) && !inViolationFamily && violations.isEmpty();
+            if (compliant) {
+                fired.add("R-C08");
+                reasoning.add(reasonRow("R-C08", "不属于 ConfigViolation 违规族", "C08Compliant 合规通过"));
+            }
             return new ConfigComplianceResult(true, "openllet-swrl", fired, violations, reasoning, compliant,
-                    violations.isEmpty() ? "SWRL 合规推理：通过" : "SWRL 合规推理：命中 " + violations.size() + " 项");
+                    compliant ? "SWRL 合规推理：通过" : "SWRL 合规推理：命中 " + violations.size() + " 项");
         } catch (Exception e) {
             log.warn("[OpsSwrlReasoner] 配置合规 SWRL 失败 offering={}: {}", offeringId, e.getMessage());
             return ConfigComplianceResult.fail("fallback-java", "SWRL 失败: " + e.getMessage());
@@ -614,20 +663,28 @@ public class OpsSwrlReasoner {
     }
 
     private void collectViolation(OpenlletReasoner reasoner, OWLDataFactory df, OWLNamedIndividual ind,
-                                  String ruleId, String conclusionClass, String label, Map<String, Object> rule,
+                                  OWLOntology ontology, String ruleId, String[] conclusionClasses, String label,
+                                  Map<String, Object> rule,
                                   List<Map<String, Object>> violations, List<Map<String, Object>> reasoning,
-                                  List<String> fired, String field) {
+                                  List<String> fired, String field, Predicate<String>... labelPredicates) {
         if (!enabled(rule)) return;
-        if (!reasoner.getTypes(ind, true).containsEntity(cls(df, conclusionClass))) return;
+        boolean hit = false;
+        for (Predicate<String> p : labelPredicates) {
+            if (ruleFired(reasoner, ind, df, ontology, p, conclusionClasses)) {
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) return;
         fired.add(ruleId);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("ruleId", ruleId);
-        row.put("conclusionClass", conclusionClass);
+        row.put("conclusionClass", conclusionClasses[0]);
         row.put("field", field);
         row.put("label", label);
-        row.put("evidence", List.of(ruleId + " → " + conclusionClass));
+        row.put("evidence", List.of(ruleId + " → " + conclusionClasses[0]));
         violations.add(row);
-        reasoning.add(reasonRow(ruleId, str(rule.get("name")), conclusionClass + "（命中 " + label + "）"));
+        reasoning.add(reasonRow(ruleId, str(rule.get("name")), conclusionClasses[0] + "（命中 " + label + "）"));
     }
 
     private Map<String, Object> reasonRow(String ruleId, String condition, String conclusion) {
@@ -1222,6 +1279,71 @@ public class OpsSwrlReasoner {
         return null;
     }
 
+    /**
+     * 按规则 ID 判定该规则是否对实例推出指定结论类。
+     * <p>
+     * 结论类已合并（一场景只有一个父类，不再一规则一子类），因此不能再靠
+     * {@code getTypes()} 是否含某个子类来区分命中的是哪条规则。改为两步：
+     * <ol>
+     *   <li>实例确实被归入该结论类（父类 {@code conclusionClass}）；</li>
+     *   <li>本体里存在 label 命中 {@code ruleIdPredicate} 的规则，且其 head 指向该类。</li>
+     * </ol>
+     * 两条同时成立，才认为「是这条规则推出的」。
+     * <p>
+     * label 取值兼容两套写法：{@code product.ttl} 用英文规则号（如 {@code R-B01.zeroFee}），
+     * scenarios TTL 用中文规则名（如「零元资费风险」）。
+     */
+    private boolean ruleFired(OpenlletReasoner reasoner, OWLNamedIndividual ind, OWLDataFactory df,
+                              OWLOntology ontology, Predicate<String> ruleIdPredicate, String... conclusionClasses) {
+        boolean typed = false;
+        for (String conclusionClass : conclusionClasses) {
+            if (isType(reasoner, ind, df, conclusionClass)) {
+                typed = true;
+                break;
+            }
+        }
+        if (!typed) {
+            return false;
+        }
+        for (OWLAxiom axiom : ontology.axioms(AxiomType.SWRL_RULE).toList()) {
+            if (!(axiom instanceof SWRLRule rule)) {
+                continue;
+            }
+            String label = ruleLabel(rule);
+            if (label == null || !ruleIdPredicate.test(label)) {
+                continue;
+            }
+            if (headTargetsClass(rule, conclusionClasses)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean headTargetsClass(SWRLRule rule, String... classLocals) {
+        for (SWRLAtom atom : rule.getHead()) {
+            if (atom instanceof SWRLClassAtom classAtom) {
+                OWLClassExpression ce = classAtom.getPredicate();
+                if (!ce.isNamed()) {
+                    continue;
+                }
+                String local = localName(ce.asOWLClass().getIRI());
+                for (String classLocal : classLocals) {
+                    if (classLocal.equals(local)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String localName(IRI iri) {
+        String s = iri.toString();
+        int i = Math.max(s.lastIndexOf('#'), s.lastIndexOf('/'));
+        return i >= 0 && i < s.length() - 1 ? s.substring(i + 1) : s;
+    }
+
     // ---------- OWL helpers ----------
 
     private OWLOntology loadBaseOntology(OWLOntologyManager manager) throws Exception {
@@ -1384,4 +1506,96 @@ public class OpsSwrlReasoner {
         }
         return out;
     }
+
+    // ---------- 声明式映射（ops_rules.config.propertyMapping） ----------
+
+    /**
+     * 按声明式映射把配置草稿/graph 字段翻译为本体数据属性断言。
+     * <p>没有任何 Java 分支逻辑：属性名、取值来源、类型、转换算子全部来自配置；
+     * 映射缺失时仅断言 offeringId 标识，规则自然因缺少事实而不触发。
+     */
+    private void assertMappedFacts(OWLOntologyManager manager, OWLOntology ontology, OWLDataFactory df,
+                                   OWLNamedIndividual ind, Map<String, Object> draft, Map<String, Object> graph,
+                                   List<Map<String, Object>> mapping) {
+        add(manager, ontology, dataAssert(df, ind, "offeringId",
+                str(firstNonEmpty(draft.get("offeringId"), "draft"))));
+        // 同一属性出现多条 mapping 时按 OR 合并（声明式表达「多分支任一成立」）
+        Map<String, Boolean> booleanFacts = new LinkedHashMap<>();
+        for (Map<String, Object> spec : mapping) {
+            String prop = str(spec.get("property"));
+            if (prop.isBlank()) continue;
+            List<Object> values = resolveSources(draft, graph, spec);
+            Object raw = values.isEmpty() ? null : values.get(0);
+            String kind = str(spec.get("kind"));
+            switch (kind) {
+                case "decimal" -> add(manager, ontology,
+                        dataAssertDecimal(df, ind, prop, toDecimal(raw, spec)));
+                case "boolean" -> booleanFacts.merge(prop, toBoolean(raw, values, spec, graph),
+                        Boolean::logicalOr);
+                default -> {
+                    if (raw != null) add(manager, ontology, dataAssert(df, ind, prop, str(raw)));
+                }
+            }
+        }
+        booleanFacts.forEach((prop, value) ->
+                add(manager, ontology, dataAssertBoolean(df, ind, prop, value)));
+    }
+
+    /** 按 spec.sources 逐条解析取值（支持 draft./graph. 前缀、点号嵌套与 | 兜底），丢弃空值。 */
+    private List<Object> resolveSources(Map<String, Object> draft, Map<String, Object> graph,
+                                        Map<String, Object> spec) {
+        List<Object> values = new ArrayList<>();
+        for (Object src : MapOps.castList(spec.get("sources"))) {
+            for (String candidate : str(src).split("\\|")) {
+                Object v = lookup(candidate.trim(), draft, graph);
+                if (!empty(v)) values.add(v);
+            }
+        }
+        return values;
+    }
+
+    /** 读取点号路径：graph.x.y 取事实图，draft.x.y 或裸路径取草稿。 */
+    private Object lookup(String path, Map<String, Object> draft, Map<String, Object> graph) {
+        if (path.isBlank()) return null;
+        Object current = path.startsWith("graph.") ? graph : draft;
+        String trimmed = path.startsWith("graph.") ? path.substring("graph.".length())
+                : path.startsWith("draft.") ? path.substring("draft.".length()) : path;
+        for (String segment : trimmed.split("\\.")) {
+            if (!(current instanceof Map<?, ?> map)) return null;
+            current = map.get(segment);
+        }
+        return current;
+    }
+
+    private double toDecimal(Object raw, Map<String, Object> spec) {
+        double value = num(raw, num(spec.get("default"), 0));
+        return switch (str(spec.get("transform"))) {
+            case "percent-normalize" -> value > 0 && value <= 1 ? value * 100 : value;
+            default -> value;
+        };
+    }
+
+    private boolean toBoolean(Object raw, List<Object> values, Map<String, Object> spec,
+                              Map<String, Object> graph) {
+        return switch (str(spec.get("transform"))) {
+            case "all-empty" -> values.isEmpty();
+            case "all-nonempty" -> !values.isEmpty();
+            case "positive" -> num(raw, num(spec.get("default"), -1)) > 0;
+            case "equals-any" -> values.stream().anyMatch(v -> containsValue(spec.get("equals"), v));
+            case "graph-contains" -> {
+                Object list = graph.get(str(spec.get("graphKey")));
+                yield values.stream().anyMatch(v -> MapOps.castList(list).stream()
+                        .anyMatch(e -> str(e).equals(str(v))));
+            }
+            default -> spec.containsKey("equals")
+                    ? values.stream().anyMatch(v -> containsValue(spec.get("equals"), v))
+                    : values.stream().anyMatch(this::truthy);
+        };
+    }
+
+    private boolean containsValue(Object candidates, Object value) {
+        String text = str(value);
+        return MapOps.castList(candidates).stream().anyMatch(c -> str(c).equals(text));
+    }
 }
+

@@ -172,6 +172,11 @@ public class OpsRulesService {
         return castMap(castMap(castMap(load().get("config")).get("rules")).get(ruleId));
     }
 
+    /** 声明式映射配置（ops_rules.json / config.propertyMapping）：表字段 → 本体属性。 */
+    public Map<String, Object> configPropertyMapping() {
+        return castMap(castMap(load().get("config")).get("propertyMapping"));
+    }
+
     public Map<String, Object> batchRule(String ruleId) {
         return castMap(castMap(castMap(load().get("batch")).get("rules")).get(ruleId));
     }

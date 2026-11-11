@@ -57,9 +57,17 @@ public class ComplianceRuleEngine {
     /** 配置合规 SWRL 委托（R8 迁入 product.ttl；setter 注入避免破坏既有装配）。 */
     private volatile OpsSwrlReasoner swrlReasoner;
 
+    /** 实例事实（ABox）实时读取委托（null 时只用内存草稿，行为不变）。 */
+    private volatile OntologyInstanceFactsService instanceFacts;
+
     /** 宿主注入配置合规 SWRL 委托（null 时合规链路退回纯 Java，行为不变）。 */
     public void setSwrlReasoner(OpsSwrlReasoner swrlReasoner) {
         this.swrlReasoner = swrlReasoner;
+    }
+
+    /** 宿主注入实例事实读取委托（null 时推理只用内存草稿）。 */
+    public void setInstanceFacts(OntologyInstanceFactsService instanceFacts) {
+        this.instanceFacts = instanceFacts;
     }
 
     public ComplianceRuleEngine(ObjectMapper objectMapper,
@@ -285,7 +293,7 @@ public class ComplianceRuleEngine {
             // sameMutexGroup 为 Java 侧预计算（依赖在架图，SWRL 无跨个体缺失比较）
             Map<String, Object> enriched = new LinkedHashMap<>(draft);
             enriched.put("_sameMutexGroup", computeSameMutexGroup(draft, graph));
-            result = reasoner.reasonConfigCompliance(enriched, graph,
+            result = reasonConfig(mapForReasoning(enriched), graph,
                     opsRules.configRule("R-C03"), opsRules.configRule("R-C04"), opsRules.configRule("R-C05"),
                     opsRules.configRule("R-C06"), opsRules.configRule("R-C07"), opsRules.configRule("R-C08"),
                     opsRules.configRule("R-C09"), minFee, maxFee);
@@ -310,8 +318,58 @@ public class ComplianceRuleEngine {
         return new SwrlOutcome(true, merged, reasoning, result.firedRules());
     }
 
-    /** SWRL violation → Java issue 契约对齐（ruleId/issueType/level/field/message/evidence/alias）。 */
-    private Map<String, Object> issueFromSwrl(Map<String, Object> violation) {
+    /**
+     * 推理事实来源选择：草稿带 draftId 且库中查得到 → 以库中实时事实为准
+     * （避免内存副本与持久化数据不一致）；否则沿用传入的内存草稿。
+     */
+    private Map<String, Object> mapForReasoning(Map<String, Object> enriched) {
+        Long draftId = parseDraftId(enriched.get("draftId"));
+        if (draftId == null) {
+            draftId = parseDraftId(enriched.get("draft_id"));
+        }
+        if (draftId == null || instanceFacts == null) {
+            return enriched;
+        }
+        Map<String, Object> stored = instanceFacts.loadConfigFacts(draftId);
+        if (stored.isEmpty()) {
+            log.debug("[合规] draftId={} 未查到实例事实，沿用内存草稿", draftId);
+            return enriched;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(stored);
+        merged.put("_sameMutexGroup", enriched.get("_sameMutexGroup"));
+        merged.put("draftId", draftId);
+        log.debug("[合规] 已从存储装载实例事实 draftId={}, fields={}", draftId, stored.keySet());
+        return merged;
+    }
+
+    private Long parseDraftId(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(MapOps.str(value).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 推理入口派发：reasoner 缺失时给出失败结果，交由调用方回退 Java 规则。 */
+    private OpsSwrlReasoner.ConfigComplianceResult reasonConfig(
+            Map<String, Object> facts,
+            Map<String, Object> graph,
+            Map<String, Object> c03, Map<String, Object> c04, Map<String, Object> c05,
+            Map<String, Object> c06, Map<String, Object> c07, Map<String, Object> c08,
+            Map<String, Object> c09, double minFee, double maxFee) {
+        if (swrlReasoner == null) {
+            return OpsSwrlReasoner.ConfigComplianceResult.fail("no-reasoner", "SWRL 推理器不可用");
+        }
+        return swrlReasoner.reasonConfigCompliance(facts, graph, c03, c04, c05, c06, c07, c08, c09, minFee, maxFee);
+    }
+
+    /** SWRL violation → Java issue 契约对齐（ruleId/issueType/level/field/message/evidence/alias）。 */    private Map<String, Object> issueFromSwrl(Map<String, Object> violation) {
         String ruleId = MapOps.str(violation.get("ruleId"));
         String field = MapOps.str(violation.get("field"));
         String label = MapOps.str(violation.get("label"));

@@ -1,0 +1,160 @@
+# =============================================================================
+# 测试样例实例（ABox）— 不属于产品本体，仅用于本地验证 SWRL 推理结果
+#
+# 产品本体 product.ttl 只包含 TBox（类 / 属性 / SWRL 规则 / 阈值个体）；
+# 本文件集中存放验证用实例，由测试代码加载到主本体之上。
+#
+# 用法：imports 主本体后叠加本文件，或在测试里分别 load 两个文档。
+# =============================================================================
+
+@prefix : <http://prodai.sitech.com/ontology/product#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://prodai.sitech.com/ontology/product-test-instances#> rdf:type owl:Ontology ;
+    owl:imports <http://prodai.sitech.com/ontology/product> .
+###############################################################################
+# ABox — 场景验证实例
+#
+# 用途：供 Protege / Pellet / HermiT / Openllet 本地导入后直接推理，验证各场景
+#       SWRL 规则能否命中对应结论类。每个实例都带齐规则前件所需的全部属性，
+#       数值取到能必然命中（或必然不命中）的一侧，不依赖外部数据。
+#
+# 约定：
+#   1. 实例一律以 :probe_ 开头，与业务品类个体区分；
+#   2. 合规由 OWL 补集推出（C08Compliant ≡ ¬ConfigViolation），实例只需断言原始事实，不写任何判定布尔；
+#   3. 每组实例的 rdfs:comment 标注期望推理结论，便于断言。
+###############################################################################
+
+# ---------- 场景 01 风险识别（R-B01 / R-B02） ----------
+:probe_rb01ZeroFee rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "0"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :inWhitelist "false"^^xsd:boolean ;
+  :onShelf "true"^^xsd:boolean ;
+  :hasContract "false"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-B01.zeroFee → ZeroFeeRiskOffering，再命中 R-B02 → ZeroFeeNoContractOffering"@zh ;
+  rdfs:label "验证-零元资费在架无合约"@zh .
+
+:probe_rb01Discount rdf:type owl:NamedIndividual , :Offering ;
+  :discountPercent "100"^^xsd:decimal ;
+  :repeatableFlag "true"^^xsd:boolean ;
+  :emptyTargetGroup "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-B01.discount → AbnormalDiscountOffering"@zh ;
+  rdfs:label "验证-异常全额赠送"@zh .
+
+:probe_rb03ZeroSales rdf:type owl:NamedIndividual , :Offering ;
+  :salesCnt30d "0"^^xsd:decimal ;
+  :shelfDays "200"^^xsd:decimal ;
+  rdfs:comment "期望：命中 R-B03 → ZeroSalesOffering（阈值 180）"@zh ;
+  rdfs:label "验证-长期零销"@zh .
+
+# ---------- 场景 02 配置合规（R-C03~C09） ----------
+:probe_c06Missing rdf:type owl:NamedIndividual , :Offering ;
+  :c06MissingName "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C06.name → C06MissingRequired"@zh ;
+  rdfs:label "验证-必填名称缺失"@zh .
+
+:probe_c03Mutex rdf:type owl:NamedIndividual , :Offering ;
+  :bindsExistingMainPkg "true"^^xsd:boolean ;
+  :sameMutexGroup "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C03.mutex → C03MutualExclusiveConflict"@zh ;
+  rdfs:label "验证-互斥组冲突"@zh .
+
+:probe_c04OrphanAddon rdf:type owl:NamedIndividual , :Offering ;
+  :isAddonFlag "true"^^xsd:boolean ;
+  :hasDependOn "false"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C04 → C04OrphanAddon"@zh ;
+  rdfs:label "验证-附加缺依赖"@zh .
+
+:probe_c05HighRiskZeroFee rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "0"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasContract "false"^^xsd:boolean ;
+  :exemptionFlag "false"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C05 → C05HighRiskZeroFee"@zh ;
+  rdfs:label "验证-高风险零固费"@zh .
+
+:probe_c07AbnormalDiscount rdf:type owl:NamedIndividual , :Offering ;
+  :discountPercent "100"^^xsd:decimal ;
+  :repeatableFlag "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C07 → C07AbnormalDiscount（阈值 100）"@zh ;
+  rdfs:label "验证-异常优惠漏洞"@zh .
+
+:probe_c09Above rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "999"^^xsd:decimal ;
+  rdfs:comment "期望：命中 R-C09.above → C09FeeRangeViolation（上限 599）"@zh ;
+  rdfs:label "验证-固费超上限"@zh .
+
+:probe_c09Below rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "1"^^xsd:decimal ;
+  rdfs:comment "期望：命中 R-C09.below → C09FeeRangeViolation（下限 9）"@zh ;
+  rdfs:label "验证-固费低于下限"@zh .
+
+:probe_c08Compliant rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "128"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasContract "true"^^xsd:boolean ;
+  :repeatableFlag "false"^^xsd:boolean ;
+  :exemptionFlag "false"^^xsd:boolean ;
+  rdfs:comment "期望：不命中任何 C0x 违规，由 OWL 补集推出 C08Compliant（无 hasViolation 断言）"@zh ;
+  rdfs:label "验证-合规通过"@zh .
+
+:probe_c05Whitelisted rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "0"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasContract "false"^^xsd:boolean ;
+  :exemptionFlag "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中权益赠送白名单 → exemptionFlag=true → R-C05 不点火"@zh ;
+  rdfs:label "验证-零固费但已特批"@zh .
+
+:probe_c05InternalTest rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "0"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasContract "false"^^xsd:boolean ;
+  :exemptionFlag "true"^^xsd:boolean ;
+  rdfs:comment "期望：销售渠道为内部验证 → exemptionFlag=true → R-C05 不点火"@zh ;
+  rdfs:label "验证-零固费内测品"@zh .
+
+# ---------- 场景 03 指标归因（R-A01 / R-A02） ----------
+:probe_a01Metric rdf:type owl:NamedIndividual , :Metric ;
+  :metricDelta "-0.20"^^xsd:decimal ;
+  rdfs:comment "期望：metricDelta -0.20 <= -0.10，命中 R-A01.delta"@zh ;
+  rdfs:label "验证-指标下滑"@zh .
+
+:probe_a01AnomalyOffering rdf:type owl:NamedIndividual , :Offering ;
+  :hasMetric :probe_a01Metric ;
+  rdfs:comment "期望：经 R-A01.delta 归入 AnomalyOffering"@zh ;
+  rdfs:label "验证-异常品类（归因入口）"@zh .
+
+:probe_a02Channel rdf:type owl:NamedIndividual , :Channel ;
+  :orderDelta "-0.30"^^xsd:decimal ;
+  :contribRatio "0.50"^^xsd:decimal ;
+  rdfs:comment "期望：经 R-A02 归入 ChannelRootCause（前件要求品类已入 AnomalyOffering 且 soldOn 该渠道）"@zh ;
+  rdfs:label "验证-渠道量效下滑"@zh .
+
+:probe_a02AnomalyOffering rdf:type owl:NamedIndividual , :AnomalyOffering , :Offering ;
+  :soldOn :probe_a02Channel ;
+  rdfs:comment "期望：orderDelta<=-0.20 且 contribRatio>=0.30，经 R-A02 推出 ChannelRootCause"@zh ;
+  rdfs:label "验证-渠道归因入口品类"@zh .
+
+# ---------- 场景 04 告警分级（R-E01~R-E04） ----------
+:probe_re01P0 rdf:type owl:NamedIndividual , :Offering ;
+  :feeErrorRate "0.10"^^xsd:decimal ;
+  rdfs:comment "期望：feeErrorRate 0.10 >= 0.05，命中 R-E01.fee → P0AlertOffering，并连推 R-E04.p0 → NeedWorkOrderOffering"@zh ;
+  rdfs:label "验证-P0 资费差错率高"@zh .
+
+:probe_re02P1 rdf:type owl:NamedIndividual , :Offering ;
+  :errorCount "3"^^xsd:decimal ;
+  rdfs:comment "期望：errorCount 3 >= 1，命中 R-E02.err → P1AlertOffering"@zh ;
+  rdfs:label "验证-P1 差错笔数"@zh .
+
+:probe_re03P2 rdf:type owl:NamedIndividual , :Offering ;
+  :errorTrendUp "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-E03.errTrend → P2AlertOffering"@zh ;
+  rdfs:label "验证-P2 差错上行趋势"@zh .
+
+
+

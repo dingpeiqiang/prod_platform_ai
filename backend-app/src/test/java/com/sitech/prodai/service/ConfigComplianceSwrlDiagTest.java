@@ -96,6 +96,48 @@ class ConfigComplianceSwrlDiagTest {
     }
 
     @Test
+    @DisplayName("R-C05 白名单豁免：零元也不再判违规")
+    void whitelistExempt() {
+        Map<String, Object> d = base();
+        d.put("fixedFeeAmount", 0);
+        d.put("oneTimeFee", 0);
+        d.put("bizScenario", "权益赠送");
+        Map<String, Object> graph = new LinkedHashMap<>();
+        graph.put("equityGiftWhitelist", java.util.List.of("权益赠送"));
+        OpsSwrlReasoner.ConfigComplianceResult r = reasoner.reasonConfigCompliance(d, graph,
+                opsRules.configRule("R-C03"), opsRules.configRule("R-C04"), opsRules.configRule("R-C05"),
+                opsRules.configRule("R-C06"), opsRules.configRule("R-C07"), opsRules.configRule("R-C08"),
+                opsRules.configRule("R-C09"), 9, 599);
+        Assertions.assertTrue(r.success(), r.message());
+        Assertions.assertTrue(r.violations().stream().noneMatch(v -> "R-C05".equals(v.get("ruleId"))),
+                "白名单豁免后不应命中 R-C05: " + r.violations());
+    }
+
+    @Test
+    @DisplayName("R-C05 内测豁免：零元也不再判违规")
+    void internalTestExempt() {
+        Map<String, Object> d = base();
+        d.put("fixedFeeAmount", 0);
+        d.put("oneTimeFee", 0);
+        d.put("channelScope", "内部验证");
+        OpsSwrlReasoner.ConfigComplianceResult r = run(d);
+        Assertions.assertTrue(r.success(), r.message());
+        Assertions.assertTrue(r.violations().stream().noneMatch(v -> "R-C05".equals(v.get("ruleId"))),
+                "内测豁免后不应命中 R-C05: " + r.violations());
+    }
+
+    @Test
+    @DisplayName("违规实例不得被判为合规")
+    void violationNotCompliant() {
+        Map<String, Object> d = base();
+        d.put("fixedFeeAmount", 999);
+        OpsSwrlReasoner.ConfigComplianceResult r = run(d);
+        Assertions.assertTrue(r.success(), r.message());
+        Assertions.assertFalse(r.compliant(), "存在 R-C09 违规时不应判合规");
+        Assertions.assertFalse(r.firedRules().contains("R-C08"), "fired=" + r.firedRules());
+    }
+
+    @Test
     @DisplayName("推理链非空")
     void reasoningChain() {
         Map<String, Object> d = base();

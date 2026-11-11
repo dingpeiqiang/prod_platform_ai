@@ -65,6 +65,7 @@ public class ProductOntologyService {
     public ProductOntologyService(com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                               ProdAiProperties properties,
                               OpsSwrlReasoner opsSwrlReasoner,
+                              OntologyInstanceFactsService instanceFacts,
                               OpsRulesService opsRules,
                               OpsProductGraphLoader graphLoader,
                               OpsExtractionService extractionService,
@@ -120,6 +121,10 @@ public class ProductOntologyService {
         // R8 配置合规 SWRL 转正：注入 Openllet 委托（R-C03~C09 走 product.ttl）
         if (opsSwrlReasoner != null) {
             this.complianceEngine.setSwrlReasoner(opsSwrlReasoner);
+        }
+        // 实例事实（ABox）实时读取：草稿带 draftId 时推理改从 H2/MySQL 装载事实
+        if (instanceFacts != null) {
+            this.complianceEngine.setInstanceFacts(instanceFacts);
         }
         this.chatConfigureService = new ChatConfigureService(
                 this::toObjectMapper, extractionService, deriveEngine, intentExtractor, sparqlDiscoverer,
