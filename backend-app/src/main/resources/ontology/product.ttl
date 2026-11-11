@@ -8,7 +8,7 @@
 
 <http://prodai.sitech.com/ontology/product> rdf:type owl:Ontology ;
     rdfs:label "产商品统一本体模型"@zh ;
-    owl:versionInfo "3.0" ;
+    owl:versionInfo "3.1" ;
     rdfs:comment "三位一体：配置（TBox/ABox）+ 运营归因风险 + 运行告警分级。SWRL 规则骨架内置于本体，阈值由运行时按 ops_rules.json / ops_rules.alertGrading 覆写命名阈值个体。"@zh .
 
 #################################################################
@@ -19,1016 +19,1016 @@
 # Object Properties
 :configuresProduct rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :PricingProduct ;
-  rdfs:comment "方案配置产商品资费"@zh ; rdfs:label "configuresProduct"@en .
+  rdfs:comment "方案配置产商品资费"@zh ; rdfs:label "配置产商品资费"@zh .
 
 :belongsToCategory rdf:type owl:ObjectProperty ;
   rdfs:domain :PricingProduct ; rdfs:range :ProductCategory ;
-  rdfs:comment "资费属于品类"@zh ; rdfs:label "belongsToCategory"@en .
+  rdfs:comment "资费属于品类"@zh ; rdfs:label "所属品类"@zh .
 
 :hasSalesPolicy rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :SalesPolicy ;
-  rdfs:comment "方案含销售策略"@zh ; rdfs:label "hasSalesPolicy"@en .
+  rdfs:comment "方案含销售策略"@zh ; rdfs:label "含销售策略"@zh .
 
 :hasReleaseScope rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ReleaseScope ;
-  rdfs:comment "方案含发布范围"@zh ; rdfs:label "hasReleaseScope"@en .
+  rdfs:comment "方案含发布范围"@zh ; rdfs:label "含发布范围"@zh .
 
 :hasNetworkCapability rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :NetworkCapability ;
-  rdfs:comment "方案含网络能力"@zh ; rdfs:label "hasNetworkCapability"@en .
+  rdfs:comment "方案含网络能力"@zh ; rdfs:label "含网络能力"@zh .
 
 :hasFamilyOfferPolicy rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :FamilyOfferPolicy ;
-  rdfs:comment "方案含家庭资费策略"@zh ; rdfs:label "hasFamilyOfferPolicy"@en .
+  rdfs:comment "方案含家庭资费策略"@zh ; rdfs:label "含家庭资费策略"@zh .
 
 :hasChargePlan rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ChargePlan ;
-  rdfs:comment "方案含固费方案"@zh ; rdfs:label "hasChargePlan"@en .
+  rdfs:comment "方案含固费方案"@zh ; rdfs:label "含固费方案"@zh .
 
 :hasPreferentialPlan rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :PreferentialPlan ;
-  rdfs:comment "方案含优惠（含子类实例）"@zh ; rdfs:label "hasPreferentialPlan"@en .
+  rdfs:comment "方案含优惠（含子类实例）"@zh ; rdfs:label "含优惠方案"@zh .
 
 :hasResourceEntitlement rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ResourceEntitlement ;
-  rdfs:comment "方案含资源权益（含子类）"@zh ; rdfs:label "hasResourceEntitlement"@en .
+  rdfs:comment "方案含资源权益（含子类）"@zh ; rdfs:label "含资源权益"@zh .
 
 :hasPrintNotice rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :PrintNotice ;
-  rdfs:comment "方案含免填单告知"@zh ; rdfs:label "hasPrintNotice"@en .
+  rdfs:comment "方案含免填单告知"@zh ; rdfs:label "含免填单告知"@zh .
 
 :hasSmsNotice rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :SmsNotice ;
-  rdfs:comment "方案含短信告知"@zh ; rdfs:label "hasSmsNotice"@en .
+  rdfs:comment "方案含短信告知"@zh ; rdfs:label "含短信告知"@zh .
 
 :hasValueAddedEquity rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ValueAddedEquity ;
-  rdfs:comment "方案含增值权益"@zh ; rdfs:label "hasValueAddedEquity"@en .
+  rdfs:comment "方案含增值权益"@zh ; rdfs:label "含增值权益"@zh .
 
 :hasOfferCompatibility rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :OfferCompatibility ;
-  rdfs:comment "方案含资费相容关系"@zh ; rdfs:label "hasOfferCompatibility"@en .
+  rdfs:comment "方案含资费相容关系"@zh ; rdfs:label "含资费相容关系"@zh .
 
 :hasConfigChange rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ConfigChange ;
-  rdfs:comment "方案含变更意图"@zh ; rdfs:label "hasConfigChange"@en .
+  rdfs:comment "方案含变更意图"@zh ; rdfs:label "含变更意图"@zh .
 
 :governedBy rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ComplianceRule ;
-  rdfs:comment "受合规治理"@zh ; rdfs:label "governedBy"@en .
+  rdfs:comment "受合规治理"@zh ; rdfs:label "受合规治理"@zh .
 
 :appliesScene rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :BusinessScene ;
-  rdfs:comment "适用业务场景"@zh ; rdfs:label "appliesScene"@en .
+  rdfs:comment "适用业务场景"@zh ; rdfs:label "适用业务场景"@zh .
 
 :similarTo rdf:type owl:ObjectProperty ;
   rdfs:domain :ConfigScheme ; rdfs:range :ConfigScheme ;
-  rdfs:comment "方案相似复用"@zh ; rdfs:label "similarTo"@en .
+  rdfs:comment "方案相似复用"@zh ; rdfs:label "相似复用"@zh .
 
 :appliesConstraint rdf:type owl:ObjectProperty ;
   rdfs:domain :ProductCategory ; rdfs:range :BusinessConstraint ;
-  rdfs:comment "品类适用业务约束"@zh ; rdfs:label "appliesConstraint"@en .
+  rdfs:comment "品类适用业务约束"@zh ; rdfs:label "适用业务约束"@zh .
 
 :constrainsScheme rdf:type owl:ObjectProperty ;
   rdfs:domain :BusinessConstraint ; rdfs:range :ConfigScheme ;
-  rdfs:comment "约束作用于配置方案"@zh ; rdfs:label "constrainsScheme"@en .
+  rdfs:comment "约束作用于配置方案"@zh ; rdfs:label "约束作用方案"@zh .
 
 # Data Properties
 :offerName rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prodPrcName"@zh ;
-  rdfs:label "offerName"@en , "资费名称"@zh .
+  rdfs:label "资费名称"@zh .
 
 :productCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prodId"@zh ;
-  rdfs:label "productCode"@en , "产品代码"@zh .
+  rdfs:label "产品代码"@zh .
 
 :pricingCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prodPrcId"@zh ;
-  rdfs:label "pricingCode"@en , "资费代码"@zh .
+  rdfs:label "资费代码"@zh .
 
 :splitCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:pricingId"@zh ;
-  rdfs:label "splitCode"@en , "拆分代码"@zh .
+  rdfs:label "拆分代码"@zh .
 
 :is5GOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:planFlag"@zh ;
-  rdfs:label "is5GOffer"@en , "是否5G资费"@zh .
+  rdfs:label "是否5G资费"@zh .
 
 :addonProductType rdf:type owl:DatatypeProperty ;
   rdfs:domain :PricingProduct ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prodType"@zh ;
-  rdfs:label "addonProductType"@en , "附加产品类型"@zh .
+  rdfs:label "附加产品类型"@zh .
 
 :categoryCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ProductCategory ;
   rdfs:range xsd:string ;
-  rdfs:label "categoryCode"@en , "品类编码"@zh .
+  rdfs:label "品类编码"@zh .
 
 :categoryName rdf:type owl:DatatypeProperty ;
   rdfs:domain :ProductCategory ;
   rdfs:range xsd:string ;
-  rdfs:label "categoryName"@en , "品类名称"@zh .
+  rdfs:label "品类名称"@zh .
 
 :productLine rdf:type owl:DatatypeProperty ;
   rdfs:domain :ProductCategory ;
   rdfs:range xsd:string ;
-  rdfs:label "productLine"@en , "产品线"@zh .
+  rdfs:label "产品线"@zh .
 
 :isMainOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :ProductCategory ;
   rdfs:range xsd:boolean ;
-  rdfs:label "isMainOffer"@en , "是否主资费"@zh .
+  rdfs:label "是否主资费"@zh .
 
 :messageRootKey rdf:type owl:DatatypeProperty ;
   rdfs:domain :ProductCategory ;
   rdfs:range xsd:string ;
-  rdfs:label "messageRootKey"@en , "对接报文根键"@zh .
+  rdfs:label "对接报文根键"@zh .
 
 :relationType rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:string ;
-  rdfs:label "relationType"@en , "关系类型"@zh .
+  rdfs:label "关系类型"@zh .
 
 :sourceOfferRef rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:canBaseFamilyPrc/outProdPrcId"@zh ;
-  rdfs:label "sourceOfferRef"@en , "源资费引用"@zh .
+  rdfs:label "源资费引用"@zh .
 
 :targetOfferRef rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:canAddFamilyPrc/inProdPrcId"@zh ;
-  rdfs:label "targetOfferRef"@en , "目标资费引用"@zh .
+  rdfs:label "目标资费引用"@zh .
 
 :upgradeEndsAddon rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:familyUpIfEnd"@zh ;
-  rdfs:label "upgradeEndsAddon"@en , "升档是否结束附加"@zh .
+  rdfs:label "升档是否结束附加"@zh .
 
 :allowChangeMainOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:ifChangeBasePrc"@zh ;
-  rdfs:label "allowChangeMainOffer"@en , "是否允许变更主资费"@zh .
+  rdfs:label "是否允许变更主资费"@zh .
 
 :contractAllowDowngrade rdf:type owl:DatatypeProperty ;
   rdfs:domain :OfferCompatibility ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:chgYueIfCanDown"@zh ;
-  rdfs:label "contractAllowDowngrade"@en , "合约期是否允许降档"@zh .
+  rdfs:label "合约期是否允许降档"@zh .
 
 :schemeId rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:string ;
-  rdfs:label "schemeId"@en , "方案编码"@zh .
+  rdfs:label "方案编码"@zh .
 
 :workOrderId rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:templateId"@zh ;
-  rdfs:label "workOrderId"@en , "需求工单编号"@zh .
+  rdfs:label "需求工单编号"@zh .
 
 :status rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:string ;
-  rdfs:label "status"@en , "方案状态"@zh .
+  rdfs:label "方案状态"@zh .
 
 :version rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:string ;
-  rdfs:label "version"@en , "方案版本"@zh .
+  rdfs:label "方案版本"@zh .
 
 :createTime rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:dateTime ;
-  rdfs:label "createTime"@en , "创建时间"@zh .
+  rdfs:label "创建时间"@zh .
 
 :creator rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigScheme ;
   rdfs:range xsd:string ;
-  rdfs:label "creator"@en , "创建人"@zh .
+  rdfs:label "创建人"@zh .
 
 :changeOpType rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigChange ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:opType"@zh ;
-  rdfs:label "changeOpType"@en , "变更操作类型"@zh .
+  rdfs:label "变更操作类型"@zh .
 
 :changedAttributes rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigChange ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:opContent"@zh ;
-  rdfs:label "changedAttributes"@en , "变更属性列表"@zh .
+  rdfs:label "变更属性列表"@zh .
 
 :changeComponentRef rdf:type owl:DatatypeProperty ;
   rdfs:domain :ConfigChange ;
   rdfs:range xsd:string ;
-  rdfs:label "changeComponentRef"@en , "变更组件引用"@zh .
+  rdfs:label "变更组件引用"@zh .
 
 :orderEffectMode rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:effRuleId"@zh ;
-  rdfs:label "orderEffectMode"@en , "订购生效方式"@zh .
+  rdfs:label "订购生效方式"@zh .
 
 :cancelEffectMode rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:cancelRuleId"@zh ;
-  rdfs:label "cancelEffectMode"@en , "退订生效方式"@zh .
+  rdfs:label "退订生效方式"@zh .
 
 :saleStartDate rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:dateTime ;
   rdfs:comment "报文键:effDate"@zh ;
-  rdfs:label "saleStartDate"@en , "销售开始日期"@zh .
+  rdfs:label "销售开始日期"@zh .
 
 :saleEndDate rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:dateTime ;
   rdfs:comment "报文键:expDate"@zh ;
-  rdfs:label "saleEndDate"@en , "销售终止日期"@zh .
+  rdfs:label "销售终止日期"@zh .
 
 :validityCycle rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prcEffCycle"@zh ;
-  rdfs:label "validityCycle"@en , "资费有效周期"@zh .
+  rdfs:label "资费有效周期"@zh .
 
 :validityUnit rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prcEffType"@zh ;
-  rdfs:label "validityUnit"@en , "有效期单位"@zh .
+  rdfs:label "有效期单位"@zh .
 
 :validityValue rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:prcEffNum"@zh ;
-  rdfs:label "validityValue"@en , "有效期数值"@zh .
+  rdfs:label "有效期数值"@zh .
 
 :absoluteExpireDate rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:dateTime ;
   rdfs:comment "报文键:prcEffDate"@zh ;
-  rdfs:label "absoluteExpireDate"@en , "绝对失效日期"@zh .
+  rdfs:label "绝对失效日期"@zh .
 
 :maxRepeatOrder rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:effNum"@zh ;
-  rdfs:label "maxRepeatOrder"@en , "允许重复订购数量"@zh .
+  rdfs:label "允许重复订购数量"@zh .
 
 :repeatChargeFlag rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:reFeeFlag"@zh ;
-  rdfs:label "repeatChargeFlag"@en , "重复订购是否重复收费"@zh .
+  rdfs:label "重复订购是否重复收费"@zh .
 
 :unifiedQueryCancel rdf:type owl:DatatypeProperty ;
   rdfs:domain :SalesPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:unifiedQryCancle"@zh ;
-  rdfs:label "unifiedQueryCancel"@en , "是否支持统一查询退订"@zh .
+  rdfs:label "是否支持统一查询退订"@zh .
 
 :channelScope rdf:type owl:DatatypeProperty ;
   rdfs:domain :ReleaseScope ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:chnClassLimit"@zh ;
-  rdfs:label "channelScope"@en , "发布渠道"@zh .
+  rdfs:label "发布渠道"@zh .
 
 :regionScope rdf:type owl:DatatypeProperty ;
   rdfs:domain :ReleaseScope ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:groupId"@zh ;
-  rdfs:label "regionScope"@en , "发布地市范围"@zh .
+  rdfs:label "发布地市范围"@zh .
 
 :regionDetail rdf:type owl:DatatypeProperty ;
   rdfs:domain :ReleaseScope ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:groupIdMessage"@zh ;
-  rdfs:label "regionDetail"@en , "发布地市明细"@zh .
+  rdfs:label "发布地市明细"@zh .
 
 :domainName rdf:type owl:DatatypeProperty ;
   rdfs:domain :NetworkCapability ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:domainName"@zh ;
-  rdfs:label "domainName"@en , "域名"@zh .
+  rdfs:label "域名"@zh .
 
 :downstreamBandwidth rdf:type owl:DatatypeProperty ;
   rdfs:domain :NetworkCapability ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:downStreamId"@zh ;
-  rdfs:label "downstreamBandwidth"@en , "下行带宽"@zh .
+  rdfs:label "下行带宽"@zh .
 
 :upstreamBandwidth rdf:type owl:DatatypeProperty ;
   rdfs:domain :NetworkCapability ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:upStreamId"@zh ;
-  rdfs:label "upstreamBandwidth"@en , "上行带宽"@zh .
+  rdfs:label "上行带宽"@zh .
 
 :fiveGSpeed rdf:type owl:DatatypeProperty ;
   rdfs:domain :NetworkCapability ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:5GUser"@zh ;
-  rdfs:label "fiveGSpeed"@en , "5G速率"@zh .
+  rdfs:label "5G速率"@zh .
 
 :allowJoinFamily rdf:type owl:DatatypeProperty ;
   rdfs:domain :NetworkCapability ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:ifAddFamily"@zh ;
-  rdfs:label "allowJoinFamily"@en , "是否允许加入家庭"@zh .
+  rdfs:label "是否允许加入家庭"@zh .
 
 :familyPackageType rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:teamType"@zh ;
-  rdfs:label "familyPackageType"@en , "家庭套餐类型"@zh .
+  rdfs:label "家庭套餐类型"@zh .
 
 :isFloorOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:ifFloorsPrc"@zh ;
-  rdfs:label "isFloorOffer"@en , "是否保底资费"@zh .
+  rdfs:label "是否保底资费"@zh .
 
 :isUnifiedPay rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:payFlag"@zh ;
-  rdfs:label "isUnifiedPay"@en , "是否统付"@zh .
+  rdfs:label "是否统付"@zh .
 
 :contractMonths rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:dateLimit"@zh ;
-  rdfs:label "contractMonths"@en , "协议期月数"@zh .
+  rdfs:label "协议期月数"@zh .
 
 :contractCancelPrivilege rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:powerCode"@zh ;
-  rdfs:label "contractCancelPrivilege"@en , "协议期内退订权限"@zh .
+  rdfs:label "协议期内退订权限"@zh .
 
 :familyCatalog rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:familyCata"@zh ;
-  rdfs:label "familyCatalog"@en , "家客中心展示目录"@zh .
+  rdfs:label "家客中心展示目录"@zh .
 
 :maxFamilyMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:roleMax"@zh ;
-  rdfs:label "maxFamilyMembers"@en , "家庭最大成员数"@zh .
+  rdfs:label "家庭最大成员数"@zh .
 
 :minFamilyMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:roleMin"@zh ;
-  rdfs:label "minFamilyMembers"@en , "家庭最小成员数"@zh .
+  rdfs:label "家庭最小成员数"@zh .
 
 :allowFamilyAddon rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:canAddFamilyPrc"@zh ;
-  rdfs:label "allowFamilyAddon"@en , "允许办理家庭附加"@zh .
+  rdfs:label "允许办理家庭附加"@zh .
 
 :allowTvOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:tvPrc"@zh ;
-  rdfs:label "allowTvOffer"@en , "允许办理电视资费"@zh .
+  rdfs:label "允许办理电视资费"@zh .
 
 :secondBroadbandOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sencondKdPrc"@zh ;
-  rdfs:label "secondBroadbandOffer"@en , "第二条副宽资费"@zh .
+  rdfs:label "第二条副宽资费"@zh .
 
 :thirdBroadbandOffer rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:thirdKdPrc"@zh ;
-  rdfs:label "thirdBroadbandOffer"@en , "第三条副宽资费"@zh .
+  rdfs:label "第三条副宽资费"@zh .
 
 :maxPhoneMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:phoneMbrMax"@zh ;
-  rdfs:label "maxPhoneMembers"@en , "手机最大成员数"@zh .
+  rdfs:label "手机最大成员数"@zh .
 
 :minPhoneMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:phoneMbrMin"@zh ;
-  rdfs:label "minPhoneMembers"@en , "手机最小成员数"@zh .
+  rdfs:label "手机最小成员数"@zh .
 
 :freePhoneMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:freeMbrCnt"@zh ;
-  rdfs:label "freePhoneMembers"@en , "免费手机成员数"@zh .
+  rdfs:label "免费手机成员数"@zh .
 
 :extraPhoneMemberFee rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:phoneMbrFee"@zh ;
-  rdfs:label "extraPhoneMemberFee"@en , "超出手机成员月租"@zh .
+  rdfs:label "超出手机成员月租"@zh .
 
 :maxBroadbandMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:kdMbrMax"@zh ;
-  rdfs:label "maxBroadbandMembers"@en , "宽带最大成员数"@zh .
+  rdfs:label "宽带最大成员数"@zh .
 
 :minBroadbandMembers rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:kdMbrMin"@zh ;
-  rdfs:label "minBroadbandMembers"@en , "宽带最小成员数"@zh .
+  rdfs:label "宽带最小成员数"@zh .
 
 :hasMainBroadband rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:mainKd"@zh ;
-  rdfs:label "hasMainBroadband"@en , "是否主宽带"@zh .
+  rdfs:label "是否主宽带"@zh .
 
 :addonContractMonths rdf:type owl:DatatypeProperty ;
   rdfs:domain :FamilyOfferPolicy ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:chgYue"@zh ;
-  rdfs:label "addonContractMonths"@en , "附加合约期月数"@zh .
+  rdfs:label "附加合约期月数"@zh .
 
 :chargeMode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:calcMode"@zh ;
-  rdfs:label "chargeMode"@en , "收费方式"@zh .
+  rdfs:label "收费方式"@zh .
 
 :fixedFeeAmount rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:fixFee"@zh ;
-  rdfs:label "fixedFeeAmount"@en , "套餐固定费"@zh .
+  rdfs:label "套餐固定费"@zh .
 
 :accountItem rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:acctItem"@zh ;
-  rdfs:label "accountItem"@en , "收费科目"@zh .
+  rdfs:label "收费科目"@zh .
 
 :taxSplitFlag rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:isSplitRate"@zh ;
-  rdfs:label "taxSplitFlag"@en , "是否拆分税率"@zh .
+  rdfs:label "是否拆分税率"@zh .
 
 :voiceTaxRatio rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:splitRate9"@zh ;
-  rdfs:label "voiceTaxRatio"@en , "语音税率占比"@zh .
+  rdfs:label "语音税率占比"@zh .
 
 :dataTaxRatio rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:splitRate6"@zh ;
-  rdfs:label "dataTaxRatio"@en , "数据税率占比"@zh .
+  rdfs:label "数据税率占比"@zh .
 
 :chargeValidityType rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:fixValidity"@zh ;
-  rdfs:label "chargeValidityType"@en , "月租有效期类型"@zh .
+  rdfs:label "月租有效期类型"@zh .
 
 :chargeValidityValue rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:fixValidityVAlue"@zh ;
-  rdfs:label "chargeValidityValue"@en , "月租有效期值"@zh .
+  rdfs:label "月租有效期值"@zh .
 
 :chargeIntervalMonths rdf:type owl:DatatypeProperty ;
   rdfs:domain :ChargePlan ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:fixCircle"@zh ;
-  rdfs:label "chargeIntervalMonths"@en , "收费间隔月数"@zh .
+  rdfs:label "收费间隔月数"@zh .
 
 :prefValidityType rdf:type owl:DatatypeProperty ;
   rdfs:domain :PreferentialPlan ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favValidity"@zh ;
-  rdfs:label "prefValidityType"@en , "优惠有效期类型"@zh .
+  rdfs:label "优惠有效期类型"@zh .
 
 :prefValidityValue rdf:type owl:DatatypeProperty ;
   rdfs:domain :PreferentialPlan ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:favValidityVAlue"@zh ;
-  rdfs:label "prefValidityValue"@en , "优惠有效期值"@zh .
+  rdfs:label "优惠有效期值"@zh .
 
 :prefDescription rdf:type owl:DatatypeProperty ;
   rdfs:domain :PreferentialPlan ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favDesc"@zh ;
-  rdfs:label "prefDescription"@en , "优惠说明"@zh .
+  rdfs:label "优惠说明"@zh .
 
 :prefCondition rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favCondition"@zh ;
-  rdfs:label "prefCondition"@en , "优惠条件"@zh .
+  rdfs:label "优惠条件"@zh .
 
 :prefItemType rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favItemType"@zh ;
-  rdfs:label "prefItemType"@en , "优惠科目类型"@zh .
+  rdfs:label "优惠科目类型"@zh .
 
 :prefItemGroup rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favGroup"@zh ;
-  rdfs:label "prefItemGroup"@en , "优惠科目集合"@zh .
+  rdfs:label "优惠科目集合"@zh .
 
 :prefType rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:favType"@zh ;
-  rdfs:label "prefType"@en , "优惠类型"@zh .
+  rdfs:label "优惠类型"@zh .
 
 :discountRate rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:favDiscount"@zh ;
-  rdfs:label "discountRate"@en , "折扣比例"@zh .
+  rdfs:label "折扣比例"@zh .
 
 :giftFeeAmount rdf:type owl:DatatypeProperty ;
   rdfs:domain :AccountPreferential ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:favFee"@zh ;
-  rdfs:label "giftFeeAmount"@en , "赠费金额"@zh .
+  rdfs:label "赠费金额"@zh .
 
 :floorMethod rdf:type owl:DatatypeProperty ;
   rdfs:domain :FloorGuarantee ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:fav1Method"@zh ;
-  rdfs:label "floorMethod"@en , "保底方式"@zh .
+  rdfs:label "保底方式"@zh .
 
 :floorAmount rdf:type owl:DatatypeProperty ;
   rdfs:domain :FloorGuarantee ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:fav1Fee"@zh ;
-  rdfs:label "floorAmount"@en , "保底费用"@zh .
+  rdfs:label "保底费用"@zh .
 
 :floorItemType rdf:type owl:DatatypeProperty ;
   rdfs:domain :FloorGuarantee ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:fav1ItemType"@zh ;
-  rdfs:label "floorItemType"@en , "保底科目类型"@zh .
+  rdfs:label "保底科目类型"@zh .
 
 :floorItemGroup rdf:type owl:DatatypeProperty ;
   rdfs:domain :FloorGuarantee ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:fav1Group"@zh ;
-  rdfs:label "floorItemGroup"@en , "保底科目集合"@zh .
+  rdfs:label "保底科目集合"@zh .
 
 :cdrDiscountFlag rdf:type owl:DatatypeProperty ;
   rdfs:domain :CdrPreferential ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:wkBillFlag"@zh ;
-  rdfs:label "cdrDiscountFlag"@en , "是否话单优惠"@zh .
+  rdfs:label "是否话单优惠"@zh .
 
 :resourceAmount rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:theshold"@zh ;
-  rdfs:label "resourceAmount"@en , "资源量"@zh .
+  rdfs:label "资源量"@zh .
 
 :firstMonthGrantMode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:adjust"@zh ;
-  rdfs:label "firstMonthGrantMode"@en , "首月赠送方式"@zh .
+  rdfs:label "首月赠送方式"@zh .
 
 :remindFlag rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:remindFlag"@zh ;
-  rdfs:label "remindFlag"@en , "是否提醒"@zh .
+  rdfs:label "是否提醒"@zh .
 
 :splitPricingCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prodPrc"@zh ;
-  rdfs:label "splitPricingCode"@en , "拆分资费代码"@zh .
+  rdfs:label "拆分资费代码"@zh .
 
 :batchBillingCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:billPrcId"@zh ;
-  rdfs:label "batchBillingCode"@en , "二批代码"@zh .
+  rdfs:label "二批代码"@zh .
 
 :subBillingCodes rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:subBillPrcIds"@zh ;
-  rdfs:label "subBillingCodes"@en , "子记账资费"@zh .
+  rdfs:label "子记账资费"@zh .
 
 :conditionCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:conditionCode"@zh ;
-  rdfs:label "conditionCode"@en , "附件条件ID"@zh .
+  rdfs:label "附件条件ID"@zh .
 
 :subConditionCodes rdf:type owl:DatatypeProperty ;
   rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:subConditionCodes"@zh ;
-  rdfs:label "subConditionCodes"@en , "子附件条件ID"@zh .
+  rdfs:label "子附件条件ID"@zh .
 
 :resourceType rdf:type owl:DatatypeProperty ;
-  rdfs:domain [ rdf:type owl:Class ; owl:unionOf ( :DataResource :SmsResource :VoiceResource ) ] ;
+  rdfs:domain :ResourceEntitlement ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:resourceType"@zh ;
-  rdfs:label "resourceType"@en , "短信类型"@zh .
+  rdfs:label "短信类型"@zh .
 
 :resourceUnit rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:unit"@zh ;
-  rdfs:label "resourceUnit"@en , "流量单位"@zh .
+  rdfs:label "流量单位"@zh .
 
 :directedContentCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sid"@zh ;
-  rdfs:label "directedContentCode"@en , "定向内容编码"@zh .
+  rdfs:label "定向内容编码"@zh .
 
 :geoScope rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:location"@zh ;
-  rdfs:label "geoScope"@en , "地域范围"@zh .
+  rdfs:label "地域范围"@zh .
 
 :cellCodes rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:locationCodes"@zh ;
-  rdfs:label "cellCodes"@en , "小区编码"@zh .
+  rdfs:label "小区编码"@zh .
 
 :periodUnit rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:periodUnit"@zh ;
-  rdfs:label "periodUnit"@en , "资源周期单位"@zh .
+  rdfs:label "资源周期单位"@zh .
 
 :periodLength rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:integer ;
   rdfs:comment "报文键:period"@zh ;
-  rdfs:label "periodLength"@en , "资源周期时长"@zh .
+  rdfs:label "资源周期时长"@zh .
 
 :carryOverFlag rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:boolean ;
   rdfs:comment "报文键:carryFlag"@zh ;
-  rdfs:label "carryOverFlag"@en , "是否结转次月"@zh .
+  rdfs:label "是否结转次月"@zh .
 
 :overageChargeMode rdf:type owl:DatatypeProperty ;
   rdfs:domain :DataResource ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:outChargeMode"@zh ;
-  rdfs:label "overageChargeMode"@en , "套外计费标准"@zh .
+  rdfs:label "套外计费标准"@zh .
 
 :overageRate rdf:type owl:DatatypeProperty ;
   rdfs:domain :VoiceResource ;
   rdfs:range xsd:float ;
   rdfs:comment "报文键:outCharge"@zh ;
-  rdfs:label "overageRate"@en , "套外计费费率"@zh .
+  rdfs:label "套外计费费率"@zh .
 
 :printMonthlyFeeText rdf:type owl:DatatypeProperty ;
   rdfs:domain :PrintNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:prcMonthFee"@zh ;
-  rdfs:label "printMonthlyFeeText"@en , "月费描述"@zh .
+  rdfs:label "月费描述"@zh .
 
 :printResourceText rdf:type owl:DatatypeProperty ;
   rdfs:domain :PrintNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:containResource"@zh ;
-  rdfs:label "printResourceText"@en , "包含资源描述"@zh .
+  rdfs:label "包含资源描述"@zh .
 
 :printOverageText rdf:type owl:DatatypeProperty ;
   rdfs:domain :PrintNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:chargeStandard"@zh ;
-  rdfs:label "printOverageText"@en , "超套标准描述"@zh .
+  rdfs:label "超套标准描述"@zh .
 
 :printLimitText rdf:type owl:DatatypeProperty ;
   rdfs:domain :PrintNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:limitCondition"@zh ;
-  rdfs:label "printLimitText"@en , "限定条件描述"@zh .
+  rdfs:label "限定条件描述"@zh .
 
 :printEquityText rdf:type owl:DatatypeProperty ;
   rdfs:domain :PrintNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:otherEquity"@zh ;
-  rdfs:label "printEquityText"@en , "其他权益描述"@zh .
+  rdfs:label "其他权益描述"@zh .
 
 :smsOpTypes rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:opType"@zh ;
-  rdfs:label "smsOpTypes"@en , "短信类型选择"@zh .
+  rdfs:label "短信类型选择"@zh .
 
 :successSmsImmediate rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sysNoteNow"@zh ;
-  rdfs:label "successSmsImmediate"@en , "立即成功短信"@zh .
+  rdfs:label "立即成功短信"@zh .
 
 :successSmsReserved rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sysNoteNext"@zh ;
-  rdfs:label "successSmsReserved"@en , "预约成功短信"@zh .
+  rdfs:label "预约成功短信"@zh .
 
 :cancelSms rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sysNoteCancle"@zh ;
-  rdfs:label "cancelSms"@en , "退订短信"@zh .
+  rdfs:label "退订短信"@zh .
 
 :expireSms rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sysNoteExpire"@zh ;
-  rdfs:label "expireSms"@en , "到期短信"@zh .
+  rdfs:label "到期短信"@zh .
 
 :confirmSms rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:sysNoteErke"@zh ;
-  rdfs:label "confirmSms"@en , "前台二确短信"@zh .
+  rdfs:label "前台二确短信"@zh .
 
 :smsInstructionName rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:SvcName"@zh ;
-  rdfs:label "smsInstructionName"@en , "业务指令名称"@zh .
+  rdfs:label "业务指令名称"@zh .
 
 :smsInstructionContent rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:SmsInst"@zh ;
-  rdfs:label "smsInstructionContent"@en , "短信指令内容"@zh .
+  rdfs:label "短信指令内容"@zh .
 
 :smsConfirmHint rdf:type owl:DatatypeProperty ;
   rdfs:domain :SmsNotice ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:SmsContent"@zh ;
-  rdfs:label "smsConfirmHint"@en , "二确提示短信"@zh .
+  rdfs:label "二确提示短信"@zh .
 
 :equityContent rdf:type owl:DatatypeProperty ;
   rdfs:domain :ValueAddedEquity ;
   rdfs:range xsd:string ;
   rdfs:comment "报文键:equityContent"@zh ;
-  rdfs:label "equityContent"@en , "权益内容"@zh .
+  rdfs:label "权益内容"@zh .
 
 :constraintId rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessConstraint ;
   rdfs:range xsd:string ;
-  rdfs:label "constraintId"@en , "约束编码"@zh .
+  rdfs:label "约束编码"@zh .
 
 :constraintType rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessConstraint ;
   rdfs:range xsd:string ;
-  rdfs:label "constraintType"@en , "约束类型"@zh .
+  rdfs:label "约束类型"@zh .
 
 :targetAttribute rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessConstraint ;
   rdfs:range xsd:string ;
-  rdfs:label "targetAttribute"@en , "作用业务属性"@zh .
+  rdfs:label "作用业务属性"@zh .
 
 :expression rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessConstraint ;
   rdfs:range xsd:string ;
-  rdfs:label "expression"@en , "约束表达式"@zh .
+  rdfs:label "约束表达式"@zh .
 
 :errorMsg rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessConstraint ;
   rdfs:range xsd:string ;
-  rdfs:label "errorMsg"@en , "校验失败提示"@zh .
+  rdfs:label "校验失败提示"@zh .
 
 :ruleId rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "ruleId"@en , "规则编码"@zh .
+  rdfs:label "规则编码"@zh .
 
 :ruleName rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "ruleName"@en , "规则名称"@zh .
+  rdfs:label "规则名称"@zh .
 
 :ruleType rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "ruleType"@en , "规则类型"@zh .
+  rdfs:label "规则类型"@zh .
 
 :ruleLevel rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "ruleLevel"@en , "规则等级"@zh .
+  rdfs:label "规则等级"@zh .
 
 :triggerCondition rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "triggerCondition"@en , "触发条件"@zh .
+  rdfs:label "触发条件"@zh .
 
 :action rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "action"@en , "执行动作"@zh .
+  rdfs:label "执行动作"@zh .
 
 :description rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:string ;
-  rdfs:label "description"@en , "规则说明"@zh .
+  rdfs:label "规则说明"@zh .
 
 :updateTime rdf:type owl:DatatypeProperty ;
   rdfs:domain :ComplianceRule ;
   rdfs:range xsd:dateTime ;
-  rdfs:label "updateTime"@en , "更新时间"@zh .
+  rdfs:label "更新时间"@zh .
 
 :sceneId rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "sceneId"@en , "场景编码"@zh .
+  rdfs:label "场景编码"@zh .
 
 :sceneName rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "sceneName"@en , "场景名称"@zh .
+  rdfs:label "场景名称"@zh .
 
 :sceneType rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "sceneType"@en , "场景类型"@zh .
+  rdfs:label "场景类型"@zh .
 
 :channelType rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "channelType"@en , "渠道类型"@zh .
+  rdfs:label "渠道类型"@zh .
 
 :userGroup rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "userGroup"@en , "用户群"@zh .
+  rdfs:label "用户群"@zh .
 
 :region rdf:type owl:DatatypeProperty ;
   rdfs:domain :BusinessScene ;
   rdfs:range xsd:string ;
-  rdfs:label "region"@en , "适用地域"@zh .
+  rdfs:label "适用地域"@zh .
 
 :enumCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :CodeDictionary ;
   rdfs:range xsd:string ;
-  rdfs:label "enumCode"@en , "枚举编码"@zh .
+  rdfs:label "枚举编码"@zh .
 
 :enumLabel rdf:type owl:DatatypeProperty ;
   rdfs:domain :CodeDictionary ;
   rdfs:range xsd:string ;
-  rdfs:label "enumLabel"@en , "枚举标签"@zh .
+  rdfs:label "枚举标签"@zh .
 
 :tableCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :CodeDictionary ;
   rdfs:range xsd:string ;
-  rdfs:label "tableCode"@en , "码表编码"@zh .
+  rdfs:label "码表编码"@zh .
 
 :parentCode rdf:type owl:DatatypeProperty ;
   rdfs:domain :CodeDictionary ;
   rdfs:range xsd:string ;
-  rdfs:label "parentCode"@en , "父级编码"@zh .
+  rdfs:label "父级编码"@zh .
 
 # Classes
 :PricingProduct rdf:type owl:Class ;
   rdfs:comment "可销售的产商品资费业务主体，仅承载资费身份与命名；不承载工单、销售期等过程或策略信息"@zh ;
-  rdfs:label "PricingProduct"@en , "产商品资费"@zh .
+  rdfs:label "产商品资费"@zh .
 
 :ProductCategory rdf:type owl:Class ;
   rdfs:comment "按产品线与主附关系划分的品类，决定配置方案须装配的业务要素组合；对接时映射逻辑报文根键"@zh ;
-  rdfs:label "ProductCategory"@en , "产品品类"@zh .
+  rdfs:label "产品品类"@zh .
 
 :OfferCompatibility rdf:type owl:Class ;
   rdfs:comment "描述主资费与附加资费、升档/变更之间的可办、互斥与连带业务关系"@zh ;
-  rdfs:label "OfferCompatibility"@en , "资费相容关系"@zh .
+  rdfs:label "资费相容关系"@zh .
 
 :ConfigScheme rdf:type owl:Class ;
   rdfs:comment "一次产商品配置的过程与结果载体：关联需求工单、装配业务要素、经历审核上线，并可投影为逻辑报文"@zh ;
-  rdfs:label "ConfigScheme"@en , "配置方案"@zh .
+  rdfs:label "配置方案"@zh .
 
 :ConfigChange rdf:type owl:Class ;
   rdfs:comment "对已有资费配置的增量变更意图，记录变更操作类型与变更内容，对应业务上的改资费/改组件"@zh ;
-  rdfs:label "ConfigChange"@en , "配置变更"@zh .
+  rdfs:label "配置变更"@zh .
 
 :SalesPolicy rdf:type owl:Class ;
   rdfs:comment "规范订购、退订、销售期、资费有效期与重复订购等销售侧规则"@zh ;
-  rdfs:label "SalesPolicy"@en , "销售策略"@zh .
+  rdfs:label "销售策略"@zh .
 
 :ReleaseScope rdf:type owl:Class ;
   rdfs:comment "资费可销售的渠道与地域边界"@zh ;
-  rdfs:label "ReleaseScope"@en , "发布范围"@zh .
+  rdfs:label "发布范围"@zh .
 
 :NetworkCapability rdf:type owl:Class ;
   rdfs:comment "资费承诺的网络侧能力规格，如带宽、域名、5G速率、是否可加入家庭组网"@zh ;
-  rdfs:label "NetworkCapability"@en , "网络能力"@zh .
+  rdfs:label "网络能力"@zh .
 
 :FamilyOfferPolicy rdf:type owl:Class ;
   rdfs:comment "家庭类资费的组网与成员业务约定：套餐类型、成员规模、统付、协议期、主副宽及成员月租等"@zh ;
-  rdfs:label "FamilyOfferPolicy"@en , "家庭资费策略"@zh .
+  rdfs:label "家庭资费策略"@zh .
 
 :ChargePlan rdf:type owl:Class ;
   rdfs:comment "账务固费收取安排：收费方式、固定费、科目、税率拆分与收费有效期"@zh ;
-  rdfs:label "ChargePlan"@en , "固费收费方案"@zh .
+  rdfs:label "固费收费方案"@zh .
 
 :PreferentialPlan rdf:type owl:Class ;
   rdfs:comment "账务侧让利安排的抽象父类；具体分为账务优惠、保底、话单优惠等子类"@zh ;
-  rdfs:label "PreferentialPlan"@en , "优惠方案"@zh .
+  rdfs:label "优惠方案"@zh .
 
 :AccountPreferential rdf:type owl:Class ;
   rdfs:subClassOf :PreferentialPlan ;
   rdfs:comment "无条件/首月等账务优惠，含送费或打折及作用科目"@zh ;
-  rdfs:label "AccountPreferential"@en , "账务优惠"@zh .
+  rdfs:label "账务优惠"@zh .
 
 :FloorGuarantee rdf:type owl:Class ;
   rdfs:subClassOf :PreferentialPlan ;
   rdfs:comment "消费保底方式、保底金额与作用科目及有效期"@zh ;
-  rdfs:label "FloorGuarantee"@en , "保底约定"@zh .
+  rdfs:label "保底约定"@zh .
 
 :CdrPreferential rdf:type owl:Class ;
   rdfs:subClassOf :PreferentialPlan ;
   rdfs:comment "基于话单维度的优惠开关与安排"@zh ;
-  rdfs:label "CdrPreferential"@en , "话单优惠"@zh .
+  rdfs:label "话单优惠"@zh .
 
 :ResourceEntitlement rdf:type owl:Class ;
   rdfs:comment "通信资源赠送与套外计费的抽象父类；按流量/语音/短信分子类"@zh ;
-  rdfs:label "ResourceEntitlement"@en , "资源权益"@zh .
+  rdfs:label "资源权益"@zh .
 
 :DataResource rdf:type owl:Class ;
   rdfs:subClassOf :ResourceEntitlement ;
   rdfs:comment "流量类资源权益：类型、单位、定向内容、地域、周期、结转与套外标准"@zh ;
-  rdfs:label "DataResource"@en , "流量资源"@zh .
+  rdfs:label "流量资源"@zh .
 
 :VoiceResource rdf:type owl:Class ;
   rdfs:subClassOf :ResourceEntitlement ;
   rdfs:comment "语音类资源权益：资源类型、套外费率等"@zh ;
-  rdfs:label "VoiceResource"@en , "语音资源"@zh .
+  rdfs:label "语音资源"@zh .
 
 :SmsResource rdf:type owl:Class ;
   rdfs:subClassOf :ResourceEntitlement ;
   rdfs:comment "短信/彩信类资源权益"@zh ;
-  rdfs:label "SmsResource"@en , "短信资源"@zh .
+  rdfs:label "短信资源"@zh .
 
 :PrintNotice rdf:type owl:Class ;
   rdfs:comment "免填单等书面对客展示文案，属于告知材料，不等于账务/资源真值"@zh ;
-  rdfs:label "PrintNotice"@en , "免填单告知"@zh .
+  rdfs:label "免填单告知"@zh .
 
 :SmsNotice rdf:type owl:Class ;
   rdfs:comment "订购/退订/二确/到期等短信通知内容与指令配置"@zh ;
-  rdfs:label "SmsNotice"@en , "短信告知"@zh .
+  rdfs:label "短信告知"@zh .
 
 :ValueAddedEquity rdf:type owl:Class ;
   rdfs:comment "非基础通信类增值权益内容配置"@zh ;
-  rdfs:label "ValueAddedEquity"@en , "增值权益"@zh .
+  rdfs:label "增值权益"@zh .
 
 :BusinessConstraint rdf:type owl:Class ;
   rdfs:comment "配置合法性约束：条件必填、互斥、派生、跨要素连带，供推理与页面联动"@zh ;
-  rdfs:label "BusinessConstraint"@en , "业务约束"@zh .
+  rdfs:label "业务约束"@zh .
 
 :ComplianceRule rdf:type owl:Class ;
   rdfs:comment "监管与企业红线，由规则引擎刚性执行，不可被大模型覆盖"@zh ;
-  rdfs:label "ComplianceRule"@en , "合规规则"@zh .
+  rdfs:label "合规规则"@zh .
 
 :BusinessScene rdf:type owl:Class ;
   rdfs:comment "投放与检索用的场景标签：渠道/用户群/地域"@zh ;
-  rdfs:label "BusinessScene"@en , "业务场景"@zh .
+  rdfs:label "业务场景"@zh .
 
 :CodeDictionary rdf:type owl:Class ;
   rdfs:comment "业务枚举字典，统一配置取值口径"@zh ;
-  rdfs:label "CodeDictionary"@en , "业务码表"@zh .
+  rdfs:label "业务码表"@zh .
 
 #################################################################
 # 模块二：运营归因与风险本体（原 product-ops.ttl，v1.1）
@@ -1045,6 +1045,9 @@
 :Promotion rdf:type owl:Class ; rdfs:label "促销"@zh .
 :Competitor rdf:type owl:Class ; rdfs:label "竞品"@zh .
 :UserBehavior rdf:type owl:Class ; rdfs:label "用户行为"@zh .
+:ThresholdHolder rdf:type owl:Class ;
+    rdfs:label "阈值载体"@zh ;
+    rdfs:comment "承载 SWRL 规则命名阈值的个体类，运行时由 OpsSwrlReasoner 覆写"@zh .
 
 # Classes — 归因结论（SWRL head）
 :AnomalyOffering rdf:type owl:Class ;
@@ -1155,113 +1158,203 @@
     rdfs:domain :Metric ; rdfs:range xsd:string ;
     rdfs:label "指标编码"@zh .
 :metricDelta rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Metric ; rdfs:range xsd:decimal .
+    rdfs:domain :Metric ; rdfs:range xsd:decimal ;
+    rdfs:label "指标环比变化量"@zh ;
+    rdfs:comment "指标相对上期的环比变化量"@zh .
 :metricDeltaPp rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Metric ; rdfs:range xsd:decimal .
+    rdfs:domain :Metric ; rdfs:range xsd:decimal ;
+    rdfs:label "指标增幅（百分点）"@zh ;
+    rdfs:comment "指标相对上期的增幅，单位为百分点"@zh .
 :anomalyFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Metric ; rdfs:range xsd:boolean .
+    rdfs:domain :Metric ; rdfs:range xsd:boolean ;
+    rdfs:label "异常标志"@zh ;
+    rdfs:comment "指标是否命中异常的预计算标志"@zh .
 :channelId rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Channel ; rdfs:range xsd:string .
+    rdfs:domain :Channel ; rdfs:range xsd:string ;
+    rdfs:label "渠道ID"@zh ;
+    rdfs:comment "渠道编码"@zh .
 :channelName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Channel ; rdfs:range xsd:string .
+    rdfs:domain :Channel ; rdfs:range xsd:string ;
+    rdfs:label "渠道名称"@zh ;
+    rdfs:comment "渠道显示名称"@zh .
 :orderDelta rdf:type owl:DatatypeProperty ;
     rdfs:domain :Channel ; rdfs:range xsd:decimal .
 :contribRatio rdf:type owl:DatatypeProperty ;
     rdfs:domain :Channel ; rdfs:range xsd:decimal .
 :weightHint rdf:type owl:DatatypeProperty ;
-    rdfs:range xsd:decimal .
+    rdfs:domain :UserBehavior ; rdfs:range xsd:decimal ;
+    rdfs:label "行为权重"@zh ;
+    rdfs:comment "用户行为对归因结论的权重提示值"@zh .
 
 # Datatype properties — Promotion / Competitor / Behavior
 :promoId rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Promotion ; rdfs:range xsd:string .
+    rdfs:domain :Promotion ; rdfs:range xsd:string ;
+    rdfs:label "促销ID"@zh ;
+    rdfs:comment "促销编码"@zh .
 :promoName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Promotion ; rdfs:range xsd:string .
+    rdfs:domain :Promotion ; rdfs:range xsd:string ;
+    rdfs:label "促销名称"@zh ;
+    rdfs:comment "促销显示名称"@zh .
 :daysToExpire rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Promotion ; rdfs:range xsd:decimal .
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal ;
+    rdfs:label "优惠剩余天数"@zh ;
+    rdfs:comment "促销距到期剩余天数"@zh .
 :drivenOrderRatio rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Promotion ; rdfs:range xsd:decimal .
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal ;
+    rdfs:label "优惠驱动订单占比"@zh ;
+    rdfs:comment "由该优惠驱动的订单占比"@zh .
 :competitorId rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Competitor ; rdfs:range xsd:string .
+    rdfs:domain :Competitor ; rdfs:range xsd:string ;
+    rdfs:label "竞品ID"@zh ;
+    rdfs:comment "竞品编码"@zh .
 :competitorName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Competitor ; rdfs:range xsd:string .
+    rdfs:domain :Competitor ; rdfs:range xsd:string ;
+    rdfs:label "竞品名称"@zh ;
+    rdfs:comment "竞品显示名称"@zh .
 :priceGap rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "竞品价差"@zh ;
+    rdfs:comment "与竞品价格的绝对差额"@zh .
 :priceGapRatio rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "竞品价差比例"@zh ;
+    rdfs:comment "与竞品价差占本品的比例"@zh .
 :penetrationDeltaPp rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "竞品渗透增幅（百分点）"@zh ;
+    rdfs:comment "竞品渗透率的增幅，单位为百分点"@zh .
 :behaviorId rdf:type owl:DatatypeProperty ;
-    rdfs:domain :UserBehavior ; rdfs:range xsd:string .
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string ;
+    rdfs:label "行为ID"@zh ;
+    rdfs:comment "用户行为编码"@zh .
 :behaviorName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :UserBehavior ; rdfs:range xsd:string .
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string ;
+    rdfs:label "行为名称"@zh ;
+    rdfs:comment "用户行为显示名称"@zh .
 
 # Datatype properties — 风险事实（运行时断言，含预计算布尔）
 :monthlyFee rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "月费"@zh ;
+    rdfs:comment "月固定资费金额"@zh .
 :oneTimeFee rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "一次性费用"@zh ;
+    rdfs:comment "一次性收取的费用金额"@zh .
+:offeringFixedFee rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "商品固定月费"@zh ;
+    rdfs:comment "风险与合规规则（R-C05/R-C09）在 Offering 侧断言的固定月费；区别于 ChargePlan 侧的 :fixedFeeAmount"@zh .
 :salesCnt30d rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "近30天销量"@zh ;
+    rdfs:comment "近 30 天销售笔数"@zh .
 :shelfDays rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "在架天数"@zh ;
+    rdfs:comment "商品已上架的天数"@zh .
 :revenue30d rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "近30天收入"@zh ;
+    rdfs:comment "近 30 天收入金额"@zh .
 :discountPercent rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "折扣比例"@zh ;
+    rdfs:comment "优惠折扣百分比"@zh .
 :hasContract rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "有无合约"@zh ;
+    rdfs:comment "是否签订合约"@zh .
 :onShelf rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否在架"@zh ;
+    rdfs:comment "商品是否处于在架状态"@zh .
 :inWhitelist rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否在白名单"@zh ;
+    rdfs:comment "是否命中白名单"@zh .
 :repeatableFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否可重复办理"@zh ;
+    rdfs:comment "商品是否允许重复办理"@zh .
 :emptyTargetGroup rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "目标群是否为空"@zh ;
+    rdfs:comment "目标群是否为空"@zh .
 :strategicTagFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "战略标签标志"@zh ;
+    rdfs:comment "是否带战略标签"@zh .
 :lowEffCategoryFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "低效品类标志"@zh ;
+    rdfs:comment "是否属于低效品类"@zh .
 :lowRevenueFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "低收入标志"@zh ;
+    rdfs:comment "是否属于低收入商品"@zh .
 
 # Datatype properties — 配置合规事实（运行时断言，R-C*）
-:hasOfferingName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:string .
-:hasRequiredCategory rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:string .
-:hasChannelScope rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:string .
 :isAddonFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是附加品标志"@zh ;
+    rdfs:comment "是否为附加品"@zh .
 :hasDependOn rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "有依赖项"@zh ;
+    rdfs:comment "是否存在依赖项"@zh .
 :inWhitelistFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "白名单标志"@zh ;
+    rdfs:comment "是否在白名单内"@zh .
 :internalTestFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "内测标志"@zh ;
+    rdfs:comment "是否为内测商品"@zh .
 :repeatableOrderFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "可重复订购标志"@zh ;
+    rdfs:comment "是否允许重复订购"@zh .
 :hasPreferredDiscount rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "有优选优惠"@zh ;
+    rdfs:comment "是否配置优选优惠"@zh .
 :isMainOfferFlag rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "主资费标志"@zh ;
+    rdfs:comment "是否为主资费"@zh .
 :bindsExistingMainPkg rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "绑定现有主套餐"@zh ;
+    rdfs:comment "是否绑定现有主套餐"@zh .
 :c06MissingName rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺商品名称"@zh ;
+    rdfs:comment "校验项：商品名称缺失"@zh .
 :c06MissingCategory rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺品类"@zh ;
+    rdfs:comment "校验项：品类缺失"@zh .
 :c06MissingFee rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺资费"@zh ;
+    rdfs:comment "校验项：资费缺失"@zh .
 :c06MissingChannel rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺渠道"@zh ;
+    rdfs:comment "校验项：渠道缺失"@zh .
 :sameMutexGroup rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "同互斥组"@zh ;
+    rdfs:comment "是否与同组商品互斥"@zh .
 :hasGiftFee rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "有赠送费用"@zh ;
+    rdfs:comment "是否含赠送费用"@zh .
 :hasViolation rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "有违规"@zh ;
+    rdfs:comment "是否已判定存在违规"@zh .
 
 #################################################################
 # 模块三：运行告警分级本体（原 product-alert.ttl，v1.0）
@@ -1604,7 +1697,7 @@
   :channelType "营业厅" ; :userGroup "家庭客户" ; :region "全省" ;
   rdfs:label "家庭-宽带主资费"@zh .
 
-#################################################################
+# 模块四：SWRL 规则（TBox 规则骨架 + 命名阈值个体）
 # 模块三：SWRL 规则（TBox 规则骨架 + 命名阈值个体）
 # 阈值以 :thresholdValue 断言；运行时由 OpsSwrlReasoner 按
 # ops_rules.json / ops_rules.alertGrading 覆写对应阈值个体，
@@ -1613,29 +1706,31 @@
 
 # 阈值载体属性：阈值个体 -> 数值（运行时覆写）
 :thresholdValue rdf:type owl:DatatypeProperty ;
+    rdfs:domain :ThresholdHolder ;
+    rdfs:range xsd:decimal ;
     rdfs:label "规则阈值"@zh ;
     rdfs:comment "SWRL body 中经 ?t 绑定；运行时按 ops_rules.json 覆写"@zh .
 
 # ---------- 阈值个体（R-A 归因） ----------
-:th_RA01_metricDeltaLte rdf:type owl:NamedIndividual ; :thresholdValue "-0.10"^^xsd:decimal ; rdfs:label "R-A01.metricDeltaLte"@en .
-:th_RA02_orderDeltaLte  rdf:type owl:NamedIndividual ; :thresholdValue "-0.20"^^xsd:decimal ; rdfs:label "R-A02.orderDeltaLte"@en .
-:th_RA02_contribRatioGte rdf:type owl:NamedIndividual ; :thresholdValue "0.30"^^xsd:decimal ; rdfs:label "R-A02.contribRatioGte"@en .
-:th_RA03_daysToExpireLte rdf:type owl:NamedIndividual ; :thresholdValue "7"^^xsd:decimal ; rdfs:label "R-A03.daysToExpireLte"@en .
-:th_RA03_drivenOrderRatioGte rdf:type owl:NamedIndividual ; :thresholdValue "0.25"^^xsd:decimal ; rdfs:label "R-A03.drivenOrderRatioGte"@en .
-:th_RA04_priceGapRatioGte rdf:type owl:NamedIndividual ; :thresholdValue "0.15"^^xsd:decimal ; rdfs:label "R-A04.priceGapRatioGte"@en .
-:th_RA04_penetrationDeltaPpGt rdf:type owl:NamedIndividual ; :thresholdValue "0"^^xsd:decimal ; rdfs:label "R-A04.penetrationDeltaPpGt"@en .
-:th_RA05_minWeightHint rdf:type owl:NamedIndividual ; :thresholdValue "0.08"^^xsd:decimal ; rdfs:label "R-A05.minWeightHint"@en .
+:th_RA01_metricDeltaLte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.10"^^xsd:decimal ; rdfs:label "指标环比跌幅阈值"@zh , "R-A01.metricDeltaLte"@en .
+:th_RA02_orderDeltaLte  rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.20"^^xsd:decimal ; rdfs:label "渠道订单跌幅阈值"@zh , "R-A02.orderDeltaLte"@en .
+:th_RA02_contribRatioGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.30"^^xsd:decimal ; rdfs:label "渠道贡献占比阈值"@zh , "R-A02.contribRatioGte"@en .
+:th_RA03_daysToExpireLte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "7"^^xsd:decimal ; rdfs:label "优惠将到期天数阈值"@zh , "R-A03.daysToExpireLte"@en .
+:th_RA03_drivenOrderRatioGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.25"^^xsd:decimal ; rdfs:label "优惠驱动订单占比阈值"@zh , "R-A03.drivenOrderRatioGte"@en .
+:th_RA04_priceGapRatioGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.15"^^xsd:decimal ; rdfs:label "竞品价差比例阈值"@zh , "R-A04.priceGapRatioGte"@en .
+:th_RA04_penetrationDeltaPpGt rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0"^^xsd:decimal ; rdfs:label "竞品渗透率增幅阈值"@zh , "R-A04.penetrationDeltaPpGt"@en .
+:th_RA05_minWeightHint rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.08"^^xsd:decimal ; rdfs:label "行为权重下限阈值"@zh , "R-A05.minWeightHint"@en .
 
 # ---------- 阈值个体（R-B 风险） ----------
-:th_RB01_fullDiscountPercentGte rdf:type owl:NamedIndividual ; :thresholdValue "100"^^xsd:decimal ; rdfs:label "R-B01.fullDiscountPercentGte"@en .
-:th_RB03_zeroSalesShelfDays rdf:type owl:NamedIndividual ; :thresholdValue "180"^^xsd:decimal ; rdfs:label "R-B03.zeroSalesShelfDays"@en .
-:th_RB05_highRiskReviewDays rdf:type owl:NamedIndividual ; :thresholdValue "30"^^xsd:decimal ; rdfs:label "R-B05.highRiskReviewDays"@en .
+:th_RB01_fullDiscountPercentGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "100"^^xsd:decimal ; rdfs:label "全额折扣比例阈值"@zh , "R-B01.fullDiscountPercentGte"@en .
+:th_RB03_zeroSalesShelfDays rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "180"^^xsd:decimal ; rdfs:label "零销量在架天数阈值"@zh , "R-B03.zeroSalesShelfDays"@en .
+:th_RB05_highRiskReviewDays rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "30"^^xsd:decimal ; rdfs:label "高风险复核天数阈值"@zh , "R-B05.highRiskReviewDays"@en .
 
 # ---------- 阈值个体（R-E 告警） ----------
-:th_RE01_feeErrorRateGte rdf:type owl:NamedIndividual ; :thresholdValue "0.05"^^xsd:decimal ; rdfs:label "R-E01.feeErrorRateGte"@en .
-:th_RE01_errorCountGte rdf:type owl:NamedIndividual ; :thresholdValue "10"^^xsd:decimal ; rdfs:label "R-E01.errorCountGte"@en .
-:th_RE02_errorCountGte rdf:type owl:NamedIndividual ; :thresholdValue "1"^^xsd:decimal ; rdfs:label "R-E02.errorCountGte"@en .
-:th_RE02_feeErrorRateGte rdf:type owl:NamedIndividual ; :thresholdValue "0.01"^^xsd:decimal ; rdfs:label "R-E02.feeErrorRateGte"@en .
+:th_RE01_feeErrorRateGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.05"^^xsd:decimal ; rdfs:label "资费差错率阈值"@zh , "R-E01.feeErrorRateGte"@en .
+:th_RE01_errorCountGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "10"^^xsd:decimal ; rdfs:label "差错笔数阈值"@zh , "R-E01.errorCountGte"@en .
+:th_RE02_errorCountGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "1"^^xsd:decimal ; rdfs:label "差错笔数阈值"@zh , "R-E02.errorCountGte"@en .
+:th_RE02_feeErrorRateGte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.01"^^xsd:decimal ; rdfs:label "资费差错率阈值"@zh , "R-E02.feeErrorRateGte"@en .
 
 # ---------- SWRL 变量声明 ----------
 :v_o rdf:type swrl:Variable . :v_m rdf:type swrl:Variable . :v_d rdf:type swrl:Variable . :v_t rdf:type swrl:Variable .
@@ -1665,7 +1760,7 @@
 
 # ---------- 归因规则（R-A） ----------
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A01.delta"@en ;
+  rdfs:label "指标下滑归因"@zh , "R-A01.delta"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o ]
               [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :hasMetric ; swrl:argument1 :v_o ; swrl:argument2 :v_m ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :metricDelta ; swrl:argument1 :v_m ; swrl:argument2 :v_d ]
@@ -1674,7 +1769,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A01.flag"@en ;
+  rdfs:label "指标异常标记归因"@zh , "R-A01.flag"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o2 ]
               [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :hasMetric ; swrl:argument1 :v_o2 ; swrl:argument2 :v_m2 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :anomalyFlag ; swrl:argument1 :v_m2 ; swrl:argument2 :v_f2 ]
@@ -1682,7 +1777,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o2 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A02"@en ;
+  rdfs:label "渠道量效下滑归因"@zh , "R-A02"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o3 ]
               [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :soldOn ; swrl:argument1 :v_o3 ; swrl:argument2 :v_c3 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderDelta ; swrl:argument1 :v_c3 ; swrl:argument2 :v_od3 ]
@@ -1694,7 +1789,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelRootCause ; swrl:argument1 :v_c3 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A03"@en ;
+  rdfs:label "优惠到期驱动归因"@zh , "R-A03"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o4 ]
               [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :participatesIn ; swrl:argument1 :v_o4 ; swrl:argument2 :v_p4 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :daysToExpire ; swrl:argument1 :v_p4 ; swrl:argument2 :v_d4 ]
@@ -1706,19 +1801,19 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :PromotionRootCause ; swrl:argument1 :v_p4 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A04"@en ;
+  rdfs:label "竞品施压归因"@zh , "R-A04"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o5 ]
-              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :competesWith ; swrl:argument1 :v_o5 ; swrl:argument2 :v_c5 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :priceGapRatio ; swrl:argument1 :v_c5 ; swrl:argument2 :v_g5 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :penetrationDeltaPp ; swrl:argument1 :v_c5 ; swrl:argument2 :v_pp5 ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :competesWith ; swrl:argument1 :v_o5 ; swrl:argument2 :v_cpt5 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :priceGapRatio ; swrl:argument1 :v_cpt5 ; swrl:argument2 :v_g5 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :penetrationDeltaPp ; swrl:argument1 :v_cpt5 ; swrl:argument2 :v_pp5 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA04_priceGapRatioGte ; swrl:argument2 :v_tg ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA04_penetrationDeltaPpGt ; swrl:argument2 :v_tp ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_g5 :v_tg ) ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThan ; swrl:arguments ( :v_pp5 :v_tp ) ] ) ;
-  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :CompetitorRootCause ; swrl:argument1 :v_c5 ] ) ] .
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :CompetitorRootCause ; swrl:argument1 :v_cpt5 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-A05"@en ;
+  rdfs:label "用户行为驱动归因"@zh , "R-A05"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_o6 ]
               [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :influencedBy ; swrl:argument1 :v_o6 ; swrl:argument2 :v_b6 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :weightHint ; swrl:argument1 :v_b6 ; swrl:argument2 :v_w6 ]
@@ -1728,7 +1823,7 @@
 
 # ---------- 风险规则（R-B） ----------
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B01.zeroFee"@en ;
+  rdfs:label "零元资费风险"@zh , "R-B01.zeroFee"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_rb1o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :monthlyFee ; swrl:argument1 :v_rb1o ; swrl:argument2 :v_rb1mf ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :oneTimeFee ; swrl:argument1 :v_rb1o ; swrl:argument2 :v_rb1ot ]
@@ -1739,7 +1834,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ZeroFeeRiskOffering ; swrl:argument1 :v_rb1o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B01.discount"@en ;
+  rdfs:label "异常全额赠送"@zh , "R-B01.discount"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_rb1do ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :discountPercent ; swrl:argument1 :v_rb1do ; swrl:argument2 :v_rb1dd ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :repeatableFlag ; swrl:argument1 :v_rb1do ; swrl:argument2 :v_rb1dr ]
@@ -1751,7 +1846,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AbnormalDiscountOffering ; swrl:argument1 :v_rb1do ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B02"@en ;
+  rdfs:label "零元在架无合约"@zh , "R-B02"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ZeroFeeRiskOffering ; swrl:argument1 :v_rb2o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :onShelf ; swrl:argument1 :v_rb2o ; swrl:argument2 :v_rb2s ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasContract ; swrl:argument1 :v_rb2o ; swrl:argument2 :v_rb2c ]
@@ -1760,7 +1855,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ZeroFeeNoContractOffering ; swrl:argument1 :v_rb2o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B03"@en ;
+  rdfs:label "长期零销"@zh , "R-B03"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_rb3o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :salesCnt30d ; swrl:argument1 :v_rb3o ; swrl:argument2 :v_rb3s ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :shelfDays ; swrl:argument1 :v_rb3o ; swrl:argument2 :v_rb3d ]
@@ -1770,7 +1865,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ZeroSalesOffering ; swrl:argument1 :v_rb3o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B04"@en ;
+  rdfs:label "低效产商品"@zh , "R-B04"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_rb4o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :lowEffCategoryFlag ; swrl:argument1 :v_rb4o ; swrl:argument2 :v_rb4c ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :lowRevenueFlag ; swrl:argument1 :v_rb4o ; swrl:argument2 :v_rb4r ]
@@ -1781,7 +1876,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :LowEffOffering ; swrl:argument1 :v_rb4o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-B05"@en ;
+  rdfs:label "高风险需紧急复核"@zh , "R-B05"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :HighRiskOffering ; swrl:argument1 :v_rb5o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :shelfDays ; swrl:argument1 :v_rb5o ; swrl:argument2 :v_rb5d ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RB05_highRiskReviewDays ; swrl:argument2 :v_rb5t ]
@@ -1789,18 +1884,18 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :UrgentReviewOffering ; swrl:argument1 :v_rb5o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-HR.b02"@en ;
+  rdfs:label "零元在架无合约归入高风险"@zh , "R-HR.b02"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ZeroFeeNoContractOffering ; swrl:argument1 :v_hr1 ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :HighRiskOffering ; swrl:argument1 :v_hr1 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-HR.discount"@en ;
+  rdfs:label "异常全额赠送归入高风险"@zh , "R-HR.discount"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AbnormalDiscountOffering ; swrl:argument1 :v_hr2 ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :HighRiskOffering ; swrl:argument1 :v_hr2 ] ) ] .
 
 # ---------- 告警分级规则（R-E） ----------
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E01.fee"@en ;
+  rdfs:label "P0 资费差错率超限"@zh , "R-E01.fee"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re1fo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeErrorRate ; swrl:argument1 :v_re1fo ; swrl:argument2 :v_re1ff ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE01_feeErrorRateGte ; swrl:argument2 :v_re1ft ]
@@ -1808,7 +1903,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_re1fo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E01.err"@en ;
+  rdfs:label "P0 差错笔数超限"@zh , "R-E01.err"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re1eo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorCount ; swrl:argument1 :v_re1eo ; swrl:argument2 :v_re1ee ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE01_errorCountGte ; swrl:argument2 :v_re1et ]
@@ -1816,7 +1911,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_re1eo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E02.err"@en ;
+  rdfs:label "P1 差错笔数超限"@zh , "R-E02.err"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re2eo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorCount ; swrl:argument1 :v_re2eo ; swrl:argument2 :v_re2ee ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE02_errorCountGte ; swrl:argument2 :v_re2et ]
@@ -1824,7 +1919,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_re2eo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E02.fee"@en ;
+  rdfs:label "P1 资费差错率超限"@zh , "R-E02.fee"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re2fo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeErrorRate ; swrl:argument1 :v_re2fo ; swrl:argument2 :v_re2ff ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE02_feeErrorRateGte ; swrl:argument2 :v_re2ft ]
@@ -1832,100 +1927,101 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_re2fo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E03.errTrend"@en ;
+  rdfs:label "P2 差错上行趋势"@zh , "R-E03.errTrend"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re3eo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorTrendUp ; swrl:argument1 :v_re3eo ; swrl:argument2 :v_re3ef ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_re3ef "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_re3eo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E03.feeTrend"@en ;
+  rdfs:label "P2 资费差错上行趋势"@zh , "R-E03.feeTrend"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re3fo ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeTrendUp ; swrl:argument1 :v_re3fo ; swrl:argument2 :v_re3ff ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_re3ff "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_re3fo ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E03.orderTrend"@en ;
+  rdfs:label "P2 订单下行趋势"@zh , "R-E03.orderTrend"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_re3do ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderTrendDown ; swrl:argument1 :v_re3do ; swrl:argument2 :v_re3df ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_re3df "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_re3do ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E04.p0"@en ;
+  rdfs:label "P0 强制派工单"@zh , "R-E04.p0"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_re4o ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :NeedWorkOrderOffering ; swrl:argument1 :v_re4o ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-E04.p1"@en ;
+  rdfs:label "P1 派工单"@zh , "R-E04.p1"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_re4bo ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :NeedWorkOrderOffering ; swrl:argument1 :v_re4bo ] ) ] .
 
 # ---------- 阈值个体（R-O 优化建议，趋势劣化布尔，运行时由 reasoner 直接断言） ----------
-:th_RO01_revenueDropLte rdf:type owl:NamedIndividual ; :thresholdValue "-0.10"^^xsd:decimal ; rdfs:label "R-O01.revenueDropLte"@en .
-:th_RO02_churnRiseGte   rdf:type owl:NamedIndividual ; :thresholdValue "0.05"^^xsd:decimal ; rdfs:label "R-O02.churnRiseGte"@en .
-:th_RO03_attachDropLte  rdf:type owl:NamedIndividual ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "R-O03.attachDropLte"@en .
-:th_RO04_arpuDropLte    rdf:type owl:NamedIndividual ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "R-O04.arpuDropLte"@en .
-:th_RO05_activeDropLte  rdf:type owl:NamedIndividual ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "R-O05.activeDropLte"@en .
+:th_RO01_revenueDropLte rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.10"^^xsd:decimal ; rdfs:label "收入跌幅阈值"@zh , "R-O01.revenueDropLte"@en .
+:th_RO02_churnRiseGte   rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "0.05"^^xsd:decimal ; rdfs:label "离网率升幅阈值"@zh , "R-O02.churnRiseGte"@en .
+:th_RO03_attachDropLte  rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "搭载率跌幅阈值"@zh , "R-O03.attachDropLte"@en .
+:th_RO04_arpuDropLte    rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "ARPU 跌幅阈值"@zh , "R-O04.arpuDropLte"@en .
+:th_RO05_activeDropLte  rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "-0.05"^^xsd:decimal ; rdfs:label "活跃度跌幅阈值"@zh , "R-O05.activeDropLte"@en .
 
 # ---------- SWRL 变量声明（R-O） ----------
 :v_ro1 rdf:type swrl:Variable . :v_ro2 rdf:type swrl:Variable . :v_ro3 rdf:type swrl:Variable .
 :v_ro4 rdf:type swrl:Variable . :v_ro5 rdf:type swrl:Variable . :v_ro6 rdf:type swrl:Variable . :v_ro7 rdf:type swrl:Variable .
-
+:v_ro8 rdf:type swrl:Variable . :v_ro9 rdf:type swrl:Variable . :v_ro10 rdf:type swrl:Variable .
 # ---------- 优化建议规则（R-O，条件=指标异常布尔） ----------
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O01.revenue"@en ;
+  rdfs:label "收入下滑运营建议"@zh , "R-O01.revenue"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro1 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :revenueDropFlag ; swrl:argument1 :v_ro1 ; swrl:argument2 :v_ro2 ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro2 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_ro1 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O01.order"@en ;
+  rdfs:label "订单下滑运营建议"@zh , "R-O01.order"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro3 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderDropFlag ; swrl:argument1 :v_ro3 ; swrl:argument2 :v_ro4 ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro4 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_ro3 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O02.churn"@en ;
+  rdfs:label "离网上升挽留建议"@zh , "R-O02.churn"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro5 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :churnUsersRiseFlag ; swrl:argument1 :v_ro5 ; swrl:argument2 :v_ro6 ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro6 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :RetentionOffering ; swrl:argument1 :v_ro5 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O03.attach"@en ;
+  rdfs:label "搭载率下跌捆绑建议"@zh , "R-O03.attach"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro7 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :attachRateDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro6 ]
-              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro6 "true"^^xsd:boolean ) ] ) ;
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :attachRateDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro8 ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro8 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :BundleUpsellOffering ; swrl:argument1 :v_ro7 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O04.arpu"@en ;
+  rdfs:label "ARPU 下滑提档建议"@zh , "R-O04.arpu"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro7 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :arpuDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro6 ]
-              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro6 "true"^^xsd:boolean ) ] ) ;
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :arpuDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro9 ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro9 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :PriceOptimizeOffering ; swrl:argument1 :v_ro7 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-O05.active"@en ;
+  rdfs:label "活跃度下滑促活建议"@zh , "R-O05.active"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_ro7 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :activeUsersDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro6 ]
-              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro6 "true"^^xsd:boolean ) ] ) ;
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :activeUsersDropFlag ; swrl:argument1 :v_ro7 ; swrl:argument2 :v_ro10 ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_ro10 "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :EngagementOffering ; swrl:argument1 :v_ro7 ] ) ] .
 
 # ---------- 阈值个体（R-C 配置合规） ----------
-:th_RC07_discountFull rdf:type owl:NamedIndividual ; :thresholdValue "100"^^xsd:decimal ; rdfs:label "R-C07.discountFull"@en .
-:th_RC09_feeMin rdf:type owl:NamedIndividual ; :thresholdValue "9"^^xsd:decimal ; rdfs:label "R-C09.feeMin"@en .
-:th_RC09_feeMax rdf:type owl:NamedIndividual ; :thresholdValue "599"^^xsd:decimal ; rdfs:label "R-C09.feeMax"@en .
+:th_RC07_discountFull rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "100"^^xsd:decimal ; rdfs:label "折扣全额比例阈值"@zh , "R-C07.discountFull"@en .
+:th_RC09_feeMin rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "9"^^xsd:decimal ; rdfs:label "固费下限阈值"@zh , "R-C09.feeMin"@en .
+:th_RC09_feeMax rdf:type owl:NamedIndividual , :ThresholdHolder ; :thresholdValue "599"^^xsd:decimal ; rdfs:label "固费上限阈值"@zh , "R-C09.feeMax"@en .
 
 # ---------- SWRL 变量声明（R-C） ----------
 :v_c6n rdf:type swrl:Variable . :v_c6c rdf:type swrl:Variable . :v_c6f rdf:type swrl:Variable . :v_c6h rdf:type swrl:Variable .
 :v_c6na rdf:type swrl:Variable . :v_c6ca rdf:type swrl:Variable . :v_c6fa rdf:type swrl:Variable . :v_c6ha rdf:type swrl:Variable .
 :v_c3m rdf:type swrl:Variable . :v_c3b rdf:type swrl:Variable . :v_c3d rdf:type swrl:Variable . :v_c3g rdf:type swrl:Variable .
 :v_c4 rdf:type swrl:Variable . :v_c4a rdf:type swrl:Variable . :v_c4p rdf:type swrl:Variable .
+:v_cpt5 rdf:type swrl:Variable .
 :v_c5 rdf:type swrl:Variable . :v_c5m rdf:type swrl:Variable . :v_c5o rdf:type swrl:Variable .
 :v_c5c rdf:type swrl:Variable . :v_c5w rdf:type swrl:Variable . :v_c5i rdf:type swrl:Variable .
 :v_c7 rdf:type swrl:Variable . :v_c7d rdf:type swrl:Variable . :v_c7r rdf:type swrl:Variable . :v_c7t rdf:type swrl:Variable .
@@ -1935,35 +2031,35 @@
 
 # ---------- 配置合规规则（R-C） ----------
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C06.name"@en ;
+  rdfs:label "必填校验-名称缺失"@zh , "R-C06.name"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6n ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingName ; swrl:argument1 :v_c6n ; swrl:argument2 :v_c6na ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6na "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6n ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C06.category"@en ;
+  rdfs:label "必填校验-品类缺失"@zh , "R-C06.category"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6c ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingCategory ; swrl:argument1 :v_c6c ; swrl:argument2 :v_c6ca ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6ca "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6c ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C06.fee"@en ;
+  rdfs:label "必填校验-资费缺失"@zh , "R-C06.fee"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6f ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingFee ; swrl:argument1 :v_c6f ; swrl:argument2 :v_c6fa ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6fa "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6f ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C06.channel"@en ;
+  rdfs:label "必填校验-渠道缺失"@zh , "R-C06.channel"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6h ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingChannel ; swrl:argument1 :v_c6h ; swrl:argument2 :v_c6ha ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6ha "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6h ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C03.mutex"@en ;
+  rdfs:label "互斥组冲突"@zh , "R-C03.mutex"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c3m ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :bindsExistingMainPkg ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3b ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :sameMutexGroup ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3d ]
@@ -1972,7 +2068,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03MutualExclusiveConflict ; swrl:argument1 :v_c3m ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C03.discountGift"@en ;
+  rdfs:label "折扣与赠费冲突"@zh , "R-C03.discountGift"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c3m ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasPreferredDiscount ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3d ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasGiftFee ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3g ]
@@ -1981,7 +2077,7 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03MutualExclusiveConflict ; swrl:argument1 :v_c3m ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C04"@en ;
+  rdfs:label "附加缺依赖"@zh , "R-C04"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c4 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :isAddonFlag ; swrl:argument1 :v_c4 ; swrl:argument2 :v_c4a ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasDependOn ; swrl:argument1 :v_c4 ; swrl:argument2 :v_c4p ]
@@ -1990,9 +2086,9 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C04OrphanAddon ; swrl:argument1 :v_c4 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C05"@en ;
+  rdfs:label "高风险零固费"@zh , "R-C05"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c5 ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5m ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :offeringFixedFee ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5m ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :oneTimeFee ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5o ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasContract ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5c ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :inWhitelistFlag ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5w ]
@@ -2005,35 +2101,168 @@
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C05HighRiskZeroFee ; swrl:argument1 :v_c5 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C07"@en ;
+  rdfs:label "异常优惠漏洞"@zh , "R-C07"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c7 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :discountPercent ; swrl:argument1 :v_c7 ; swrl:argument2 :v_c7d ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :repeatableOrderFlag ; swrl:argument1 :v_c7 ; swrl:argument2 :v_c7r ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC07_discountFull ; swrl:argument2 :v_c7t ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_c7d :v_c7t ) ]
+              [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c7 ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c7r "true"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C07AbnormalDiscount ; swrl:argument1 :v_c7 ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C09.below"@en ;
+  rdfs:label "固费低于下限"@zh , "R-C09.below"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c9b ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c9b ; swrl:argument2 :v_c9f ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :offeringFixedFee ; swrl:argument1 :v_c9b ; swrl:argument2 :v_c9f ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC09_feeMin ; swrl:argument2 :v_c9t ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThan ; swrl:arguments ( :v_c9f :v_c9t ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C09FeeRangeViolation ; swrl:argument1 :v_c9b ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C09.above"@en ;
+  rdfs:label "固费超出上限"@zh , "R-C09.above"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c9u ]
-              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c9u ; swrl:argument2 :v_c9f ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :offeringFixedFee ; swrl:argument1 :v_c9u ; swrl:argument2 :v_c9f ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC09_feeMax ; swrl:argument2 :v_c9t ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThan ; swrl:arguments ( :v_c9f :v_c9t ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C09FeeRangeViolation ; swrl:argument1 :v_c9u ] ) ] .
 
 [ rdf:type swrl:Imp ;
-  rdfs:label "R-C08"@en ;
+  rdfs:label "配置合规通过"@zh , "R-C08"@en ;
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c8 ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasViolation ; swrl:argument1 :v_c8 ; swrl:argument2 :v_c8v ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c8v "false"^^xsd:boolean ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C08Compliant ; swrl:argument1 :v_c8 ] ) ] .
+
+###############################################################################
+# ABox — 场景验证实例
+#
+# 用途：供 Protege / Pellet / HermiT / Openllet 本地导入后直接推理，验证各场景
+#       SWRL 规则能否命中对应结论类。每个实例都带齐规则前件所需的全部属性，
+#       数值取到能必然命中（或必然不命中）的一侧，不依赖外部数据。
+#
+# 约定：
+#   1. 实例一律以 :probe_ 开头，与业务品类个体区分；
+#   2. R-C08 依赖 :hasViolation，凡期望合规的实例显式写 false，期望违规的写 true；
+#   3. 每组实例的 rdfs:comment 标注期望推理结论，便于断言。
+###############################################################################
+
+# ---------- 场景 01 风险识别（R-B01 / R-B02） ----------
+:probe_rb01ZeroFee rdf:type owl:NamedIndividual , :Offering ;
+  :monthlyFee "0"^^xsd:decimal ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :inWhitelist "false"^^xsd:boolean ;
+  :onShelf "true"^^xsd:boolean ;
+  :hasContract "false"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-B01.zeroFee → ZeroFeeRiskOffering，再命中 R-B02 → ZeroFeeNoContractOffering"@zh ;
+  rdfs:label "验证-零元资费在架无合约"@zh .
+
+:probe_rb01Discount rdf:type owl:NamedIndividual , :Offering ;
+  :discountPercent "100"^^xsd:decimal ;
+  :repeatableFlag "true"^^xsd:boolean ;
+  :emptyTargetGroup "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-B01.discount → AbnormalDiscountOffering"@zh ;
+  rdfs:label "验证-异常全额赠送"@zh .
+
+:probe_rb03ZeroSales rdf:type owl:NamedIndividual , :Offering ;
+  :salesCnt30d "0"^^xsd:decimal ;
+  :shelfDays "200"^^xsd:decimal ;
+  rdfs:comment "期望：命中 R-B03 → ZeroSalesOffering（阈值 180）"@zh ;
+  rdfs:label "验证-长期零销"@zh .
+
+# ---------- 场景 02 配置合规（R-C03~C09） ----------
+:probe_c06Missing rdf:type owl:NamedIndividual , :Offering ;
+  :c06MissingName "true"^^xsd:boolean ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C06.name → C06MissingRequired"@zh ;
+  rdfs:label "验证-必填名称缺失"@zh .
+
+:probe_c03Mutex rdf:type owl:NamedIndividual , :Offering ;
+  :bindsExistingMainPkg "true"^^xsd:boolean ;
+  :sameMutexGroup "true"^^xsd:boolean ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C03.mutex → C03MutualExclusiveConflict"@zh ;
+  rdfs:label "验证-互斥组冲突"@zh .
+
+:probe_c04OrphanAddon rdf:type owl:NamedIndividual , :Offering ;
+  :isAddonFlag "true"^^xsd:boolean ;
+  :hasDependOn "false"^^xsd:boolean ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C04 → C04OrphanAddon"@zh ;
+  rdfs:label "验证-附加缺依赖"@zh .
+
+:probe_c05HighRiskZeroFee rdf:type owl:NamedIndividual , :Offering ;
+  :offeringFixedFee "0"^^xsd:float ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasContract "false"^^xsd:boolean ;
+  :inWhitelistFlag "false"^^xsd:boolean ;
+  :internalTestFlag "false"^^xsd:boolean ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C05 → C05HighRiskZeroFee"@zh ;
+  rdfs:label "验证-高风险零固费"@zh .
+
+:probe_c07AbnormalDiscount rdf:type owl:NamedIndividual , :Offering ;
+  :discountPercent "100"^^xsd:decimal ;
+  :repeatableOrderFlag "true"^^xsd:boolean ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C07 → C07AbnormalDiscount（阈值 100）"@zh ;
+  rdfs:label "验证-异常优惠漏洞"@zh .
+
+:probe_c09Above rdf:type owl:NamedIndividual , :Offering ;
+  :offeringFixedFee "999"^^xsd:float ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C09.above → C09FeeRangeViolation（上限 599）"@zh ;
+  rdfs:label "验证-固费超上限"@zh .
+
+:probe_c09Below rdf:type owl:NamedIndividual , :Offering ;
+  :offeringFixedFee "1"^^xsd:float ;
+  :hasViolation "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-C09.below → C09FeeRangeViolation（下限 9）"@zh ;
+  rdfs:label "验证-固费低于下限"@zh .
+
+:probe_c08Compliant rdf:type owl:NamedIndividual , :Offering ;
+  :offeringFixedFee "128"^^xsd:float ;
+  :oneTimeFee "0"^^xsd:decimal ;
+  :hasViolation "false"^^xsd:boolean ;
+  rdfs:comment "期望：无任何 C0x 违规，命中 R-C08 → C08Compliant（反例）"@zh ;
+  rdfs:label "验证-合规通过"@zh .
+
+# ---------- 场景 03 指标归因（R-A01 / R-A02） ----------
+:probe_a01Metric rdf:type owl:NamedIndividual , :Metric ;
+  :metricDelta "-0.20"^^xsd:decimal ;
+  rdfs:comment "期望：metricDelta -0.20 <= -0.10，命中 R-A01.delta"@zh ;
+  rdfs:label "验证-指标下滑"@zh .
+
+:probe_a01AnomalyOffering rdf:type owl:NamedIndividual , :Offering ;
+  :hasMetric :probe_a01Metric ;
+  rdfs:comment "期望：经 R-A01.delta 归入 AnomalyOffering"@zh ;
+  rdfs:label "验证-异常品类（归因入口）"@zh .
+
+:probe_a02Channel rdf:type owl:NamedIndividual , :Channel ;
+  :orderDelta "-0.30"^^xsd:decimal ;
+  :contribRatio "0.50"^^xsd:decimal ;
+  rdfs:comment "期望：经 R-A02 归入 ChannelRootCause（前件要求品类已入 AnomalyOffering 且 soldOn 该渠道）"@zh ;
+  rdfs:label "验证-渠道量效下滑"@zh .
+
+:probe_a02AnomalyOffering rdf:type owl:NamedIndividual , :AnomalyOffering , :Offering ;
+  :soldOn :probe_a02Channel ;
+  rdfs:comment "期望：orderDelta<=-0.20 且 contribRatio>=0.30，经 R-A02 推出 ChannelRootCause"@zh ;
+  rdfs:label "验证-渠道归因入口品类"@zh .
+
+# ---------- 场景 04 告警分级（R-E01~R-E04） ----------
+:probe_re01P0 rdf:type owl:NamedIndividual , :Offering ;
+  :feeErrorRate "0.10"^^xsd:decimal ;
+  rdfs:comment "期望：feeErrorRate 0.10 >= 0.05，命中 R-E01.fee → P0AlertOffering，并连推 R-E04.p0 → NeedWorkOrderOffering"@zh ;
+  rdfs:label "验证-P0 资费差错率高"@zh .
+
+:probe_re02P1 rdf:type owl:NamedIndividual , :Offering ;
+  :errorCount "3"^^xsd:decimal ;
+  rdfs:comment "期望：errorCount 3 >= 1，命中 R-E02.err → P1AlertOffering"@zh ;
+  rdfs:label "验证-P1 差错笔数"@zh .
+
+:probe_re03P2 rdf:type owl:NamedIndividual , :Offering ;
+  :errorTrendUp "true"^^xsd:boolean ;
+  rdfs:comment "期望：命中 R-E03.errTrend → P2AlertOffering"@zh ;
+  rdfs:label "验证-P2 差错上行趋势"@zh .
+
 
