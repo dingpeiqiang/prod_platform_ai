@@ -1113,7 +1113,11 @@
 :C03MutualExclusiveConflict rdf:type owl:Class ;
     rdfs:subClassOf :ConfigViolation ;
     rdfs:label "互斥冲突"@zh ;
-    rdfs:comment "R-C03 与在架互斥组冲突 / 折扣与赠费并存"@zh .
+    rdfs:comment "R-C03 与在架互斥组冲突"@zh .
+:C03DiscountGiftConflict rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "折扣赠费冲突"@zh ;
+    rdfs:comment "R-C03 同时配置折扣与赠费，需人工复核（MEDIUM）"@zh .
 :C04OrphanAddon rdf:type owl:Class ;
     rdfs:subClassOf :ConfigViolation ;
     rdfs:label "附加缺依赖"@zh ;
@@ -2061,7 +2065,8 @@
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasGiftFee ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3g ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3d "true"^^xsd:boolean ) ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3g "true"^^xsd:boolean ) ] ) ;
-  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03MutualExclusiveConflict ; swrl:argument1 :v_c3m ] ) ] .
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03DiscountGiftConflict ; swrl:argument1 :v_c3m ]
+              [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ConfigViolation ; swrl:argument1 :v_c3m ] ) ] .
 
 [ rdf:type swrl:Imp ;
   rdfs:label "附加缺依赖"@zh , "R-C04"@en ;
@@ -2104,6 +2109,7 @@
   swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c9b ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :monthlyFee ; swrl:argument1 :v_c9b ; swrl:argument2 :v_c9f ]
               [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC09_feeMin ; swrl:argument2 :v_c9t ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_c9f "0"^^xsd:decimal ) ]
               [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThan ; swrl:arguments ( :v_c9f :v_c9t ) ] ) ;
   swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C09FeeRangeViolation ; swrl:argument1 :v_c9b ]
               [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ConfigViolation ; swrl:argument1 :v_c9b ] ) ] .

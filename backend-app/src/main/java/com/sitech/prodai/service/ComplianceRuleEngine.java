@@ -369,11 +369,12 @@ public class ComplianceRuleEngine {
         return swrlReasoner.reasonConfigCompliance(facts, graph, c03, c04, c05, c06, c07, c08, c09, minFee, maxFee);
     }
 
-    /** SWRL violation → Java issue 契约对齐（ruleId/issueType/level/field/message/evidence/alias）。 */    private Map<String, Object> issueFromSwrl(Map<String, Object> violation) {
+    /** SWRL violation → Java issue 契约对齐（ruleId/issueType/level/field/message/evidence/alias）。 */
+    private Map<String, Object> issueFromSwrl(Map<String, Object> violation) {
         String ruleId = MapOps.str(violation.get("ruleId"));
         String field = MapOps.str(violation.get("field"));
         String label = MapOps.str(violation.get("label"));
-        String level = "R-C06".equals(ruleId) ? "MEDIUM" : "HIGH";
+        String level = severityOf(ruleId, MapOps.str(violation.get("swrlRule")));
         String issueType = switch (ruleId) {
             case "R-C06" -> "必填缺失";
             case "R-C04" -> "规则漏洞";
@@ -383,7 +384,24 @@ public class ComplianceRuleEngine {
             default -> "资费/关系冲突";
         };
         return issue(ruleId, issueType, level, field, label + "（SWRL 命中：" + ruleId + "）",
-                List.of(ruleId + "→" + MapOps.str(violation.get("conclusionClass"))), null);
+                List.of(ruleId + "→" + MapOps.str(violation.get("swrlRule"))), null);
+    }
+
+    /**
+     * 告警级别取自 ops_rules.config.rules.{ruleId}：
+     * 优先匹配 severityBySwrlRule.{swrlRule}（同一 ruleId 下子规则可分级，如 R-C03 折扣赠费为 MEDIUM），
+     * 其次 severity，最后按 ruleId 兜底（R-C06 MEDIUM，其余 HIGH）。
+     */
+    private String severityOf(String ruleId, String swrlRule) {
+        Map<String, Object> rule = opsRules.configRule(ruleId);
+        Map<String, Object> bySub = MapOps.castMap(rule.get("severityBySwrlRule"));
+        if (!swrlRule.isBlank() && !MapOps.empty(bySub.get(swrlRule))) {
+            return MapOps.str(bySub.get(swrlRule));
+        }
+        if (!MapOps.empty(rule.get("severity"))) {
+            return MapOps.str(rule.get("severity"));
+        }
+        return "R-C06".equals(ruleId) ? "MEDIUM" : "HIGH";
     }
 
     /** R-C03 互斥：草稿绑定的在架商品是否与草稿同互斥组。 */

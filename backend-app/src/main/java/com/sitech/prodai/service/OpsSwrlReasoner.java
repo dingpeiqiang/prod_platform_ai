@@ -622,7 +622,7 @@ public class OpsSwrlReasoner {
                     c06, violations, reasoning, fired, fieldForC06(draft), RULE_C06_NAME, RULE_C06_CATEGORY,
                     RULE_C06_FEE, RULE_C06_CHANNEL);
             collectViolation(reasoner, df, ind, ontology, "R-C03",
-                    new String[]{"C03MutualExclusiveConflict"}, "互斥/优惠冲突",
+                    new String[]{"C03MutualExclusiveConflict", "C03DiscountGiftConflict"}, "互斥/优惠冲突",
                     c03, violations, reasoning, fired,
                     !empty(draft.get("bindExistingMainPkg")) ? "mutexGroup" : "prefDiscount",
                     RULE_C03_MUTEX, RULE_C03_DISCOUNT);
@@ -668,23 +668,25 @@ public class OpsSwrlReasoner {
                                   List<Map<String, Object>> violations, List<Map<String, Object>> reasoning,
                                   List<String> fired, String field, Predicate<String>... labelPredicates) {
         if (!enabled(rule)) return;
-        boolean hit = false;
+        if (!anyConclusionType(reasoner, ind, df, conclusionClasses)) return;
+        String matchedRule = null;
         for (Predicate<String> p : labelPredicates) {
-            if (ruleFired(reasoner, ind, df, ontology, p, conclusionClasses)) {
-                hit = true;
+            matchedRule = firedRuleLabel(reasoner, ind, df, ontology, p, conclusionClasses);
+            if (matchedRule != null) {
                 break;
             }
         }
-        if (!hit) return;
+        if (matchedRule == null) return;
         fired.add(ruleId);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("ruleId", ruleId);
-        row.put("conclusionClass", conclusionClasses[0]);
+        row.put("swrlRule", matchedRule);
+        row.put("conclusionClass", conclusionClassOf(matchedRule, conclusionClasses));
         row.put("field", field);
         row.put("label", label);
-        row.put("evidence", List.of(ruleId + " → " + conclusionClasses[0]));
+        row.put("evidence", List.of(ruleId + " → " + matchedRule));
         violations.add(row);
-        reasoning.add(reasonRow(ruleId, str(rule.get("name")), conclusionClasses[0] + "（命中 " + label + "）"));
+        reasoning.add(reasonRow(ruleId, str(rule.get("name")), matchedRule + "（" + label + "）"));
     }
 
     private Map<String, Object> reasonRow(String ruleId, String condition, String conclusion) {
@@ -1295,16 +1297,43 @@ public class OpsSwrlReasoner {
      */
     private boolean ruleFired(OpenlletReasoner reasoner, OWLNamedIndividual ind, OWLDataFactory df,
                               OWLOntology ontology, Predicate<String> ruleIdPredicate, String... conclusionClasses) {
-        boolean typed = false;
-        for (String conclusionClass : conclusionClasses) {
-            if (isType(reasoner, ind, df, conclusionClass)) {
-                typed = true;
-                break;
-            }
-        }
-        if (!typed) {
+        if (!anyConclusionType(reasoner, ind, df, conclusionClasses)) {
             return false;
         }
+        return firedRuleLabel(reasoner, ind, df, ontology, ruleIdPredicate, conclusionClasses) != null;
+    }
+
+    /** 个体是否被推入任一结论类（违规规则真的对该个体触发）。 */
+    private boolean anyConclusionType(OpenlletReasoner reasoner, OWLNamedIndividual ind, OWLDataFactory df,
+                                      String... conclusionClasses) {
+        for (String conclusionClass : conclusionClasses) {
+            if (isType(reasoner, ind, df, conclusionClass)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 同一 ruleId 下不同子规则可能断言不同结论类，按标签前缀区分（R-C03.discountGift → 折扣赠费冲突）。 */
+    private String conclusionClassOf(String swrlRule, String... conclusionClasses) {
+        if (swrlRule != null && swrlRule.contains("discountGift")) {
+            for (String c : conclusionClasses) {
+                if (c.startsWith("C03Discount")) {
+                    return c;
+                }
+            }
+        }
+        return conclusionClasses[0];
+    }
+
+    /**
+     * 返回真正命中的 SWRL 子规则标签（如 R-C03.mutex / R-C03.discountGift），未命中返回 null。
+     * <p>同一 ruleId 下多条子规则可能断言同一个结论类，故不能只看「个体是否属于结论类」，
+     * 必须逐条校验「该规则的 head 类确实被推入该个体」，才能区分是 mutex 还是 discountGift 触发。
+     */
+    private String firedRuleLabel(OpenlletReasoner reasoner, OWLNamedIndividual ind, OWLDataFactory df,
+                                  OWLOntology ontology, Predicate<String> ruleIdPredicate,
+                                  String... conclusionClasses) {
         for (OWLAxiom axiom : ontology.axioms(AxiomType.SWRL_RULE).toList()) {
             if (!(axiom instanceof SWRLRule rule)) {
                 continue;
@@ -1313,14 +1342,16 @@ public class OpsSwrlReasoner {
             if (label == null || !ruleIdPredicate.test(label)) {
                 continue;
             }
-            if (headTargetsClass(rule, conclusionClasses)) {
-                return true;
+            String headClass = headClassIn(rule, conclusionClasses);
+            if (headClass != null && isType(reasoner, ind, df, headClass)) {
+                return label;
             }
         }
-        return false;
+        return null;
     }
 
-    private boolean headTargetsClass(SWRLRule rule, String... classLocals) {
+    /** 返回该规则 head 中断言的、属于给定集合的首个类名，未命中返回 null。 */
+    private String headClassIn(SWRLRule rule, String... classLocals) {
         for (SWRLAtom atom : rule.getHead()) {
             if (atom instanceof SWRLClassAtom classAtom) {
                 OWLClassExpression ce = classAtom.getPredicate();
@@ -1330,12 +1361,12 @@ public class OpsSwrlReasoner {
                 String local = localName(ce.asOWLClass().getIRI());
                 for (String classLocal : classLocals) {
                     if (classLocal.equals(local)) {
-                        return true;
+                        return local;
                     }
                 }
             }
         }
-        return false;
+        return null;
     }
 
     private static String localName(IRI iri) {

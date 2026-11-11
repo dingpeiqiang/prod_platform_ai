@@ -436,6 +436,10 @@
         "enabled": true,
         "engine": "swrl",
         "proposalAlias": "R-CONF-002",
+        "severity": "HIGH",
+        "severityBySwrlRule": {
+          "R-C03.discountGift": "MEDIUM"
+        },
         "fields": [
           "mutexGroup",
           "prefDiscount",
