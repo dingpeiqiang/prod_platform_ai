@@ -1,6 +1,5 @@
 package com.sitech.prodai.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.domain.entity.OntologyInstance;
@@ -59,32 +58,6 @@ public class OntologyInstanceFactsService {
             return Map.of();
         }
         return factsFrom(entity);
-    }
-
-    /**
-     * 按商品业务标识实时读取实例事实：在最近 50 条配置实例中查找 data_json 内
-     * offeringId 命中的一条（历史草稿可能未持久化 offeringId，故按时间倒序扫描）。
-     *
-     * @param offeringId 商品标识
-     * @return 事实 Map；不存在返回空 Map
-     */
-    @Transactional(readOnly = true)
-    public Map<String, Object> loadConfigFactsByOfferingId(String offeringId) {
-        if (offeringId == null || offeringId.isBlank()) {
-            return Map.of();
-        }
-        for (OntologyInstance candidate : instanceMapper.selectList(
-                new LambdaQueryWrapper<OntologyInstance>()
-                        .eq(OntologyInstance::getOntologyCode, OFFERING_CONFIG_CODE)
-                        .orderByDesc(OntologyInstance::getId)
-                        .last("LIMIT 50"))) {
-            Map<String, Object> facts = factsFrom(candidate);
-            if (offeringId.equals(String.valueOf(facts.get("offeringId")))) {
-                return facts;
-            }
-        }
-        log.debug("[InstanceFacts] 未找到 offeringId={} 对应的配置实例", offeringId);
-        return Map.of();
     }
 
     /** 实体 → 事实 Map：优先展开 _draft_json，缺失时退回平铺摘要列。 */

@@ -128,13 +128,4 @@ class OntologyInstanceFactsReasoningTest {
         Assertions.assertFalse(r.success());
         Assertions.assertEquals("no-instance", r.engine());
     }
-
-    @Test
-    @DisplayName("按 offeringId 反查实例事实")
-    void loadByOfferingId() throws Exception {
-        persistDraft(baseDraft("OF-STORE-LOOKUP"));
-        Map<String, Object> facts = factsService.loadConfigFactsByOfferingId("OF-STORE-LOOKUP");
-        Assertions.assertEquals("OF-STORE-LOOKUP", facts.get("offeringId"), "facts=" + facts);
-        Assertions.assertTrue(factsService.loadConfigFactsByOfferingId("OF-NOT-EXIST").isEmpty());
-    }
 }
