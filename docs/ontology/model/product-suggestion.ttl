@@ -1,0 +1,241 @@
+# =============================================================================
+# 产商品运营本体 —— 场景⑤：运营优化建议（product-suggestion.ttl）
+# -----------------------------------------------------------------------------
+# 业务叙事：D+1 建议生成。按指标异动 flag 输出渠道促销、保有、交叉销售、
+#           定价优化、活跃经营五类建议。
+#
+# 入口端点：随 POST /appstore/v16/product/monitor/analyze 的建议链路输出
+#           （同场景④）；出参 fired[] 命中 R-Oxx，建议文案取
+#           ops_rules.json#/alertGrading/suggestions.<R-Oxx>.advice。
+#
+# 引擎：R-O01~R-O05 engine=swrl（Openllet）。
+#       规则条件为**布尔 flag**，非原始环比值；flag 由后端按
+#       ops_rules.json#/alertGrading/metricAnomaly 阈值预计算后断言。
+#
+# 建模要点与相对既有 product.ttl 的修正：
+#   1) 原 th_RO01~RO05 五个阈值个体是死个体（有断言、无规则引用）。
+#      本文件保留其作为「flag 计算依据」的登记（:metricAnomalyThreshold 链接），
+#      并在 rdfs:comment 说明不参与 SWRL 比较，避免误读。
+#   2) 原 newUsersDropFlag 有断言无规则（SWRL 与 Java 回退口径不一致）。
+#      本文件补 R-O01.newUsers 规则，使口径对齐。
+#   3) 补 R-O00 建议点火（SuggestionOffering）：同 R-E00 缠绕问题，
+#      原父类从未被任何规则 head 归入，此处补 5 条 xxxOffering ⊑ SuggestionOffering。
+# =============================================================================
+
+@prefix :          <http://prodai.sitech.com/ontology/product#> .
+@prefix owl:       <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:       <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:      <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:       <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl:      <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb:     <http://www.w3.org/2003/11/swrlb#> .
+
+<http://prodai.sitech.com/ontology/product-suggestion> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营本体-场景⑤优化建议"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "R-O01 渠道促销 / R-O02 客户保留 / R-O03 组合交叉销售 / R-O04 定价优化 / R-O05 活跃运营。"@zh ;
+    owl:imports <http://prodai.sitech.com/ontology/product-core> .
+
+
+#################################################################
+# 1. 类：建议结论（SWRL head）
+#################################################################
+
+:SuggestionOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "可优化商品"@zh ;
+    rdfs:comment "R-O00 点火：归入任一建议类型即视为存在优化建议。"@zh .
+
+:ChannelPromotionOffering rdf:type owl:Class ;
+    rdfs:subClassOf :SuggestionOffering ;
+    rdfs:label "渠道促销建议"@zh ;
+    rdfs:comment "R-O01：收入/订单量/新增用户环比下降超阈。"@zh .
+
+:RetentionOffering rdf:type owl:Class ;
+    rdfs:subClassOf :SuggestionOffering ;
+    rdfs:label "客户保留建议"@zh ;
+    rdfs:comment "R-O02：流失用户环比上升超阈。"@zh .
+
+:BundleUpsellOffering rdf:type owl:Class ;
+    rdfs:subClassOf :SuggestionOffering ;
+    rdfs:label "组合交叉销售建议"@zh ;
+    rdfs:comment "R-O03：绑定率环比下降超阈。"@zh .
+
+:PriceOptimizeOffering rdf:type owl:Class ;
+    rdfs:subClassOf :SuggestionOffering ;
+    rdfs:label "定价/套餐优化建议"@zh ;
+    rdfs:comment "R-O04：ARPU 环比下降超阈。"@zh .
+
+:EngagementOffering rdf:type owl:Class ;
+    rdfs:subClassOf :SuggestionOffering ;
+    rdfs:label "活跃运营建议"@zh ;
+    rdfs:comment "R-O05：活跃用户环比下降超阈。"@zh .
+
+# 五类建议可并存（一个商品可同时缺量又缺活跃），故不设 disjointWith
+
+
+#################################################################
+# 2. 数据属性：指标异动布尔 flag（运行时断言，非原始环比）
+#################################################################
+
+:revenueDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "收入下降"@zh ;
+    rdfs:comment "由 revenue 环比 (dropLte=-0.10) 预计算。"@zh .
+
+:orderDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "订单量下降"@zh ;
+    rdfs:comment "由 order_cnt 环比 (dropLte=-0.10) 预计算。"@zh .
+
+:newUsersDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "新增用户下降"@zh ;
+    rdfs:comment "由 new_users 环比 (dropLte=-0.10) 预计算；补 R-O01.newUsers 规则消费。"@zh .
+
+:churnUsersRiseFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "流失用户上升"@zh ;
+    rdfs:comment "由 churn_users 环比 (riseGte=+0.05) 预计算；方向与 drop 相反。"@zh .
+
+:attachRateDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "绑定率下降"@zh ;
+    rdfs:comment "由 attach_rate 环比 (dropLte=-0.05) 预计算。"@zh .
+
+:arpuDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "ARPU下降"@zh ;
+    rdfs:comment "由 arpu 环比 (dropLte=-0.05) 预计算。"@zh .
+
+:activeUsersDropFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "活跃用户下降"@zh ;
+    rdfs:comment "由 active_users 环比 (dropLte=-0.05) 预计算。"@zh .
+
+:rawMetric rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:string ;
+    rdfs:label "原始指标名"@zh ;
+    rdfs:comment "flag 对应的 metricAnomaly.metrics 键，便于回溯。"@zh .
+
+
+#################################################################
+# 3. 阈值登记：metricAnomaly 阈值个体（flag 计算依据，不参与 SWRL 比较）
+#################################################################
+
+:metricAnomalyThreshold rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :RuleThreshold ;
+    rdfs:label "指标异动阈值引用"@zh ;
+    rdfs:comment "Offering 的 flag 由哪个 metricAnomaly 阈值预计算，供审计追溯。"@zh .
+
+:th_RO01_revenueDropLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.10"^^xsd:decimal ;
+    rdfs:label "R-O01.revenueDropLte"@en ;
+    rdfs:comment "revenue / order_cnt / new_users / net_growth 共用。"@zh .
+
+:th_RO02_churnRiseGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.05"^^xsd:decimal ;
+    rdfs:label "R-O02.churnRiseGte"@en .
+
+:th_RO03_attachDropLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.05"^^xsd:decimal ;
+    rdfs:label "R-O03.attachDropLte"@en .
+
+:th_RO04_arpuDropLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.05"^^xsd:decimal ;
+    rdfs:label "R-O04.arpuDropLte"@en .
+
+:th_RO05_activeDropLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.05"^^xsd:decimal ;
+    rdfs:label "R-O05.activeDropLte"@en .
+
+
+#################################################################
+# 4. SWRL 变量声明
+#################################################################
+
+:v_o1a rdf:type swrl:Variable . :v_o1f rdf:type swrl:Variable .
+:v_o1b rdf:type swrl:Variable . :v_o1g rdf:type swrl:Variable .
+:v_o1c rdf:type swrl:Variable . :v_o1h rdf:type swrl:Variable .
+:v_o2 rdf:type swrl:Variable . :v_o2f rdf:type swrl:Variable .
+:v_o3 rdf:type swrl:Variable . :v_o3f rdf:type swrl:Variable .
+:v_o4 rdf:type swrl:Variable . :v_o4f rdf:type swrl:Variable .
+:v_o5 rdf:type swrl:Variable . :v_o5f rdf:type swrl:Variable .
+:v_o0a rdf:type swrl:Variable . :v_o0b rdf:type swrl:Variable . :v_o0c rdf:type swrl:Variable .
+:v_o0d rdf:type swrl:Variable . :v_o0e rdf:type swrl:Variable .
+
+
+#################################################################
+# 5. SWRL 规则（R-O01 ~ R-O05 + R-O00 点火）
+#################################################################
+
+# R-O01.revenue：收入下降 → 渠道促销建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O01.revenue"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o1a ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :revenueDropFlag ; swrl:argument1 :v_o1a ; swrl:argument2 :v_o1f ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o1f "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_o1a ] ) ] .
+
+# R-O01.order：订单量下降 → 渠道促销建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O01.order"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o1b ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderDropFlag ; swrl:argument1 :v_o1b ; swrl:argument2 :v_o1g ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o1g "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_o1b ] ) ] .
+
+# R-O01.newUsers：新增用户下降 → 渠道促销建议（补齐 Java 口径）
+[ rdf:type swrl:Imp ; rdfs:label "R-O01.newUsers"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o1c ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :newUsersDropFlag ; swrl:argument1 :v_o1c ; swrl:argument2 :v_o1h ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o1h "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_o1c ] ) ] .
+
+# R-O02.churn：流失用户上升 → 客户保留建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O02.churn"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o2 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :churnUsersRiseFlag ; swrl:argument1 :v_o2 ; swrl:argument2 :v_o2f ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o2f "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :RetentionOffering ; swrl:argument1 :v_o2 ] ) ] .
+
+# R-O03.attach：绑定率下降 → 组合交叉销售建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O03.attach"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o3 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :attachRateDropFlag ; swrl:argument1 :v_o3 ; swrl:argument2 :v_o3f ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o3f "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :BundleUpsellOffering ; swrl:argument1 :v_o3 ] ) ] .
+
+# R-O04.arpu：ARPU 下降 → 定价优化建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O04.arpu"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o4 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :arpuDropFlag ; swrl:argument1 :v_o4 ; swrl:argument2 :v_o4f ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o4f "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :PriceOptimizeOffering ; swrl:argument1 :v_o4 ] ) ] .
+
+# R-O05.active：活跃用户下降 → 活跃运营建议
+[ rdf:type swrl:Imp ; rdfs:label "R-O05.active"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_o5 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :activeUsersDropFlag ; swrl:argument1 :v_o5 ; swrl:argument2 :v_o5f ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_o5f "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :EngagementOffering ; swrl:argument1 :v_o5 ] ) ] .
+
+# R-O00 建议点火：五类建议子类 → SuggestionOffering（原 TTL 父类恒空）
+[ rdf:type swrl:Imp ; rdfs:label "R-O00.r-o01"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelPromotionOffering ; swrl:argument1 :v_o0a ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :SuggestionOffering ; swrl:argument1 :v_o0a ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-O00.r-o02"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :RetentionOffering ; swrl:argument1 :v_o0b ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :SuggestionOffering ; swrl:argument1 :v_o0b ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-O00.r-o03"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :BundleUpsellOffering ; swrl:argument1 :v_o0c ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :SuggestionOffering ; swrl:argument1 :v_o0c ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-O00.r-o04"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :PriceOptimizeOffering ; swrl:argument1 :v_o0d ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :SuggestionOffering ; swrl:argument1 :v_o0d ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-O00.r-o05"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :EngagementOffering ; swrl:argument1 :v_o0e ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :SuggestionOffering ; swrl:argument1 :v_o0e ] ) ] .

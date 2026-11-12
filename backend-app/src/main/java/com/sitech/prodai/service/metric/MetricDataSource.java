@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>
  * 行结构（snake_case 传输契约，同 OpsProductDataSource 风格）：
  * <pre>
- * { stat_date: "2026-09-01", offering_id: "OF-HF-128",
+ * { stat_date: "2026-09-01", offering_id: "99898653",
  *   region_id: "ALL", channel_id: "ALL", customer_segment: "ALL",
  *   revenue: 38200.00, order_cnt: 120, new_users: 45, churn_users: 12,
  *   active_users: 3800, order_cnt_addon: null, order_cnt_main: null }

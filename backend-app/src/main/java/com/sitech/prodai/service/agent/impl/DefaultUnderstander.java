@@ -147,7 +147,7 @@ public class DefaultUnderstander implements Understander {
     private List<QueryPlan> understandPlansInternal(String question, SessionContext context) {
         String llmResult = null;
         Exception lastError = null;
-        String scene = sceneOf(context);
+        String scene = resolveSceneBySemantics(question, context, sceneOf(context));
 
         // ── 阶段A（手册优先）：先选手册/意图，不暴露工具清单 ──
         // 场景有手册覆盖时，LLM 仅依据手册 SOP（含 intent_guide 归口 + 正反样例）判定意图——
@@ -991,6 +991,54 @@ public class DefaultUnderstander implements Understander {
         return scene == null || scene.isBlank()
                 ? AgentCapabilityRegistry.DEFAULT_SCENE
                 : scene.trim();
+    }
+
+    /** 研发动作词：出现即视为研发诉求，不参与运营/查询场景纠偏（研发也会问趋势/对比）。 */
+    private static final List<String> RD_ACTION_WORDS = List.of(
+            "新建", "创建", "新做", "做一个", "配一个", "配置", "上架", "上款", "上新", "新出",
+            "生成", "起草", "变更", "调整", "修改", "开单", "工单", "导入", "上传", "解析文档");
+
+    /** 运营归因词：问「为什么下滑/异常原因」属运营根因分析，非研发配置诉求。 */
+    private static final List<String> OPS_CAUSE_WORDS = List.of(
+            "下滑原因", "下降原因", "下跌原因", "增长原因", "异常原因", "原因分析", "为什么跌",
+            "为什么下滑", "为什么下降", "归因", "根因");
+
+    /**
+     * 场景语义兜底：前端 scene 与实际问题语义明显冲突时按语义纠偏。
+     * <p>
+     * 前端场景（研发/运营/查询）由用户所在页面标签决定，切换标签后残留的旧 scene
+     * 会让同一问题被归入错误场景手册（如运营页提问却带 scene=rd → 命中研发配置手册）。
+     * 此处仅在「研发场景 + 明确的运营/查询语义 + 无研发动作词」时纠偏，边界窄以确保
+     * 不误伤研发诉求（研发页面同样会问趋势、对比、风险）。
+     *
+     * @param question 用户原话
+     * @param context  会话上下文（纠偏结果回写，使路由/执行全程与理解层一致）
+     * @param scene    前端传入场景（已归一化，非空）
+     * @return 纠偏后的场景；无需纠偏时原样返回
+     */
+    private String resolveSceneBySemantics(String question, SessionContext context, String scene) {
+        if (!isRdScene(scene) || question == null || question.isBlank()) {
+            return scene;
+        }
+        String q = question.trim();
+        boolean hasRdAction = RD_ACTION_WORDS.stream().anyMatch(q::contains);
+        if (hasRdAction) {
+            return scene;
+        }
+        String resolved = scene;
+        if (OPS_CAUSE_WORDS.stream().anyMatch(q::contains)) {
+            log.info("[DefaultUnderstander] 场景语义兜底: scene=rd → ops（问题为运营归因诉求，无研发动作词）");
+            resolved = "ops";
+        } else if (q.contains("对比") && q.contains("套餐")) {
+            // 「对比 A 套餐和 B 套餐」属产商品查询对比，非研发配置生成
+            log.info("[DefaultUnderstander] 场景语义兜底: scene=rd → query（问题为套餐对比诉求，无研发动作词）");
+            resolved = "query";
+        }
+        if (!resolved.equals(scene) && context != null) {
+            // 回写：编排层路由/执行均读 context.getScene()，不回写会导致只有理解层走纠偏场景
+            context.setScene(resolved);
+        }
+        return resolved;
     }
 
     /** 过滤未知工具，缺省时用推荐工具列表（按默认场景白名单）。 */

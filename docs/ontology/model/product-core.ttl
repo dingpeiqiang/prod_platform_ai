@@ -1,0 +1,142 @@
+# =============================================================================
+# 产商品运营本体 —— 共享核心（product-core.ttl）
+# -----------------------------------------------------------------------------
+# 作用：为 5 个业务场景建模文件提供统一底座，避免各文件重复声明 :Offering
+#       及各场景共享的标识/指标事实属性，造成 TBox 漂移。
+#
+# 命名空间：http://prodai.sitech.com/ontology/product#
+#   —— 与后端 OpsSwrlReasoner 的 NS / ALERT_NS 常量一致
+#      （OpsSwrlReasoner.java:56-58），保证建模文件可被 Openllet 直接加载。
+#
+# 使用方式：
+#   各场景文件用 owl:imports 引入本文件；若第三方平台不支持 import 解析，
+#   可将本文件与场景文件顺序导入（先 core，后场景）。
+#
+# 阈值载体：:thresholdValue 为命名阈值个体的统一取值属性，运行时由
+#   OpsSwrlReasoner 按 ops_rules.json 覆写对应 :th_* 个体，规则骨架无需重建。
+# =============================================================================
+
+@prefix :     <http://prodai.sitech.com/ontology/product#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<http://prodai.sitech.com/ontology/product-core> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营本体-共享核心"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "5 大运营场景（归因/风险/配置合规/告警分级/优化建议）的公共主体与公共事实属性。场景文件通过 owl:imports 复用。"@zh .
+
+
+#################################################################
+# 1. 公共主体类
+#################################################################
+
+:Offering rdf:type owl:Class ;
+    rdfs:label "产商品"@zh ;
+    rdfs:comment "监控、归因、分级、合规、建议的统一业务主体；运行时以 offeringId 断言，承载指标事实。Agent 不直接构造，由后端断言入本体。"@zh .
+
+:BusinessScene rdf:type owl:Class ;
+    rdfs:label "业务场景"@zh ;
+    rdfs:comment "投放与检索用的场景标签：渠道/用户群/地域。配置侧 R-C01 依据其补全品类默认值。"@zh .
+
+:CodeDictionary rdf:type owl:Class ;
+    rdfs:label "业务码表"@zh ;
+    rdfs:comment "业务枚举字典，统一配置取值口径。"@zh .
+
+
+#################################################################
+# 2. 公共对象属性
+#################################################################
+
+:appliesScene rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :BusinessScene ;
+    rdfs:label "适用业务场景"@zh .
+
+
+#################################################################
+# 3. 公共数据属性 —— 主体标识
+#################################################################
+
+:offeringId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "销售品ID"@zh ;
+    rdfs:comment "各场景断言主体的键；对应报文 offeringId / prodId。"@zh .
+
+:offeringName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "产商品名称"@zh .
+
+:bizScenario rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "业务场景名称"@zh ;
+    rdfs:comment "配置合规 inWhitelistFlag 的源：bizScenario ∈ equityGiftWhitelist（权益赠送/内部体验/内部验证）。"@zh .
+
+:channelScope rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "发布渠道范围"@zh ;
+    rdfs:comment "取值「内部验证」时 internalTestFlag=true，用于 R-C05 豁免。"@zh .
+
+:targetCustomerGroup rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "目标客户群"@zh ;
+    rdfs:comment "为空或空白时 emptyTargetGroup=true，用于 R-B01.discount。"@zh .
+
+:whitelistTag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "白名单标签"@zh ;
+    rdfs:comment "取值 权益赠送/内部体验/内部验证 时视为白名单，用于零元资费豁免。"@zh .
+
+
+#################################################################
+# 4. 公共数据属性 —— 指标事实（归因/建议共用）
+#################################################################
+
+:metricCode rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:string ;
+    rdfs:label "指标编码"@zh ;
+    rdfs:comment "revenue/order_cnt/new_users/churn_users/active_users/arpu/attach_rate/net_growth。"@zh .
+
+:metricValue rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "指标当前值"@zh .
+
+:metricDelta rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "指标环比比例"@zh ;
+    rdfs:comment "负值表示下降、正值表示上升；R-A01.delta 以此比较阈值。"@zh .
+
+:metricDeltaPp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "指标环比百分点"@zh ;
+    rdfs:comment "以百分点计的环比变化，与 metricDelta 单位不同，勿混用阈值。"@zh .
+
+:anomalyFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "指标异动标记"@zh ;
+    rdfs:comment "上游 MetricService 预计算；R-A01.flag 以此点火。"@zh .
+
+
+#################################################################
+# 5. 规则载体：命名阈值个体
+#################################################################
+
+:thresholdValue rdf:type owl:DatatypeProperty ;
+    rdfs:label "规则阈值"@zh ;
+    rdfs:comment "SWRL body 中经 ?t 绑定；运行时由 OpsSwrlReasoner 按 ops_rules.json 覆写对应 :th_* 个体。"@zh .
+
+:RuleThreshold rdf:type owl:Class ;
+    rdfs:label "阈值个体"@zh ;
+    rdfs:comment "命名阈值个体的公共类，便于平台按类列出并批量覆写。"@zh .

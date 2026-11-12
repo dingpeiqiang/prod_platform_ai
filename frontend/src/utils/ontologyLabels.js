@@ -124,7 +124,7 @@ const dynamicEntityNames = new Map()
 
 /**
  * 灌入后端归因响应的 entityNames 映射，替代硬编码词典。
- * @param {Object} names 形如 { 'OF-RISK-001': '校园低消0元', 'CH-HALL': '营业厅' }
+ * @param {Object} names 形如 { '84176765': '校园低消0元', 'CH-HALL': '营业厅' }
  */
 export function registerEntityNames(names) {
   if (!names || typeof names !== 'object') return

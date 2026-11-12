@@ -40,10 +40,13 @@ spring:
       validation-timeout: 5000
       maximum-pool-size: 20
   # 表结构与种子数据由 sql/mysql/ 脚本人工执行（分布式库需 distributed by 方言，
-  # 且执行账号需 DDL 权限）；应用启动不自动建表，故关闭 spring.sql.init。
+  # 且执行账号需 DDL 权限）；应用启动不自动建表。
+  # 固定为 never 且不读环境变量：mysql 索引脚本（ALTER TABLE ADD INDEX）非幂等，
+  # 若被外部注入 SPRING_SQL_INIT_MODE=always 会每次启动重跑并报错、拖慢启动。
+  # H2/容器内离线演示由 docker/config/application.yml 单独覆盖为 embedded。
   sql:
     init:
-      mode: ${SPRING_SQL_INIT_MODE:never}
+      mode: never
   h2:
     console:
       enabled: ${H2_CONSOLE_ENABLED:false}

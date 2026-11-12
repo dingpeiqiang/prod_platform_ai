@@ -27,6 +27,11 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:sa}
     # 密码通过容器环境变量/密钥管理注入，禁止在配置文件中明文保存
     password: ${SPRING_DATASOURCE_PASSWORD:}
+  # 表结构初始化策略：
+  #   - 默认 embedded：仅当数据源为 H2 内嵌库时执行 classpath:sql/h2 脚本建表（空库可直接启动）
+  #   - 连 MySQL/外部库时必须为 never：表结构由 deploy/mysql 或 sql/mysql 脚本人工执行，
+  #     严禁启动自动跑 DDL（ALTER TABLE ADD INDEX 非幂等，重复执行会报错并拖慢启动）
+  # 切勿通过环境变量把本项在外部库场景下改成 always。
   sql:
     init:
       mode: ${SPRING_SQL_INIT_MODE:embedded}
@@ -37,9 +42,8 @@ spring:
     console:
       enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
-  jpa:
-    hibernate:
-      ddl-auto: update
+  # 原 JPA ddl-auto: update 已移除：表结构改由 sql/h2（H2）与 deploy/mysql（MySQL）脚本管理，
+  # 避免 JPA 自动改表与脚本冲突。
 
 prodai:
   ontology:

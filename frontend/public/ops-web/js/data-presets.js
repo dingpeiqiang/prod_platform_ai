@@ -546,11 +546,11 @@ const launchProductConfig = {
               { value: 'limitToSelf', label: '仅限本人办理' },
             ] },
             { key: 'ruleType', label: '规则类型', type: 'select', options: [
-              { value: 'gt', label: '，' },
-              { value: 'lt', label: '，' },
-              { value: 'ge', label: '≥' },
-              { value: 'le', label: '≥' },
-              { value: 'eq', label: '，' },
+              { value: 'gt', label: '大于' },
+              { value: 'lt', label: '小于' },
+              { value: 'ge', label: '大于等于' },
+              { value: 'le', label: '小于等于' },
+              { value: 'eq', label: '等于' },
             ] },
             { key: 'limitValue', label: '限定值', type: 'text', placeholder: '请输入限定值' },
             { key: 'limitType', label: '限定类型', type: 'select', options: [
@@ -1474,11 +1474,11 @@ const campusProductConfig = {
               { value: 'limitToSelf', label: '仅限本人办理' },
             ] },
             { key: 'ruleType', label: '规则类型', type: 'select', options: [
-              { value: 'gt', label: '，' },
-              { value: 'lt', label: '，' },
-              { value: 'ge', label: '≥' },
-              { value: 'le', label: '≥' },
-              { value: 'eq', label: '，' },
+              { value: 'gt', label: '大于' },
+              { value: 'lt', label: '小于' },
+              { value: 'ge', label: '大于等于' },
+              { value: 'le', label: '小于等于' },
+              { value: 'eq', label: '等于' },
             ] },
             { key: 'limitValue', label: '限定值', type: 'text', placeholder: '请输入限定值' },
             { key: 'limitType', label: '限定类型', type: 'select', options: [

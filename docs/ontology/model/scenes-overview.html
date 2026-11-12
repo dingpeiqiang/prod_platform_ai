@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本体能帮业务干什么：5 个真实场景讲明白</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #fff; --ink: #1c2230; --ink2: #5a6577; --line: #dde2e9;
+    --accent: #1f6feb; --soft: #eaf1fe; --red: #b42318; --red-soft: #fdecea;
+    --ok: #166534; --ok-soft: #eaf6ed; --warn: #b45309; --warn-soft: #fff7e6;
+    --mono: ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 18px 70px; background: var(--bg); color: var(--ink);
+         font: 15px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; }
+  nav { position: sticky; top: 0; z-index: 9; background: rgba(247,248,250,.96);
+        backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+        padding: 8px 0; margin-bottom: 20px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  nav button { padding: 7px 15px; font-size: 14px; border-radius: 7px; border: 1px solid var(--line);
+               background: #fff; color: var(--ink2); cursor: pointer; font-family: inherit; }
+  nav button:hover { border-color: var(--accent); color: var(--accent); }
+  nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  nav .spacer { flex: 1 1 auto; }
+  .panel { display: none; }
+  .panel.on { display: block; }
+  .scene-menu { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; padding: 12px 14px;
+                background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .scene-menu a { font-size: 13px; padding: 5px 11px; border-radius: 6px; border: 1px solid var(--line);
+                  color: var(--ink2); text-decoration: none; background: #fff; }
+  .scene-menu a:hover { border-color: var(--accent); color: var(--accent); }
+  .scene-menu a.on { border-color: var(--accent); color: var(--accent); background: var(--soft); font-weight: 600; }
+  .panel > h2 { font-size: 20px; margin: 0 0 12px; }
+  h1 { font-size: 24px; margin: 0 0 6px; line-height: 1.4; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  h3 { font-size: 16px; margin: 30px 0 10px; padding-left: 10px; border-left: 4px solid var(--accent); }
+  h4 { font-size: 15px; margin: 0 0 8px; }
+  .sub { color: var(--ink2); font-size: 14px; margin: 0 0 20px; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #eef1f5; padding: 1px 4px; border-radius: 3px; }
+  .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 14px;
+          border-radius: 0 8px 8px 0; font-size: 14px; margin: 12px 0; }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .bad { border-left-color: var(--red); background: var(--red-soft); }
+  .good { border-left-color: var(--ok); background: var(--ok-soft); }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  section.scene { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+                  padding: 20px 22px 24px; margin: 26px 0; }
+  section.scene > .need { font-size: 14px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; font-size: 13.5px; background: #fbfcfd; }
+  .card h4 { font-size: 13.5px; }
+  .card.bad h4 { color: var(--red); }
+  .card.good h4 { color: var(--ok); }
+  figure { margin: 12px 0; background: #fcfdfe; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; color: var(--ink2); margin-top: 6px; }
+  .nl { font: 600 12.5px var(--mono); fill: #1c2230; }
+  .ns { font: 11px sans-serif; fill: #6b7f99; }
+  .lb { font: 600 11px sans-serif; fill: #9aa6b6; }
+  .try { background: #f9fbfe; border: 1px dashed var(--accent); border-radius: 9px; padding: 13px 15px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+  input[type=text], select, textarea { flex: 1 1 240px; padding: 7px 10px; font-size: 13.5px;
+         border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); background: #fff; }
+  textarea { flex-basis: 100%; min-height: 56px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 7px 14px; font-size: 13.5px; border-radius: 6px; border: 1px solid var(--accent);
+           background: var(--accent); color: #fff; cursor: pointer; flex: 0 0 auto; }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.ghost { background: #fff; color: var(--accent); }
+  .chips button { background: #fff; color: var(--ink2); border-color: var(--line); font-size: 12.5px;
+                  padding: 4px 9px; font-family: var(--mono); }
+  .chips button:hover { border-color: var(--accent); color: var(--accent); }
+  .status { font-size: 12.5px; color: var(--ink2); min-height: 18px; }
+  .status.err { color: var(--red); }
+  .result { margin-top: 10px; }
+  .box { border: 1px solid var(--line); border-radius: 7px; padding: 9px 12px; margin: 6px 0;
+         font-size: 13.5px; background: #fff; }
+  .box.bad { border-color: #f0b8b1; background: var(--red-soft); }
+  .box.good { border-color: #b7ddc1; background: var(--ok-soft); }
+  .meta { font-family: var(--mono); font-size: 11.5px; color: var(--ink2); }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 0 5px; border-radius: 3px;
+         border: 1px solid; margin-left: 5px; }
+  .tag.swrl { color: var(--ok); background: var(--ok-soft); border-color: #b7ddc1; }
+  .tag.java { color: var(--warn); background: var(--warn-soft); border-color: #f0ce9a; }
+  .tag.shacl { color: #6d28d9; background: #f3eefe; border-color: #d5c4fb; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--ink2); }
+  pre { background: #1c2230; color: #e6edf3; padding: 11px; border-radius: 7px; overflow-x: auto;
+        font: 11.5px/1.55 var(--mono); max-height: 300px; }
+  .empty { color: var(--ink2); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; margin: 8px 0; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
+  th { background: #eef1f5; }
+  .toc { columns: 2; font-size: 14px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .toc li { break-inside: avoid; }
+  .api { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  .tech { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; padding: 2px 14px 12px; }
+  .tech > summary { font-size: 13px; font-weight: 600; color: var(--ink2); padding: 9px 0; }
+  .tech > summary:hover { color: var(--accent); }
+  .tech[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .tech h4 { margin: 14px 0 6px; font-size: 14px; color: var(--ink); }
+  .tech p { font-size: 13.5px; }
+  .plain { font-size: 15.5px; }  .biz { border-left: 4px solid var(--ok); background: var(--ok-soft); padding: 10px 14px;
+         border-radius: 0 8px 8px 0; font-size: 14.5px; margin: 12px 0; }
+  .ask { font-size: 16px; font-weight: 600; }
+  footer { margin-top: 44px; font-size: 12.5px; color: var(--ink2); border-top: 1px solid var(--line); padding-top: 12px; }
+  @media (max-width: 680px) { .grid2 { grid-template-columns: 1fr; } .toc { columns: 1; } }
+</style>
+</head>
+<body>
+<main>
+
+<nav>
+  <button data-tab="intro">这页讲什么</button>
+  <button data-tab="scene3">为啥卖不动了</button>
+  <button data-tab="scene4">哪个包有风险</button>
+  <button data-tab="scene5">配置有没有坑</button>
+  <button data-tab="scene6">用大白话找包</button>
+  <button data-tab="scene7">故障该多急</button>
+  <span class="spacer"></span>
+  <label class="meta">后端 <input data-base type="text" value="http://localhost:6174" style="width:200px;padding:5px 8px"></label>
+</nav>
+
+<section class="panel on" data-panel="intro">
+<h1 id="top">本体能帮业务干什么：5 个真实场景讲明白</h1>
+<p class="sub plain">不用懂技术也能看。下面 5 件事都是日常运营、资费、运维里真会碰到的活儿。<b>每件事都按三句话讲：难在哪 → 系统心里怎么盘算 → 自己能点一下试。</b></p>
+
+<div class="note">
+先打个比方，本体就是给系统装了一本「业务常识册」：
+<ul>
+  <li>册子里写清楚了「这个平台上有哪些东西」——商品、渠道、促销、竞品、用户行为、风险、告警。</li>
+  <li>也写清楚了「它们之间怎么扯上关系」——谁卖在哪个渠道、参加过哪个促销、被哪个竞品压着。</li>
+  <li>还写清了一些「行规」——什么算异动、什么算高风险、什么配置算违规。</li>
+</ul>
+有了这本册子，系统遇到一件具体的事，就能顺着册子里的关系一条条往下捋，最后告诉你「问题出在哪、归哪一类」。<b>普通程序只能照事先写死的 if 去判断，册子没写到的就傻了；本体是把常识摆在那里，让系统自己推。</b>
+</div>
+
+<div class="note warn">
+这页怎么用：顶部按钮一件一件切过去看。每个场景页面底下都有体验区，前后端跑起来后点按钮就能看到真实结果，不用自己填参数。
+</div>
+
+<h2 id="flow">系统到底是怎么跑起来的（白话版）</h2>
+<p class="plain">五个场景是同一套路子：<b>你给一个商品编号，系统去库里把这件商品的真实情况捞出来，临时拼成一张「关系网」，拿册子里的行规在上面推一遍，把推出来的结果（比如「因为 XX 渠道掉单」）告诉你，然后把这网扔掉。</b></p>
+<p class="plain">为什么跑完就扔？因为推出来的结论只对这一次有用，不留旧账；库里的数据和册子本身都只看不写，出事也弄不乱原始资料。</p>
+
+<figure>
+<svg viewBox="0 0 900 430" role="img" aria-label="白话流程：给编号→捞数据→拼关系网→按行规推→出结论→扔掉">
+  <defs>
+    <marker id="pw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#5a6577"/>
+    </marker>
+  </defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="30" y="40" width="150" height="70" rx="10" fill="#f2f5f9" stroke="#8b98ad"/>
+    <text x="105" y="70">① 给个商品编号</text>
+    <text x="105" y="92" font-size="11" fill="#6b7f99">比如 99898653</text>
+    <rect x="220" y="40" width="150" height="70" rx="10" fill="#eaf1fe" stroke="#1f6feb"/>
+    <text x="295" y="70">② 去库里捞它的</text>
+    <text x="295" y="92">真实情况</text>
+    <rect x="410" y="40" width="150" height="70" rx="10" fill="#f3eefe" stroke="#6d28d9"/>
+    <text x="485" y="70">③ 临时拼成一张</text>
+    <text x="485" y="92">关系网</text>
+    <rect x="600" y="40" width="150" height="70" rx="10" fill="#fff7e6" stroke="#b45309"/>
+    <text x="675" y="70">④ 拿册子里的行规</text>
+    <text x="675" y="92">在上面推一遍</text>
+    <rect x="790" y="40" width="90" height="70" rx="10" fill="#eaf6ed" stroke="#166534"/>
+    <text x="835" y="70">⑤ 得出结论</text>
+    <text x="835" y="92" font-size="11" fill="#166534">问题在哪</text>
+  </g>
+  <g stroke="#5a6577" stroke-width="1.6" fill="none" marker-end="url(#pw)">
+    <path d="M180,75 L216,75"/><path d="M370,75 L406,75"/><path d="M560,75 L596,75"/><path d="M750,75 L786,75"/>
+  </g>
+  <g font-size="12" fill="#6b7f99" text-anchor="middle">
+    <text x="295" y="130">指标、卖在哪个渠道、</text>
+    <text x="295" y="148">做没做促销、被谁抢生意</text>
+    <text x="485" y="130">这件商品摆在网中央，</text>
+    <text x="485" y="148">相关的东西都挂上去</text>
+    <text x="675" y="130">行规从册子里现拿，</text>
+    <text x="675" y="148">不是写死在代码里</text>
+  </g>
+
+  <rect x="330" y="196" width="300" height="60" rx="10" fill="#fdecea" stroke="#b42318"/>
+  <text x="480" y="222" font-size="13" text-anchor="middle" fill="#b42318">举个栗子：某个渠道单量掉了 40%</text>
+  <text x="480" y="243" font-size="12" text-anchor="middle" fill="#b42318">→ 系统回：「是 XX 渠道拖累的」</text>
+  <path d="M835,110 L835,180 L640,226" stroke="#b42318" stroke-width="1.6" fill="none" marker-end="url(#pw)"/>
+
+  <rect x="330" y="300" width="300" height="56" rx="10" fill="#e2e8f0" stroke="#8b98ad" stroke-dasharray="5 4"/>
+  <text x="480" y="324" font-size="13" text-anchor="middle">⑥ 这张网和结论一起扔掉</text>
+  <text x="480" y="345" font-size="12" text-anchor="middle" fill="#5a6577">库和册子都没被改，下次重来</text>
+  <path d="M480,256 L480,296" stroke="#5a6577" stroke-width="1.6" fill="none" marker-end="url(#pw)"/>
+
+  <text x="450" y="398" font-size="11.5" text-anchor="middle" fill="#9aa6b6">行规里的红线值（比如「掉单超过多少才算异动」）也是可以临时调的，改数字不用改程序</text>
+</svg>
+</figure>
+
+<div class="biz">
+这样设计的好处：判断标准变成可调的「数字」，运营自己就能改档；跑一次不留残留，随便试不会污染数据；同一条线把「找原因 / 分类 / 校验 / 检索 / 定级」全包了，不用为每件事单独写一套。
+</div>
+
+<h2 id="howto">怎么试</h2>
+<ul>
+  <li>先让后端在公司电脑上跑起来（默认 <code>localhost:6174</code>），这页直接双击打开就行。</li>
+  <li>顶部按钮切换场景，每个场景点一下示例按钮，参数自动填好发过去。</li>
+  <li>地址写错了或后端没开，页面会直接告诉你。</li>
+</ul>
+
+<details class="tech">
+<summary>给技术看：接口、类名、代码位置</summary>
+<p>5 个场景共用同一条执行链：前端只发业务事实，本体与规则在后端现场装配、一次性推理、回读结论即销毁。核心在推理服务——它不靠硬编码分支，而是把请求数据塞进本体变成实例，调阈值、关规则、交给 Openllet 点火，再从推出来的类型反查命中了谁。</p>
+<p>实例数据从哪来：页面只传一个商品 ID（至多带一句描述），不预存任何个体。后端先据 ID 从数据库取该商品的运行时事实，再翻译成 OWL 个体，并用 <code>:hasMetric</code>、<code>:soldOn</code>、<code>:participatesIn</code>、<code>:competesWith</code>、<code>:influencedBy</code> 挂回主商品。基础本体由 <code>loadBaseOntology</code> 按 <code>productOpsOwlPath</code>（告警走 <code>ALERT_OWL_PATH</code>）只读载入。DB 只读不回写。</p>
+<p>所有类、属性、规则均指向运行时本体 <code>backend-app/src/main/resources/ontology/product.ttl</code>。<code>docs/ontology/model/*.ttl</code> 只是设计稿，改它不生效。</p>
+<p>接口前缀 <code>/api/v1/product-ontology</code>、<code>/api/v1/appstore</code>，都在鉴权白名单里，不需要 token。</p>
+</details>
+</section>
+
+<section class="panel" data-panel="scene3">
+<h2 id="s3">场景 1 · 这个包为什么突然卖不动了</h2>
+<p class="sub plain">业务天天问「为啥掉量」，以前只能凭经验猜、口径还各不相同。系统现在会先生判「到底算不算掉」，真掉了才顺着渠道、促销、竞品、用户行为四路去找，最后指名道姓说是哪个渠道、哪个竞品。</p>
+
+<h3>难在哪</h3>
+<div class="grid2">
+  <div class="card bad"><h4>现实里的麻烦</h4><ul>
+    <li>掉量的原因太多，全靠人猜，十个人十个说法</li>
+    <li>只说"有问题"没用，得说清是哪个渠道、哪个竞品拖的</li>
+    <li>只是小波动也会被硬凑原因，白折腾</li>
+  </ul></div>
+  <div class="card good"><h4>系统怎么做</h4><ul>
+    <li>先看波动够不够大，不够大就到此为止，不瞎归因</li>
+    <li>够大才分四路排查，原因直接落到具体渠道、促销、竞品、行为上</li>
+    <li>结论能点开看到是哪一条，不是一句空话</li>
+  </ul></div>
+</div>
+
+<h3>系统心里有本账</h3>
+<p class="plain">系统心里有张「这件商品摊了什么摊子」的清单：卖在哪些渠道、参加了哪些促销、被哪些竞品抢单、受哪类用户行为影响。<b>「原因」不是另写一句话，而是直接标在清单里的某个具体渠道 / 促销 / 竞品 / 行为上</b>——标了谁，谁就是根因。四路排查各有一条行规，比如「这条渠道掉单超过 30% 而且在总掉量里占比够高，就算它的锅」。</p>
+<p class="plain">红线值（掉多少算掉、占比多少算数）是写死的数字，可以改。改了不用动程序。</p>
+
+<figure>
+<svg viewBox="0 0 900 250" role="img" aria-label="商品周围挂着四类可能的原因，命中就贴上原因标签">
+  <rect x="345" y="16" width="210" height="44" rx="8" fill="#eaf1fe" stroke="#1f6feb"/>
+  <text x="450" y="43" text-anchor="middle" font-size="13">这件商品</text>
+  <text x="450" y="78" text-anchor="middle" font-size="11" fill="#5a6577">周围挂着它牵扯到的所有人和事</text>
+  <g stroke="#8b98ad" stroke-width="1.2" fill="none">
+    <path d="M450,100 L145,160"/><path d="M450,100 L360,160"/><path d="M450,100 L580,160"/><path d="M450,100 L770,160"/>
+  </g>
+  <g font-size="11" fill="#5a6577">
+    <text x="250" y="146" text-anchor="middle">卖在哪个渠道</text><text x="420" y="146" text-anchor="middle">做过什么促销</text>
+    <text x="545" y="146" text-anchor="middle">被哪个竞品抢</text><text x="700" y="146" text-anchor="middle">受哪类用户影响</text>
+  </g>
+  <rect x="40" y="160" width="210" height="56" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="145" y="182" text-anchor="middle" font-size="12">某渠道</text>
+  <text x="145" y="202" text-anchor="middle" font-size="11" fill="#b42318">✓ 贴「原因」标签</text>
+  <rect x="260" y="160" width="210" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="365" y="182" text-anchor="middle" font-size="12">某促销</text>
+  <text x="365" y="202" text-anchor="middle" font-size="11" fill="#8b98ad">没命中</text>
+  <rect x="480" y="160" width="210" height="56" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="585" y="182" text-anchor="middle" font-size="12">某竞品</text>
+  <text x="585" y="202" text-anchor="middle" font-size="11" fill="#b42318">✓ 贴「原因」标签</text>
+  <rect x="700" y="160" width="170" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="785" y="182" text-anchor="middle" font-size="12">某类行为</text>
+  <text x="785" y="202" text-anchor="middle" font-size="11" fill="#8b98ad">没命中</text>
+  <text x="450" y="240" text-anchor="middle" font-size="11.5" fill="#9aa6b6">谁被贴上「原因」，答案就是谁；点开就能看到是哪一条，而不是笼统一句话</text>
+</svg>
+</figure>
+
+<h3>系统一步步怎么走</h3>
+<figure>
+<svg viewBox="0 0 900 190" role="img" aria-label="四步：先判掉得够不够狠，够狠才排查，再按行规找，最后指认">
+  <g font-size="12" text-anchor="middle">
+    <rect x="20" y="30" width="180" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="110" y="52">① 看波动够不够大</text>
+    <text x="110" y="70" font-size="11" fill="#6b7f99">不够大 → 到此为止</text>
+    <rect x="240" y="30" width="180" height="52" rx="7" fill="#fdecea" stroke="#b42318"/>
+    <text x="330" y="52">② 判定「确实掉了」</text>
+    <text x="330" y="70" font-size="11" fill="#b42318">这步是闸门</text>
+    <rect x="460" y="30" width="180" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="550" y="52">③ 四路分头排查</text>
+    <text x="550" y="70" font-size="11" fill="#b45309">都挂在闸门后面</text>
+    <rect x="700" y="30" width="180" height="52" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="790" y="52">④ 指认具体对象</text>
+    <text x="790" y="70" font-size="11" fill="#166534">说清是哪一条</text>
+    <g stroke="#8b98ad" stroke-width="1.3"><path d="M200,56 L236,56"/><path d="M420,56 L456,56"/><path d="M640,56 L696,56"/></g>
+  </g>
+  <g font-size="11" fill="#5a6577" text-anchor="middle">
+    <text x="450" y="116">闸门只能从「波动够大」或「系统已标记异常」任一进入，两道口子都行</text>
+    <text x="450" y="140">闸门没开，后面四路都不跑，回一句「这次不算异动」，不硬凑原因</text>
+    <text x="450" y="164">闸门开了才逐路比对红线值，命中一个报一个</text>
+  </g>
+</svg>
+</figure>
+
+<div class="biz">
+对业务的意义：不用先学怎么看报表，把编号丢进去就能拿到「是 XX 渠道、被 XX 竞品抢单」这种能直接拿去处理的结论；不是异动的那天，系统也会明确告诉你"没事"，省掉空跑。
+</div>
+
+<details class="tech">
+<summary>给技术看：类结构、规则、执行时序</summary>
+<p>结论类是证据实体自身的子类而非商品子类（<code>:1053-1072</code>）：<code>:ChannelRootCause ⊑ :Channel</code>、<code>:PromotionRootCause ⊑ :Promotion</code>、<code>:CompetitorRootCause ⊑ :Competitor</code>、<code>:BehaviorRootCause ⊑ :UserBehavior</code>。唯一的商品侧结论类是点火标记 <code>:AnomalyOffering ⊑ :Offering</code>。</p>
+<p>四类证据靠对象属性（domain 全部 = <code>:Offering</code>，<code>:1143-1152</code>）从商品出发：<code>:soldOn</code> 指渠道、<code>:participatesIn</code> 指促销、<code>:competesWith</code> 指竞品、<code>:influencedBy</code> 指行为。阈值进图而非写死：<code>:th_RA01_metricDeltaLte</code>…<code>:th_RA05_minWeightHint</code>（<code>:1703-1710</code>）。</p>
+<p>R-A02 示例（<code>:1770-1777</code>）：</p>
+<pre>AnomalyOffering(?o) ∧ soldOn(?o,?c) ∧ orderDelta(?c,?d) ∧ contribRatio(?c,?r)
+∧ thresholdValue(:th_RA02_orderDeltaLte,?td) ∧ thresholdValue(:th_RA02_contribRatioGte,?tr)
+∧ swrlb:lessThanOrEqual(?d,?td) ∧ swrlb:greaterThanOrEqual(?r,?tr)
+→ ChannelRootCause(?c)</pre>
+<p>硬约束：R-A02~A05 的 body 首原子一律是 <code>AnomalyOffering(?o)</code>，强依赖 R-A01 点火成功；R-A01 自身有两条交替入口——.delta 走 <code>metricDelta ≤ 阈值</code>，.flag 走 <code>anomalyFlag = true</code>。</p>
+<figure>
+<svg viewBox="0 0 960 640" role="img" aria-label="场景3 异动归因执行时序图">
+  <defs>
+    <marker id="s3a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7f99"/></marker>
+    <marker id="s3r" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b42318"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect x="24" y="14" width="120" height="32" rx="7" fill="#eef1f5" stroke="#8b98ad"/><text x="84" y="35" class="nl">前端</text>
+    <rect x="172" y="14" width="120" height="32" rx="7" fill="#eaf1fe" stroke="#1f6feb"/><text x="232" y="35" class="nl">控制器</text>
+    <rect x="320" y="14" width="130" height="32" rx="7" fill="#faf5ff" stroke="#6d28d9"/><text x="385" y="35" class="nl">数据源/DB</text>
+    <rect x="478" y="14" width="130" height="32" rx="7" fill="#fff7e6" stroke="#b45309"/><text x="543" y="35" class="nl">归因引擎</text>
+    <rect x="636" y="14" width="130" height="32" rx="7" fill="#f3eefe" stroke="#6d28d9"/><text x="701" y="35" class="nl">内存图</text>
+    <rect x="794" y="14" width="120" height="32" rx="7" fill="#eaf6ed" stroke="#166534"/><text x="854" y="35" class="nl">Openllet</text>
+  </g>
+  <g stroke="#c3ccd8" stroke-width="1.2" stroke-dasharray="4 4">
+    <line x1="84" y1="46" x2="84" y2="600"/><line x1="232" y1="46" x2="232" y2="600"/>
+    <line x1="385" y1="46" x2="385" y2="600"/><line x1="543" y1="46" x2="543" y2="600"/>
+    <line x1="701" y1="46" x2="701" y2="600"/><line x1="854" y1="46" x2="854" y2="600"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s3a)">
+    <line x1="84" y1="72" x2="228" y2="72"/>
+    <line x1="232" y1="120" x2="381" y2="120"/>
+    <line x1="385" y1="168" x2="236" y2="168"/>
+    <line x1="232" y1="216" x2="539" y2="216"/>
+    <line x1="543" y1="360" x2="697" y2="360"/>
+    <line x1="543" y1="456" x2="697" y2="456"/>
+    <line x1="543" y1="504" x2="697" y2="504"/>
+    <line x1="543" y1="552" x2="697" y2="552"/>
+  </g>
+  <g stroke="#b42318" stroke-width="1.5" fill="none" marker-end="url(#s3r)"><line x1="543" y1="264" x2="850" y2="264"/></g>
+  <g class="lb">
+    <text x="156" y="66" text-anchor="middle">① POST {offeringId}</text>
+    <text x="306" y="114" text-anchor="middle">② loadGraph 取事实</text>
+    <text x="310" y="162" text-anchor="middle">③ 返回 opsGraph 节点</text>
+    <text x="385" y="210" text-anchor="middle">④ 调 reasonRootCause</text>
+    <text x="555" y="258" fill="#b42318">⑤ R-A01 点火（delta/flag）</text>
+    <text x="555" y="354">⑥ 计 anchor：channel/promo</text>
+    <text x="555" y="450">⑦ R-A02~A05 找根因</text>
+    <text x="555" y="498">⑧ 断言 Metric/Channel…</text>
+    <text x="555" y="546">⑨ apply/disable 后点火</text>
+  </g>
+  <rect x="600" y="300" width="230" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="612" y="318" font-size="11">推入 :AnomalyOffering</text>
+  <rect x="600" y="392" width="230" height="26" rx="4" fill="#fdf6ec" stroke="#f0ce9a"/><text x="612" y="410" font-size="11">推入 :ChannelRootCause 等</text>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s3a)">
+    <line x1="854" y1="588" x2="547" y2="588"/>
+    <line x1="543" y1="628" x2="236" y2="628"/>
+    <line x1="232" y1="664" x2="88" y2="664"/>
+  </g>
+  <g class="lb">
+    <text x="700" y="582" text-anchor="middle">⑩ getTypes 判异动 + instanceLocalIds 取根因</text>
+    <text x="389" y="622" text-anchor="middle">⑪ 组装 anomalies/candidates/path</text>
+    <text x="160" y="658" text-anchor="middle">⑫ 返回 JSON（未点火则候选为空）</text>
+  </g>
+  <line x1="24" y1="700" x2="914" y2="700" stroke="#e2e8f0"/>
+  <text x="470" y="698" class="lb" text-anchor="middle" fill="#9aa6b6" font-size="10.5">SWRL 失败或配 java 时回退 Java 规则（:401-405）；结论随请求丢弃</text>
+</svg>
+<figcaption>对应 <code>OpsRiskAuditEngine.analyzeRootCause</code>：<code>loadGraph</code>（<code>:374</code>）取节点后按 <code>preferSwrlAny</code>（<code>:402</code>）决定走 SWRL 或 Java；SWRL 内 R-A01 先点火（<code>OpsSwrlReasoner:260</code>），再依次 R-A02~A05（<code>:299-316</code>），命中即由 <code>instanceLocalIds</code> 回读，全部失败回退 Java（<code>:401-405</code>）。</figcaption>
+</figure>
+</details>
+
+<h3>自己试一下</h3>
+<div class="try" data-host="app" data-ep="/ops/root-cause" data-method="POST">
+  <div class="row"><input type="text" data-k="offeringId" value="99898653" placeholder="商品编码"></div>
+  <div class="row chips">
+    <button data-fill='{"offeringId":"99898653"}'>99898653</button>
+    <button data-fill='{"offeringId":"84176765"}'>84176765</button>
+  </div>
+  <div class="row"><button data-run>看看它为什么卖不动</button></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+</section>
+
+<section class="panel" data-panel="scene4">
+<h2 id="s4">场景 2 · 哪个包有风险、该先处理谁</h2>
+<p class="sub plain">零元卖、乱送、一挂大半年一个没卖出去——这些情况系统会自己认出来、归进「风险」，几个风险叠在一起就自动升级成「高风险」，再叠就催「紧急复核」。不用人一条条对表打分。</p>
+
+<h3>难在哪</h3>
+<div class="grid2">
+  <div class="card bad"><h4>现实里的麻烦</h4><ul>
+    <li>风险好几种，判断标准各不相同，散在一堆台账里</li>
+    <li>单个风险感受不深，几个凑一起才严重，可没人帮你合起来看</li>
+    <li>分好类还得能按类批量捞出来处置</li>
+  </ul></div>
+  <div class="card good"><h4>系统怎么做</h4><ul>
+    <li>每种风险各有一条自己的判断标准，认出来就归进那一类</li>
+    <li>几条严重风险会自动并到「高风险」这层，一并了就升级要紧急复核</li>
+    <li>分类结果是现成的清单，按类一捞就是一批待处理</li>
+  </ul></div>
+</div>
+
+<h3>系统心里有本账</h3>
+<p class="plain">每种风险都是商品身上贴的一张「标签」：零元卖、异常赠送、零元又没合约、长期零销、低效在架。<b>标签不全靠人贴，是系统按标准看到情况就自己贴上去的。</b>其中两条最严重的（零元又没合约、异常赠送）一被贴上，商品就自动多出一张「高风险」大标签；已经是大高风险、又在架太久，系统再贴「紧急复核」，相当于自己举手喊人。</p>
+<p class="plain">这个链条是一环扣一环的：前面没认出来，后面就不会升；所以掺不了假，也不会跳过中间步骤直接喊紧急。</p>
+
+<figure>
+<svg viewBox="0 0 900 255" role="img" aria-label="五种风险标签各自判定，两条严重者并入高风险，再据在架天数升级紧急复核">
+  <rect x="360" y="12" width="180" height="38" rx="8" fill="#eaf1fe" stroke="#1f6feb"/>
+  <text x="450" y="36" text-anchor="middle" font-size="13">这件商品</text>
+  <rect x="235" y="72" width="200" height="38" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="335" y="96" text-anchor="middle" font-size="12.5">高风险（汇总标签）</text>
+  <rect x="465" y="72" width="200" height="38" rx="8" fill="#fff7e6" stroke="#b45309"/>
+  <text x="565" y="96" text-anchor="middle" font-size="12.5">紧急复核（催人）</text>
+  <g stroke="#8b98ad" stroke-width="1.2" fill="none">
+    <path d="M400,50 L335,68"/><path d="M500,50 L565,68"/>
+    <path d="M300,110 L110,148"/><path d="M345,110 L275,148"/><path d="M430,110 L450,148"/><path d="M565,110 L620,148"/><path d="M615,110 L790,148"/>
+  </g>
+  <rect x="20" y="150" width="165" height="48" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="102" y="170" text-anchor="middle" font-size="12">零元卖</text>
+  <text x="102" y="188" text-anchor="middle" font-size="10.5" fill="#5a6577">月费 = 0</text>
+  <rect x="195" y="150" width="165" height="48" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="277" y="170" text-anchor="middle" font-size="12">异常赠送</text>
+  <text x="277" y="188" text-anchor="middle" font-size="10.5" fill="#5a6577">折扣给到 100%</text>
+  <rect x="370" y="150" width="160" height="48" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="450" y="170" text-anchor="middle" font-size="12">零元又没合约</text>
+  <text x="450" y="188" text-anchor="middle" font-size="10.5" fill="#b42318">要零元先成立</text>
+  <rect x="540" y="150" width="150" height="48" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="615" y="170" text-anchor="middle" font-size="12">长期零销</text>
+  <text x="615" y="188" text-anchor="middle" font-size="10.5" fill="#5a6577">挂 180 天没卖</text>
+  <rect x="700" y="150" width="175" height="48" rx="8" fill="#f2f5f9" stroke="#8b98ad"/>
+  <text x="787" y="170" text-anchor="middle" font-size="12">低效在架</text>
+  <text x="787" y="188" text-anchor="middle" font-size="10.5" fill="#5a6577">卖得很少</text>
+  <text x="450" y="232" text-anchor="middle" font-size="11.5" fill="#9aa6b6">左边五张是基础标签；只有「零元又没合约」「异常赠送」能升出高风险</text>
+  <text x="450" y="249" text-anchor="middle" font-size="11.5" fill="#b42318">→ 没有高风险就谈不上紧急复核，中间缺一档就升不上去</text>
+</svg>
+</figure>
+
+<h3>系统一步步怎么走</h3>
+<figure>
+<svg viewBox="0 0 900 175" role="img" aria-label="先按标准贴基础标签，再把严重的并成高风险，最后够久的喊紧急复核">
+  <g font-size="12" text-anchor="middle">
+    <rect x="20" y="18" width="180" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="110" y="40">① 逐件看资费/合约/销量</text>
+    <text x="110" y="58" font-size="11" fill="#6b7f99">挨个比标准</text>
+    <rect x="240" y="18" width="180" height="52" rx="7" fill="#fdecea" stroke="#b42318"/>
+    <text x="330" y="40">② 够格的贴基础标签</text>
+    <text x="330" y="58" font-size="11" fill="#b42318">五类风险各判各的</text>
+    <rect x="460" y="18" width="180" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="550" y="40">③ 严重的并成高风险</text>
+    <text x="550" y="58" font-size="11" fill="#b45309">只看前面贴没贴上</text>
+    <rect x="700" y="18" width="180" height="52" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="790" y="40">④ 高风险且挂太久</text>
+    <text x="790" y="58" font-size="11" fill="#166534">喊紧急复核</text>
+    <g stroke="#8b98ad" stroke-width="1.3"><path d="M200,44 L236,44"/><path d="M420,44 L456,44"/><path d="M640,44 L696,44"/></g>
+  </g>
+  <g font-size="11" fill="#5a6577" text-anchor="middle">
+    <text x="450" y="100">系统要看三轮才落结论，等级跟着往上抬：高风险并上就标「建议下架」+ 标紧急</text>
+    <text x="450" y="124">只有没升到高风险的，零销/低效才顶到「中等」档；分数按高 92 /中 70 /低 40 去算</text>
+    <text x="450" y="148">个别商品算不动时退回同一套备用判断，结果不会空着</text>
+  </g>
+</svg>
+</figure>
+
+<div class="biz">
+对业务的意义：风险自己会叠、会升级、会排队，人只需要接「紧急复核」的单子就行；不严重的自动落在中等，不会被杂事淹没。按风险类别一筛就是一整批，能批量下架或复核。
+</div>
+
+<details class="tech">
+<summary>给技术看：类结构、规则、执行时序</summary>
+<p>五个单点风险类全部 <code>rdfs:subClassOf :Offering</code>（<code>:1075-1094</code>），风险主体就是商品本身：<code>:ZeroFeeRiskOffering</code>、<code>:AbnormalDiscountOffering</code>、<code>:ZeroFeeNoContractOffering</code>、<code>:ZeroSalesOffering</code>、<code>:LowEffOffering</code>。另有归并层 <code>:HighRiskOffering</code> 与升级动作 <code>:UrgentReviewOffering</code>（<code>:1095-1102</code>），二者自身不带判据。阈值个体 <code>:th_RB01_fullDiscountPercentGte</code>（100）、<code>:th_RB03_zeroSalesShelfDays</code>（180）、<code>:th_RB05_highRiskReviewDays</code>（30）。</p>
+<p>规则分三层（<code>product.ttl:1813-1882</code>）：</p>
+<pre>ZeroFeeNoContractOffering(?o) → HighRiskOffering(?o)        # R-HR.b02
+AbnormalDiscountOffering(?o)  → HighRiskOffering(?o)        # R-HR.discount
+HighRiskOffering(?o) ∧ shelfDays(?o,?d) ∧ thresholdValue(:th_RB05_highRiskReviewDays,?t)
+∧ swrlb:greaterThan(?d,?t) → UrgentReviewOffering(?o)       # R-B05</pre>
+<p>硬约束：R-B02 依赖 R-B01.zeroFee 先行成立，R-B05 依赖归并层先行成立。因多规则共用同一父类结论，回读不能只看类型，要用 <code>ruleFired</code>（实例确已归入 head 类 ∧ 存在 label 命中该规则号且 head 指向该类的规则）双条件逐条验证命中。</p>
+<figure>
+<svg viewBox="0 0 960 620" role="img" aria-label="场景4 风险归类执行时序图">
+  <defs>
+    <marker id="s4a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7f99"/></marker>
+    <marker id="s4r" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b42318"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect x="24" y="14" width="120" height="32" rx="7" fill="#eef1f5" stroke="#8b98ad"/><text x="84" y="35" class="nl">前端</text>
+    <rect x="172" y="14" width="120" height="32" rx="7" fill="#eaf1fe" stroke="#1f6feb"/><text x="232" y="35" class="nl">控制器</text>
+    <rect x="320" y="14" width="130" height="32" rx="7" fill="#faf5ff" stroke="#6d28d9"/><text x="385" y="35" class="nl">数据源/DB</text>
+    <rect x="478" y="14" width="130" height="32" rx="7" fill="#fff7e6" stroke="#b45309"/><text x="543" y="35" class="nl">风险引擎</text>
+    <rect x="636" y="14" width="130" height="32" rx="7" fill="#f3eefe" stroke="#6d28d9"/><text x="701" y="35" class="nl">内存图</text>
+    <rect x="794" y="14" width="120" height="32" rx="7" fill="#eaf6ed" stroke="#166534"/><text x="854" y="35" class="nl">Openllet</text>
+  </g>
+  <g stroke="#c3ccd8" stroke-width="1.2" stroke-dasharray="4 4">
+    <line x1="84" y1="46" x2="84" y2="580"/><line x1="232" y1="46" x2="232" y2="580"/>
+    <line x1="385" y1="46" x2="385" y2="580"/><line x1="543" y1="46" x2="543" y2="580"/>
+    <line x1="701" y1="46" x2="701" y2="580"/><line x1="854" y1="46" x2="854" y2="580"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s4a)">
+    <line x1="84" y1="72" x2="228" y2="72"/>
+    <line x1="232" y1="120" x2="381" y2="120"/>
+    <line x1="385" y1="168" x2="236" y2="168"/>
+    <line x1="232" y1="216" x2="539" y2="216"/>
+    <line x1="543" y1="428" x2="697" y2="428"/>
+    <line x1="543" y1="476" x2="697" y2="476"/>
+  </g>
+  <g stroke="#b42318" stroke-width="1.5" fill="none" marker-end="url(#s4r)">
+    <line x1="543" y1="264" x2="850" y2="264"/>
+    <line x1="543" y1="360" x2="850" y2="360"/>
+  </g>
+  <g class="lb">
+    <text x="156" y="66" text-anchor="middle">① POST {offeringIds}</text>
+    <text x="306" y="114" text-anchor="middle">② 取全量在架商品</text>
+    <text x="300" y="162" text-anchor="middle">③ 返回 shelfOfferings</text>
+    <text x="385" y="210" text-anchor="middle">④ 逐品调 reasonRiskOffering</text>
+    <text x="543" y="258" fill="#b42318" text-anchor="middle">⑤ 断言资费/合约/销量</text>
+    <text x="543" y="354" fill="#b42318" text-anchor="middle">⑥ R-B01~B04 单点归类</text>
+    <text x="555" y="422">⑦ R-HR 归并 → 高风险</text>
+    <text x="555" y="470">⑧ R-B05 据在架天数升级</text>
+  </g>
+  <rect x="600" y="204" width="250" height="26" rx="4" fill="#fdf6ec" stroke="#f0ce9a"/><text x="612" y="222" font-size="11">推入 :ZeroFeeRisk… / :AbnormalDiscount…</text>
+  <rect x="600" y="300" width="250" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="612" y="318" font-size="11">推入 :HighRiskOffering</text>
+  <rect x="600" y="392" width="250" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="612" y="410" font-size="11">推入 :UrgentReviewOffering</text>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s4a)">
+    <line x1="854" y1="512" x2="547" y2="512"/>
+    <line x1="543" y1="552" x2="236" y2="552"/>
+    <line x1="232" y1="584" x2="88" y2="584"/>
+  </g>
+  <g class="lb">
+    <text x="700" y="506" text-anchor="middle">⑨ ruleFired：类型 + label/head 双条件逐条验证</text>
+    <text x="389" y="546" text-anchor="middle">⑩ 抬等级、置 suggestDelist/urgent</text>
+    <text x="160" y="578" text-anchor="middle">⑪ 返回批次结果（单点失败落 Java）</text>
+  </g>
+  <line x1="24" y1="600" x2="914" y2="600" stroke="#e2e8f0"/>
+  <text x="470" y="598" class="lb" text-anchor="middle" fill="#9aa6b6" font-size="10.5">多条规则共用父类，必须 ruleFired 双验证，防 R-B05 被他人推入的 HighRisk 误触发</text>
+</svg>
+<figcaption>对应 <code>OpsRiskAuditEngine.auditRisks</code> 逐品进 <code>reasonRiskOffering</code>：先断言判据（<code>OpsSwrlReasoner:385-403</code>），R-B01~B04 单点归类与 R-B05 升级在 <code>product.ttl:1813-1872</code>、R-HR 归并在 <code>product.ttl:1874-1882</code>，命中由 <code>ruleFired</code>（<code>:1298</code>）双条件确认。</figcaption>
+</figure>
+</details>
+
+<h3>自己试一下</h3>
+<div class="try" data-ep="/ops/risk-audit" data-method="POST">
+  <div class="row"><input type="text" data-k="offeringIds" value="84176765,99898653" placeholder="商品编码，逗号分隔，留空扫全量"></div>
+  <div class="row chips">
+    <button data-fill='{"offeringIds":"84176765"}'>84176765</button>
+    <button data-fill='{"offeringIds":"99898653"}'>99898653</button>
+    <button data-fill='{"offeringIds":""}'>全量扫</button>
+  </div>
+  <div class="row"><button data-run>查这批包有没有风险</button></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+</section>
+
+<section class="panel" data-panel="scene5">
+<h2 id="s5">场景 3 · 这个配置有没有坑</h2>
+<p class="sub plain">新配置送上后台先过一道自动体检：该填的没填、自相矛盾、资费越了线，统统逐条挑出来，还告诉你踩的是哪条规矩。</p>
+
+<h3>难在哪</h3>
+<div class="grid2">
+  <div class="card bad"><h4>现实里的麻烦</h4><ul>
+    <li>"格式对不对"和"内容合不合规"是两码事，混在一起没法管</li>
+    <li>合规口径全埋在程序里，改一条规矩就得发版等排期</li>
+    <li>报错只说"有错"，不说是哪条规矩哪一项，改不动</li>
+  </ul></div>
+  <div class="card good"><h4>系统怎么做</h4><ul>
+    <li>格式归格式查，业务归业务查，两拨分开各管一摊</li>
+    <li>业务规矩从册子里读，改规矩不碰程序</li>
+    <li>每个违规都标明是第几条规矩、哪一项，照单改就行</li>
+  </ul></div>
+</div>
+
+<h3>系统心里有本账</h3>
+<p class="plain">体检分两关，互不掺和：</p>
+<ul class="plain">
+  <li><b>第一关看长相</b>——必填的三项（名称、固定资费、适用渠道）有没有缺，同一个互斥组有没有重复勾选。相当于表单的"格式检查"。</li>
+  <li><b>第二关看合不合规矩</b>——折扣和赠费撞车没有、加了附加包却没配依赖、高风险情况下还收零元、折扣砍太狠、固定资费超出范围。相当于"业务审核"。</li>
+</ul>
+<p class="plain">两关都跑完，命中什么就报什么，每条都带规矩编号和具体字段。<b>白名单里的特批配置会被直接跳过，不冤报。</b></p>
+
+<figure>
+<svg viewBox="0 0 900 205" role="img" aria-label="两关体检：一关看长相，一关看规矩，结果合并成违规单">
+  <rect x="350" y="12" width="200" height="40" rx="8" fill="#eaf1fe" stroke="#1f6feb"/>
+  <text x="450" y="37" text-anchor="middle" font-size="13">送上来的配置草稿</text>
+  <rect x="40" y="80" width="370" height="96" rx="10" fill="#f3eefe" stroke="#6d28d9" stroke-dasharray="4 3"/>
+  <text x="225" y="104" text-anchor="middle" font-size="13" fill="#6d28d9">第一关 · 看长相</text>
+  <text x="225" y="126" text-anchor="middle" font-size="11.5">必填三项缺没缺</text>
+  <text x="225" y="146" text-anchor="middle" font-size="11.5">互斥组有没有重复勾</text>
+  <text x="225" y="166" text-anchor="middle" font-size="11" fill="#6d28d9">格式层面，不涉业务判断</text>
+  <rect x="490" y="80" width="370" height="96" rx="10" fill="#fdecea" stroke="#b42318" stroke-dasharray="4 3"/>
+  <text x="675" y="104" text-anchor="middle" font-size="13" fill="#b42318">第二关 · 看规矩</text>
+  <text x="675" y="126" text-anchor="middle" font-size="11.5">折扣赠费撞车 · 附加缺依赖</text>
+  <text x="675" y="146" text-anchor="middle" font-size="11.5">高风险还零元 · 折扣过狠 · 资费越界</text>
+  <text x="675" y="166" text-anchor="middle" font-size="11" fill="#b42318">业务层面，每条对应一条规矩</text>
+  <g stroke="#8b98ad" stroke-width="1.3" fill="none">
+    <path d="M400,52 L225,76"/><path d="M500,52 L675,76"/>
+  </g>
+  <text x="450" y="198" text-anchor="middle" font-size="11.5" fill="#9aa6b6">白名单特批的配置一开始就被放行，两关都不进</text>
+</svg>
+</figure>
+
+<h3>系统一步步怎么走</h3>
+<figure>
+<svg viewBox="0 0 900 175" role="img" aria-label="先放行白名单，再跑两关，最后汇总违规单">
+  <g font-size="12" text-anchor="middle">
+    <rect x="20" y="22" width="200" height="50" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="120" y="43">① 草稿进来</text>
+    <text x="120" y="61" font-size="11" fill="#6b7f99">白名单直接放行</text>
+    <rect x="260" y="22" width="190" height="50" rx="7" fill="#f3eefe" stroke="#6d28d9"/>
+    <text x="355" y="43">② 第一关查长相</text>
+    <text x="355" y="61" font-size="11" fill="#6d28d9">必填/重复</text>
+    <rect x="490" y="22" width="180" height="50" rx="7" fill="#fdecea" stroke="#b42318"/>
+    <text x="580" y="43">③ 第二关查规矩</text>
+    <text x="580" y="61" font-size="11" fill="#b42318">红线逐个比</text>
+    <rect x="710" y="22" width="170" height="50" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="795" y="43">④ 汇总违规单</text>
+    <text x="795" y="61" font-size="11" fill="#166534">规矩号+字段</text>
+    <g stroke="#8b98ad" stroke-width="1.3"><path d="M220,47 L256,47"/><path d="M450,47 L486,47"/><path d="M670,47 L706,47"/></g>
+  </g>
+  <g font-size="11" fill="#5a6577" text-anchor="middle">
+    <text x="450" y="104">两关同时跑，各出各的单子，最后并成一张，互不遮挡</text>
+    <text x="450" y="128">每条违规都写清楚是哪条规矩、卡在哪个字段、什么级别</text>
+    <text x="450" y="152">第二关某条规矩算不动，就换同一套标准的备用算法顶上，不会漏报</text>
+  </g>
+</svg>
+</figure>
+
+<div class="biz">
+对业务的意义：规矩写进册子，运营和产品自己就能加、能改，不排队等开发；报出来的话能照着改，不用来回问"到底哪错了"。
+</div>
+
+<details class="tech">
+<summary>给技术看：SHACL/SWRL 分工、规则、执行时序</summary>
+<p>两类约束互不重叠、各管一层：结构层用 SHACL（<code>compliance-shacl.ttl</code>），<code>:OfferingShape</code> 以 <code>sh:targetClass :Offering</code> 挂在商品节点上，含 <code>R-C06</code> 三必填（<code>sh:minCount 1</code>）、<code>R-C03</code> 互斥组 <code>sh:maxCount 0</code>。业务层用 SWRL：<code>R-C03</code> 折扣/赠费冲突、<code>R-C04</code> 附加缺依赖、<code>R-C05</code> 高风险零固费、<code>R-C07</code> 异常折扣、<code>R-C09</code> 固费越界，命中都归入 <code>:ConfigViolation</code>。</p>
+<p>R-C05 示例（<code>:2082-2094</code>）：</p>
+<pre>Offering(?o) ∧ monthlyFee(?o,?m) ∧ oneTimeFee(?o,?ot) ∧ hasContract(?o,?c)
+∧ thresholdValue(:th_RC05_zeroFee,?t) ∧ swrlb:equal(?m,?t) ∧ swrlb:equal(?ot,?t)
+∧ swrlb:equal(?c,"false") ∧ exemptionFlag(?o,?e) ∧ swrlb:equal(?e,"false")
+→ C05HighRiskZeroFee(?o) ∧ ConfigViolation(?o)</pre>
+<p>豁免白名单的草稿在 <code>draftToStatements</code> 投影时直接跳过。已迁 SWRL 的规则以 SWRL 为准，未迁或 SWRL 抛异常的才回退 Java 同逻辑（<code>ComplianceRuleEngine</code>）。</p>
+<figure>
+<svg viewBox="0 0 960 650" role="img" aria-label="场景5 合规校验执行时序图">
+  <defs>
+    <marker id="s5a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7f99"/></marker>
+    <marker id="s5r" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b42318"/></marker>
+    <marker id="s5p" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6d28d9"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect x="24" y="14" width="120" height="32" rx="7" fill="#eef1f5" stroke="#8b98ad"/><text x="84" y="35" class="nl">前端</text>
+    <rect x="172" y="14" width="120" height="32" rx="7" fill="#eaf1fe" stroke="#1f6feb"/><text x="232" y="35" class="nl">控制器</text>
+    <rect x="320" y="14" width="130" height="32" rx="7" fill="#fff7e6" stroke="#b45309"/><text x="385" y="35" class="nl">合规引擎</text>
+    <rect x="478" y="14" width="130" height="32" rx="7" fill="#eaf6ed" stroke="#166534"/><text x="543" y="35" class="nl">SHACL</text>
+    <rect x="636" y="14" width="130" height="32" rx="7" fill="#fdecea" stroke="#b42318"/><text x="701" y="35" class="nl">SWRL</text>
+    <rect x="794" y="14" width="120" height="32" rx="7" fill="#f3eefe" stroke="#6d28d9"/><text x="854" y="35" class="nl">违规汇总</text>
+  </g>
+  <g stroke="#c3ccd8" stroke-width="1.2" stroke-dasharray="4 4">
+    <line x1="84" y1="46" x2="84" y2="610"/><line x1="232" y1="46" x2="232" y2="610"/>
+    <line x1="385" y1="46" x2="385" y2="610"/><line x1="543" y1="46" x2="543" y2="610"/>
+    <line x1="701" y1="46" x2="701" y2="610"/><line x1="854" y1="46" x2="854" y2="610"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s5a)">
+    <line x1="84" y1="72" x2="228" y2="72"/>
+    <line x1="232" y1="120" x2="381" y2="120"/>
+  </g>
+  <g stroke="#6d28d9" stroke-width="1.4" fill="none" marker-end="url(#s5p)">
+    <line x1="385" y1="176" x2="539" y2="176"/>
+    <line x1="385" y1="392" x2="539" y2="392"/>
+    <line x1="543" y1="248" x2="850" y2="248"/>
+    <line x1="701" y1="336" x2="850" y2="336"/>
+    <line x1="701" y1="464" x2="850" y2="464"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s5a)">
+    <line x1="854" y1="552" x2="236" y2="552"/>
+    <line x1="232" y1="600" x2="88" y2="600"/>
+  </g>
+  <g class="lb">
+    <text x="156" y="66" text-anchor="middle">① POST {draft}</text>
+    <text x="306" y="114" text-anchor="middle">② checkCompliance(draft)</text>
+    <text x="462" y="170">③ 投影草稿（跳过豁免）</text>
+    <text x="462" y="240">④ execute 必填/互斥 shape</text>
+    <text x="714" y="330">⑤ SWRL R-C03~C09 判冲突</text>
+    <text x="462" y="386">⑥ R-C05 阈值+比较全成立</text>
+    <text x="714" y="458">⑦ 命中入 :ConfigViolation</text>
+    <text x="545" y="546" text-anchor="middle">⑧ 合并两份违规清单</text>
+    <text x="160" y="594" text-anchor="middle">⑨ 返回 violations（ruleId/字段/级别）</text>
+  </g>
+  <rect x="560" y="204" width="250" height="26" rx="4" fill="#eaf6ed" stroke="#b7ddc1"/><text x="572" y="222" font-size="11">结构违规（R-C06 必填 / R-C03 重复）</text>
+  <rect x="430" y="420" width="250" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="442" y="438" font-size="11">业务违规（R-C03/C04/C05/C07/C09）</text>
+  <line x1="24" y1="630" x2="914" y2="630" stroke="#e2e8f0"/>
+  <text x="470" y="628" class="lb" text-anchor="middle" fill="#9aa6b6" font-size="10.5">SHACL 与 SWRL 并行两路，结果合并；SWRL 异常只回退 Java 同逻辑该条，不影响另一路</text>
+</svg>
+<figcaption>对应 <code>ComplianceRuleEngine.checkCompliance</code>：草稿先经 <code>draftToStatements</code> 投影入图（豁免白名单跳过），SHACL 侧走 RDF4J ShaclSail 校验必填/互斥，SWRL 侧以 R-C05（<code>product.ttl:2082-2094</code>）判业务冲突，命中统一推入 <code>:ConfigViolation</code> 并合并成 violations；SWRL 抛异常该条落 Java 同逻辑。</figcaption>
+</figure>
+</details>
+
+<h3>自己试一下</h3>
+<div class="try" data-ep="/config/compliance" data-method="POST">
+  <div class="row">
+    <textarea data-k="payload_text">{"draft":{"monthlyFee":"0","includeData":"20GB","mutexGroup":"MAIN_PKG","targetCustomerGroup":""}}</textarea>
+  </div>
+  <div class="row"><button data-run>送去体检</button></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">把上面的月费改成 0，或者把互斥组删掉，都能看到不同的违规项。</p>
+</section>
+
+<section class="panel" data-panel="scene6">
+<h2 id="s6">场景 4 · 用大白话把包找出来</h2>
+<p class="sub plain">"有哪些 0 元的校园包？"就这么问，不用学查询语法。系统认得出话里的关键词，自己去库里翻，翻出清单给你。</p>
+
+<h3>难在哪</h3>
+<div class="grid2">
+  <div class="card bad"><h4>现实里的麻烦</h4><ul>
+    <li>业务不会写查询，看关系图也头大</li>
+    <li>名字和标签写法五花八门，关键字死搜漏一堆</li>
+    <li>想顺着「这个品类」「这个资费」找，平表比不出来</li>
+  </ul></div>
+  <div class="card good"><h4>系统怎么做</h4><ul>
+    <li>册子里每个东西都有中文说明，正好当"能问什么"的对照表</li>
+    <li>话里的片段对上哪一个，就在库里去比哪一个</li>
+    <li>对不上的词直接忽略，不会因为多说一句就查不出</li>
+  </ul></div>
+</div>
+
+<h3>系统心里有本账</h3>
+<p class="plain">系统手里还是那本册子，但这次只用来「认词」：册子里写了哪些东西、每样东西怎么称呼。<b>你说「校园」，它翻到「所属品类」这一条；你说「0 元」，它翻到「月费」这一条；你说「包」，它知道要找的就是商品。</b>认出来的词都变成条件，去库里一次性筛完。</p>
+<p class="plain">认不出来的词（比如"最近挺火的"）不报错，直接略过——所以随便怎么说话都不会失败。什么都不说，它就干脆把库里有什么全列出来，帮你先对个眼。</p>
+
+<figure>
+<svg viewBox="0 0 900 205" role="img" aria-label="一句话拆成关键词，对照册子翻译成条件，去库里筛出清单">
+  <rect x="30" y="20" width="200" height="52" rx="8" fill="#f2f5f9" stroke="#6b7f99"/>
+  <text x="130" y="42" text-anchor="middle" font-size="13">你说一句话</text>
+  <text x="130" y="62" text-anchor="middle" font-size="11.5" fill="#5a6577">"有哪些 0 元的校园包"</text>
+  <rect x="290" y="20" width="200" height="52" rx="8" fill="#eaf1fe" stroke="#1f6feb"/>
+  <text x="390" y="42" text-anchor="middle" font-size="13">翻册子认词</text>
+  <text x="390" y="62" text-anchor="middle" font-size="11.5" fill="#5a6577">每样东西都有中文说明</text>
+  <rect x="550" y="20" width="200" height="52" rx="8" fill="#fff7e6" stroke="#b45309"/>
+  <text x="650" y="42" text-anchor="middle" font-size="13">变成筛选条件</text>
+  <text x="650" y="62" text-anchor="middle" font-size="11.5" fill="#b45309">对不上的词丢掉</text>
+  <rect x="290" y="122" width="200" height="42" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="390" y="148" text-anchor="middle" font-size="12.5">库里筛出的商品</text>
+  <rect x="550" y="122" width="200" height="42" rx="8" fill="#eaf6ed" stroke="#166534"/>
+  <text x="650" y="148" text-anchor="middle" font-size="12.5">给你一张清单</text>
+  <g stroke="#8b98ad" stroke-width="1.3" fill="none">
+    <path d="M230,46 L286,46"/><path d="M490,46 L546,46"/><path d="M650,72 L650,118"/><path d="M490,143 L546,143"/>
+  </g>
+  <text x="450" y="192" text-anchor="middle" font-size="11.5" fill="#9aa6b6">"校园" → 品类是校园　"0 元" → 月费等于 0　"包" → 找的是商品</text>
+</svg>
+</figure>
+
+<h3>系统一步步怎么走</h3>
+<figure>
+<svg viewBox="0 0 900 150" role="img" aria-label="抽词、对照、筛选、给清单">
+  <g font-size="12" text-anchor="middle">
+    <rect x="20" y="30" width="200" height="50" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="120" y="51">① 把话拆成碎片</text>
+    <text x="120" y="69" font-size="11" fill="#6b7f99">品类/资费/找什么</text>
+    <rect x="260" y="30" width="200" height="50" rx="7" fill="#eaf1fe" stroke="#1f6feb"/>
+    <text x="360" y="51">② 碎片对上册子</text>
+    <text x="360" y="69" font-size="11" fill="#1f6feb">对上才留下</text>
+    <rect x="500" y="30" width="180" height="50" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="590" y="51">③ 去库里筛</text>
+    <rect x="720" y="30" width="160" height="50" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="800" y="51">④ 给出清单</text>
+    <g stroke="#8b98ad" stroke-width="1.3"><path d="M220,55 L256,55"/><path d="M460,55 L496,55"/><path d="M680,55 L716,55"/></g>
+  </g>
+  <text x="450" y="112" text-anchor="middle" fill="#5a6577" font-size="11.5">对不上东西的词直接扔掉；什么都不填就把库里有什么全列出来，只查不改</text>
+</svg>
+</figure>
+
+<div class="biz">
+对业务的意义：不用背字段名、不用找技术同学代查，一句人话就能了解市场上有哪些包、什么价位、哪个品类，查起来没有门槛。
+</div>
+
+<details class="tech">
+<summary>给技术看：词表映射、接口、执行时序</summary>
+<p>本体在这里的角色是"结构化词表"：类给出"能问哪类对象"（统一落在 <code>:Offering</code>，<code>:1039</code>），对象属性给出"能沿什么边找"——<code>:belongsToCategory</code>（品类，<code>:24</code>）、<code>:hasMetric</code>（指标，<code>:1143</code>）；数据属性承载可过滤的字面值，如 <code>:monthlyFee</code>（<code>:1240</code>）、<code>:offeringName</code>（<code>:1158</code>）、<code>:channelScope</code>（<code>:307</code>）。类/属性上的 <code>rdfs:label</code>、<code>rdfs:comment</code> 是给 LLM 的语义提示。</p>
+<p>抽词后每个片段找最近的类/属性，拼成 <code>SELECT ?o WHERE { ?o a :Offering ; :belongsToCategory :personMainPrc ; :monthlyFee 0 . }</code> 一次取回。接口只读：<code>POST /sparql</code>（<code>:343</code>）非空 query 走 <code>sparqlSelect</code>，空 query 回全量实例列表。</p>
+<figure>
+<svg viewBox="0 0 960 470" role="img" aria-label="场景6 语义检索执行时序图">
+  <defs>
+    <marker id="s6a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7f99"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect x="24" y="14" width="120" height="32" rx="7" fill="#eef1f5" stroke="#8b98ad"/><text x="84" y="35" class="nl">前端</text>
+    <rect x="172" y="14" width="130" height="32" rx="7" fill="#eaf1fe" stroke="#1f6feb"/><text x="237" y="35" class="nl">控制器</text>
+    <rect x="330" y="14" width="140" height="32" rx="7" fill="#fff7e6" stroke="#b45309"/><text x="400" y="35" class="nl">查询服务</text>
+    <rect x="498" y="14" width="130" height="32" rx="7" fill="#f3eefe" stroke="#6d28d9"/><text x="563" y="35" class="nl">内存图</text>
+    <rect x="656" y="14" width="130" height="32" rx="7" fill="#eaf6ed" stroke="#166534"/><text x="721" y="35" class="nl">RDF4J</text>
+    <rect x="814" y="14" width="120" height="32" rx="7" fill="#e2e8f0" stroke="#475569"/><text x="874" y="35" class="nl">结果集</text>
+  </g>
+  <g stroke="#c3ccd8" stroke-width="1.2" stroke-dasharray="4 4">
+    <line x1="84" y1="46" x2="84" y2="440"/><line x1="237" y1="46" x2="237" y2="440"/>
+    <line x1="400" y1="46" x2="400" y2="440"/><line x1="563" y1="46" x2="563" y2="440"/>
+    <line x1="721" y1="46" x2="721" y2="440"/><line x1="874" y1="46" x2="874" y2="440"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s6a)">
+    <line x1="84" y1="72" x2="233" y2="72"/>
+    <line x1="237" y1="120" x2="396" y2="120"/>
+    <line x1="400" y1="176" x2="870" y2="176"/>
+    <line x1="400" y1="232" x2="870" y2="232"/>
+    <line x1="874" y1="320" x2="404" y2="320"/>
+    <line x1="400" y1="384" x2="241" y2="384"/>
+    <line x1="237" y1="428" x2="88" y2="428"/>
+  </g>
+  <g class="lb">
+    <text x="156" y="66" text-anchor="middle">① POST {query}</text>
+    <text x="308" y="114" text-anchor="middle">② 转 sparqlSelect / 全量</text>
+    <text x="420" y="170">③ 只读查询内存图</text>
+    <text x="420" y="226">④ 空 query → 列举全量实例</text>
+    <text x="700" y="314" text-anchor="middle">⑤ 返回绑定行</text>
+    <text x="389" y="378" text-anchor="middle">⑥ 映射为对象数组</text>
+    <text x="160" y="422" text-anchor="middle">⑦ 返回 JSON（只读，不改图）</text>
+  </g>
+  <rect x="430" y="196" width="250" height="26" rx="4" fill="#eaf6ed" stroke="#b7ddc1"/><text x="442" y="214" font-size="11">任意 SELECT，只读不写</text>
+  <rect x="430" y="252" width="250" height="26" rx="4" fill="#f3eefe" stroke="#d5c4fb"/><text x="442" y="270" font-size="11">无 query 时给出图内实例清单</text>
+  <line x1="24" y1="450" x2="914" y2="450" stroke="#e2e8f0"/>
+  <text x="470" y="448" class="lb" text-anchor="middle" fill="#9aa6b6" font-size="10.5">查询在内存图上执行，无需装配事实；映射不到类/属性的词由调用方忽略</text>
+</svg>
+<figcaption>对应 <code>ProductOntologyController</code> 的 <code>/sparql</code>（<code>:343</code>）：query 非空交 <code>sparqlSelect</code> 在内存图上只读执行，空则返回全量实例列表，结果直接映射为对象数组回前端。</figcaption>
+</figure>
+</details>
+
+<h3>自己试一下</h3>
+<div class="try" data-ep="/sparql" data-method="POST">
+  <div class="row">
+    <textarea data-k="query" placeholder="留空就把库里有什么全列出来；也可以写查询语句自己试"></textarea>
+  </div>
+  <div class="row chips">
+    <button data-fill='{"query":""}'>全列出来看看</button>
+    <button data-fill='{"query":"SELECT ?s WHERE { ?s ?p ?o } LIMIT 5"}'>先看 5 条</button>
+  </div>
+  <div class="row"><button data-run>找一找</button></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+</section>
+
+<section class="panel" data-panel="scene7">
+<h2 id="s7">场景 5 · 这摊子事到底有多急</h2>
+<p class="sub plain">单量掉、报错涨、资费出岔子，系统直接判成 P0 / P1 / P2 三档，最急的两档自动开单，不给人拖到第二天。</p>
+
+<h3>难在哪</h3>
+<div class="grid2">
+  <div class="card bad"><h4>现实里的麻烦</h4><ul>
+    <li>监控指标一大堆，哪个算事谁也说不准</li>
+    <li>靠值班眼睛看，同一摊事换个人就换了档</li>
+    <li>P0 要是拖过夜，就是事故</li>
+  </ul></div>
+  <div class="card good"><h4>系统怎么做</h4><ul>
+    <li>每种异常都有明确的红线，够线就归到那一档</li>
+    <li>档位是系统自己判的，不靠人拍脑袋</li>
+    <li>P0、P1 自动开单并写明多久必须处理，P2 只观察</li>
+  </ul></div>
+</div>
+
+<p class="plain">档位不是打分，而是三个抽屉：<b>P0 最急、P1 次急、P2 先看着。</b>每种异常对一档红线——报错数、出错率一律比 P0 线：超了扔进 P0 抽屉；没超但超了 P1 线，扔 P1；只是趋势在往上爬，扔 P2。同一件事同时够好几档，就按最急那档算。</p>
+<p class="plain">扔进 P0 或 P1 抽屉，还会自动触发一个动作：开单，并约定多久内必须处理。P2 只躺在抽屉里，不惊动任何人。红线数字写在外头，随时能调。</p>
+
+<figure>
+<svg viewBox="0 0 900 225" role="img" aria-label="按红线分成 P0/P1/P2 三个抽屉，最急两档自动开单">
+  <rect x="360" y="12" width="180" height="38" rx="8" fill="#eaf1fe" stroke="#1f6feb"/>
+  <text x="450" y="36" text-anchor="middle" font-size="13">这摊子事</text>
+  <g stroke="#8b98ad" stroke-width="1.3" fill="none">
+    <path d="M400,50 L150,84"/><path d="M440,50 L420,84"/><path d="M490,50 L650,84"/>
+  </g>
+  <rect x="40" y="84" width="220" height="46" rx="8" fill="#fdecea" stroke="#b42318"/>
+  <text x="150" y="105" text-anchor="middle" font-size="13">P0 最急</text>
+  <text x="150" y="123" text-anchor="middle" font-size="11" fill="#b42318">报错/出错率超 P0 线</text>
+  <rect x="310" y="84" width="220" height="46" rx="8" fill="#fff7e6" stroke="#b45309"/>
+  <text x="420" y="105" text-anchor="middle" font-size="13">P1 次急</text>
+  <text x="420" y="123" text-anchor="middle" font-size="11" fill="#b45309">超 P1 线但没到 P0</text>
+  <rect x="580" y="84" width="220" height="46" rx="8" fill="#eaf6ed" stroke="#166534"/>
+  <text x="690" y="105" text-anchor="middle" font-size="13">P2 先看着</text>
+  <text x="690" y="123" text-anchor="middle" font-size="11" fill="#166534">只是趋势在往上爬</text>
+  <rect x="40" y="158" width="490" height="40" rx="8" fill="#f2f5f9" stroke="#6b7f99"/>
+  <text x="285" y="183" text-anchor="middle" font-size="12.5">→ P0、P1 都自动开单 + 约定处理时限</text>
+  <rect x="580" y="158" width="220" height="40" rx="8" fill="#fbfcfd" stroke="#8b98ad" stroke-dasharray="4 3"/>
+  <text x="690" y="183" text-anchor="middle" font-size="12.5" fill="#5a6577">→ 只记录，不开单</text>
+  <g stroke="#8b98ad" stroke-width="1.3" fill="none"><path d="M150,130 L250,154"/><path d="M420,130 L420,154"/></g>
+  <text x="450" y="218" text-anchor="middle" font-size="11.5" fill="#9aa6b6">同时够好几档就按最急算；红线数字在册子里，能改，改档不用改程序</text>
+</svg>
+</figure>
+
+<h3>系统一步步怎么走</h3>
+<figure>
+<svg viewBox="0 0 900 175" role="img" aria-label="读事实、比红线、判档、急档开单">
+  <g font-size="12" text-anchor="middle">
+    <rect x="20" y="22" width="180" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="110" y="44">① 读当前监控数</text>
+    <text x="110" y="62" font-size="11" fill="#6b7f99">报错 20、出错率 8%</text>
+    <rect x="240" y="22" width="180" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="330" y="44">② 挨个比红线</text>
+    <text x="330" y="62" font-size="11" fill="#b45309">报错线 10、出错率线 5%</text>
+    <rect x="460" y="22" width="180" height="52" rx="7" fill="#fdecea" stroke="#b42318"/>
+    <text x="550" y="44">③ 够了就判 P0</text>
+    <text x="550" y="62" font-size="11" fill="#b42318">取最急那一档</text>
+    <rect x="700" y="22" width="180" height="52" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="790" y="44">④ 急档自动开单</text>
+    <text x="790" y="62" font-size="11" fill="#166534">并约定处理时限</text>
+    <g stroke="#8b98ad" stroke-width="1.3"><path d="M200,48 L236,48"/><path d="M420,48 L456,48"/><path d="M640,48 L696,48"/></g>
+  </g>
+  <g font-size="11" fill="#5a6577" text-anchor="middle">
+    <text x="450" y="104">举个例子：报错 20 超过 P0 线 10，出错率 8% 超过 P0 线 5%，两只脚都踩过线 → 直接 P0</text>
+    <text x="450" y="128">只够一条 P1 线就是 P1；光靠"趋势在涨"就是 P2，P2 永远不会开单</text>
+    <text x="450" y="152">两档计算算不动就换同一套红线的备用算法，档位不会丢</text>
+  </g>
+</svg>
+</figure>
+
+<div class="biz">
+对业务的意义：不用再为半夜判断吵一架，同一摊事谁来判都是同一档；P0、P1 自动落到工单上，有处理时限兜着，不至于过夜变事故。想看有多少 P0，按档一捞就是一份名单。
+</div>
+
+<details class="tech">
+<summary>给技术看：等级类、规则、执行时序</summary>
+<p>等级不是数字，是类：<code>:P0AlertOffering</code> / <code>:P1AlertOffering</code> / <code>:P2AlertOffering</code>，加上归并动作类 <code>:NeedWorkOrderOffering</code>。指标异常是商品自身的数据属性：<code>:feeErrorRate</code>、<code>:errorCount</code>、<code>:errorTrendUp</code>、<code>:feeTrendUp</code>、<code>:orderTrendDown</code>。阈值个体 <code>:th_RE01_feeErrorRateGte</code>（0.05）、<code>:th_RE01_errorCountGte</code>（10）、<code>:th_RE02_errorCountGte</code>（1）、<code>:th_RE02_feeErrorRateGte</code>（0.01）。</p>
+<p>规则头直接写等级类，判定即归类；建单由 <code>R-E04</code> 推 <code>:NeedWorkOrderOffering</code>：</p>
+<pre>Offering(?o) ∧ errorCount(?o,20) ∧ thresholdValue(:th_RE01_errorCountGte,10)
+∧ swrlb:greaterThanOrEqual(20,10) → P0AlertOffering(?o)        # R-E01.err
+P0AlertOffering(?o) → NeedWorkOrderOffering(?o)               # R-E04.p0</pre>
+<figure>
+<svg viewBox="0 0 960 620" role="img" aria-label="场景7 告警分级执行时序图">
+  <defs>
+    <marker id="s7a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b7f99"/></marker>
+    <marker id="s7r" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#b42318"/></marker>
+  </defs>
+  <g text-anchor="middle">
+    <rect x="24" y="14" width="120" height="32" rx="7" fill="#eef1f5" stroke="#8b98ad"/><text x="84" y="35" class="nl">前端</text>
+    <rect x="172" y="14" width="130" height="32" rx="7" fill="#eaf1fe" stroke="#1f6feb"/><text x="237" y="35" class="nl">监控控制器</text>
+    <rect x="330" y="14" width="140" height="32" rx="7" fill="#faf5ff" stroke="#6d28d9"/><text x="400" y="35" class="nl">监控/DB</text>
+    <rect x="498" y="14" width="130" height="32" rx="7" fill="#fff7e6" stroke="#b45309"/><text x="563" y="35" class="nl">分级服务</text>
+    <rect x="656" y="14" width="130" height="32" rx="7" fill="#f3eefe" stroke="#6d28d9"/><text x="721" y="35" class="nl">内存图</text>
+    <rect x="814" y="14" width="120" height="32" rx="7" fill="#eaf6ed" stroke="#166534"/><text x="874" y="35" class="nl">Openllet</text>
+  </g>
+  <g stroke="#c3ccd8" stroke-width="1.2" stroke-dasharray="4 4">
+    <line x1="84" y1="46" x2="84" y2="580"/><line x1="237" y1="46" x2="237" y2="580"/>
+    <line x1="400" y1="46" x2="400" y2="580"/><line x1="563" y1="46" x2="563" y2="580"/>
+    <line x1="721" y1="46" x2="721" y2="580"/><line x1="874" y1="46" x2="874" y2="580"/>
+  </g>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s7a)">
+    <line x1="84" y1="72" x2="233" y2="72"/>
+    <line x1="237" y1="120" x2="396" y2="120"/>
+    <line x1="400" y1="168" x2="241" y2="168"/>
+    <line x1="237" y1="216" x2="559" y2="216"/>
+    <line x1="563" y1="428" x2="717" y2="428"/>
+    <line x1="563" y1="476" x2="717" y2="476"/>
+  </g>
+  <g stroke="#b42318" stroke-width="1.5" fill="none" marker-end="url(#s7r)">
+    <line x1="563" y1="264" x2="870" y2="264"/>
+    <line x1="563" y1="360" x2="870" y2="360"/>
+  </g>
+  <g class="lb">
+    <text x="156" y="66" text-anchor="middle">① POST {req_id, offer_id}</text>
+    <text x="316" y="114" text-anchor="middle">② 取监控事实</text>
+    <text x="316" y="162" text-anchor="middle">③ 返回报错/差错/趋势</text>
+    <text x="406" y="210" text-anchor="middle">④ 调 gradeAlert</text>
+    <text x="563" y="258" fill="#b42318" text-anchor="middle">⑤ 断言指标事实</text>
+    <text x="563" y="354" fill="#b42318" text-anchor="middle">⑥ R-E01/E02/E03 各档判定</text>
+    <text x="575" y="422">⑦ R-E04 按等级推建单</text>
+    <text x="575" y="470">⑧ 覆写 :th_RE0* 阈值</text>
+  </g>
+  <rect x="620" y="204" width="230" height="26" rx="4" fill="#fdf6ec" stroke="#f0ce9a"/><text x="632" y="222" font-size="11">errorCount / feeErrorRate / 趋势布尔</text>
+  <rect x="620" y="300" width="230" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="632" y="318" font-size="11">推入 :P0AlertOffering / P1 / P2</text>
+  <rect x="620" y="392" width="230" height="26" rx="4" fill="#fdecea" stroke="#f0b8b1"/><text x="632" y="410" font-size="11">推入 :NeedWorkOrderOffering（P0/P1）</text>
+  <g stroke="#6b7f99" stroke-width="1.4" fill="none" marker-end="url(#s7a)">
+    <line x1="874" y1="512" x2="567" y2="512"/>
+    <line x1="563" y1="552" x2="241" y2="552"/>
+    <line x1="237" y1="584" x2="88" y2="584"/>
+  </g>
+  <g class="lb">
+    <text x="716" y="506" text-anchor="middle">⑨ 按等级类回读，取最严档</text>
+    <text x="394" y="546" text-anchor="middle">⑩ 置 level / need_work_order / SLA</text>
+    <text x="160" y="578" text-anchor="middle">⑪ 返回结论（P2 不进建单）</text>
+  </g>
+  <line x1="24" y1="600" x2="914" y2="600" stroke="#e2e8f0"/>
+  <text x="470" y="598" class="lb" text-anchor="middle" fill="#9aa6b6" font-size="10.5">多档命中取最严；SWRL 异常回退 Java 同判据（gradeByJava），结论是类型非分数</text>
+</svg>
+<figcaption>对应 <code>/product/monitor/analyze</code>（appstore 前缀）→ <code>gradeAlert</code>：先断言指标事实（<code>OpsSwrlReasoner:803-804</code>），R-E01/R-E02 各 fee/err 入口、R-E03 三条趋势独立判档（<code>product.ttl:1885-1946</code>），R-E04 依等级推 <code>:NeedWorkOrderOffering</code>，阈值由 <code>applyThresholds</code> 覆写；<code>isAlertType</code>（<code>:849-852</code>）取最严，失败回退 <code>gradeByJava</code>（<code>:882</code>）。</figcaption>
+</figure>
+</details>
+
+<h3>自己试一下</h3>
+<div class="try" data-host="app" data-ep="/product/monitor/analyze" data-method="POST">
+  <div class="row">
+    <input type="text" data-k="req_id" value="REQ-0001" placeholder="需求号 req_id" style="flex:0 0 180px">
+    <input type="text" data-k="offer_id" value="84176765" placeholder="商品编码 offer_id">
+  </div>
+  <div class="row chips">
+    <button data-fill='{"req_id":"REQ-0001","offer_id":"84176765"}'>84176765</button>
+    <button data-fill='{"req_id":"REQ-0002","offer_id":"99898653"}'>99898653</button>
+  </div>
+  <div class="row"><button data-run>看看有多急</button></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+</section>
+
+<footer>
+  这页只讲「能干什么」。想看的更细，见 <code>docs/本体技术落地业务场景清单.md</code>。
+</footer>
+
+</main>
+<script>
+window.APP_API = (function () {
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function base() {
+    var el = document.querySelector('[data-base]');
+    return (el ? el.value.trim() : 'http://localhost:6174').replace(/\/+$/, '') || 'http://localhost:6174';
+  }
+  var PREFIX = '/api/v1/product-ontology';
+  function prefixFor(area) {
+    if (area && area.dataset.host === 'app') return '/api/v1/appstore';
+    if (area && area.dataset.host === 'bare') return '';
+    return PREFIX;
+  }
+  function call(method, path, body) {
+    var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
+    return fetch(base() + path, opts).then(function (r) {
+      return r.text().then(function (t) {
+        var d;
+        try { d = JSON.parse(t); } catch (e) { throw new Error('HTTP ' + r.status + ' 非 JSON：' + t.slice(0, 160)); }
+        if (!r.ok) throw new Error('HTTP ' + r.status + '：' + (d.message || ''));
+        return d && d.data !== undefined ? d.data : d;
+      });
+    });
+  }
+  return { esc: esc, base: base, PREFIX: PREFIX, prefixFor: prefixFor, call: call };
+})();
+
+(function () {
+  var API = window.APP_API;
+  var esc = API.esc;
+
+  function box(resultEl, html, cls) {
+    var d = document.createElement('div');
+    d.className = 'box' + (cls ? ' ' + cls : '');
+    d.innerHTML = html;
+    resultEl.appendChild(d);
+    return d;
+  }
+
+  function readBody(area) {
+    var out = {};
+    Array.prototype.forEach.call(area.querySelectorAll('[data-k]'), function (el) {
+      out[el.dataset.k] = el.value;
+    });
+    var ep = area.dataset.ep || '';
+    if (out.fields_text !== undefined) {
+      try { out.fields = JSON.parse(out.fields_text.replace(/[\r\n]+/g, ' ')); } catch (e) { out.fields = []; }
+      delete out.fields_text;
+    }
+    if (out.elements_text !== undefined) {
+      try { out.elements = JSON.parse(out.elements_text.replace(/[\r\n]+/g, ' ')); } catch (e) { out.elements = {}; }
+      delete out.elements_text;
+    }
+    if (out.payload_text !== undefined) {
+      try {
+        var nested = JSON.parse(out.payload_text.replace(/[\r\n]+/g, ' '));
+        Object.keys(nested).forEach(function (k) { out[k] = nested[k]; });
+      } catch (e) { /* 忽略 */ }
+      delete out.payload_text;
+    }
+    if (out.actions_text !== undefined) {
+      out.actions = out.actions_text.split(/[,，\s]+/).filter(Boolean);
+      delete out.actions_text;
+    }
+    if (out.offering_ids !== undefined) {
+      out.offering_ids = out.offering_ids.split(/[,，\s]+/).filter(Boolean);
+    }
+    if (out.offeringIds !== undefined) {
+      out.offeringIds = out.offeringIds.split(/[,，\s]+/).filter(Boolean);
+    }
+    var ep = area.dataset.ep || '';
+    if (out.woId !== undefined) delete out.woId;
+    if (out.field !== undefined && out.audience !== undefined) delete out.audience;
+    return out;
+  }
+
+  function pathFor(area, btn) {
+    var ep = btn.dataset.post || area.dataset.ep || '';
+    var fieldEl = area.querySelector('[data-k="field"]');
+    if (ep.indexOf('/config/provenance') === 0 && fieldEl) {
+      ep = '/config/provenance/' + encodeURIComponent(fieldEl.value.trim());
+    }
+    var woEl = area.querySelector('[data-k="woId"]');
+    if (woEl) {
+      ep = ep.replace(/\/?$/, '') + '/' + encodeURIComponent(woEl.value.trim());
+    }
+    return ep;
+  }
+
+  function run(area, btn, override) {
+    var statusEl = area.querySelector('.status');
+    var resultEl = area.querySelector('.result');
+    var body = override !== undefined ? override : readBody(area);
+    var method = btn.dataset.method || area.dataset.method;
+    var ep = pathFor(area, btn);
+    var path = API.prefixFor(area) + ep;
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = '请求中… ';
+    API.call(method, path, method === 'GET' ? null : body).then(function (d) {
+      statusEl.textContent = '完成';
+      resultEl.innerHTML = '';
+      var pre = document.createElement('div');
+      pre.className = 'box good';
+      pre.innerHTML = '<div class="meta">HTTP 200 · ' + esc(path) + '</div>';
+      resultEl.appendChild(pre);
+      var raw = document.createElement('details');
+      raw.innerHTML = '<summary>原始响应</summary><pre></pre>';
+      raw.querySelector('pre').textContent = JSON.stringify(d, null, 2);
+      resultEl.appendChild(raw);
+      if (area.dataset.render && window.SCENE_RENDER && window.SCENE_RENDER[area.dataset.render]) {
+        window.SCENE_RENDER[area.dataset.render](resultEl, d, box, esc);
+      }
+    }).catch(function (e) {
+      statusEl.className = 'status err';
+      statusEl.textContent = '';
+      resultEl.innerHTML = '';
+      box(resultEl, '<div>' + esc(e.message) + '</div><div class="meta">看后端是否启动、地址对不对。</div>', 'bad');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.try'), function (area) {
+    Array.prototype.forEach.call(area.querySelectorAll('[data-run]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var override;
+        if (btn.dataset.body !== undefined) override = JSON.parse(btn.dataset.body);
+        run(area, btn, override);
+      });
+    });
+    Array.prototype.forEach.call(area.querySelectorAll('[data-fill]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var fill = JSON.parse(btn.dataset.fill);
+        Array.prototype.forEach.call(area.querySelectorAll('[data-k]'), function (el) {
+          if (fill[el.dataset.k] !== undefined) el.value = fill[el.dataset.k];
+        });
+      });
+    });
+  });
+})();
+
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('nav [data-tab]'));
+  var panels = {};
+  Array.prototype.forEach.call(document.querySelectorAll('.panel[data-panel]'), function (p) {
+    panels[p.dataset.panel] = p;
+  });
+
+  function show(tab, keepScroll) {
+    if (!panels[tab]) tab = 'intro';
+    tabs.forEach(function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
+    Object.keys(panels).forEach(function (k) { panels[k].classList.toggle('on', k === tab); });
+    Array.prototype.forEach.call(document.querySelectorAll('.scene-menu a'), function (a) {
+      a.classList.remove('on');
+    });
+    if (!keepScroll) window.scrollTo(0, 0);
+    if (window.history && history.replaceState) history.replaceState(null, '', '#' + tab);
+  }
+
+  tabs.forEach(function (b) {
+    b.addEventListener('click', function () { show(b.dataset.tab); });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.scene-menu a'), function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href').slice(1);
+      var target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      Array.prototype.forEach.call(a.parentNode.querySelectorAll('a'), function (x) {
+        x.classList.toggle('on', x === a);
+      });
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  var fromHash = (location.hash || '').slice(1);
+  if (panels[fromHash]) show(fromHash, true);
+  else {
+    var scene = document.getElementById(fromHash);
+    if (scene) {
+      var p = scene.closest('.panel');
+      if (p) {
+        show(p.dataset.panel, true);
+        setTimeout(function () { scene.scrollIntoView({ block: 'start' }); }, 0);
+      }
+    } else show('intro', true);
+  }
+})();
+</script>
+</body>
+</html>

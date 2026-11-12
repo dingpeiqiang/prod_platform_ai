@@ -69,7 +69,7 @@ class ComplianceParityTest {
     private Map<String, Object> graph() {
         Map<String, Object> g = new LinkedHashMap<>();
         g.put("shelfOfferings", List.of(
-                Map.of("offeringId", "OF-HF-128", "offeringName", "家庭融合畅享128", "mutexGroup", "MAIN_PKG"),
+                Map.of("offeringId", "99898653", "offeringName", "家庭融合畅享128", "mutexGroup", "MAIN_PKG"),
                 Map.of("offeringId", "OF-HF-OTHER", "offeringName", "其他主套餐", "mutexGroup", "OTHER_GROUP")));
         g.put("equityGiftWhitelist", List.of("权益赠送", "校园体验"));
         return g;
@@ -108,11 +108,11 @@ class ComplianceParityTest {
 
         // R-C03 在架互斥
         list.add(withBase(d -> {
-            d.put("bindExistingMainPkg", "OF-HF-128");
+            d.put("bindExistingMainPkg", "99898653");
             d.put("mutexGroup", "MAIN_PKG");
         }));
         list.add(withBase(d -> {
-            d.put("bindExistingMainPkg", "OF-HF-128");
+            d.put("bindExistingMainPkg", "99898653");
             d.put("mutexGroup", "OTHER_GROUP");
         }));
         list.add(withBase(d -> {
@@ -132,11 +132,11 @@ class ComplianceParityTest {
         // 附加但已声明依赖 → 不命中
         list.add(withBase(d -> {
             d.put("offeringType", "addon");
-            d.put("dependOn", "OF-HF-128");
+            d.put("dependOn", "99898653");
         }));
         list.add(withBase(d -> {
             d.put("offeringType", "addon");
-            d.put("sourceOfferRef", "OF-HF-128");
+            d.put("sourceOfferRef", "99898653");
         }));
 
         // R-C05 零固费

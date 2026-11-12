@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>产品运营本体：10 个场景的需求 · 建模 · 推理 · 体验</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #fff; --ink: #1c2230; --ink2: #5a6577; --line: #dde2e9;
+    --accent: #1f6feb; --soft: #eaf1fe; --red: #b42318; --red-soft: #fdecea;
+    --ok: #166534; --ok-soft: #eaf6ed; --warn: #b45309; --warn-soft: #fff7e6;
+    --purple: #6d28d9; --purple-soft: #f3eefe;
+    --mono: ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 18px 70px; background: var(--bg); color: var(--ink);
+         font: 15px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; }
+  nav { position: sticky; top: 0; z-index: 9; background: rgba(247,248,250,.94);
+        backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+        padding: 10px 0; margin-bottom: 26px; font-size: 13.5px; display: flex; gap: 14px; flex-wrap: wrap; }
+  nav a { color: var(--ink2); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  nav a.sep { color: #c3cbd6; }
+  h1 { font-size: 23px; margin: 0 0 6px; line-height: 1.4; }
+  h2 { font-size: 18px; margin: 46px 0 12px; padding-left: 11px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 15.5px; margin: 26px 0 8px; }
+  h4 { font-size: 14px; margin: 0 0 6px; }
+  .sub { color: var(--ink2); font-size: 14px; margin: 0 0 20px; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #eef1f5; padding: 1px 4px; border-radius: 3px; }
+  .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  figure { margin: 14px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; color: var(--ink2); margin-top: 8px; }
+  .nl { font: 600 13px var(--mono); fill: #1c2230; }
+  .ns { font: 11.5px sans-serif; fill: #6b7f99; }
+  .lb { font: 600 11px sans-serif; fill: #9aa6b6; letter-spacing: .5px; }
+  .attr { font: 10.5px var(--mono); }
+  .nf { font: 600 12px sans-serif; fill: #5a6577; }
+  .nfs { font: 11px sans-serif; fill: #8b98ad; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  .need { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .need .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .need .card h3 { margin: 0 0 8px; font-size: 14.5px; }
+  .need .card.bad h3 { color: var(--red); }
+  .need .card.good h3 { color: var(--ok); }
+  .need ul { font-size: 14px; margin: 0; }
+  .try { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 18px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+  input[type=text], textarea { flex: 1 1 260px; padding: 9px 11px; font-size: 14px; border: 1px solid var(--line); border-radius: 7px; font-family: var(--mono); }
+  textarea { min-height: 62px; resize: vertical; }
+  input[type=text]:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 9px 16px; font-size: 14px; border-radius: 7px; border: 1px solid var(--accent);
+           background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.ghost { background: #fff; color: var(--accent); }
+  .chips button { background: #fff; color: var(--ink2); border-color: var(--line); font-size: 13px; padding: 5px 11px; font-family: var(--mono); }
+  .chips button:hover { border-color: var(--accent); color: var(--accent); }
+  label.opt { font-size: 13.5px; color: var(--ink2); display: flex; gap: 6px; align-items: center; }
+  label.opt input { flex: 0 0 auto; width: 230px; padding: 5px 8px; }
+  .status { font-size: 13px; color: var(--ink2); min-height: 20px; margin-top: 6px; }
+  .status.err { color: var(--red); }
+  .result { margin-top: 14px; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; margin: 8px 0; font-size: 14px; background: #fbfcfd; }
+  .box.bad { border-color: #f0b8b1; background: var(--red-soft); }
+  .box.good { border-color: #b7ddc1; background: var(--ok-soft); }
+  .box.warn { border-color: #f0ce9a; background: var(--warn-soft); }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; border: 1px solid; margin-left: 6px; }
+  .tag.swrl { color: var(--ok); background: var(--ok-soft); border-color: #b7ddc1; }
+  .tag.java { color: var(--warn); background: var(--warn-soft); border-color: #f0ce9a; }
+  .tag.shacl { color: var(--purple); background: var(--purple-soft); border-color: #cdbaf2; }
+  .tag.policy { color: #0e7490; background: #e0f2f7; border-color: #a5d8e6; }
+  .tag.fb { color: var(--red); background: var(--red-soft); border-color: #f3bcb6; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--ink2); }
+  pre { background: #1c2230; color: #e6edf3; padding: 12px; border-radius: 8px; overflow-x: auto;
+        font: 12px/1.6 var(--mono); max-height: 340px; }
+  .empty { color: var(--ink2); font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--panel); margin: 10px 0; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #eef1f5; }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+  footer { margin-top: 50px; font-size: 12.5px; color: var(--ink2); border-top: 1px solid var(--line); padding-top: 12px; }
+  .toc { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 14px 0 4px; }
+  .toc .col { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .toc .col h4 { font-size: 13px; color: var(--accent); margin: 0 0 6px; }
+  .toc .col ol { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  .toc .col li { margin: 3px 0; }
+  .toc .col a { color: var(--ink); text-decoration: none; }
+  .toc .col a:hover { color: var(--accent); }
+  .scene-head { margin-top: 12px; }
+  @media (max-width: 720px) { .need { grid-template-columns: 1fr; } .toc { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+
+<nav>
+  <a href="#overview">总览</a>
+  <a href="#design">本体通用设计</a>
+  <a class="sep">|</a>
+  <a href="#rd-chat">研发配置</a>
+  <a class="sep">|</a>
+  <a href="#ops-market">运营洞察</a>
+</nav>
+
+<h1>产品运营本体：10 个场景的需求 · 本体建模 · 推理过程 · 体验</h1>
+<p class="sub">研发配置 4 个场景 + 运营洞察 6 个场景。每个场景按「需求 → 建模结构 → 推理过程 → 体验 → 边界」五段展开，规则与阈值全部来自真实本体文件，可点开体验直接打后端。</p>
+
+<h2 id="overview">总览：一图看清三层编排与 13 个前端场景</h2>
+
+<p>产品运营智能化不是"一个大模型回答所有问题"，而是<b>理解层（LLM）→ 编排层（Playbook / 工具）→ 本体层（规则 + 事实图）</b>三层分工。LLM 只负责听懂人话、选对工具、组织语言；<b>"到底成不成立"由确定性规则和事实图说话</b>。</p>
+
+<figure>
+<svg viewBox="0 0 900 300" role="img" aria-label="三层编排架构">
+  <defs>
+    <marker id="ov1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#5a6577"/></marker>
+  </defs>
+  <rect x="20" y="40" width="860" height="56" rx="9" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text x="40" y="64" font-size="13" font-weight="600" fill="#1f6feb">① 理解层 · LLM</text>
+  <text x="40" y="84" font-size="12.5" fill="#3b4a61">understander.understand：把自然语言拆成 intent + 槽位 + 附件；只做"听懂"，不做"判定"</text>
+
+  <rect x="20" y="118" width="860" height="56" rx="9" fill="#fff7e6" stroke="#b45309" stroke-width="1.6"/>
+  <text x="40" y="142" font-size="13" font-weight="600" fill="#b45309">② 编排层 · Playbook + 工具</text>
+  <text x="40" y="162" font-size="12.5" fill="#5a4a2a">sceneFlowRouter / playbook 按 intent 选链；executor 按步骤调工具，human_gate 决定暂停或直出</text>
+
+  <rect x="20" y="196" width="860" height="56" rx="9" fill="#eaf6ed" stroke="#166534" stroke-width="1.6"/>
+  <text x="40" y="220" font-size="13" font-weight="600" fill="#166534">③ 本体层 · 规则 + 事实图</text>
+  <text x="40" y="240" font-size="12.5" fill="#2c4a33">product.ttl（SWRL + SHACL）+ ops_rules.json 阈值 + 事实图 opsGraph；结论由推理推出，带规则号</text>
+
+  <line x1="450" y1="96" x2="450" y2="116" stroke="#5a6577" stroke-width="2" marker-end="url(#ov1)"/>
+  <line x1="450" y1="174" x2="450" y2="194" stroke="#5a6577" stroke-width="2" marker-end="url(#ov1)"/>
+  <text x="462" y="110" font-size="11" fill="#5a6577">选链</text>
+  <text x="462" y="188" font-size="11" fill="#5a6577">查规则</text>
+</svg>
+<figcaption>三层各司其职：理解层可替换、编排层可配置、本体层是唯一的"判定源"。任一上游说错话，下游规则仍会把关。</figcaption>
+</figure>
+
+<p>前端 <code>assistantModes.js</code> 共 13 个场景入口，归为三组。本文覆盖其中 <b>10 个</b>（研发配置 4 + 运营洞察 6），产品查询 3 个走同一套本体检索链路，另见 <code>scenes-overview.html</code> scene6。</p>
+
+<div class="toc">
+  <div class="col">
+    <h4>研发配置（4）</h4>
+    <ol>
+      <li><a href="#rd-chat">智聊配置</a> <span class="meta">rd.chat</span></li>
+      <li><a href="#rd-import">智读批量导入</a> <span class="meta">rd.import</span></li>
+      <li><a href="#rd-query">历史配置智查</a> <span class="meta">rd.query</span></li>
+      <li><a href="#rd-compare">多方案对比</a> <span class="meta">rd.compare</span></li>
+    </ol>
+  </div>
+  <div class="col">
+    <h4>运营洞察（6）</h4>
+    <ol>
+      <li><a href="#ops-market">市场洞察</a> <span class="meta">market_insight</span></li>
+      <li><a href="#ops-online">立项研判</a> <span class="meta">online_check</span></li>
+      <li><a href="#ops-monitor">运营监控</a> <span class="meta">ops_monitor</span></li>
+      <li><a href="#ops-root">异动归因</a> <span class="meta">root_cause</span></li>
+      <li><a href="#ops-risk">风险稽核</a> <span class="meta">risk_audit</span></li>
+      <li><a href="#ops-rules">规则运营</a> <span class="meta">ops_rules</span></li>
+    </ol>
+  </div>
+  <div class="col">
+    <h4>产品查询（3，另见）</h4>
+    <ol>
+      <li>智能问答 <span class="meta">query.ask</span></li>
+      <li>档案调阅 <span class="meta">query.archive</span></li>
+      <li>比对分析 <span class="meta">query.compare</span></li>
+    </ol>
+    <p class="meta" style="margin:8px 0 0">走 <code>sparql_query</code> 语义检索，结构见 scenes-overview scene6。</p>
+  </div>
+</div>
+
+<h2 id="design">本体通用设计：每个场景都复用的四套底座</h2>
+
+<p>下面 10 个场景共享同一套本体与引擎。先讲清这些底座，后面各场景只讲"它新增了哪些类、哪些规则"。</p>
+
+<h3>2.1 配置本体的四层类结构</h3>
+
+<p>研发配置场景的核心是 <code>PricingProduct</code>（可选商品），它通过对象属性挂接四层要素：销售策略层、计费权益层、约束合规层、场景字典层。</p>
+
+<figure>
+<svg viewBox="0 0 900 360" role="img" aria-label="配置本体四层类结构">
+  <defs>
+    <marker id="ca" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#c98a3c" stroke-width="1.6"/></marker>
+    <marker id="cb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/></marker>
+  </defs>
+
+  <rect x="330" y="16" width="240" height="52" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="37" text-anchor="middle">:PricingProduct</text>
+  <text class="ns" x="450" y="55" text-anchor="middle">可选商品 · 配置主体（ttl:927）</text>
+
+  <rect x="40" y="120" width="180" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="130" y="136" text-anchor="middle">分组 · 销售策略层</text>
+  <text class="nl" x="130" y="156" text-anchor="middle" font-size="11" fill="#3b4a61">SalesPolicy / ReleaseScope</text>
+
+  <rect x="250" y="120" width="180" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="340" y="136" text-anchor="middle">分组 · 计费权益层</text>
+  <text class="nl" x="340" y="156" text-anchor="middle" font-size="11" fill="#3b4a61">ChargePlan / 权益 / 通知</text>
+
+  <rect x="460" y="120" width="180" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="550" y="136" text-anchor="middle">分组 · 约束合规层</text>
+  <text class="nl" x="550" y="156" text-anchor="middle" font-size="10.5" fill="#3b4a61">BusinessConstraint / ComplianceRule</text>
+
+  <rect x="670" y="120" width="190" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="765" y="136" text-anchor="middle">分组 · 场景字典层</text>
+  <text class="nl" x="765" y="156" text-anchor="middle" font-size="11" fill="#3b4a61">BusinessScene / CodeDictionary</text>
+
+  <g fill="none" stroke="#c98a3c" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M370,68 L140,118" marker-end="url(#ca)"/>
+    <path d="M420,68 L348,118" marker-end="url(#ca)"/>
+    <path d="M480,68 L540,118" marker-end="url(#ca)"/>
+    <path d="M530,68 L752,118" marker-end="url(#ca)"/>
+  </g>
+  <g class="attr" fill="#b45309" text-anchor="middle">
+    <text x="236" y="96">hasSalesPolicy</text>
+    <text x="392" y="92">hasChargePlan</text>
+    <text x="524" y="96">appliesConstraint</text>
+    <text x="648" y="92">appliesScene</text>
+  </g>
+
+  <rect x="40" y="220" width="820" height="52" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text x="60" y="242" font-size="12" font-weight="600" fill="#5a6577">共性识别：相似配置</text>
+  <text x="60" y="261" font-size="12" fill="#6b7f99">:similarTo 把历史同类配置连到本商品；智查靠它找"长得像"的既有方案，对比场景靠它取候选补丁</text>
+
+  <line x1="450" y1="272" x2="450" y2="292" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="450" y="310" text-anchor="middle">图例：虚线箭头 = 对象属性；实线 = 类层次（本图无层次，纯属性挂接）</text>
+</svg>
+<figcaption>四层要素各自独立成类，<code>:PricingProduct</code> 用对象属性逐层挂接。图中虚线灰框是<b>逻辑分组</b>（不是本体类），框内列出该层实际的类名。<code>similarTo</code> 是跨方案复用的关键——智查与多方案对比都靠它从历史里捞候选。</figcaption>
+</figure>
+
+<h3>2.2 运营结论族：所有"判定"都是 <code>:Offering</code> 的子类</h3>
+
+<p>运营洞察场景的核心是 <code>:Offering</code>。不论是"异动""渠道根因""零费风险""P0 告警"还是"挽留建议"，在 OWL 里统一建模为 <code>:Offering</code> 的子类——命中后实例仍是那个商品/渠道，回读按类取实例即可定位到具体对象。</p>
+
+<figure>
+<svg viewBox="0 0 900 330" role="img" aria-label="运营结论族类层次">
+  <defs>
+    <marker id="oa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/></marker>
+  </defs>
+
+  <rect x="350" y="14" width="200" height="50" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:Offering</text>
+  <text class="ns" x="450" y="52" text-anchor="middle">运营主体（ttl:1039）</text>
+
+  <rect x="30" y="120" width="160" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="110" y="139" text-anchor="middle">分组 · 归因</text>
+  <text class="nl" x="110" y="158" text-anchor="middle" font-size="10" fill="#3b4a61">AnomalyOffering</text>
+  <text class="nl" x="110" y="171" text-anchor="middle" font-size="10" fill="#3b4a61">*RootCause ×4</text>
+
+  <rect x="210" y="120" width="160" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="290" y="139" text-anchor="middle">分组 · 风险</text>
+  <text class="nl" x="290" y="158" text-anchor="middle" font-size="10" fill="#3b4a61">ZeroFeeRiskOffering</text>
+  <text class="nl" x="290" y="171" text-anchor="middle" font-size="10" fill="#3b4a61">HighRisk / LowEff …</text>
+
+  <rect x="390" y="120" width="160" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="470" y="139" text-anchor="middle">分组 · 合规</text>
+  <text class="nl" x="470" y="158" text-anchor="middle" font-size="10" fill="#3b4a61">ConfigViolation</text>
+  <text class="nl" x="470" y="171" text-anchor="middle" font-size="10" fill="#3b4a61">C06/C03/C04…</text>
+
+  <rect x="570" y="120" width="140" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="640" y="139" text-anchor="middle">分组 · 告警</text>
+  <text class="nl" x="640" y="158" text-anchor="middle" font-size="10" fill="#3b4a61">AlertOffering</text>
+  <text class="nl" x="640" y="171" text-anchor="middle" font-size="10" fill="#3b4a61">P0/P1/P2Offering</text>
+
+  <rect x="730" y="120" width="150" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="lb" x="805" y="139" text-anchor="middle">分组 · 建议</text>
+  <text class="nl" x="805" y="158" text-anchor="middle" font-size="10" fill="#3b4a61">SuggestionOffering</text>
+  <text class="nl" x="805" y="171" text-anchor="middle" font-size="10" fill="#3b4a61">Retention / Bundle…</text>
+
+  <g fill="none" stroke="#8b98ad" stroke-width="1.2" stroke-dasharray="4 4">
+    <path d="M392,64 L120,118"/>
+    <path d="M424,64 L296,118"/>
+    <path d="M462,64 L472,118"/>
+    <path d="M500,64 L636,118"/>
+    <path d="M530,64 L798,118"/>
+  </g>
+  <text class="lb" x="450" y="196" text-anchor="middle">各组内的类均 rdfs:subClassOf :Offering（组本身不是类）</text>
+
+  <rect x="30" y="220" width="850" height="76" rx="8" fill="#fff7e6" stroke="#f0ce9a"/>
+  <text x="50" y="244" font-size="12" font-weight="600" fill="#b45309">阈值为什么外置</text>
+  <text x="50" y="264" font-size="12" fill="#5a4a2a">判据里的数字（-10%、180 天、30 分钟…）不写死在规则体，而是做成 :ThresholdHolder 命名个体（th_RA01_metricDeltaLte 等 25 个）。</text>
+  <text x="50" y="284" font-size="12" fill="#5a4a2a">运行时用 ops_rules.json 覆写，规则骨架不动——业务改阈值不必改 TTL、更不必重启推理机。</text>
+</svg>
+<figcaption>五组虚线灰框是<b>逻辑分组</b>（不是本体类），框内是该组真实的类名；它们都 <code>rdfs:subClassOf :Offering</code>，回读统一。阈值外置成命名个体，<code>swrl:applyThresholds</code> 在推理前覆写，这是"业务能调参"的机制来源。</figcaption>
+</figure>
+
+<h3>2.3 四套推理引擎与"规则双验证"</h3>
+
+<p><code>ops_rules.json</code>（版本 <code>OpsRules-v1.3</code>）登记了四个引擎。每条规则声明由哪个引擎执行，同一规则可同时挂在 SWRL 与 Java 上做交叉验证。</p>
+
+<table>
+  <thead><tr><th>引擎</th><th>实现</th><th>覆盖规则</th><th>定位</th></tr></thead>
+  <tbody>
+    <tr><td><span class="tag swrl">openllet-swrl</span> primary</td><td class="mono">OpsSwrlReasoner</td><td>R-A01~A05 / R-B01~B05 / R-C03~C09</td><td>本体规则主力，结论由 OWL 推理推出</td></tr>
+    <tr><td><span class="tag java">java-rules</span></td><td class="mono">ProductOntologyService</td><td>再加 R-A06 / R-C01 / R-C02 / R-D01 / R-D05</td><td>SWRL 关闭或异常时的同逻辑兜底 + 旁路规则</td></tr>
+    <tr><td><span class="tag policy">policy-java</span></td><td class="mono">OntologyService</td><td>PS_PRODUCT_ONLINE_V1 等 4 个策略集</td><td>立项研判 / 风控 / 营销 / 退费策略集</td></tr>
+    <tr><td><span class="tag fb">condition-dsl</span> deprecated</td><td class="mono">SwrlRuleEngine</td><td>—</td><td>名含 SWRL 实为字符串条件表达式，已废弃</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+<b>规则双验证机制。</b>同一规则号（如 <code>R-A02</code>）在 SWRL 与 Java 各有一份实现。推理结束后 <code>ruleFired</code> 按规则 label 核对"该点火的确实点了火"，比对不一致会写入日志；引擎字段 <code>reasonEngine</code> 标注本次到底谁算的（<code>openllet-swrl</code> / <code>java-rules</code> / <code>fallback-java</code>）。
+</div>
+
+<div class="note warn">
+<b>两个易踩的误区。</b>① TTL 里没有任何 Drools 规则——"立项研判的 PS_PRODUCT_ONLINE_V1"是 <b>policy-java 策略集</b>（<code>OntologyService.decide</code>），不是 Drools。② <code>R-A06</code>（持续下滑）<b>不在 TTL</b>，是 Java + MetricService 算出的旁路候选，文档里按实际写。
+</div>
+
+<p class="note">下面每个场景统一结构：<b>一、需求</b>（难点 vs 做法）→ <b>二、建模结构</b>（一张类图 + 规则表）→ <b>三、推理过程</b>（步骤表 + 兜底表）→ <b>四、体验</b>（可直接打后端）→ <b>五、边界</b>。</p>
+
+<h2 id="rd-chat">研发配置 ① 智聊配置</h2>
+<p class="sub"><code>rd.chat</code> · 手册 <code>chat-configure</code> · intent <code>RD_CONFIG_CHAT</code></p>
+
+<h3>一、场景需求</h3>
+<p>产品经理口述一句"加个校园 59 元 30G 语音加宽带"，系统要把它变成一份可提交的配置草稿：落到哪个品类、槽位填什么、哪些合规项会挂、要不要开工单。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>一句话缺失大量字段，靠猜会造出错配置</li>
+    <li>品类判断错，后面所有必填都错</li>
+    <li>合规项（互斥/折扣/零费）分散在多个规则里</li>
+    <li>草稿必须能溯源到本体字段，不能凭空生成</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>先解析品类 → 再抽槽位 → 才生成草稿</li>
+    <li>每步一个工具，缺字段就问，不硬填</li>
+    <li>合规由 SWRL 规则 R-C03~C09 判定</li>
+    <li>字段映射走声明式 propertyMapping</li>
+  </ul></div>
+</div>
+<p class="note">五步半结构性编排：<code>rd_category_resolve</code> → <code>rd_slot_extract</code> → <code>rd_draft_generate</code> → <code>rd_compliance</code> → <code>rd_workorder_create</code>。human_gate 在"品类不明"与"确认提交"两处停下等用户。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 300" role="img" aria-label="智聊配置场景类结构">
+  <defs><marker id="rc1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#c98a3c" stroke-width="1.6"/></marker></defs>
+  <rect x="320" y="14" width="260" height="54" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:PricingProduct</text>
+  <text class="ns" x="450" y="53" text-anchor="middle">草稿落地主体</text>
+  <rect x="60" y="118" width="170" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="145" y="139" text-anchor="middle">:ProductCategory</text>
+  <text class="ns" x="145" y="157" text-anchor="middle">品类（先定）</text>
+  <rect x="260" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="350" y="139" text-anchor="middle">:ChargePlan</text>
+  <text class="ns" x="350" y="157" text-anchor="middle">月费 / 通话 / 流量</text>
+  <rect x="470" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="560" y="139" text-anchor="middle">:ResourceEntitlement</text>
+  <text class="ns" x="560" y="157" text-anchor="middle">数据/语音/短信资源</text>
+  <rect x="680" y="118" width="180" height="54" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+  <text class="nl" x="770" y="139" text-anchor="middle" fill="#b42318">:ConfigViolation</text>
+  <text class="ns" x="770" y="157" text-anchor="middle" fill="#b42318">R-C03~C09 结论</text>
+  <g fill="none" stroke="#c98a3c" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M360,68 L152,116" marker-end="url(#rc1)"/>
+    <path d="M420,68 L352,116" marker-end="url(#rc1)"/>
+    <path d="M480,68 L556,116" marker-end="url(#rc1)"/>
+    <path d="M600,68 L760,116" marker-end="url(#rc1)"/>
+  </g>
+  <g class="attr" fill="#b45309" text-anchor="middle">
+    <text x="240" y="94">belongsToCategory</text><text x="392" y="92">hasChargePlan</text>
+    <text x="524" y="94">hasResourceEntitlement</text><text x="662" y="92">appliesConstraint</text>
+  </g>
+</svg>
+<figcaption>智聊先钉品类再落要素：<code>belongsToCategory</code> 决定必填骨架，<code>hasChargePlan</code>/<code>hasResourceEntitlement</code> 承接槽位，合规项落到 <code>:ConfigViolation</code> 子类。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>步骤工具</th><th>读/写本体</th><th>关键判据</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">rd_category_resolve</td><td>读 <code>:ProductCategory</code></td><td>口述特征词 → 品类；不明则 human_gate</td></tr>
+    <tr><td class="mono">rd_slot_extract</td><td>读品类必填清单</td><td>按 <code>slotPatterns</code>（月费/流量/宽带/语音/折扣/合约期）正则抽取</td></tr>
+    <tr><td class="mono">rd_draft_generate</td><td>写草稿字段</td><td>propertyMapping 声明式映射到本体数据属性</td></tr>
+    <tr><td class="mono">rd_compliance</td><td>触发 SWRL</td><td>R-C06 必填 / R-C03 互斥 / R-C05 零费 / R-C07 折扣 / R-C09 费率</td></tr>
+    <tr><td class="mono">rd_workorder_create</td><td>写 <code>:workOrderId</code></td><td>合规通过或用户确认后建单</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>推理环节</th><th>规则 / 来源</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>品类解析</td><td>LLM + 特征词匹配</td><td>category 或「待澄清」</td></tr>
+    <tr><td>2</td><td>槽位抽取</td><td><code>extraction.slotPatterns</code></td><td>月费/流量/宽带/语音/折扣/合约期</td></tr>
+    <tr><td>3</td><td>别名归一</td><td><code>extraction.aliases</code></td><td>「畅享128 / 家庭融合128 / 99898653」→ <code>99898653</code></td></tr>
+    <tr><td>4</td><td>草稿生成</td><td><code>config.propertyMapping</code></td><td>本体数据属性（含 default -1 缺省）</td></tr>
+    <tr><td>5</td><td>合规判定</td><td><span class="tag swrl">SWRL</span> R-C03~C09</td><td>issues[] / appliedRules[]</td></tr>
+    <tr><td>6</td><td>工单落地</td><td>R-D01 批量映射</td><td>workOrderId</td></tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>非命中 / 兜底</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>品类解析不出</td><td>human_gate，列出候选品类让用户点</td></tr>
+    <tr><td>关键槽位缺失</td><td>追问一次，不硬填默认值</td></tr>
+    <tr><td>SWRL 不可用</td><td>走 Java 预计算布尔（存在性冲突）兜底</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/config/chat" data-method="POST">
+  <div class="row"><input type="text" data-k="text" placeholder="一句话，如：加个校园 59 元 30G 语音加宽带" autocomplete="off"></div>
+  <div class="row chips">
+    <button data-fill='{"text":"加个校园 59 元 30G 语音加宽带"}'>校园 59 元</button>
+    <button data-fill='{"text":"需要畅享128，不加宽带"}'>畅享128</button>
+  </div>
+  <div class="row"><button data-run>生成配置草稿</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/config/chat</code>，请求体 <code>{"text":"..."}</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>品类库不全时易误判，需人工补品类；</li>
+  <li>一句话信息量有限，超出一句能表达的多要素配置仍需多轮；</li>
+  <li>草稿不自动提交，human_gate 必须人工确认。</li>
+</ul>
+
+<h2 id="rd-import">研发配置 ② 智读批量导入</h2>
+<p class="sub"><code>rd.import</code> · 手册 <code>doc-batch-import</code> · intent <code>RD_FILE_PARSE</code></p>
+
+<h3>一、场景需求</h3>
+<p>产品经理传来一份 Excel/Word 配置清单，里面有几十上百条配置。系统要解析成结构化草稿，逐条做合规，每条草稿生成一张工单。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>文件格式五花八门，表头不固定</li>
+    <li>超长文本一次喂不进模型</li>
+    <li>一条不合格不能拖垮整批</li>
+    <li>要能说清"哪几条没通过、为什么"</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>四级降级链，优先结构化 IR</li>
+    <li>切片 ≤6000 字 × ≤5 片</li>
+    <li>每条草稿一单，逐案合规</li>
+    <li>汇总 issues / 通过率 / 品类分布</li>
+  </ul></div>
+</div>
+<p class="note">四步：<code>rd_doc_parse</code> → <code>rd_draft_extract</code> → <code>rd_compliance</code> → <code>rd_workorder_create</code>。"每条草稿一单"是硬规则。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 280" role="img" aria-label="批量导入抽取与映射结构">
+  <defs><marker id="ri1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#6d28d9" stroke-width="1.6"/></marker></defs>
+  <rect x="20" y="40" width="180" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="110" y="63" text-anchor="middle">输入 · 文件</text><text class="nfs" x="110" y="81" text-anchor="middle">xls / docx / txt</text>
+  <rect x="230" y="40" width="200" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="330" y="63" text-anchor="middle">工具 · rd_doc_parse</text><text class="nfs" x="330" y="81" text-anchor="middle">切片 ≤6000 字 × ≤5</text>
+  <rect x="460" y="40" width="200" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="560" y="63" text-anchor="middle">工具 · rd_draft_extract</text><text class="nfs" x="560" y="81" text-anchor="middle">四条降级链</text>
+  <rect x="690" y="40" width="190" height="56" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+  <text class="nl" x="785" y="63" text-anchor="middle" fill="#b42318">:ConfigViolation</text><text class="ns" x="785" y="81" text-anchor="middle" fill="#b42318">本体类 · 逐案 R-C*</text>
+  <line x1="200" y1="68" x2="226" y2="68" stroke="#6d28d9" marker-end="url(#ri1)"/>
+  <line x1="430" y1="68" x2="456" y2="68" stroke="#6d28d9" marker-end="url(#ri1)"/>
+  <line x1="660" y1="68" x2="686" y2="68" stroke="#6d28d9" marker-end="url(#ri1)"/>
+  <rect x="230" y="150" width="200" height="70" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text x="330" y="172" text-anchor="middle" font-size="12" fill="#5a6577">抽取降级链</text>
+  <text x="330" y="190" text-anchor="middle" font-size="11" fill="#6b7f99">结构化 IR → 表头映射直通</text>
+  <text x="330" y="207" text-anchor="middle" font-size="11" fill="#6b7f99">→ LLM 可编译规则 → LLM 切片</text>
+  <line x1="330" y1="96" x2="330" y2="148" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <rect x="470" y="150" width="410" height="70" rx="8" fill="#fff7e6" stroke="#f0ce9a"/>
+  <text x="490" y="172" font-size="12" font-weight="600" fill="#b45309">批量规则 R-D01~D05（java）</text>
+  <text x="490" y="192" font-size="11.5" fill="#5a4a2a">D01 批量映射 · D02 补全必备 · D03 逐案 R-C* · D04 汇总 · D05 通过率/品类分布</text>
+  <text x="490" y="210" font-size="11.5" fill="#5a4a2a">每条草稿 → 映射到 :PricingProduct + 生成一张工单</text>
+</svg>
+<figcaption>解析→抽取→逐案合规→每单一单。<b>灰虚线框是输入/工具/降级链，不是本体类</b>；唯一的红框 <code>:ConfigViolation</code> 才是本体结论类。抽取优先走结构化 IR，退化到表头直通、LLM、规则切分四级。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>规则</th><th>引擎</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td>R-D01</td><td><span class="tag java">java</span></td><td>批量字段映射到本体属性</td></tr>
+    <tr><td>R-D02</td><td><span class="tag java">java</span></td><td>按 ProductCategory 补全必备要素</td></tr>
+    <tr><td>R-D03</td><td><span class="tag java">java</span></td><td>逐案套 R-C* 合规</td></tr>
+    <tr><td>R-D04</td><td><span class="tag java">java</span></td><td>汇总 issues / appliedRules / messagePreview</td></tr>
+    <tr><td>R-D05</td><td><span class="tag java">java</span></td><td>通过率 / 待修正数 / 品类分布</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>来源</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>文件解析</td><td><code>/config/upload</code> → <code>/config/batch-by-file</code></td><td>切片文本</td></tr>
+    <tr><td>2</td><td>草稿抽取</td><td>四级降级链</td><td>drafts[]</td></tr>
+    <tr><td>3</td><td>批量映射</td><td>R-D01</td><td>本体属性</td></tr>
+    <tr><td>4</td><td>逐案合规</td><td>R-D03（R-C03~C09）</td><td>每案 issues</td></tr>
+    <tr><td>5</td><td>汇总</td><td>R-D04 / R-D05</td><td>通过率、品类分布</td></tr>
+    <tr><td>6</td><td>建单</td><td>每条草稿一单</td><td>N 张工单</td></tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>非命中 / 兜底</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>文件超 5 片</td><td>只处理前 5 片，提示剩余未处理</td></tr>
+    <tr><td>某条抽取失败</td><td>跳过该条并记入 issues，不拖垮整批</td></tr>
+    <tr><td>表头无法识别</td><td>降级到 LLM 抽取</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/config/batch" data-method="POST">
+  <div class="row"><textarea data-k="text" placeholder="粘贴多行配置文本，每行一条"></textarea></div>
+  <div class="row"><button data-run>批量解析 + 逐案合规</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/config/batch</code>，请求体 <code>{"text":"..."}</code>；文件上传走 <code>/config/upload</code> 再 <code>/config/batch-by-file</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>单次最多 5 片 × 6000 字，超大文件会截断；</li>
+  <li>扫描件/图片需先 OCR，本体链不负责 OCR；</li>
+  <li>抽取质量取决于原文档结构规整度。</li>
+</ul>
+
+<h2 id="rd-query">研发配置 ③ 历史配置智查</h2>
+<p class="sub"><code>rd.query</code> · 手册 <code>discover-history</code> · intent <code>RD_CONFIG_DISCOVER</code></p>
+
+<h3>一、场景需求</h3>
+<p>产品经理要查"以前有没有做过类似配置"。系统在历史配置库里检索同类方案，返回最多 20 条，只读、不改档。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>历史配置命名不统一，关键词搜不全</li>
+    <li>要按"相似度"而非精确匹配</li>
+    <li>查历史是只读行为，绝不能误改</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>走 <code>:similarTo</code> 关系召回</li>
+    <li>关键词 + 语义双路</li>
+    <li>只读，结果上限 20 条</li>
+  </ul></div>
+</div>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 240" role="img" aria-label="历史配置检索结构">
+  <defs><marker id="rq1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#1f6feb" stroke-width="1.6"/></marker></defs>
+  <rect x="340" y="20" width="220" height="54" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="41" text-anchor="middle">:PricingProduct</text><text class="ns" x="450" y="59" text-anchor="middle">待查方案（当前）</text>
+  <rect x="60" y="130" width="220" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="170" y="151" text-anchor="middle">实例 · 历史配置 A</text><text class="nfs" x="170" y="169" text-anchor="middle">:PricingProduct 的实例</text>
+  <rect x="340" y="130" width="220" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="450" y="151" text-anchor="middle">实例 · 历史配置 B</text><text class="nfs" x="450" y="169" text-anchor="middle">:PricingProduct 的实例</text>
+  <rect x="620" y="130" width="220" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="730" y="151" text-anchor="middle">实例 · 历史配置 C</text><text class="nfs" x="730" y="169" text-anchor="middle">:PricingProduct 的实例</text>
+  <g fill="none" stroke="#1f6feb" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M400,74 L182,128" marker-end="url(#rq1)"/>
+    <path d="M450,74 L450,128" marker-end="url(#rq1)"/>
+    <path d="M500,74 L718,128" marker-end="url(#rq1)"/>
+  </g>
+  <text class="attr" x="290" y="110" fill="#1f6feb">:similarTo</text>
+  <text class="attr" x="460" y="110" fill="#1f6feb">:similarTo</text>
+  <text class="attr" x="618" y="110" fill="#1f6feb">关键词</text>
+  <text class="lb" x="450" y="220" text-anchor="middle">只读召回，上限 20 条；不做修改、不建单</text>
+</svg>
+<figcaption>上蓝框是本体类 <code>:PricingProduct</code>；下方灰虚线框是它的<b>实例</b>（不是类）。以 <code>:similarTo</code> 为主召回关系，叠关键词兜底。<code>rd_config_search</code> 调用两次（关系路 + 关键词路），结果去重后封顶 20 条。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>步骤</th><th>来源</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">rd_config_search ×2</td><td><code>RdConfigSearchTool</code></td><td>关系路（similarTo）+ 关键词路</td></tr>
+    <tr><td>上限</td><td>手册常量</td><td>最多 20 条</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>说明</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>解析查询对象</td><td>编码 / 名称 / 关键词</td><td>目标方案</td></tr>
+    <tr><td>2</td><td>关系召回</td><td><code>:similarTo</code></td><td>同类候选</td></tr>
+    <tr><td>3</td><td>关键词召回</td><td>名称/品类/场景匹配</td><td>关键词候选</td></tr>
+    <tr><td>4</td><td>去重封顶</td><td>合并去重</td><td>≤20 条</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/config/discover" data-method="POST">
+  <div class="row"><input type="text" data-k="text" placeholder="关键词，如：家庭融合 100G" autocomplete="off"></div>
+  <div class="row chips">
+    <button data-fill='{"text":"家庭融合"}'>家庭融合</button>
+    <button data-fill='{"text":"5G套餐 59"}'>5G套餐 59</button>
+  </div>
+  <div class="row"><button data-run>检索历史配置</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/config/discover</code>，请求体 <code>{"text":"..."}</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>只读，结果不落库；</li>
+  <li>similarTo 关系依赖历史图谱构建质量，新库召回少；</li>
+  <li>上限 20 条，超出的热门候选会被截断。</li>
+</ul>
+
+<h2 id="rd-compare">研发配置 ④ 多方案对比</h2>
+<p class="sub"><code>rd.compare</code> · 无独立手册，工具直驱 <code>ChatConfigureService.compareConfigSchemes</code>（:810）</p>
+
+<h3>一、场景需求</h3>
+<p>产品经理给出几套候选资费方案，要系统比出"哪套更合规、谁预计年营收更高"，并给出推荐。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>合规与营收是两个维度，不能简单加权</li>
+    <li>方案补丁不一定结构化，得从文本里抽</li>
+    <li>推荐必须有明确依据，不能拍脑袋</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>先合规分组，组内再按营收降序</li>
+    <li>缺补丁时从「N 元」正则抽，再缺省 39/59</li>
+    <li>推荐 = 首个合规项，否则首条并标注需修正</li>
+  </ul></div>
+</div>
+<p class="note">工具 <code>rd_scheme_compare</code>（<code>RdSchemeCompareTool</code>，<code>Set.of("rd","query")</code>，requires <code>[rd_draft_generate, rd_compliance]</code>）直接调 <code>compareConfigSchemes</code>。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 260" role="img" aria-label="多方案对比结构">
+  <defs><marker id="rcp1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b45309" stroke-width="1.6"/></marker></defs>
+  <rect x="360" y="16" width="180" height="52" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="37" text-anchor="middle">:ConfigScheme</text><text class="ns" x="450" y="55" text-anchor="middle">候选方案（ttl:939）</text>
+  <rect x="60" y="118" width="200" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="160" y="139" text-anchor="middle">实例 · 方案 A</text><text class="nfs" x="160" y="157" text-anchor="middle">patch.monthlyFee</text>
+  <rect x="350" y="118" width="200" height="54" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="450" y="139" text-anchor="middle">实例 · 方案 B</text><text class="nfs" x="450" y="157" text-anchor="middle">patch.monthlyFee</text>
+  <rect x="640" y="118" width="200" height="54" rx="8" fill="#fff7e6" stroke="#f0ce9a" stroke-dasharray="3 3"/>
+  <text class="nf" x="740" y="139" text-anchor="middle" fill="#b45309">判定字段 · compliancePass</text><text class="nfs" x="740" y="157" text-anchor="middle">布尔（由 R-C* 算出）</text>
+  <g fill="none" stroke="#b45309" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M400,68 L172,116" marker-end="url(#rcp1)"/>
+    <path d="M450,68 L450,116" marker-end="url(#rcp1)"/>
+    <path d="M500,68 L728,116" marker-end="url(#rcp1)"/>
+  </g>
+  <text class="attr" x="256" y="98" fill="#b45309">hasChargePlan</text>
+  <text class="attr" x="462" y="98" fill="#b45309">hasChargePlan</text>
+  <text class="attr" x="628" y="98" fill="#b45309">appliesConstraint</text>
+  <rect x="60" y="200" width="780" height="48" rx="8" fill="#fff7e6" stroke="#f0ce9a"/>
+  <text x="80" y="220" font-size="12" font-weight="600" fill="#b45309">营收估算</text>
+  <text x="80" y="238" font-size="11.5" fill="#5a4a2a">conv = clamp(0.10 - fee/1000, 0.02, 0.12)；年营收 = marketScale × conv × max(fee,0) × 12；marketScale 默认 150000</text>
+</svg>
+<figcaption>蓝框是本体类 <code>:ConfigScheme</code>；灰虚线框是它的<b>实例</b>与算出的<b>判定字段</b>，均不是类。月费驱动换算率与年营收；合规通过与否由 R-C* 决定，排序先合规后营收。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>环节</th><th>算法</th><th>行号</th></tr></thead>
+  <tbody>
+    <tr><td>补丁抽取</td><td>空则从 <code>\d+\s*元</code> 抽候选，再空默认 39/59</td><td>:828-871</td></tr>
+    <tr><td>marketScale</td><td>默认 150000，可从 <code>\d+\s*万</code> 解析</td><td>:873-877</td></tr>
+    <tr><td>换算率</td><td><code>clamp(0.10 - fee/1000, 0.02, 0.12)</code></td><td>:901</td></tr>
+    <tr><td>年营收</td><td><code>marketScale × conv × max(fee,0) × 12</code></td><td>:902</td></tr>
+    <tr><td>排序</td><td>先 <code>compliancePass</code>（true 在前），再年营收降序</td><td>:917-924</td></tr>
+    <tr><td>推荐</td><td>首个合规项；否则首条并标注"仍需修正合规项"</td><td>:926-929</td></tr>
+    <tr><td>trace_id</td><td><code>"cfg-compare-" + epochMilli</code></td><td>:949</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>输出字段</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>逐方案补丁解析</td><td>patches[]</td></tr>
+    <tr><td>2</td><td>逐方案合规判定</td><td>compliancePass</td></tr>
+    <tr><td>3</td><td>逐方案营收估算</td><td>estimatedAnnualRevenue</td></tr>
+    <tr><td>4</td><td>排序 + 推荐</td><td>comparisons[] / recommended</td></tr>
+    <tr><td>5</td><td>生成解释</td><td>explanation</td></tr>
+  </tbody>
+</table>
+<p>返回体：<code>{success, comparisons, recommended, explanation, trace_id, marketScale}</code>。</p>
+<table>
+  <thead><tr><th>非命中 / 兜底</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>补丁全空</td><td>正则抽「N 元」；仍空则默认 39/59</td></tr>
+    <tr><td>无合规方案</td><td>推荐首条并明确标注"仍需修正合规项"</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/config/compare" data-method="POST">
+  <div class="row"><input type="text" data-k="text" placeholder="如：对比 39 元 100G、59 元 200G、99 元 500G" autocomplete="off"></div>
+  <div class="row chips">
+    <button data-fill='{"text":"对比 39 元 100G、59 元 200G、99 元 500G"}'>39/59/99 三档</button>
+  </div>
+  <div class="row"><button data-run>对比方案</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/config/compare</code>，请求体 <code>{"text":"..."}</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>营收是估算值，非真实结算口径；</li>
+  <li>只比月费维度，不含宽带/权益等复杂组合；</li>
+  <li>合规与营收不做加权融合，合规优先是硬序。</li>
+</ul>
+
+<h2 id="ops-market">运营洞察 ① 市场洞察</h2>
+<p class="sub"><code>market_insight</code> · 手册 <code>market-insight</code> · intents <code>[PRODUCT_OPS_QUERY, PRODUCT_OPS_MONITOR]</code></p>
+
+<h3>一、场景需求</h3>
+<p>问"5G 套餐最近市场表现怎么样""竞品价格有什么变化"，系统要先用指标域取数，再查关系，必要时做风险审计。这是<b>只读洞察</b>，不建单、不改档。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>同类问题有的要看指标数值，有的要看实体关系</li>
+    <li>口径不统一，指标定义散落各处</li>
+    <li>洞察不该被误当成要执行的决策</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>双轨：指标类先 <code>metric_query</code>，关系类走 <code>sparql_query</code></li>
+    <li>指标域 P0 前置，口径统一</li>
+    <li><code>human_gate: []</code> 全直出，不代做决策</li>
+  </ul></div>
+</div>
+<p class="note">三步 v2：<code>metric_query</code> → <code>sparql_query</code> → <code>swrl_risk_audit</code>。指标类问题由 <code>metric_query</code> 先出数，关系类问题直接 <code>sparql_query</code>。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 250" role="img" aria-label="市场洞察类结构">
+  <defs><marker id="om1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#c98a3c" stroke-width="1.6"/></marker></defs>
+  <rect x="350" y="16" width="200" height="52" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="37" text-anchor="middle">:Offering</text><text class="ns" x="450" y="55" text-anchor="middle">被洞察的商品</text>
+  <rect x="60" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="150" y="139" text-anchor="middle">:Metric</text><text class="ns" x="150" y="157" text-anchor="middle">指标（收入/订单…）</text>
+  <rect x="270" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="360" y="139" text-anchor="middle">:Competitor</text><text class="ns" x="360" y="157" text-anchor="middle">竞品</text>
+  <rect x="480" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="570" y="139" text-anchor="middle">:Promotion</text><text class="ns" x="570" y="157" text-anchor="middle">促销</text>
+  <rect x="690" y="118" width="180" height="54" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="780" y="139" text-anchor="middle">:Channel</text><text class="ns" x="780" y="157" text-anchor="middle">渠道</text>
+  <g fill="none" stroke="#c98a3c" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M400,68 L158,116" marker-end="url(#om1)"/>
+    <path d="M430,68 L362,116" marker-end="url(#om1)"/>
+    <path d="M470,68 L566,116" marker-end="url(#om1)"/>
+    <path d="M500,68 L772,116" marker-end="url(#om1)"/>
+  </g>
+  <g class="attr" fill="#b45309" text-anchor="middle">
+    <text x="258" y="94">hasMetric</text><text x="410" y="92">competesWith</text>
+    <text x="522" y="94">participatesIn</text><text x="626" y="92">soldOn</text>
+  </g>
+</svg>
+<figcaption>洞察对象是 <code>:Offering</code> 及其指标/竞品/促销/渠道。<code>hasMetric</code> 走指标域取数，其余关系走 SPARQL。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>步骤工具</th><th>取数路径</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">metric_query</td><td>指标域（P0 前置）</td><td>指标类问题先出数</td></tr>
+    <tr><td class="mono">sparql_query</td><td>关系图</td><td>竞品/促销/渠道关系</td></tr>
+    <tr><td class="mono">swrl_risk_audit</td><td>SWRL 风险规则</td><td>顺带做风险审计</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>来源</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>判定指标类 / 关系类</td><td>intent 特征</td><td>选轨</td></tr>
+    <tr><td>2a</td><td>指标取数</td><td><code>metric_query</code></td><td>指标值</td></tr>
+    <tr><td>2b</td><td>关系查询</td><td><code>sparql_query</code></td><td>实体关系</td></tr>
+    <tr><td>3</td><td>风险审计</td><td><span class="tag swrl">SWRL</span> R-B*</td><td>风险标签</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/dashboard" data-method="GET">
+  <div class="row"><button data-run>拉取运营看板</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>GET /api/v1/product-ontology/ops/dashboard</code>；营收概览另有 <code>/ops/revenue-overview</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>只读洞察，不产生处置动作；</li>
+  <li>无事实数据的商品指标为空；</li>
+  <li>风险审计仅作旁证，不代表最终结论。</li>
+</ul>
+
+<h2 id="ops-online">运营洞察 ② 立项研判</h2>
+<p class="sub"><code>online_check</code> · 手册 <code>online-check</code> · intent <code>PRODUCT_OPS_POLICY</code> · policy-java</p>
+
+<h3>一、场景需求</h3>
+<p>新品要不要上、"5G 套餐"在低市场体量下该不该放行——要给出可解释的放行/拦截研判。系统"不代做决策"，只给策略判定与理由。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>投决问题不该由模型拍板</li>
+    <li>与"风险稽核"同为 <code>PRODUCT_OPS_POLICY</code>，容易走错链</li>
+    <li>研判要能说清命中了哪条策略</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>policy-java 策略集 <code>PS_PRODUCT_ONLINE_V1</code></li>
+    <li>与 risk-audit 同码不同手册，靠 <code>intent_guide</code> 特征词二跳</li>
+    <li><code>human_gate: []</code> + audit 表达"不代做决策"</li>
+  </ul></div>
+</div>
+<p class="note">三步 v1：<code>sparql_query</code> → <code>rule_explain</code> → <code>ontology_explain</code>。触发规则 <code>R-ONLINE-001</code>：<code>marketSizeGte:100000</code>、<code>denyProductTypeOnLowMarket:"5G套餐"</code>。</p>
+<div class="note warn"><b>这是 policy-java，不是 Drools。</b>策略集由 <code>OntologyService.decide</code>（:560）/ <code>triggeredRules</code>（:839）执行。</div>
+
+<h3>二、策略结构（非 OWL 类）</h3>
+<figure>
+<svg viewBox="0 0 900 240" role="img" aria-label="立项研判策略结构">
+  <rect x="300" y="16" width="300" height="52" rx="8" fill="#e0f2f7" stroke="#0e7490" stroke-width="1.4" stroke-dasharray="3 3"/>
+  <text class="nf" x="450" y="37" text-anchor="middle" fill="#0e7490">策略集 · PS_PRODUCT_ONLINE_V1</text>
+  <text class="nfs" x="450" y="55" text-anchor="middle" fill="#0e7490">ops_rules.json（非本体类）</text>
+  <rect x="80" y="120" width="220" height="60" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="190" y="143" text-anchor="middle">规则 · R-ONLINE-001</text>
+  <text class="nfs" x="190" y="161" text-anchor="middle">marketSizeGte 100000</text>
+  <rect x="340" y="120" width="220" height="60" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="450" y="143" text-anchor="middle">条件 · denyProductTypeOnLowMarket</text>
+  <text class="nfs" x="450" y="161" text-anchor="middle">"5G套餐"</text>
+  <rect x="600" y="120" width="220" height="60" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="710" y="143" text-anchor="middle">方法 · decide()</text>
+  <text class="nfs" x="710" y="161" text-anchor="middle">放行 / 拦截 + 理由</text>
+  <line x1="380" y1="70" x2="200" y2="118" stroke="#0e7490" stroke-dasharray="4 4"/>
+  <line x1="450" y1="70" x2="450" y2="118" stroke="#0e7490" stroke-dasharray="4 4"/>
+  <line x1="520" y1="70" x2="700" y2="118" stroke="#0e7490" stroke-dasharray="4 4"/>
+</svg>
+<figcaption><b>本场景不走 OWL 类推理。</b>图中全是灰虚线框——策略集、规则号、条件键、方法，都不是本体类。策略集内含多条阈值条件，命中后 <code>OntologyService.decide</code> 输出放行/拦截与触发规则号。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>策略集</th><th>规则</th><th>阈值</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">PS_PRODUCT_ONLINE_V1</td><td>R-ONLINE-001</td><td><code>marketSizeGte:100000</code>、<code>denyProductTypeOnLowMarket:"5G套餐"</code></td></tr>
+    <tr><td class="mono">PS_PRODUCT_RISK_V1</td><td>R-RISK-001/002</td><td>零费在售 3 月 / 新增 &lt;50 / 营收增长 &lt;0.03 / 流失 &gt;0.08</td></tr>
+    <tr><td class="mono">PS_MARKETING_RECOMMEND_V1</td><td>R001/R003</td><td>营销推荐条件</td></tr>
+    <tr><td class="mono">PS_BILLING_REFUND_V1</td><td>B001</td><td><code>fullRefundCreditScoreGte:700</code></td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>来源</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>取商品事实</td><td><code>sparql_query</code></td><td>marketSize / productType</td></tr>
+    <tr><td>2</td><td>策略命中解释</td><td><code>rule_explain</code></td><td>triggeredRules[]</td></tr>
+    <tr><td>3</td><td>本体解释</td><td><code>ontology_explain</code></td><td>理由链</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/hypothetical" data-method="POST">
+  <div class="row"><textarea data-k="payload_text" placeholder='{"productType":"5G套餐","marketSize":80000}'></textarea></div>
+  <div class="row chips">
+    <button data-fill='{"payload_text":"{\"productType\":\"5G套餐\",\"marketSize\":80000}"}'>低体量 5G套餐</button>
+    <button data-fill='{"payload_text":"{\"productType\":\"5G套餐\",\"marketSize\":200000}"}'>高体量 5G套餐</button>
+  </div>
+  <div class="row"><button data-run>立项研判</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/ops/hypothetical</code>，请求体为假设场景 JSON。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>策略集是"建议"性质，不替代人工投决；</li>
+  <li>阈值来自 ops_rules.json，改阈值需重载；</li>
+  <li>假设场景需自带事实，不查真实图谱。</li>
+</ul>
+
+<h2 id="ops-monitor">运营洞察 ③ 运营监控</h2>
+<p class="sub"><code>ops_monitor</code> · 看板 + 告警分级 · <code>AlertRules-v1.0</code></p>
+
+<h3>一、场景需求</h3>
+<p>运营每天要看整体营收、订单、异常商品和告警。系统要给一份带分级（P0/P1/P2）的监控视图，并标出哪些需要开工单。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>异动指标多，人看不过来</li>
+    <li>告警要分轻重缓急，不能一锅端</li>
+    <li>SLA 时限要清晰</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>指标异常 → 告警分级规则 R-E01~E04</li>
+    <li>P0/P1/P2 按错误率/错误数判级</li>
+    <li>P1 起自动建议工单</li>
+  </ul></div>
+</div>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 250" role="img" aria-label="告警分级结构">
+  <defs><marker id="om2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/></marker></defs>
+  <rect x="350" y="14" width="200" height="50" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:AlertOffering</text><text class="ns" x="450" y="52" text-anchor="middle">告警结论（ttl:1358）</text>
+  <rect x="80" y="120" width="180" height="52" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+  <text class="nl" x="170" y="141" text-anchor="middle" fill="#b42318">:P0AlertOffering</text><text class="ns" x="170" y="159" text-anchor="middle" fill="#b42318">SLA 30 分钟</text>
+  <rect x="290" y="120" width="180" height="52" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+  <text class="nl" x="380" y="141" text-anchor="middle" fill="#b42318">:P1AlertOffering</text><text class="ns" x="380" y="159" text-anchor="middle" fill="#b42318">SLA 240 分钟</text>
+  <rect x="500" y="120" width="180" height="52" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.5"/>
+  <text class="nl" x="590" y="141" text-anchor="middle" fill="#b42318">:P2AlertOffering</text><text class="ns" x="590" y="159" text-anchor="middle" fill="#b42318">SLA 1440 分钟</text>
+  <rect x="710" y="120" width="170" height="52" rx="8" fill="#fff7e6" stroke="#b45309" stroke-width="1.5"/>
+  <text class="nl" x="795" y="141" text-anchor="middle" font-size="11" fill="#b45309">:NeedWorkOrderOffering</text><text class="ns" x="795" y="159" text-anchor="middle" fill="#b45309">≥P1 开工单</text>
+  <g fill="none" stroke="#b42318" stroke-width="1.3">
+    <path d="M400,64 L178,118" marker-end="url(#om2)"/>
+    <path d="M450,64 L382,118" marker-end="url(#om2)"/>
+    <path d="M500,64 L586,118" marker-end="url(#om2)"/>
+    <path d="M530,64 L790,118" marker-end="url(#om2)"/>
+  </g>
+  <text class="lb" x="450" y="210" text-anchor="middle">P0/P1/P2/NeedWorkOrderOffering 均 rdfs:subClassOf :AlertOffering</text>
+</svg>
+<figcaption>告警是 <code>:AlertOffering</code> 的分级子类；<code>:NeedWorkOrderOffering</code> 由 <code>workOrderMinLevel:"P1"</code> 派生。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>规则</th><th>判据</th><th>默认阈值</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td>R-E01</td><td>错误率 / 错误数</td><td>5% / 10</td><td>P1 候选</td></tr>
+    <tr><td>R-E02</td><td>错误数 / 错误率</td><td>1 / 1%</td><td>P2 候选</td></tr>
+    <tr><td>R-E03</td><td>错误/话费/订单趋势</td><td>趋势下行</td><td>趋势告警</td></tr>
+    <tr><td>R-E04</td><td>合并判级</td><td>—</td><td>P0 / P1</td></tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>SLA</th><th>分钟</th></tr></thead>
+  <tbody>
+    <tr><td>P0</td><td>30</td></tr><tr><td>P1</td><td>240</td></tr><tr><td>P2</td><td>1440</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>来源</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>指标异动识别</td><td><code>isMetricAnomaly</code></td><td>anomalyFlag</td></tr>
+    <tr><td>2</td><td>错误率/数判级</td><td>R-E01/E02</td><td>P1/P2 候选</td></tr>
+    <tr><td>3</td><td>趋势判级</td><td>R-E03</td><td>趋势告警</td></tr>
+    <tr><td>4</td><td>合并</td><td>R-E04</td><td>P0/P1 终判</td></tr>
+    <tr><td>5</td><td>工单建议</td><td>≥P1</td><td>NeedWorkOrderOffering</td></tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>非命中 / 兜底</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>无达到阈值的指标</td><td>告警列表为空</td></tr>
+    <tr><td>SWRL 不可用</td><td><code>gradeByJava</code> 同逻辑兜底</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/alerts" data-method="GET">
+  <div class="row"><button data-run>拉取告警列表</button>
+    <button class="ghost" data-ep-over="/ops/dashboard" data-run>运营看板</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>GET /api/v1/product-ontology/ops/alerts</code>；看板 <code>/ops/dashboard</code>、营收 <code>/ops/revenue-overview</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>告警依赖事实图有指标数据，无数据不产生告警；</li>
+  <li>分级只到 P0/P1/P2 三档；</li>
+  <li>工单建议不自动提交，需人工确认。</li>
+</ul>
+
+<h2 id="ops-root">运营洞察 ④ 异动归因</h2>
+<p class="sub"><code>root_cause</code> · 手册 <code>root-cause</code> · intent <code>PRODUCT_OPS_REASON</code></p>
+
+<h3>一、场景需求</h3>
+<p>商品掉量了，要说清是渠道、促销、竞品还是用户行为造成的，并给出可复核的证据数值。结论不靠打分模型，靠本体规则推导。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>根因藏在不同类型的证据里，判据各不相同</li>
+    <li>结论容易"合理但不可查"</li>
+    <li>阈值要能随时调，不能改规则体</li>
+    <li>没事时容易硬猜一个原因</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>四类证据各建一个根因类，判据写成 SWRL</li>
+    <li>结论带规则号，模型改不了</li>
+    <li>阈值做成命名个体，运行时覆写</li>
+    <li>先确认异动，再找根因</li>
+  </ul></div>
+</div>
+<p class="note">输入只有一个商品（编码或名称）。三步 v1：<code>sparql_query</code> → <code>swrl_root_cause</code> → <code>ontology_explain</code>。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 300" role="img" aria-label="归因本体类层次结构">
+  <defs>
+    <marker id="or1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/></marker>
+    <marker id="or2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#c98a3c" stroke-width="1.6"/></marker>
+  </defs>
+  <rect x="340" y="14" width="220" height="50" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:Offering</text>
+  <text class="ns" x="450" y="52" text-anchor="middle">产商品 · 归因主体</text>
+  <rect x="40" y="102" width="180" height="50" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="130" y="123" text-anchor="middle">:Metric</text><text class="ns" x="130" y="140" text-anchor="middle">指标 · 异动判据</text>
+  <rect x="255" y="102" width="180" height="50" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="345" y="123" text-anchor="middle">:Channel</text><text class="ns" x="345" y="140" text-anchor="middle">渠道</text>
+  <rect x="470" y="102" width="180" height="50" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="560" y="123" text-anchor="middle">:Promotion</text><text class="ns" x="560" y="140" text-anchor="middle">促销</text>
+  <rect x="685" y="102" width="180" height="50" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="775" y="123" text-anchor="middle">:Competitor</text><text class="ns" x="775" y="140" text-anchor="middle">竞品</text>
+  <rect x="255" y="170" width="180" height="50" rx="8" fill="#fff" stroke="#a8b3c2"/>
+  <text class="nl" x="345" y="191" text-anchor="middle">:UserBehavior</text><text class="ns" x="345" y="208" text-anchor="middle">用户行为</text>
+  <g fill="none" stroke="#c98a3c" stroke-width="1.3" stroke-dasharray="4 4">
+    <path d="M414,64 L142,100" marker-end="url(#or2)"/>
+    <path d="M435,64 L345,100" marker-end="url(#or2)"/>
+    <path d="M465,64 L558,100" marker-end="url(#or2)"/>
+    <path d="M486,64 L768,100" marker-end="url(#or2)"/>
+    <path d="M450,64 L358,168" marker-end="url(#or2)"/>
+  </g>
+  <g class="attr" fill="#b45309" text-anchor="middle">
+    <text x="262" y="86">hasMetric</text><text x="403" y="82">soldOn</text>
+    <text x="522" y="86">participatesIn</text><text x="646" y="82">competesWith</text>
+    <text x="326" y="196">influencedBy</text>
+  </g>
+  <g fill="none" stroke="#b42318" stroke-width="1.3">
+    <path d="M350,64 L16,64 L16,265 L38,265" marker-end="url(#or1)"/>
+    <path d="M345,220 L345,240" marker-end="url(#or1)"/>
+    <path d="M560,152 L560,240" marker-end="url(#or1)"/>
+    <path d="M775,152 L775,240" marker-end="url(#or1)"/>
+    <path d="M345,220 L345,296" marker-end="url(#or1)"/>
+  </g>
+  <rect x="40" y="240" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="130" y="261" text-anchor="middle" fill="#b42318">:AnomalyOffering</text>
+  <text class="ns" x="130" y="278" text-anchor="middle" fill="#b42318">点火 · R-A01</text>
+  <rect x="255" y="240" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="345" y="261" text-anchor="middle" fill="#b42318">:ChannelRootCause</text>
+  <text class="ns" x="345" y="278" text-anchor="middle" fill="#b42318">R-A02</text>
+  <rect x="470" y="240" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="560" y="261" text-anchor="middle" fill="#b42318">:PromotionRootCause</text>
+  <text class="ns" x="560" y="278" text-anchor="middle" fill="#b42318">R-A03</text>
+  <rect x="685" y="240" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="775" y="261" text-anchor="middle" fill="#b42318">:CompetitorRootCause</text>
+  <text class="ns" x="775" y="278" text-anchor="middle" fill="#b42318">R-A04</text>
+  <rect x="255" y="296" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="345" y="317" text-anchor="middle" fill="#b42318">:BehaviorRootCause</text>
+  <text class="ns" x="345" y="334" text-anchor="middle" fill="#b42318">R-A05</text>
+  <g font-size="11.5" fill="#7a8798">
+    <line x1="40" y1="366" x2="64" y2="366" stroke="#b42318" stroke-width="1.3" marker-end="url(#or1)"/>
+    <text x="70" y="370">subClassOf</text>
+    <line x1="160" y1="366" x2="184" y2="366" stroke="#c98a3c" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#or2)"/>
+    <text x="190" y="370">对象属性</text>
+    <text x="270" y="370">结论框紧贴自身证据正下方</text>
+  </g>
+</svg>
+<figcaption>四类结论类直接继承自对应证据类，命中实例仍是那条渠道/促销/竞品/行为，回读按结论类取实例即得业务身份。<code>:AnomalyOffering</code> 是商品侧唯一结论，仅作点火标记。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>规则</th><th>前置</th><th>判据</th><th>默认阈值</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td>R-A01</td><td>—</td><td>指标环比跌幅 / 上游异常标记</td><td>-10%</td><td>商品异动</td></tr>
+    <tr><td>R-A02</td><td>已异动</td><td>渠道订单跌幅 + 渠道贡献占比</td><td>-20% / 30%</td><td>渠道根因</td></tr>
+    <tr><td>R-A03</td><td>已异动</td><td>优惠将到期天数 + 驱动订单占比</td><td>7 天 / 25%</td><td>促销根因</td></tr>
+    <tr><td>R-A04</td><td>已异动</td><td>竞品价差比例 + 渗透率增幅</td><td>15% / &gt;0pp</td><td>竞品根因</td></tr>
+    <tr><td>R-A05</td><td>已异动</td><td>行为权重提示</td><td>8%</td><td>行为根因</td></tr>
+    <tr><td>R-A06</td><td>—</td><td>连续下滑天数（Java 旁路，不推理）</td><td>3 天</td><td>持续下滑趋势</td></tr>
+  </tbody>
+</table>
+<div class="note warn"><b>R-A02~A05 的前置都是"该商品已确认异动"。</b>没异动就不猜根因——这条硬约束是"没事找因"的解法。</div>
+
+<h3>三、推理过程</h3>
+<p>推理机（Openllet）求值规则，得出结论类型后按结论类反查实例。R-A06 是 Java 旁路，共同构成完整判定。</p>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>规则</th><th>判据（真实数值示例）</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>点火</td><td>R-A01</td><td>99898653 收入环比 -18%，≥10% → 成立</td><td>:AnomalyOffering</td></tr>
+    <tr><td>2</td><td>逐渠道核对</td><td>R-A02</td><td>营业厅 CH-HALL 订单 -35%、占比 42%，均越阈</td><td>:ChannelRootCause</td></tr>
+    <tr><td>3</td><td>逐促销核对</td><td>R-A03</td><td>优惠 5 天到期、驱动占比 30%</td><td>:PromotionRootCause</td></tr>
+    <tr><td>4</td><td>逐竞品核对</td><td>R-A04</td><td>价差 20%、渗透率 +2pp</td><td>:CompetitorRootCause</td></tr>
+    <tr><td>5</td><td>逐行为核对</td><td>R-A05</td><td>行为权重 12%</td><td>:BehaviorRootCause</td></tr>
+    <tr><td>6</td><td>持续下滑旁路</td><td>R-A06（java）</td><td>连续下滑 4 天，≥3</td><td>MetricTrend 候选</td></tr>
+    <tr><td>7</td><td>回读与输出</td><td>—</td><td>按结论类取实例，附证据数值</td><td>paths[] / candidates[]</td></tr>
+  </tbody>
+</table>
+<p>候选 <code>type</code> ∈ <code>Channel/Promotion/Competitor/UserBehavior</code>，Java 侧 <code>ruleId</code> 为 R-A02/03/04/05、<code>engine="java-rules"</code>；R-A06 旁路 <code>type="MetricTrend"</code>、带 <code>declineDays</code>/<code>deltaPct</code>/<code>contributions</code>。</p>
+<table>
+  <thead><tr><th>非命中 / 兜底情形</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>商品解析不到，或图谱无该商品</td><td>直接失败：<code>未找到商品异动图谱节点 &lt;oid&gt;</code></td></tr>
+    <tr><td>R-A01 未点火（无达标指标）</td><td>四类候选/路径全空，<code>message="图谱中未出现达到阈值的异动指标，无法给出根因"</code></td></tr>
+    <tr><td>SWRL 关闭 / 规则配置为 java</td><td>跳过 SWRL，走同逻辑 Java</td></tr>
+    <tr><td>推理抛异常</td><td>整次降级为 Java 兜底，<code>reasonEngine=fallback-java</code></td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/root-cause" data-method="POST">
+  <div class="row"><input type="text" data-k="offeringId" placeholder="① 商品编码，如 99898653" autocomplete="off"></div>
+  <div class="row"><input type="text" data-k="text" placeholder="② 或自然语言：如「家庭融合畅享128 为什么掉了」" autocomplete="off"></div>
+  <div class="row chips">
+    <button data-fill='{"offeringId":"99898653"}'>99898653</button>
+    <button data-fill='{"offeringId":"95035965"}'>95035965</button>
+    <button data-fill='{"text":"家庭融合畅享128 收入下滑"}'>文本：家庭融合畅享128</button>
+    <button data-fill='{"offeringId":"34538053"}'>34538053（无事实）</button>
+  </div>
+  <div class="row"><button data-run>发起归因</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/ops/root-cause</code>，请求体 <code>{"offeringId":"..."}</code> 或 <code>{"text":"..."}</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>单层条件组合，不做多因加权排序，weight 只作证据值透传；</li>
+  <li>只能对事实图 <code>opsGraph</code> 中有数据的商品归因；</li>
+  <li>指标与渠道间无直接公理，无法细分"某指标主要由某渠道造成"；</li>
+  <li>归因结果不落库，只能现场复核。</li>
+</ul>
+
+<h2 id="ops-risk">运营洞察 ⑤ 风险稽核</h2>
+<p class="sub"><code>risk_audit</code> · 手册 <code>risk-audit</code> · intent <code>PRODUCT_OPS_POLICY</code></p>
+
+<h3>一、场景需求</h3>
+<p>批量筛查在售商品是否有零费、异常折扣、零销售、低效、高风险等问题，给出风险分与建议。只读筛查，不改档。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>风险类型多，判据各异</li>
+    <li>与"立项研判"同 intent，易混</li>
+    <li>稽核不能顺手把档改了</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>SWRL 风险规则 R-B* 逐条判定</li>
+    <li>风险分 high/medium/low 分级</li>
+    <li>只读筛查，不落改动</li>
+  </ul></div>
+</div>
+<p class="note">三步 v1：<code>sparql_query</code> → <code>swrl_risk_audit</code> → <code>rule_explain</code>。与 online-check 同码不同手册，靠 <code>intent_guide</code> 特征词二跳判定。</p>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 270" role="img" aria-label="风险结论族结构">
+  <defs><marker id="ork" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/></marker></defs>
+  <rect x="350" y="14" width="200" height="50" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:Offering</text><text class="ns" x="450" y="52" text-anchor="middle">被稽核商品</text>
+  <rect x="40" y="112" width="160" height="48" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.4"/>
+  <text class="nl" x="120" y="132" text-anchor="middle" font-size="10.5" fill="#b42318">:ZeroFeeRiskOffering</text><text class="ns" x="120" y="149" text-anchor="middle" fill="#b42318">R-B01</text>
+  <rect x="215" y="112" width="150" height="48" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.4"/>
+  <text class="nl" x="290" y="132" text-anchor="middle" font-size="10.5" fill="#b42318">:AbnormalDiscountOffering</text><text class="ns" x="290" y="149" text-anchor="middle" fill="#b42318">R-B01</text>
+  <rect x="380" y="112" width="160" height="48" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.4"/>
+  <text class="nl" x="460" y="132" text-anchor="middle" fill="#b42318">:ZeroSalesOffering</text><text class="ns" x="460" y="149" text-anchor="middle" fill="#b42318">R-B03</text>
+  <rect x="555" y="112" width="140" height="48" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.4"/>
+  <text class="nl" x="625" y="132" text-anchor="middle" fill="#b42318">:LowEffOffering</text><text class="ns" x="625" y="149" text-anchor="middle" fill="#b42318">R-B04</text>
+  <rect x="710" y="112" width="160" height="48" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.4"/>
+  <text class="nl" x="790" y="132" text-anchor="middle" fill="#b42318">:HighRiskOffering</text><text class="ns" x="790" y="149" text-anchor="middle" fill="#b42318">R-B05</text>
+  <g fill="none" stroke="#b42318" stroke-width="1.3">
+    <path d="M400,64 L122,110" marker-end="url(#ork)"/>
+    <path d="M430,64 L292,110" marker-end="url(#ork)"/>
+    <path d="M450,64 L460,110" marker-end="url(#ork)"/>
+    <path d="M470,64 L624,110" marker-end="url(#ork)"/>
+    <path d="M500,64 L788,110" marker-end="url(#ork)"/>
+  </g>
+  <rect x="40" y="196" width="830" height="52" rx="8" fill="#fff7e6" stroke="#f0ce9a"/>
+  <text x="60" y="218" font-size="12" font-weight="600" fill="#b45309">风险分级</text>
+  <text x="60" y="236" font-size="11.5" fill="#5a4a2a">high=92 / medium=70 / low=40 / urgentBump=+5 / urgentCap=99；zeroSalesShelfDays=180 / highRiskReviewDays=30</text>
+</svg>
+<figcaption>五类风险结论均为 <code>:Offering</code> 子类，<code>R-B01~B05</code> 逐条判定，风险分按 scoring 配置定档。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>规则</th><th>判据</th><th>默认阈值</th><th>结论类</th></tr></thead>
+  <tbody>
+    <tr><td>R-B01</td><td>零费 / 满额折扣</td><td>0 元 / 100%</td><td>ZeroFeeRiskOffering / AbnormalDiscountOffering</td></tr>
+    <tr><td>R-B02</td><td>零费且无合约</td><td>—</td><td>ZeroFeeNoContract</td></tr>
+    <tr><td>R-B03</td><td>零销售在架天数</td><td>180 天</td><td>ZeroSalesOffering</td></tr>
+    <tr><td>R-B04</td><td>低效（低营收分位）</td><td>5%</td><td>LowEffOffering</td></tr>
+    <tr><td>R-B05</td><td>高风险复核天数</td><td>30 天</td><td>HighRiskOffering</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>规则</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>取在售商品事实</td><td><code>sparql_query</code></td><td>metricFacts</td></tr>
+    <tr><td>2</td><td>零费/折扣判定</td><td>R-B01 / R-B02</td><td>ZeroFeeRiskOffering / AbnormalDiscountOffering 标签</td></tr>
+    <tr><td>3</td><td>零销售/低效/高风险</td><td>R-B03 / B04 / B05</td><td>对应风险标签</td></tr>
+    <tr><td>4</td><td>风险打分</td><td>scoring 配置</td><td>riskScore / level</td></tr>
+    <tr><td>5</td><td>规则解释</td><td><code>rule_explain</code></td><td>appliedRules[]</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/risk-audit" data-method="POST">
+  <div class="row"><textarea data-k="payload_text" placeholder='{"offering_ids":["99898653","95035965"]}（留空则全量）'></textarea></div>
+  <div class="row chips">
+    <button data-fill='{"payload_text":"{\"offering_ids\":[\"99898653\",\"95035965\"]}"}'>两商品稽核</button>
+  </div>
+  <div class="row"><button data-run>风险稽核</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>POST /api/v1/product-ontology/ops/risk-audit</code>；批量 <code>/ops/batch-audit</code>，规则明细 <code>/ops/risk-rules</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>只读筛查，不改档、不建单；</li>
+  <li>风险分是相对排序，非绝对风险概率；</li>
+  <li>无事实数据商品不参与稽核。</li>
+</ul>
+
+<h2 id="ops-rules">运营洞察 ⑥ 规则运营</h2>
+<p class="sub"><code>ops_rules</code> · 阈值覆盖 + 规则目录 + 查询热度</p>
+
+<h3>一、场景需求</h3>
+<p>运营/研发要能查看当前生效的规则与阈值、临时调整风险规则、重载规则目录，并了解用户都在问什么（查询热度）。</p>
+<div class="need">
+  <div class="card bad"><h3>难点</h3><ul>
+    <li>规则阈值散落，改一次要重启才生效</li>
+    <li>哪些规则在跑、由哪个引擎跑，说不清</li>
+    <li>不知道用户真实关心哪些问题</li>
+  </ul></div>
+  <div class="card good"><h3>做法</h3><ul>
+    <li>阈值入 <code>:ThresholdHolder</code>，运行时覆写</li>
+    <li>规则目录显式列出引擎与覆盖范围</li>
+    <li>查询热度统计 top 问题/关键词</li>
+  </ul></div>
+</div>
+
+<h3>二、本体建模结构</h3>
+<figure>
+<svg viewBox="0 0 900 260" role="img" aria-label="规则运营结构">
+  <defs><marker id="oru" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,0 L9,5 L1,10" fill="none" stroke="#1f6feb" stroke-width="1.6"/></marker></defs>
+  <rect x="60" y="30" width="220" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="170" y="53" text-anchor="middle">配置 · ops_rules.json</text>
+  <text class="nfs" x="170" y="71" text-anchor="middle">OpsRules-v1.3（非本体类）</text>
+  <rect x="340" y="30" width="220" height="56" rx="8" fill="#fff7e6" stroke="#b45309" stroke-width="1.5"/>
+  <text class="nl" x="450" y="53" text-anchor="middle" fill="#b45309">:ThresholdHolder</text>
+  <text class="ns" x="450" y="71" text-anchor="middle" fill="#b45309">本体类 · 25 个命名个体</text>
+  <rect x="620" y="30" width="230" height="56" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text class="nf" x="735" y="53" text-anchor="middle">方法 · applyThresholds</text>
+  <text class="nfs" x="735" y="71" text-anchor="middle">推理前覆写（非类）</text>
+  <line x1="280" y1="58" x2="336" y2="58" stroke="#1f6feb" marker-end="url(#oru)"/>
+  <line x1="560" y1="58" x2="616" y2="58" stroke="#1f6feb" marker-end="url(#oru)"/>
+  <rect x="60" y="140" width="240" height="90" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text x="80" y="162" font-size="12" font-weight="600" fill="#5a6577">规则目录</text>
+  <text x="80" y="182" font-size="11" fill="#6b7f99">/ops/rules · /ops/risk-rules</text>
+  <text x="80" y="200" font-size="11" fill="#6b7f99">显式列出四引擎 + 覆盖规则</text>
+  <text x="80" y="218" font-size="11" fill="#6b7f99">rules/reload 热重载</text>
+  <rect x="340" y="140" width="240" height="90" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text x="360" y="162" font-size="12" font-weight="600" fill="#5a6577">规则开关</text>
+  <text x="360" y="182" font-size="11" fill="#6b7f99">/ops/risk-rules（POST）</text>
+  <text x="360" y="200" font-size="11" fill="#6b7f99">临时启停 / 调阈值</text>
+  <text x="360" y="218" font-size="11" fill="#6b7f99">risk-rules/reset 还原</text>
+  <rect x="620" y="140" width="230" height="90" rx="8" fill="#f2f5f9" stroke="#8b98ad" stroke-dasharray="3 3"/>
+  <text x="640" y="162" font-size="12" font-weight="600" fill="#5a6577">查询热度</text>
+  <text x="640" y="182" font-size="11" fill="#6b7f99">/ops/query-heat</text>
+  <text x="640" y="200" font-size="11" fill="#6b7f99">top 问题 / 关键词</text>
+  <text x="640" y="218" font-size="11" fill="#6b7f99">近 14 天日计数</text>
+</svg>
+<figcaption>唯一本体类是 <code>:ThresholdHolder</code>（橙框）；json 配置与方法（灰虚线框）不是类。阈值从 json 灌入命名个体，推理前 <code>applyThresholds</code> 覆写；规则目录/开关/查询热度是运营侧的三类入口。</figcaption>
+</figure>
+<table>
+  <thead><tr><th>端点</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">GET /ops/rules</td><td>规则目录（四引擎 + 覆盖范围）</td></tr>
+    <tr><td class="mono">POST /ops/rules/reload</td><td>热重载规则</td></tr>
+    <tr><td class="mono">GET /ops/risk-rules</td><td>风险规则列表</td></tr>
+    <tr><td class="mono">POST /ops/risk-rules</td><td>临时启停 / 调阈值</td></tr>
+    <tr><td class="mono">POST /ops/risk-rules/reset</td><td>还原默认</td></tr>
+    <tr><td class="mono">GET /ops/query-heat</td><td>查询热度（total/top_questions/top_keywords/daily_counts）</td></tr>
+  </tbody>
+</table>
+
+<h3>三、推理过程</h3>
+<table>
+  <thead><tr><th>#</th><th>环节</th><th>说明</th><th>输出</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>载入规则目录</td><td>读 ops_rules.json engines</td><td>engines[] / policy.sets</td></tr>
+    <tr><td>2</td><td>阈值覆写</td><td><code>applyThresholds</code></td><td>命名个体新值</td></tr>
+    <tr><td>3</td><td>规则开关</td><td><code>disableRules</code></td><td>生效规则集</td></tr>
+    <tr><td>4</td><td>查询热度统计</td><td><code>queryHeatService.queryHeat</code></td><td>top 问题/关键词/日计数</td></tr>
+  </tbody>
+</table>
+<table>
+  <thead><tr><th>非命中 / 兜底</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>无查询记录</td><td>热度接口失败并明说"暂无查询记录"</td></tr>
+    <tr><td>规则重载失败</td><td>保留旧规则集，返回错误</td></tr>
+  </tbody>
+</table>
+
+<h3>四、体验</h3>
+<div class="try" data-ep="/ops/rules" data-method="GET">
+  <div class="row">
+    <button data-run>规则目录</button>
+    <button class="ghost" data-run data-method="GET" data-ep-over="/ops/risk-rules">风险规则</button>
+    <button class="ghost" data-run data-method="GET" data-ep-over="/ops/query-heat">查询热度</button>
+  </div>
+  <div class="row"><button data-run data-ep-over="/ops/rules/reload" data-method="POST">热重载规则（POST）</button>
+    <label class="opt">后端地址 <input type="text" data-base value="http://localhost:6174"></label></div>
+  <div class="status"></div><div class="result"></div>
+</div>
+<p class="note">接口 <code>GET /ops/rules</code>、<code>GET /ops/risk-rules</code>、<code>GET /ops/query-heat</code>、<code>POST /ops/rules/reload</code>、<code>POST /ops/risk-rules/reset</code>。</p>
+
+<h3>五、边界</h3>
+<ul>
+  <li>规则开关为临时态，重启后回到 json 默认；</li>
+  <li>查询热度为空时接口失败，不返回空壳；</li>
+  <li>改阈值立即影响后续推理，需谨慎操作。</li>
+</ul>
+
+<footer>
+本体 <code>backend-app/src/main/resources/ontology/product.ttl</code>（v3.1，2124 行）；阈值 <code>ontology/ops_rules.json</code>（OpsRules-v1.3）；SHACL <code>ontologies/compliance-shacl.ttl</code>。<br>
+实现 <code>OpsSwrlReasoner</code> / <code>OpsRiskAuditEngine</code> / <code>OntologyService</code> / <code>ChatConfigureService</code> / <code>AgentOrchestrator</code>。整个文档对应真实文件与行号，规则/阈值均可回查。
+</footer>
+
+</main>
+
+<script>
+window.APP_API = (function () {
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function base() {
+    var el = document.querySelector('[data-base]');
+    return (el ? el.value.trim() : 'http://localhost:6174').replace(/\/+$/, '') || 'http://localhost:6174';
+  }
+  var PREFIX = '/api/v1/product-ontology';
+  function call(method, path, body) {
+    var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
+    return fetch(base() + path, opts).then(function (r) {
+      return r.text().then(function (t) {
+        var d;
+        try { d = JSON.parse(t); } catch (e) { throw new Error('HTTP ' + r.status + ' 非 JSON：' + t.slice(0, 160)); }
+        if (!r.ok) throw new Error('HTTP ' + r.status + '：' + (d.message || ''));
+        return d && d.data !== undefined ? d.data : d;
+      });
+    });
+  }
+  return { esc: esc, base: base, PREFIX: PREFIX, call: call };
+})();
+
+(function () {
+  var API = window.APP_API;
+  var esc = API.esc;
+
+  function box(parent, html, cls) {
+    var d = document.createElement('div');
+    d.className = 'box' + (cls ? ' ' + cls : '');
+    d.innerHTML = html;
+    parent.appendChild(d);
+    return d;
+  }
+
+  function readBody(area) {
+    var out = {};
+    Array.prototype.forEach.call(area.querySelectorAll('[data-k]'), function (el) {
+      if (el.value !== '') out[el.dataset.k] = el.value;
+    });
+    if (out.payload_text !== undefined) {
+      try {
+        var nested = JSON.parse(out.payload_text.replace(/[\r\n]+/g, ' '));
+        Object.keys(nested).forEach(function (k) { out[k] = nested[k]; });
+      } catch (e) { /* 忽略非法 JSON */ }
+      delete out.payload_text;
+    }
+    if (out.offering_ids !== undefined) {
+      out.offering_ids = out.offering_ids.split(/[,，\s]+/).filter(Boolean);
+    }
+    Object.keys(out).forEach(function (k) { if (out[k] === '') delete out[k]; });
+    return out;
+  }
+
+  function run(area, btn) {
+    var statusEl = area.querySelector('.status');
+    var resultEl = area.querySelector('.result');
+    var method = btn.dataset.method || area.dataset.method || 'POST';
+    var ep = btn.dataset.epOver || area.dataset.ep || '';
+    var body = readBody(area);
+    var path = API.PREFIX + ep;
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = '请求中… ' + method + ' ' + ep;
+    API.call(method, path, method === 'GET' ? null : body).then(function (d) {
+      statusEl.textContent = '完成 · ' + method + ' ' + ep;
+      resultEl.innerHTML = '';
+      var head = document.createElement('div');
+      head.className = 'box good';
+      head.innerHTML = '<div class="meta">HTTP 200 · ' + esc(method + ' ' + path) + '</div>';
+      resultEl.appendChild(head);
+      var raw = document.createElement('details');
+      raw.innerHTML = '<summary>原始响应（JSON）</summary><pre></pre>';
+      raw.querySelector('pre').textContent = JSON.stringify(d, null, 2);
+      resultEl.appendChild(raw);
+    }).catch(function (e) {
+      statusEl.className = 'status err';
+      statusEl.textContent = '失败';
+      resultEl.innerHTML = '';
+      box(resultEl, '<div>' + esc(e.message) + '</div><div class="meta">检查后端是否启动（默认 localhost:6174）、地址是否正确。</div>', 'bad');
+    }).then(function () {
+      btn.disabled = false;
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.try'), function (area) {
+    Array.prototype.forEach.call(area.querySelectorAll('[data-run]'), function (btn) {
+      btn.addEventListener('click', function () { run(area, btn); });
+    });
+    Array.prototype.forEach.call(area.querySelectorAll('[data-fill]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var fill;
+        try { fill = JSON.parse(btn.dataset.fill); } catch (e) { return; }
+        Array.prototype.forEach.call(area.querySelectorAll('[data-k]'), function (el) {
+          if (fill[el.dataset.k] !== undefined) el.value = fill[el.dataset.k];
+        });
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
+

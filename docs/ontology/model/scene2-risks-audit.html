@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>场景 2 高风险产品稽核：需求 · 本体建模 · 推理过程 · 体验</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #fff; --ink: #1c2230; --ink2: #5a6577; --line: #dde2e9;
+    --accent: #1f6feb; --soft: #eaf1fe; --red: #b42318; --red-soft: #fdecea;
+    --ok: #166534; --ok-soft: #eaf6ed; --warn: #b45309; --warn-soft: #fff7e6;
+    --mono: ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 18px 70px; background: var(--bg); color: var(--ink);
+         font: 15px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; }
+  nav { position: sticky; top: 0; z-index: 9; background: rgba(247,248,250,.94);
+        backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+        padding: 10px 0; margin-bottom: 26px; font-size: 13.5px; display: flex; gap: 18px; flex-wrap: wrap; }
+  nav a { color: var(--ink2); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  h1 { font-size: 23px; margin: 0 0 6px; line-height: 1.4; }
+  h2 { font-size: 18px; margin: 44px 0 12px; padding-left: 11px; border-left: 4px solid var(--accent); }
+  .sub { color: var(--ink2); font-size: 14px; margin: 0 0 20px; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #eef1f5; padding: 1px 4px; border-radius: 3px; }
+  .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  figure { margin: 14px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; color: var(--ink2); margin-top: 8px; }
+  .nl { font: 600 13px var(--mono); fill: #1c2230; }
+  .ns { font: 11.5px sans-serif; fill: #6b7f99; }
+  .lb { font: 600 11px sans-serif; fill: #9aa6b6; letter-spacing: .5px; }
+  .attr { font: 10.5px var(--mono); }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  .need { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .need .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .need .card h3 { margin: 0 0 8px; font-size: 14.5px; }
+  .need .card.bad h3 { color: var(--red); }
+  .need .card.good h3 { color: var(--ok); }
+  .need ul { font-size: 14px; margin: 0; }
+  .try { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 18px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+  input[type=text] { flex: 1 1 260px; padding: 9px 11px; font-size: 14px; border: 1px solid var(--line); border-radius: 7px; font-family: var(--mono); }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 9px 16px; font-size: 14px; border-radius: 7px; border: 1px solid var(--accent);
+           background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.ghost { background: #fff; color: var(--accent); }
+  .chips button { background: #fff; color: var(--ink2); border-color: var(--line); font-size: 13px; padding: 5px 11px; font-family: var(--mono); }
+  .chips button:hover { border-color: var(--accent); color: var(--accent); }
+  label.opt { font-size: 13.5px; color: var(--ink2); display: flex; gap: 6px; align-items: center; }
+  label.opt input { flex: 0 0 auto; width: 210px; padding: 5px 8px; }
+  .status { font-size: 13px; color: var(--ink2); min-height: 20px; margin-top: 6px; }
+  .status.err { color: var(--red); }
+  .result { margin-top: 14px; }
+  .box { border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; margin: 8px 0; font-size: 14px; background: #fbfcfd; }
+  .box.bad { border-color: #f0b8b1; background: var(--red-soft); }
+  .box.good { border-color: #b7ddc1; background: var(--ok-soft); }
+  .box h4 { margin: 0 0 6px; font-size: 14px; }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; border: 1px solid; margin-left: 6px; }
+  .tag.swrl { color: var(--ok); background: var(--ok-soft); border-color: #b7ddc1; }
+  .tag.java { color: var(--warn); background: var(--warn-soft); border-color: #f0ce9a; }
+  .tag.fb { color: var(--red); background: var(--red-soft); border-color: #f3bcb6; }
+  .tag.lv { color: var(--red); background: var(--red-soft); border-color: #f3bcb6; font-family: var(--mono); }
+  .tag.mv { color: var(--warn); background: var(--warn-soft); border-color: #f0ce9a; font-family: var(--mono); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--ink2); }
+  pre { background: #1c2230; color: #e6edf3; padding: 12px; border-radius: 8px; overflow-x: auto;
+        font: 12px/1.6 var(--mono); max-height: 320px; }
+  .empty { color: var(--ink2); font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--panel); }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
+  th { background: #eef1f5; }
+  footer { margin-top: 50px; font-size: 12.5px; color: var(--ink2); border-top: 1px solid var(--line); padding-top: 12px; }
+  @media (max-width: 640px) { .need { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+
+<nav>
+  <a href="#need">需求</a><a href="#model">建模结构</a><a href="#reason">推理过程</a><a href="#try">体验</a>
+</nav>
+
+<h1>高风险产品稽核：需求 · 本体建模 · 推理过程</h1>
+<p class="sub">货架上那些"看着就不对"的商品，得在出事前挑出来。判定不靠人盯，也不靠模型猜，靠本体规则逐条过筛。</p>
+
+<h2 id="need">一、场景需求</h2>
+
+<p>在架商品里混着零元资费、全额白送、长期没人买、低效占坑的货。稽核要给出<b>违规结论、风险等级和处置话术</b>，并且每条结论都能追到具体数值。</p>
+
+<div class="need">
+  <div class="card bad">
+    <h3>难点</h3>
+    <ul>
+      <li>风险种类杂，判据字段各不相同，人肉核对看不过来</li>
+      <li>单个问题能忍，几个问题叠在一起还压着不复核才是真事故</li>
+      <li>等级靠人拍，同一商品两个人能给两个结论</li>
+      <li>结论说不清依据，整改就没有抓手</li>
+    </ul>
+  </div>
+  <div class="card good">
+    <h3>做法</h3>
+    <ul>
+      <li>每类风险一条规则，阈值统一挂命名个体，随时可调</li>
+      <li>先把单点风险归并成"高风险"，再按在架时长升级为"紧急复核"</li>
+      <li>等级、评分、处置动作全部由规则算出，不交给模型</li>
+      <li>结论随证据三元组一起下发，可以逐项回查</li>
+    </ul>
+  </div>
+</div>
+
+<p class="note">输入是<b>商品编码清单</b>（也可空跑全量）。费用、销量、在架天数、白名单、战略标签全部由服务端从货架图取，用户不提供任何判据。</p>
+
+<h2 id="model">二、本体建模结构</h2>
+
+<p>关键决策：风险结论<b>全部落在商品身上</b>，都是 <code>:Offering</code> 的子类。风险的主体就是商品本身，没有第二类证据实体。</p>
+
+<figure>
+<svg viewBox="0 0 900 430" role="img" aria-label="风险结论类层次结构">
+  <defs>
+    <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1,0 L9,5 L1,10" fill="none" stroke="#b42318" stroke-width="1.6"/>
+    </marker>
+  </defs>
+
+  <rect x="340" y="14" width="220" height="50" rx="8" fill="#eaf1fe" stroke="#1f6feb" stroke-width="1.6"/>
+  <text class="nl" x="450" y="35" text-anchor="middle">:Offering</text>
+  <text class="ns" x="450" y="52" text-anchor="middle">产商品 · 稽核主体</text>
+  <text class="lb" x="450" y="80" text-anchor="middle">① 主体</text>
+
+  <rect x="40" y="102" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="130" y="123" text-anchor="middle" fill="#b42318">:ZeroFeeRiskOffering</text>
+  <text class="ns" x="130" y="140" text-anchor="middle" fill="#b42318">零元资费 · R-B01</text>
+
+  <rect x="255" y="102" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="345" y="123" text-anchor="middle" fill="#b42318">:AbnormalDiscount…</text>
+  <text class="ns" x="345" y="140" text-anchor="middle" fill="#b42318">全额白送 · R-B01</text>
+
+  <rect x="470" y="102" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="560" y="123" text-anchor="middle" fill="#b42318">:ZeroSalesOffering</text>
+  <text class="ns" x="560" y="140" text-anchor="middle" fill="#b42318">长期零销 · R-B03</text>
+
+  <rect x="685" y="102" width="180" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text class="nl" x="775" y="123" text-anchor="middle" fill="#b42318">:LowEffOffering</text>
+  <text class="ns" x="775" y="140" text-anchor="middle" fill="#b42318">低效占坑 · R-B04</text>
+
+  <g fill="none" stroke="#b42318" stroke-width="1.3">
+    <path d="M414,64 L142,100" marker-end="url(#c1)"/>
+    <path d="M435,64 L345,100" marker-end="url(#c1)"/>
+    <path d="M465,64 L558,100" marker-end="url(#c1)"/>
+    <path d="M486,64 L768,100" marker-end="url(#c1)"/>
+  </g>
+  <text class="lb" x="450" y="176" text-anchor="middle">② 单点风险结论：四条规则各管一类，命中即给商品打上对应类型</text>
+
+  <rect x="255" y="200" width="180" height="50" rx="8" fill="#fff7e6" stroke="#b45309" stroke-width="1.6"/>
+  <text class="nl" x="345" y="221" text-anchor="middle" fill="#b45309">:ZeroFeeNoContract</text>
+  <text class="ns" x="345" y="238" text-anchor="middle" fill="#b45309">零元无合约在架 · R-B02</text>
+
+  <rect x="490" y="200" width="180" height="50" rx="8" fill="#1c2230" stroke="#1c2230" stroke-width="1.6"/>
+  <text class="nl" x="580" y="221" text-anchor="middle" fill="#fff">:HighRiskOffering</text>
+  <text class="ns" x="580" y="238" text-anchor="middle" fill="#c9d4e3">高风险 · 归并层</text>
+
+  <path d="M345,152 L345,196" fill="none" stroke="#b45309" stroke-width="1.3" marker-end="url(#c1)"/>
+  <path d="M435,152 L560,196" fill="none" stroke="#b45309" stroke-width="1.3" marker-end="url(#c1)"/>
+  <text class="lb" x="450" y="274" text-anchor="middle">③ 归并：两个高危结论自动并入 «高风险»，不需要再写判断条件</text>
+
+  <rect x="430" y="298" width="240" height="50" rx="8" fill="#eaf6ed" stroke="#166534" stroke-width="1.6"/>
+  <text class="nl" x="550" y="319" text-anchor="middle" fill="#166534">:UrgentReviewOffering</text>
+  <text class="ns" x="550" y="336" text-anchor="middle" fill="#166534">需紧急复核 · R-B05（在架超 30 天）</text>
+
+  <path d="M580,250 L560,294" fill="none" stroke="#166534" stroke-width="1.4" marker-end="url(#c1)"/>
+
+  <g font-size="11.5" fill="#7a8798">
+    <line x1="40" y1="386" x2="64" y2="386" stroke="#b42318" stroke-width="1.3" marker-end="url(#c1)"/>
+    <text x="70" y="390">subClassOf</text>
+    <text x="160" y="390">红 = 单点风险　橙 = 高危前置　深 = 归并层　绿 = 升级动作</text>
+  </g>
+</svg>
+<figcaption>所有风险结论都是 <code>:Offering</code> 的子类，命中后那个商品实例本身就被加上风险身份。归并层 <code>:HighRiskOffering</code> 只由两条高危规则驱动，<code>R-B05</code> 再把"高风险且在架超期"推成紧急复核——这是场景里唯一的二级推理。</figcaption>
+</figure>
+
+<p>阈值做成八个命名个体挂在 <code>:ThresholdHolder</code> 下，规则体只写 <code>?t</code> 占位，运行时按 <code>ops_rules.json</code> 覆写值。规则骨架恒定，业务调阈值不用改 TTL。</p>
+
+<table>
+  <thead><tr><th>规则</th><th>前置</th><th>判据（须同时满足）</th><th>默认阈值</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td>R-B01 零元</td><td>—</td><td>月费 = 0 且 一次性费 = 0 且 不在白名单</td><td>—</td><td>零元资费</td></tr>
+    <tr><td>R-B01 白送</td><td>—</td><td>折扣 ≥ 阈值 且 可重复订购 且 无目标客户群</td><td>100%</td><td>异常全额赠送</td></tr>
+    <tr><td>R-B02</td><td>已零元</td><td>仍在架 且 无合约</td><td>—</td><td>零元无合约在架</td></tr>
+    <tr><td>R-B03</td><td>—</td><td>近 30 日销量 = 0 且 在架天数 &gt; 阈值</td><td>180 天</td><td>长期零销</td></tr>
+    <tr><td>R-B04</td><td>—</td><td>低效品类 且 收入后 5% 且 无战略标签</td><td>后 5%</td><td>低效产商品</td></tr>
+    <tr><td>R-B05</td><td>已高风险</td><td>在架天数 &gt; 阈值</td><td>30 天</td><td>紧急复核</td></tr>
+  </tbody>
+</table>
+
+<div class="note warn">R-B02 的前置是「已判为零元」，R-B05 的前置是「已判为高风险」。<b>没有前一级结论，后一级就不成立</b>，这是把零散问题串成事故等级的关键。</div>
+
+<h2 id="reason">三、本体推理过程</h2>
+
+<p>以样例里真实存在的 <code>84176765</code>（校园迎新体验包 0 元）为例：零元、在架 45 天、无合约。推理机先查单点风险，再由归并层升级，最后读结论。</p>
+
+<figure>
+<svg viewBox="0 0 900 496" role="img" aria-label="风险稽核推理过程：单点判定、归并升级、回读证据">
+  <defs>
+    <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#b45309"/></marker>
+    <marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#b42318"/></marker>
+    <marker id="d3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10z" fill="#166534"/></marker>
+  </defs>
+
+  <text x="20" y="26" font-size="13" font-weight="600" fill="#5a6577">① 单点判定：先看这个商品占了几条风险</text>
+
+  <g font-size="12">
+    <rect x="20" y="40" width="170" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="105" y="62" text-anchor="middle">商品 84176765</text>
+    <text x="105" y="80" text-anchor="middle" fill="#6b7f99">校园迎新体验包 0 元</text>
+
+    <rect x="230" y="40" width="190" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="325" y="62" text-anchor="middle">读资费与白名单</text>
+    <text x="325" y="80" text-anchor="middle" fill="#6b7f99">月费 0、一次性 0、非白名单</text>
+
+    <rect x="460" y="40" width="200" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="560" y="62" text-anchor="middle">R-B01 零元判据</text>
+    <text x="560" y="80" text-anchor="middle" fill="#b45309">三项全中，成立</text>
+
+    <rect x="700" y="40" width="180" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="790" y="62" text-anchor="middle">再看是否在架无合约</text>
+    <text x="790" y="80" text-anchor="middle" fill="#b45309">在架、无合约，R-B02 成立</text>
+
+    <line x1="190" y1="70" x2="226" y2="70" stroke="#b45309" marker-end="url(#d1)"/>
+    <line x1="420" y1="70" x2="456" y2="70" stroke="#b45309" marker-end="url(#d1)"/>
+    <line x1="660" y1="70" x2="696" y2="70" stroke="#b45309" marker-end="url(#d1)"/>
+  </g>
+
+  <rect x="290" y="108" width="320" height="50" rx="8" fill="#fdecea" stroke="#b42318" stroke-width="1.6"/>
+  <text x="450" y="129" text-anchor="middle" font-size="13" font-weight="600" fill="#b42318">结论：两条单点风险同时成立</text>
+  <text x="450" y="147" text-anchor="middle" font-size="11.5" fill="#b42318">「零元资费」+「零元无合约在架」</text>
+  <line x1="600" y1="92" x2="500" y2="106" stroke="#b42318" marker-end="url(#d2)"/>
+
+  <text x="20" y="191" font-size="13" font-weight="600" fill="#b42318">② 自动归并：不需要额外条件，高危结论直接并入「高风险」</text>
+
+  <rect x="290" y="202" width="320" height="46" rx="8" fill="#1c2230"/>
+  <text x="450" y="222" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">商品被归入 :HighRiskOffering（高风险）</text>
+  <text x="450" y="240" text-anchor="middle" font-size="11.5" fill="#c9d4e3">之前推出来的单点结论，自动成为归并依据</text>
+  <line x1="450" y1="158" x2="450" y2="198" stroke="#8b98ad" stroke-width="2" marker-end="url(#d2)"/>
+
+  <text x="20" y="281" font-size="13" font-weight="600" fill="#166534">③ 升级判定：高风险还不够，要看压了多久没复核</text>
+
+  <g font-size="12">
+    <rect x="20" y="294" width="200" height="52" rx="7" fill="#1c2230"/>
+    <text x="120" y="316" text-anchor="middle" fill="#fff">商品已判为高风险</text>
+    <text x="120" y="334" text-anchor="middle" fill="#c9d4e3">沿用上一步结论</text>
+
+    <rect x="260" y="294" width="200" height="52" rx="7" fill="#f2f5f9" stroke="#6b7f99"/>
+    <text x="360" y="316" text-anchor="middle">读在架天数</text>
+    <text x="360" y="334" text-anchor="middle" fill="#6b7f99">已上架 45 天</text>
+
+    <rect x="500" y="294" width="180" height="52" rx="7" fill="#fff7e6" stroke="#b45309"/>
+    <text x="590" y="316" text-anchor="middle">R-B05 复核阈值</text>
+    <text x="590" y="334" text-anchor="middle" fill="#b45309">需超过 30 天，成立</text>
+
+    <rect x="720" y="294" width="160" height="52" rx="7" fill="#eaf6ed" stroke="#166534"/>
+    <text x="800" y="316" text-anchor="middle" fill="#166534">升级为紧急复核</text>
+    <text x="800" y="334" text-anchor="middle" fill="#166534">等级提到 HIGH</text>
+
+    <line x1="220" y1="320" x2="256" y2="320" stroke="#166534" marker-end="url(#d3)"/>
+    <line x1="460" y1="320" x2="496" y2="320" stroke="#166534" marker-end="url(#d3)"/>
+    <line x1="680" y1="320" x2="716" y2="320" stroke="#166534" marker-end="url(#d3)"/>
+  </g>
+
+  <rect x="290" y="372" width="320" height="46" rx="8" fill="#eaf6ed" stroke="#166534" stroke-width="1.6"/>
+  <text x="450" y="392" text-anchor="middle" font-size="13" font-weight="600" fill="#166534">结论：urgent = true，动作「紧急复核」</text>
+  <text x="450" y="410" text-anchor="middle" font-size="11.5" fill="#166534">等级 HIGH，基分 92 + 紧急 5，封顶 99</text>
+  <line x1="800" y1="348" x2="620" y2="370" stroke="#166534" marker-end="url(#d3)"/>
+
+  <text x="20" y="443" font-size="13" font-weight="600" fill="#5a6577">④ 输出：结论、等级、动作随证据一起下发</text>
+  <g font-size="12">
+    <rect x="20" y="454" width="250" height="34" rx="7" fill="#eef1f5" stroke="#8b98ad"/>
+    <text x="145" y="475" text-anchor="middle">每条风险标 ruleId 与引擎</text>
+    <rect x="300" y="454" width="270" height="34" rx="7" fill="#eef1f5" stroke="#8b98ad"/>
+    <text x="435" y="475" text-anchor="middle">附证据：月费 0、无合约、在架 45 天</text>
+    <rect x="600" y="454" width="280" height="34" rx="7" fill="#eaf1fe" stroke="#1f6feb"/>
+    <text x="740" y="475" text-anchor="middle">清单按分数倒序，高危排最前</text>
+  </g>
+</svg>
+<figcaption>链式推理的价值在第二、三步：<code>R-B02</code> 推出「零元无合约」后，<code>R-HR</code> 归并规则自动把商品判成高风险，<code>R-B05</code> 才据此升级为紧急复核。<b>归并这一步没有新条件</b>，条件隐含在前一级结论里。</figcaption>
+</figure>
+
+<p>三档评分固定：HIGH 基分 92、MEDIUM 70、LOW 40；紧急复核再加 5 分并封顶 99。清单按分数倒序输出，高危压在最上面。</p>
+
+<table>
+  <thead><tr><th>非命中 / 兜底情形</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td>商品编码不在货架图，或已下架</td><td>不计入结果，扫描总数照常累计</td></tr>
+    <tr><td>规则一条都没命中</td><td>不出现在清单里，不占用待处置位</td></tr>
+    <tr><td>SWRL 关闭 / 规则配置为 java</td><td>跳过推理，走同逻辑的 Java 判定</td></tr>
+    <tr><td>推理抛异常</td><td>记 warn，整批降级为 Java，引擎字段标 <code>fallback-java</code></td></tr>
+  </tbody>
+</table>
+
+<h2 id="try">四、体验</h2>
+
+<p class="sub">需后端已启动（默认 <code>localhost:6174</code>）。填一个或多个商品编码，逗号分隔；留空则稽核全部在架商品。</p>
+
+<div class="try">
+  <div class="row">
+    <input id="oids" type="text" placeholder="商品编码，多个用英文逗号分隔，如 84176765,34538053" autocomplete="off">
+  </div>
+  <div class="row">
+    <button id="run">执行稽核</button>
+    <button id="clear" class="ghost">清空</button>
+    <button id="all" class="ghost">全量在架</button>
+  </div>
+  <div class="row chips">
+    <button data-oid="84176765">84176765 零元无合约</button>
+    <button data-oid="34538053">34538053 零销 + 低效</button>
+    <button data-oid="55836485">55836485 白名单零元</button>
+  </div>
+  <div class="row">
+    <label class="opt">后端地址 <input id="base" type="text" value="http://localhost:6174"></label>
+  </div>
+  <div id="status" class="status"></div>
+  <div id="result" class="result"></div>
+  <details id="rawWrap" hidden>
+    <summary>原始响应</summary>
+    <pre id="raw"></pre>
+  </details>
+</div>
+
+<p class="note">接口 <code>POST /api/v1/product-ontology/ops/risk-audit</code>，请求体 <code>{"offeringIds": ["..."]}</code>。跨域已放开，页面可直接双击打开。</p>
+
+<h2>五、边界</h2>
+<ul>
+  <li>只稽核在架商品，已下架的不计入；商品清单为空时按全量跑。</li>
+  <li>低效占比按当前货架收入分布现算，货架变化后同一商品的结论可能变动。</li>
+  <li>风险结论不落库，处置只在本次响应里，不产生工单。</li>
+  <li>白名单按标签或名称包含匹配，改名可能误判为白名单。</li>
+</ul>
+
+<footer>本体 <code>backend-app/src/main/resources/ontology/product.ttl</code>；实现 <code>OpsSwrlReasoner.reasonRiskOffering</code> / <code>OpsRiskAuditEngine.auditRisksOn</code>。行号见 <code>docs/本体技术落地业务场景清单.md</code> 第七节。</footer>
+
+</main>
+<script>
+(function () {
+  var oidsEl = document.getElementById('oids');
+  var baseEl = document.getElementById('base');
+  var runEl = document.getElementById('run');
+  var statusEl = document.getElementById('status');
+  var resultEl = document.getElementById('result');
+  var rawEl = document.getElementById('raw');
+  var rawWrap = document.getElementById('rawWrap');
+
+  function setStatus(t, err) {
+    statusEl.textContent = t || '';
+    statusEl.className = 'status' + (err ? ' err' : '');
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function engTag(engine) {
+    if (engine === 'openllet-swrl') return ' <span class="tag swrl">SWRL</span>';
+    if (engine === 'java-rules') return ' <span class="tag java">Java 规则</span>';
+    if (engine === 'fallback-java') return ' <span class="tag fb">兜底 Java</span>';
+    return '';
+  }
+
+  function lvTag(level) {
+    if (level === 'HIGH') return ' <span class="tag lv">HIGH</span>';
+    if (level === 'MEDIUM') return ' <span class="tag mv">MEDIUM</span>';
+    if (level === 'LOW') return ' <span class="tag mv">LOW</span>';
+    return '';
+  }
+
+  function box(html, cls) {
+    var d = document.createElement('div');
+    d.className = 'box' + (cls ? ' ' + cls : '');
+    d.innerHTML = html;
+    resultEl.appendChild(d);
+    return d;
+  }
+
+  function render(d) {
+    resultEl.innerHTML = '';
+    rawWrap.hidden = false;
+    rawEl.textContent = JSON.stringify(d, null, 2);
+
+    if (!d || d.success === false) {
+      box('<h4>稽核失败</h4><div>' + esc(d && d.message) + '</div>', 'bad');
+      return;
+    }
+
+    box('<h4>本次扫描</h4>' +
+        '<div class="meta">引擎 ' + esc(d.reasonEngine) + engTag(d.reasonEngine) + '</div>' +
+        '<div class="meta">扫描 ' + esc(d.scannedCount) + ' · 命中 ' + esc(d.total) +
+        ' · 高危 ' + esc(d.highCount) + ' · 中危 ' + esc(d.mediumCount) +
+        ' · 建议下架 ' + esc(d.suggestDelistCount) + '</div>' +
+        '<div class="meta">SWRL 成功 ' + esc(d.swrlOkCount) + ' / 降级 ' + esc(d.swrlFailCount) +
+        ' · 规则版本 ' + esc(d.ruleVersion) + '</div>',
+        d.total ? 'good' : '');
+
+    (d.items || []).forEach(function (it) {
+      var h = '<h4>' + esc(it.offeringId) + ' ' + esc(it.offeringName || '') + lvTag(it.riskLevel) +
+              ' <span class="meta">分 ' + esc(it.riskScore) + (it.urgent ? ' · 紧急复核' : '') + '</span></h4>';
+      (it.risks || []).forEach(function (r) {
+        h += '<div>' + esc(r.feature) + engTag(r.engine) +
+             ' <span class="meta">' + esc(r.ruleId) + '</span></div>' +
+             '<div class="meta">' + esc(r.message) + '</div>';
+      });
+      if (it.actions && it.actions.length) {
+        h += '<div class="meta">处置：' + it.actions.map(esc).join(' ｜ ') + '</div>';
+      }
+      if (it.evidenceTriples && it.evidenceTriples.length) {
+        h += '<div class="meta">证据：' + it.evidenceTriples.map(function (t) {
+          return Array.isArray(t) ? t.join(' — ') : JSON.stringify(t);
+        }).map(esc).join(' ； ') + '</div>';
+      }
+      box(h, it.riskLevel === 'HIGH' ? 'bad' : '');
+    });
+
+    if (!d.total) {
+      box('<div class="empty">这批商品没命中风险。可以试试上面的示例编码，或点「全量在架」。</div>');
+    }
+  }
+
+  function run(all) {
+    var raw = all ? '' : oidsEl.value.trim();
+    var ids = raw ? raw.split(/[,，\s]+/).filter(Boolean) : null;
+    var base = baseEl.value.trim().replace(/\/+$/, '') || 'http://localhost:6174';
+    runEl.disabled = true;
+    setStatus('稽核中…');
+    fetch(base + '/api/v1/product-ontology/ops/risk-audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ids ? { offeringIds: ids } : {})
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var d;
+        try { d = JSON.parse(t); } catch (e) { throw new Error('HTTP ' + r.status + ' 非 JSON：' + t.slice(0, 160)); }
+        if (!r.ok) throw new Error('HTTP ' + r.status + '：' + (d.message || ''));
+        return d && d.data !== undefined ? d.data : d;
+      });
+    }).then(function (d) {
+      setStatus('完成');
+      render(d);
+    }).catch(function (e) {
+      resultEl.innerHTML = '';
+      setStatus('');
+      box('<h4>请求失败</h4><div>' + esc(e.message) + '</div>' +
+          '<div class="meta">检查后端是否已启动、地址是否正确，或跨域是否被拦截。</div>', 'bad');
+    }).then(function () {
+      runEl.disabled = false;
+    });
+  }
+
+  runEl.addEventListener('click', function () { run(false); });
+  document.getElementById('all').addEventListener('click', function () { run(true); });
+  oidsEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(false); });
+  document.getElementById('clear').addEventListener('click', function () {
+    oidsEl.value = ''; resultEl.innerHTML = ''; rawWrap.hidden = true; setStatus('');
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.chips button'), function (b) {
+    b.addEventListener('click', function () {
+      oidsEl.value = b.dataset.oid || '';
+      run(false);
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+# =============================================================================
+# 产商品运营本体 —— 场景③：发品前配置合规（product-config-compliance.ttl）
+# -----------------------------------------------------------------------------
+# 业务叙事：D-3 配置评审。新品上架前过合规闸门，拦截必填缺失、互斥冲突、
+#           孤儿附加、高风险零固费、异常优惠漏洞、固费越界；全过则判合规通过。
+#
+# 入口端点：POST /api/v1/product-ontology/config/shelf-compliance
+#           body {"offering_ids":["OF-CFG-001"]}（空数组 = 全量扫描）
+#           出参：items[].pass / items[].violations[].ruleId / [].issueLevel
+#           issueLevel：R-C06=MEDIUM，其余 R-C03/C04/C05/C07/C09=HIGH；
+#           任一 HIGH 存在即 pass=false。
+#
+# 引擎：R-C03~C09 全部 engine=swrl（Openllet），失败回退 java-rules。
+#       R-C01（场景/品类默认补全）、R-C02（品类模板补全）为纯 Java，
+#       不产生 SWRL 结论，本文件不建模 —— 见文末注释。
+#       阈值单源：ops_rules.json#/config（RiskRules-v1.2）。
+#
+# 建模要点：
+#   - 配置草稿被压平为单个 :Offering 个体断言，不拆子要素个体
+#     （第三方平台导入只识别主体直接 rdf:type 的资源）。
+#   - 判定输入大量为后端预计算布尔（c06Missing* / sameMutexGroup / hasGiftFee 等），
+#     本体只做布尔→结论类的一步映射。
+#   - fixedFeeAmount 在本场景以 xsd:decimal 断言到 :Offering（与 Java
+#     dataAssertFloat 口径对齐，避免与 ChargePlan.domain 冲突）。
+# =============================================================================
+
+@prefix :          <http://prodai.sitech.com/ontology/product#> .
+@prefix owl:       <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:       <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:      <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:       <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl:      <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb:     <http://www.w3.org/2003/11/swrlb#> .
+
+<http://prodai.sitech.com/ontology/product-config-compliance> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营本体-场景③配置合规"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "R-C03 互斥冲突 / R-C04 孤儿附加 / R-C05 高风险零固费 / R-C06 必填缺失 / R-C07 异常优惠 / R-C08 合规通过 / R-C09 固费区间。"@zh ;
+    owl:imports <http://prodai.sitech.com/ontology/product-core> .
+
+
+#################################################################
+# 1. 类：合规结论（SWRL head）
+#################################################################
+
+:ConfigViolation rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "配置违规"@zh ;
+    rdfs:comment "R-C03/04/05/06/07/09 违规结论的抽象父类。"@zh .
+
+:C06MissingRequired rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "必填缺失"@zh ;
+    rdfs:comment "R-C06：名称/品类/资费/渠道任一必填缺失。issueLevel=MEDIUM。"@zh .
+
+:C03MutualExclusiveConflict rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "互斥冲突"@zh ;
+    rdfs:comment "R-C03：与在架互斥组冲突，或折扣与赠费并存。issueLevel=HIGH。"@zh .
+
+:C04OrphanAddon rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "附加缺依赖"@zh ;
+    rdfs:comment "R-C04：附加资费缺少依赖主资费。issueLevel=HIGH。"@zh .
+
+:C05HighRiskZeroFee rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "高风险零固费"@zh ;
+    rdfs:comment "R-C05：固费与一次性费均为 0 且无合约、非白名单、非内部验证。issueLevel=HIGH。"@zh .
+
+:C07AbnormalDiscount rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "异常优惠漏洞"@zh ;
+    rdfs:comment "R-C07：折扣 >= 100 且可重复订购。issueLevel=HIGH。"@zh .
+
+:C09FeeRangeViolation rdf:type owl:Class ;
+    rdfs:subClassOf :ConfigViolation ;
+    rdfs:label "资费区间违规"@zh ;
+    rdfs:comment "R-C09：固费低于下限或高于上限（等于边界不命中）。issueLevel=HIGH。"@zh .
+
+:C08Compliant rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "合规通过"@zh ;
+    rdfs:comment "R-C08：未命中任何 ConfigViolation；由第二轮推理以 hasViolation=false 判定。"@zh .
+
+# 违规与合规互斥，避免同一主体同时归入两类
+:ConfigViolation owl:disjointWith :C08Compliant .
+
+
+#################################################################
+# 2. 数据属性：配置草稿事实（运行时断言）
+#################################################################
+
+:offeringType rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:string ;
+    rdfs:label "产商品类型"@zh ;
+    rdfs:comment "取值 addon 时视作附加资费。"@zh .
+
+:fixedFeeAmount rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "固定资费金额"@zh ;
+    rdfs:comment "由 resolveFixedFee 塌缩取值（fixedFeeAmount > monthlyFee > chargePlan.fixedFeeAmount）。"@zh .
+
+:isAddonFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否附加包"@zh ;
+    rdfs:comment "offeringType==addon 或 isMainOffer==false。"@zh .
+
+:hasDependOn rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否有依赖"@zh ;
+    rdfs:comment "dependOn 或 sourceOfferRef 非空。"@zh .
+
+:repeatableOrderFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "可重复订购断言"@zh ;
+    rdfs:comment "repeatable==true 或 repeatChargeFlag=='是'；勿与风险侧 repeatableFlag 混用。"@zh .
+
+:hasPreferredDiscount rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "存在折扣"@zh ;
+    rdfs:comment "discountPercent > 0。"@zh .
+
+:hasGiftFee rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "存在赠费"@zh ;
+    rdfs:comment "freeFeeAmount / giftFee / prefFee 任一 > 0。"@zh .
+
+:bindsExistingMainPkg rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "绑定已有主套餐断言"@zh .
+
+:sameMutexGroup rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "同互斥组"@zh ;
+    rdfs:comment "引擎注入 _sameMutexGroup：与在架资费落在同一互斥组。"@zh .
+
+:inWhitelistFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否白名单断言"@zh ;
+    rdfs:comment "bizScenario ∈ equityGiftWhitelist。"@zh .
+
+:internalTestFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "是否内部验证"@zh ;
+    rdfs:comment "channelScope=='内部验证'。"@zh .
+
+:c06MissingName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺失-名称"@zh .
+
+:c06MissingCategory rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺失-品类"@zh ;
+    rdfs:comment "messageRootKey 为空。"@zh .
+
+:c06MissingFee rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺失-资费"@zh .
+
+:c06MissingChannel rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "缺失-渠道"@zh .
+
+:hasViolation rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "存在违规"@zh ;
+    rdfs:comment "第一轮推理后由调用方汇总断言，驱动 R-C08 第二轮。"@zh .
+
+
+#################################################################
+# 3. 命名阈值个体（运行时按 ops_rules.json#/config 覆写）
+#################################################################
+
+:th_RC07_discountFull rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "100"^^xsd:decimal ; rdfs:label "R-C07.discountFull"@en .
+:th_RC09_feeMin rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "9"^^xsd:decimal ; rdfs:label "R-C09.feeMin"@en .
+:th_RC09_feeMax rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "599"^^xsd:decimal ; rdfs:label "R-C09.feeMax"@en .
+
+
+#################################################################
+# 4. SWRL 变量声明
+#################################################################
+
+:v_c6n rdf:type swrl:Variable . :v_c6na rdf:type swrl:Variable .
+:v_c6c rdf:type swrl:Variable . :v_c6ca rdf:type swrl:Variable .
+:v_c6f rdf:type swrl:Variable . :v_c6fa rdf:type swrl:Variable .
+:v_c6h rdf:type swrl:Variable . :v_c6ha rdf:type swrl:Variable .
+:v_c3m rdf:type swrl:Variable . :v_c3b rdf:type swrl:Variable . :v_c3d rdf:type swrl:Variable . :v_c3g rdf:type swrl:Variable .
+:v_c4 rdf:type swrl:Variable . :v_c4a rdf:type swrl:Variable . :v_c4p rdf:type swrl:Variable .
+:v_c5 rdf:type swrl:Variable . :v_c5m rdf:type swrl:Variable . :v_c5o rdf:type swrl:Variable .
+:v_c5c rdf:type swrl:Variable . :v_c5w rdf:type swrl:Variable . :v_c5i rdf:type swrl:Variable .
+:v_c7 rdf:type swrl:Variable . :v_c7d rdf:type swrl:Variable . :v_c7r rdf:type swrl:Variable . :v_c7t rdf:type swrl:Variable .
+:v_c9b rdf:type swrl:Variable . :v_c9f rdf:type swrl:Variable . :v_c9t rdf:type swrl:Variable .
+:v_c9u rdf:type swrl:Variable . :v_c8 rdf:type swrl:Variable . :v_c8v rdf:type swrl:Variable .
+
+
+#################################################################
+# 5. SWRL 规则（R-C03 ~ R-C09）
+#################################################################
+
+# R-C06.name
+[ rdf:type swrl:Imp ; rdfs:label "R-C06.name"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6n ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingName ; swrl:argument1 :v_c6n ; swrl:argument2 :v_c6na ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6na "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6n ] ) ] .
+
+# R-C06.category
+[ rdf:type swrl:Imp ; rdfs:label "R-C06.category"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6c ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingCategory ; swrl:argument1 :v_c6c ; swrl:argument2 :v_c6ca ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6ca "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6c ] ) ] .
+
+# R-C06.fee
+[ rdf:type swrl:Imp ; rdfs:label "R-C06.fee"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6f ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingFee ; swrl:argument1 :v_c6f ; swrl:argument2 :v_c6fa ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6fa "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6f ] ) ] .
+
+# R-C06.channel
+[ rdf:type swrl:Imp ; rdfs:label "R-C06.channel"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c6h ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :c06MissingChannel ; swrl:argument1 :v_c6h ; swrl:argument2 :v_c6ha ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c6ha "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C06MissingRequired ; swrl:argument1 :v_c6h ] ) ] .
+
+# R-C03.mutex：绑定已有主套餐 且 同互斥组 → 互斥冲突
+[ rdf:type swrl:Imp ; rdfs:label "R-C03.mutex"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c3m ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :bindsExistingMainPkg ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3b ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :sameMutexGroup ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3d ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3b "true"^^xsd:boolean ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3d "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03MutualExclusiveConflict ; swrl:argument1 :v_c3m ] ) ] .
+
+# R-C03.discountGift：折扣与赠费并存 → 互斥冲突
+[ rdf:type swrl:Imp ; rdfs:label "R-C03.discountGift"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c3m ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasPreferredDiscount ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3d ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasGiftFee ; swrl:argument1 :v_c3m ; swrl:argument2 :v_c3g ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3d "true"^^xsd:boolean ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c3g "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C03MutualExclusiveConflict ; swrl:argument1 :v_c3m ] ) ] .
+
+# R-C04：附加包 且 无依赖 → 孤儿附加
+[ rdf:type swrl:Imp ; rdfs:label "R-C04"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c4 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :isAddonFlag ; swrl:argument1 :v_c4 ; swrl:argument2 :v_c4a ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasDependOn ; swrl:argument1 :v_c4 ; swrl:argument2 :v_c4p ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c4a "true"^^xsd:boolean ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c4p "false"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C04OrphanAddon ; swrl:argument1 :v_c4 ] ) ] .
+
+# R-C05：固费=0 且 一次性费=0 且 无合约 且 非白名单 且 非内部验证 → 高风险零固费
+[ rdf:type swrl:Imp ; rdfs:label "R-C05"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c5 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5m ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :oneTimeFee ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5o ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasContract ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5c ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :inWhitelistFlag ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5w ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :internalTestFlag ; swrl:argument1 :v_c5 ; swrl:argument2 :v_c5i ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c5m "0"^^xsd:decimal ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c5o "0"^^xsd:decimal ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c5c "false"^^xsd:boolean ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c5w "false"^^xsd:boolean ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c5i "false"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C05HighRiskZeroFee ; swrl:argument1 :v_c5 ] ) ] .
+
+# R-C07：折扣>=阈值 且 可重复订购 → 异常优惠漏洞
+[ rdf:type swrl:Imp ; rdfs:label "R-C07"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c7 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :discountPercent ; swrl:argument1 :v_c7 ; swrl:argument2 :v_c7d ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :repeatableOrderFlag ; swrl:argument1 :v_c7 ; swrl:argument2 :v_c7r ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC07_discountFull ; swrl:argument2 :v_c7t ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_c7d :v_c7t ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c7r "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C07AbnormalDiscount ; swrl:argument1 :v_c7 ] ) ] .
+
+# R-C09.below：固费 < 下限 → 区间违规
+[ rdf:type swrl:Imp ; rdfs:label "R-C09.below"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c9b ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c9b ; swrl:argument2 :v_c9f ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC09_feeMin ; swrl:argument2 :v_c9t ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThan ; swrl:arguments ( :v_c9f :v_c9t ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C09FeeRangeViolation ; swrl:argument1 :v_c9b ] ) ] .
+
+# R-C09.above：固费 > 上限 → 区间违规
+[ rdf:type swrl:Imp ; rdfs:label "R-C09.above"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c9u ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :fixedFeeAmount ; swrl:argument1 :v_c9u ; swrl:argument2 :v_c9f ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RC09_feeMax ; swrl:argument2 :v_c9t ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThan ; swrl:arguments ( :v_c9f :v_c9t ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C09FeeRangeViolation ; swrl:argument1 :v_c9u ] ) ] .
+
+# R-C08：存在违规=false → 合规通过（第二轮推理）
+[ rdf:type swrl:Imp ; rdfs:label "R-C08"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_c8 ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :hasViolation ; swrl:argument1 :v_c8 ; swrl:argument2 :v_c8v ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_c8v "false"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :C08Compliant ; swrl:argument1 :v_c8 ] ) ] .
+
+
+#################################################################
+# 6. 不入本体的规则（记录）
+# -----------------------------------------------------------------------------
+# R-C01 场景/品类默认补全、R-C02 品类模板补全：纯 Java（ConfigMessageProjector），
+#   仅产生字段副作用，无 SWRL 结论类，故不建模。
+# =============================================================================

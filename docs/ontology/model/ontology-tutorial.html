@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产商品如何应用本体 · 场景总览</title>
+<style>
+:root{
+  --bg:#0b1220;--panel:#16233a;--panel2:#1c2c47;--line:#2a3d5c;
+  --text:#e6edf7;--muted:#8ea3c0;--faint:#5f7593;
+  --accent:#38bdf8;--accent2:#22d3ee;--ok:#34d399;--warn:#fbbf24;
+  --bad:#f87171;--purple:#a78bfa;--pink:#f472b6;
+  --mono:"Cascadia Code","Consolas","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:#05080f;display:flex;align-items:center;justify-content:center;
+  color:var(--text);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  overflow:hidden;
+}
+#stage{position:relative;width:1280px;height:720px;transform-origin:center center}
+#deck{position:absolute;inset:0;overflow:hidden;border-radius:14px;
+  background:radial-gradient(1200px 700px at 12% -10%,#1b2f4d 0%,transparent 60%),
+             radial-gradient(900px 600px at 100% 110%,#1a2a45 0%,transparent 55%),var(--bg);
+  box-shadow:0 30px 90px rgba(0,0,0,.6)}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;
+  padding:36px 56px 22px;overflow:hidden}
+.slide.active{display:flex;animation:in .32s ease}
+@keyframes in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.kicker{font-size:14px;letter-spacing:.18em;color:var(--accent);font-weight:800;margin-bottom:8px}
+h1{font-size:54px;line-height:1.16;font-weight:800}
+h2{font-size:31px;font-weight:800;margin-bottom:6px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:15.5px;line-height:1.6;margin-bottom:14px;max-width:980px}
+.lead{font-size:19px;color:var(--muted);line-height:1.75}
+.cover{justify-content:center;
+  background:radial-gradient(900px 520px at 80% 20%,rgba(56,189,248,.18),transparent 62%),
+             radial-gradient(700px 460px at 10% 90%,rgba(167,139,250,.16),transparent 60%)}
+.cover h1{font-size:64px;margin-bottom:16px}
+.cover .g1{background:linear-gradient(100deg,#38bdf8,#22d3ee 45%,#a78bfa);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.cover .tag{display:inline-block;padding:7px 16px;border:1px solid var(--line);border-radius:999px;
+  font-size:14px;color:var(--accent2);margin-bottom:26px;background:rgba(34,211,238,.07);align-self:flex-start}
+.cover .chips{display:flex;gap:13px;flex-wrap:wrap;margin-top:34px}
+.chip{padding:11px 19px;border-radius:11px;background:var(--panel);border:1px solid var(--line);
+  font-size:15px;color:var(--muted)}
+.chip b{color:var(--accent);font-weight:800;font-size:20px;margin-right:5px}
+.cover .meta{display:flex;flex-direction:column;gap:9px;margin-top:30px;align-self:flex-start;
+  padding:16px 22px;border-radius:12px;background:rgba(22,35,58,.72);
+  border:1px solid var(--line);border-left:3px solid var(--ok)}
+.cover .mrow{display:flex;align-items:baseline;gap:14px;font-size:15px;line-height:1.5}
+.cover .mrow .mlb{flex:0 0 84px;color:var(--faint);font-size:13px;letter-spacing:.04em}
+.cover .mrow .mval{color:var(--text);font-weight:600}
+a.mval{color:var(--accent2);text-decoration:none;font-family:var(--mono);font-size:14px}
+a.mval:hover{text-decoration:underline;color:var(--accent)}
+.svgwrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;overflow:hidden;margin-bottom:0}
+.svgwrap svg{width:100%;height:auto;max-width:100%;display:block}
+.slide:has(.steps) .svgwrap svg{width:auto;height:100%;max-width:100%}.sbadge{display:inline-block;font-size:13px;font-weight:800;letter-spacing:.05em;
+  padding:4px 12px;border-radius:7px;margin-bottom:10px;align-self:flex-start}
+.sbadge.b{background:rgba(248,113,113,.15);color:var(--bad)}
+.sbadge.a{background:rgba(56,189,248,.15);color:var(--accent)}
+.sbadge.y{background:rgba(251,191,36,.15);color:var(--warn)}
+.sbadge.g{background:rgba(52,211,153,.15);color:var(--ok)}
+.sbadge.w{background:rgba(167,139,250,.15);color:var(--purple)}
+.cap{text-align:center;font-size:13px;color:var(--faint);margin-top:4px}
+/* 逐步推理过程 · 双列明细卡片 */
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:7px;align-content:start;
+  flex:0 0 auto;max-height:300px}
+.st{background:#0a1424;border:1px solid var(--line);border-radius:9px;
+  padding:7px 11px 8px;position:relative;border-left:3px solid var(--accent)}
+.st .sn{font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--accent2);margin-bottom:4px}
+.st .sn .no{display:inline-block;min-width:14px;color:var(--bg);background:var(--accent);
+  border-radius:4px;text-align:center;font-size:9.5px;padding:0 4px;margin-right:5px;letter-spacing:0}
+.st .row{font-size:11.4px;line-height:1.55;color:var(--muted);display:flex;gap:6px}
+.st .row+.row{margin-top:2px}
+.st .row .lb{flex:0 0 auto;color:var(--faint);font-size:10.5px;padding-top:1px}
+.st .row .vl{flex:1;min-width:0}
+.st .row .vl b{color:var(--text)}
+.st .k{color:var(--accent2);font-family:var(--mono);font-weight:700;font-size:10.8px}
+.st .rr{font-family:var(--mono);color:var(--warn);font-weight:700;font-size:10.8px}
+.st .hit{color:var(--ok);font-weight:800}
+.st .cls{font-family:var(--mono);color:var(--text);font-weight:700;font-size:10.8px}
+.st .sub{color:var(--faint)}
+.st:last-child{border-left-color:var(--ok);border-color:rgba(52,211,153,.35);
+  background:linear-gradient(160deg,rgba(52,211,153,.09),#0a1424)}
+.st:last-child .sn{color:var(--ok)}
+.st:last-child .sn .no{background:var(--ok)}
+/* 6 张卡片的页：改 3 列 2 行，压缩行距，把高度让给图示 */
+.steps.dense{grid-template-columns:repeat(3,1fr);gap:6px 8px}
+.steps.dense .st{padding:6px 9px 7px;border-radius:8px;border-left-width:2px}
+.steps.dense .st .sn{font-size:9.5px;margin-bottom:3px;letter-spacing:.04em}
+.steps.dense .st .sn .no{min-width:12px;font-size:9px;padding:0 3px;margin-right:4px}
+.steps.dense .st .row{font-size:10.2px;line-height:1.42;gap:4px}
+.steps.dense .st .row+.row{margin-top:1px}
+.steps.dense .st .row .lb{font-size:9.5px}
+.steps.dense .st .k,.steps.dense .st .rr,.steps.dense .st .cls{font-size:9.8px}
+.pageno{position:absolute;right:56px;bottom:14px;font-family:var(--mono);font-size:13px;color:var(--faint)}
+.pageno b{color:var(--accent)}
+.foot{position:absolute;left:56px;bottom:14px;font-size:12px;color:var(--faint);font-family:var(--mono)}
+#ctrl{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;
+  gap:12px;background:rgba(11,18,32,.92);border:1px solid var(--line);border-radius:999px;
+  padding:7px 15px;z-index:60;backdrop-filter:blur(10px)}
+#ctrl button{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:8px;
+  padding:6px 13px;font-size:13px;cursor:pointer;font-weight:600;font-family:inherit;transition:.15s}
+#ctrl button:hover{background:var(--panel2);border-color:var(--accent);color:var(--accent)}
+#ctrl button:disabled{opacity:.3;cursor:not-allowed}
+#ctrl .c{font-family:var(--mono);font-size:13px;color:var(--faint);min-width:60px;text-align:center}
+#ctrl .c b{color:var(--accent)}
+#ctrl .dots{display:flex;gap:6px}
+#ctrl .dots i{width:8px;height:8px;border-radius:50%;background:var(--line);cursor:pointer;transition:.18s}
+#ctrl .dots i:hover{background:var(--faint)}
+#ctrl .dots i.on{background:var(--accent);width:22px;border-radius:4px}
+@media print{
+  body{display:block;background:#fff;overflow:visible}
+  #stage{width:100%;height:auto;transform:none!important}
+  #deck{position:static;height:auto;box-shadow:none;background:#fff}
+  .slide{display:flex!important;position:relative;inset:auto;height:720px;page-break-after:always}
+  #ctrl{display:none}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="deck">
+
+<!-- ============ 1 封面 ============ -->
+<section class="slide cover active">
+  <div class="tag">产商品运营平台 · 本体应用</div>
+  <h1>产商品如何应用本体<br><span class="g1">五大业务场景，覆盖运营全周期</span></h1>
+  <p class="lead" style="max-width:800px;margin-top:16px">
+    从新品上架到存量治理，本体在每个关键节点替业务<br>自动判定、自动解释、随时可调。
+  </p>
+  <div class="chips">
+    <div class="chip"><b>5</b> 业务场景</div>
+    <div class="chip"><b>4</b> 运营节点</div>
+    <div class="chip"><b>48</b> 条判定规则</div>
+    <div class="chip"><b>64</b> 示例验证</div>
+  </div>
+  <div class="meta">
+    <div class="mrow"><span class="mlb">本体平台</span><a class="mval" href="http://10.88.212.165:2810/" target="_blank" rel="noreferrer">http://10.88.212.165:2810/</a></div>
+    <div class="mrow"><span class="mlb">平台负责人</span><span class="mval">dongkun &nbsp;·&nbsp; liuww</span></div>
+  </div>
+  <div class="foot">面向：业务负责人 · 产品经理 · 运营管理者</div>
+</section>
+
+<!-- ============ 2 全链路架构图 ============ -->
+<section class="slide">
+  <div class="kicker">全链路总览</div>
+  <h2>五个场景，嵌入产商品运营的四个节点</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 520" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/>
+        </marker>
+        <linearGradient id="lane" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#16233a"/><stop offset="1" stop-color="#0d1729"/>
+        </linearGradient>
+      </defs>
+
+      <!-- 产商品主体 中心 -->
+      <rect x="470" y="230" width="220" height="70" rx="14" fill="url(#lane)" stroke="#38bdf8" stroke-width="2"/>
+      <text x="580" y="262" text-anchor="middle" fill="#e6edf7" font-size="20" font-weight="700">产商品</text>
+      <text x="580" y="284" text-anchor="middle" fill="#8ea3c0" font-size="13">一套本体 · 统一判定内核</text>
+
+      <!-- 节点1 上架前 -->
+      <rect x="60" y="60" width="230" height="110" rx="12" fill="#0d1729" stroke="#38bdf8" stroke-width="1.5"/>
+      <rect x="60" y="60" width="230" height="30" rx="12" fill="rgba(56,189,248,.15)"/>
+      <text x="175" y="80" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="800">① 上架前</text>
+      <text x="80" y="112" fill="#e6edf7" font-size="15" font-weight="700">配置合规</text>
+      <text x="80" y="136" fill="#8ea3c0" font-size="12">七道闸门逐项校验</text>
+      <text x="80" y="155" fill="#8ea3c0" font-size="12">不合规当场拦下</text>
+
+      <!-- 节点2 上线后 -->
+      <rect x="870" y="60" width="230" height="110" rx="12" fill="#0d1729" stroke="#f87171" stroke-width="1.5"/>
+      <rect x="870" y="60" width="230" height="30" rx="12" fill="rgba(248,113,113,.15)"/>
+      <text x="985" y="80" text-anchor="middle" fill="#f87171" font-size="14" font-weight="800">② 上线后</text>
+      <text x="890" y="112" fill="#e6edf7" font-size="15" font-weight="700">告警分级</text>
+      <text x="890" y="136" fill="#8ea3c0" font-size="12">P0/P1/P2 客观定级</text>
+      <text x="890" y="155" fill="#8ea3c0" font-size="12">严重自动建单</text>
+
+      <!-- 节点3 运营中 -->
+      <rect x="60" y="350" width="230" height="110" rx="12" fill="#0d1729" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="60" y="350" width="230" height="30" rx="12" fill="rgba(251,191,36,.15)"/>
+      <text x="175" y="370" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="800">③ 运营中</text>
+      <text x="80" y="402" fill="#e6edf7" font-size="15" font-weight="700">指标异动归因</text>
+      <text x="80" y="426" fill="#8ea3c0" font-size="12">四证据链溯源</text>
+      <text x="80" y="445" fill="#8ea3c0" font-size="12">自动找下滑主因</text>
+
+      <!-- 节点4 定期 -->
+      <rect x="870" y="350" width="230" height="110" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="870" y="350" width="230" height="30" rx="12" fill="rgba(52,211,153,.15)"/>
+      <text x="985" y="370" text-anchor="middle" fill="#34d399" font-size="14" font-weight="800">④ 定期</text>
+      <text x="890" y="402" fill="#e6edf7" font-size="15" font-weight="700">风险稽核</text>
+      <text x="890" y="426" fill="#8ea3c0" font-size="12">五类风险持续识别</text>
+      <text x="890" y="445" fill="#8ea3c0" font-size="12">存量风险自动清理</text>
+
+      <!-- 连线 -->
+      <path d="M290 115 L470 250" stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <path d="M870 115 L690 250" stroke="#f87171" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <path d="M290 405 L470 280" stroke="#fbbf24" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+      <path d="M870 405 L690 280" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+
+      <!-- 场景⑤ 底部条 -->
+      <rect x="380" y="345" width="400" height="52" rx="12" fill="#0d1729" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="400" y="368" fill="#a78bfa" font-size="13" font-weight="800">⑤ 优化建议</text>
+      <text x="400" y="388" fill="#8ea3c0" font-size="12">按异动旗标，给出渠道促销 / 保有 / 搭售 / 定价 / 活跃 具体建议</text>
+      <path d="M580 300 L580 345" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+    </svg>
+  </div>
+  <div class="cap">五个场景共用一套本体，分布在产商品生命周期的四个节点上</div>
+  <div class="pageno"><b>2</b> / 8</div>
+</section>
+
+<!-- ============ 3 场景① 配置合规 ============ -->
+<section class="slide">
+  <div class="sbadge a">场景 ① · 上架前</div>
+  <h2>配置合规：要不要让它上架</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs><marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker></defs>
+      <!-- 输入 -->
+      <rect x="30" y="150" width="200" height="130" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="130" y="180" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">输入</text>
+      <text x="50" y="207" fill="#8ea3c0" font-size="12.5">· 资费 / 渠道</text>
+      <text x="50" y="230" fill="#8ea3c0" font-size="12.5">· 必填项</text>
+      <text x="50" y="253" fill="#8ea3c0" font-size="12.5">· 互斥组 / 固费范围</text>
+      <!-- 箭头 -->
+      <line x1="230" y1="215" x2="310" y2="215" stroke="#38bdf8" stroke-width="2" marker-end="url(#a1)"/>
+      <!-- 判定核心 七道闸门 -->
+      <rect x="310" y="110" width="300" height="210" rx="14" fill="#16233a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="460" y="140" text-anchor="middle" fill="#38bdf8" font-size="15" font-weight="800">本体判定 · 七道闸门</text>
+      <g font-size="12.5" fill="#8ea3c0">
+        <rect x="330" y="158" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="390" y="178" text-anchor="middle">必填缺失</text>
+        <rect x="470" y="158" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="530" y="178" text-anchor="middle">互斥冲突</text>
+        <rect x="330" y="200" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="390" y="220" text-anchor="middle">孤儿附加</text>
+        <rect x="470" y="200" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="530" y="220" text-anchor="middle">零元高资费</text>
+        <rect x="330" y="242" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="390" y="262" text-anchor="middle">异常折扣</text>
+        <rect x="470" y="242" width="120" height="32" rx="6" fill="#0d1729" stroke="#2a3d5c"/><text x="530" y="262" text-anchor="middle">资费越界</text>
+        <text x="460" y="302" text-anchor="middle" font-size="12" fill="#5f7593">命中任一 → 归入「违规商品」</text>
+      </g>
+      <!-- 分叉 -->
+      <line x1="610" y1="215" x2="690" y2="215" stroke="#38bdf8" stroke-width="2"/>
+      <path d="M690 215 L690 130 L760 130" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#a1)"/>
+      <path d="M690 215 L690 300 L760 300" stroke="#f87171" stroke-width="2" fill="none"/>
+      <polygon points="760,300 768,296 768,304" fill="#f87171"/>
+      <!-- 输出 两个 -->
+      <rect x="760" y="95" width="360" height="70" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="1.8"/>
+      <text x="780" y="126" fill="#34d399" font-size="15" font-weight="800">✓ 合规通过</text>
+      <text x="780" y="148" fill="#8ea3c0" font-size="12.5">未命中任何违规 → 允许上架</text>
+      <rect x="760" y="265" width="360" height="70" rx="12" fill="#0d1729" stroke="#f87171" stroke-width="1.8"/>
+      <text x="780" y="296" fill="#f87171" font-size="15" font-weight="800">✗ 违规商品</text>
+      <text x="780" y="318" fill="#8ea3c0" font-size="12.5">退回整改，列出具体违规项</text>
+    </svg>
+  </div>
+  <div class="cap">痛点：人工逐项核对易漏 · 产出：过 / 不过的明确结论 + 违规明细</div>
+  <div class="steps">
+    <div class="st"><div class="sn"><span class="no">1</span>取字段值</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>OF-CFG-C06-CH</b> 亲情宽带加固包</span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">channelScope=<b class="k">""</b>（空） · fixedFeeAmount=<b class="k">19.0</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">2</span>规则判定</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-C06.channel</span>：渠道范围为空 → 必填字段缺失</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">"" = 空 <span class="hit">✓ 命中</span> → 推得 <span class="cls">C06MissingRequired</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">3</span>另一条规则</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>OF-CFG-C09-HIGH</b> 600元宽带套餐</span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-C09.high</span>：固费高于合规上限 → 资费越界</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">600.0 &gt; 599.0 <span class="hit">✓ 命中</span> → <span class="cls">C09FeeRangeViolation</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">4</span>类层级归集</div>
+      <div class="row"><span class="lb">前提</span><span class="vl"><span class="cls">C06MissingRequired</span> ⊑ <span class="cls">ConfigViolationOffering</span></span></div>
+      <div class="row"><span class="lb">前提</span><span class="vl"><span class="cls">C09FeeRangeViolation</span> ⊑ <span class="cls">ConfigViolationOffering</span></span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">两个子类都归父类 → <b>违规商品</b>，<span class="hit">退回整改</span></span></div></div>
+  </div>
+  <div class="pageno"><b>3</b> / 8</div>
+</section>
+
+<!-- ============ 4 场景② 告警分级 ============ -->
+<section class="slide">
+  <div class="sbadge b">场景 ② · 上线后</div>
+  <h2>告警分级：严不严重、谁该先处理</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker></defs>
+      <!-- 输入 -->
+      <rect x="30" y="160" width="190" height="110" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="125" y="188" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">输入</text>
+      <text x="48" y="214" fill="#8ea3c0" font-size="12.5">· 计费差错率</text>
+      <text x="48" y="236" fill="#8ea3c0" font-size="12.5">· 异常量</text>
+      <text x="48" y="258" fill="#8ea3c0" font-size="12.5">· 指标趋势</text>
+      <line x1="220" y1="215" x2="300" y2="215" stroke="#38bdf8" stroke-width="2" marker-end="url(#a2)"/>
+      <!-- 判定 -->
+      <rect x="300" y="70" width="120" height="290" rx="12" fill="#16233a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="360" y="215" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="800">本体</text>
+      <text x="360" y="235" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="800">分级</text>
+      <!-- 三级输出 -->
+      <line x1="420" y1="215" x2="500" y2="130" stroke="#f87171" stroke-width="2"/>
+      <line x1="420" y1="215" x2="500" y2="215" stroke="#fbbf24" stroke-width="2"/>
+      <line x1="420" y1="215" x2="500" y2="300" stroke="#38bdf8" stroke-width="2"/>
+      <rect x="500" y="95" width="330" height="70" rx="12" fill="#0d1729" stroke="#f87171" stroke-width="1.8"/>
+      <text x="520" y="126" fill="#f87171" font-size="15" font-weight="800">P0 严重 · 立即建单</text>
+      <text x="520" y="148" fill="#8ea3c0" font-size="12.5">差错率≥5% 或 异常量≥10</text>
+      <rect x="500" y="180" width="330" height="70" rx="12" fill="#0d1729" stroke="#fbbf24" stroke-width="1.8"/>
+      <text x="520" y="211" fill="#fbbf24" font-size="15" font-weight="800">P1 重要 · 跟进建单</text>
+      <text x="520" y="233" fill="#8ea3c0" font-size="12.5">差错率≥1% 或 异常量≥1</text>
+      <rect x="500" y="265" width="330" height="70" rx="12" fill="#0d1729" stroke="#38bdf8" stroke-width="1.8"/>
+      <text x="520" y="296" fill="#38bdf8" font-size="15" font-weight="800">P2 提示 · 观察</text>
+      <text x="520" y="318" fill="#8ea3c0" font-size="12.5">指标趋势转差，影响有限</text>
+      <!-- 建单 -->
+      <rect x="880" y="150" width="230" height="130" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="1.8"/>
+      <text x="900" y="182" fill="#34d399" font-size="14" font-weight="800">需建单商品</text>
+      <text x="900" y="208" fill="#8ea3c0" font-size="12.5">P0 / P1 自动生成工单</text>
+      <text x="900" y="230" fill="#8ea3c0" font-size="12.5">并起算处理时限</text>
+      <text x="900" y="256" fill="#5f7593" font-size="12">→ 严重问题不漏办</text>
+      <line x1="830" y1="130" x2="895" y2="175" stroke="#f87171" stroke-width="1.5"/>
+      <line x1="830" y1="215" x2="878" y2="215" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#a2)"/>
+    </svg>
+  </div>
+  <div class="cap">痛点：轻重缓急靠人判断 · 产出：客观等级 + 严重问题自动建单</div>
+  <div class="steps">
+    <div class="st"><div class="sn"><span class="no">1</span>取指标</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>OF-ALERT-FEE-P0</b> 计费差错告警</span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">feeErrorRate=<b class="k">0.05</b> · errorCount=<b class="k">4.0</b> · orderCount=<b class="k">320.0</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">2</span>一级规则判定</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-E01.fee</span>：计费差错率高于等于一级门槛</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">0.05 ≥ 0.05 <span class="hit">✓ 命中</span> → <span class="cls">P0AlertOffering</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">3</span>未升级检查</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-E01.err</span>：异常量 ≥ 10 才一级</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">4.0 ≥ 10 <b>不成立</b> → 不影响 P0 结论（费率已命中）</span></div></div>
+    <div class="st"><div class="sn"><span class="no">4</span>类层级 + 强制建单</div>
+      <div class="row"><span class="lb">前提</span><span class="vl"><span class="cls">P0AlertOffering</span> ⊑ <span class="cls">AlertOffering</span></span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-E04.p0</span>：一级告警强制建单</span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">→ <span class="cls">NeedWorkOrderOffering</span>，<span class="hit">自动建单 · 30 分钟时限</span></span></div></div>
+  </div>
+  <div class="pageno"><b>4</b> / 8</div>
+</section>
+
+<!-- ============ 5 场景③ 异动归因 ============ -->
+<section class="slide">
+  <div class="sbadge y">场景 ③ · 运营中</div>
+  <h2>指标异动归因：为什么掉了</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker></defs>
+      <!-- 输入 -->
+      <rect x="30" y="165" width="180" height="100" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="120" y="193" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">指标异动</text>
+      <text x="48" y="220" fill="#8ea3c0" font-size="12.5">收入 / 订单环比</text>
+      <text x="48" y="244" fill="#8ea3c0" font-size="12.5">跌破阈值</text>
+      <line x1="210" y1="215" x2="285" y2="215" stroke="#38bdf8" stroke-width="2" marker-end="url(#a3)"/>
+      <!-- 点火 -->
+      <rect x="285" y="180" width="140" height="70" rx="12" fill="#16233a" stroke="#fbbf24" stroke-width="2"/>
+      <text x="355" y="210" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="800">点火</text>
+      <text x="355" y="232" text-anchor="middle" fill="#8ea3c0" font-size="12">确认异动</text>
+      <!-- 四证据 -->
+      <line x1="425" y1="200" x2="490" y2="90" stroke="#fbbf24" stroke-width="1.6"/>
+      <line x1="425" y1="208" x2="490" y2="175" stroke="#fbbf24" stroke-width="1.6"/>
+      <line x1="425" y1="222" x2="490" y2="255" stroke="#fbbf24" stroke-width="1.6"/>
+      <line x1="425" y1="230" x2="490" y2="340" stroke="#fbbf24" stroke-width="1.6"/>
+      <!-- 四证据框 -->
+      <rect x="490" y="60" width="230" height="52" rx="10" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="505" y="82" fill="#e6edf7" font-size="13" font-weight="700">渠道</text>
+      <text x="505" y="101" fill="#8ea3c0" font-size="11.5">订单跌幅 · 贡献占比</text>
+      <rect x="490" y="150" width="230" height="52" rx="10" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="505" y="172" fill="#e6edf7" font-size="13" font-weight="700">促销</text>
+      <text x="505" y="191" fill="#8ea3c0" font-size="11.5">临期天数 · 驱动单占比</text>
+      <rect x="490" y="240" width="230" height="52" rx="10" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="505" y="262" fill="#e6edf7" font-size="13" font-weight="700">竞品</text>
+      <text x="505" y="281" fill="#8ea3c0" font-size="11.5">价差比例 · 渗透率</text>
+      <rect x="490" y="330" width="230" height="52" rx="10" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="505" y="352" fill="#e6edf7" font-size="13" font-weight="700">用户行为</text>
+      <text x="505" y="371" fill="#8ea3c0" font-size="11.5">活跃 · 流失变化</text>
+      <!-- 打分聚合 -->
+      <line x1="720" y1="86" x2="790" y2="200" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="720" y1="176" x2="790" y2="208" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="720" y1="266" x2="790" y2="220" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="720" y1="356" x2="790" y2="232" stroke="#38bdf8" stroke-width="1.5"/>
+      <rect x="790" y="160" width="150" height="110" rx="12" fill="#16233a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="865" y="192" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">按贡献度</text>
+      <text x="865" y="212" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">加权排序</text>
+      <text x="865" y="240" text-anchor="middle" fill="#5f7593" font-size="11.5">取 Top 3</text>
+      <!-- 输出 -->
+      <line x1="940" y1="215" x2="1000" y2="215" stroke="#34d399" stroke-width="2" marker-end="url(#a3)"/>
+      <rect x="1000" y="120" width="130" height="190" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="1.8"/>
+      <text x="1065" y="150" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">候选根因</text>
+      <text x="1018" y="182" fill="#e6edf7" font-size="12">① 渠道 42%</text>
+      <text x="1018" y="208" fill="#e6edf7" font-size="12">② 促销到期</text>
+      <text x="1018" y="234" fill="#e6edf7" font-size="12">③ 竞品分流</text>
+      <text x="1018" y="266" fill="#8ea3c0" font-size="11">附证据与规则</text>
+    </svg>
+  </div>
+  <div class="cap">痛点：逐条排查耗半天 · 产出：带证据的 Top3 候选根因</div>
+  <div class="steps dense">
+    <div class="st"><div class="sn"><span class="no">1</span>判异动（点火）</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>99898653</b> 家庭融合畅享128 · hasMetric <b class="k">v-M-1</b></span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">metricDelta=<b class="k">−0.18</b> · anomalyFlag=<b class="k">true</b></span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-A01.delta</span>：环比低于等于异动阈值 −0.10</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">−0.18 ≤ −0.10 <span class="hit">✓ 命中</span> → <span class="cls">AnomalyOffering</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">2</span>渠道证据</div>
+      <div class="row"><span class="lb">对象</span><span class="vl">soldOn <b class="k">CH-HALL</b> 营业厅</span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-A02</span>：订单跌幅≤−0.20 且贡献占比≥0.30</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">−0.20 / 0.30 双达标 <span class="hit">✓ 主因候选</span> · weight <b class="k">0.30</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">3</span>促销证据</div>
+      <div class="row"><span class="lb">对象</span><span class="vl">participatesIn <b class="k">PR-HF-GIFT</b> 融合加装礼</span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-A03</span>：临期天数≤7 且驱动单占比≥0.25</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">5 天 / 0.31 <span class="hit">✓ 主因候选</span> · weight <b class="k">0.31</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">4</span>竞品证据</div>
+      <div class="row"><span class="lb">对象</span><span class="vl">competesWith <b class="k">CP-F120</b> 竞品融合120</span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-A04</span>：价差比例≥0.15 且渗透率有升</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">0.156 / +2.1pp <span class="hit">✓ 主因候选</span> · weight <b class="k">0.18</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">5</span>行为证据</div>
+      <div class="row"><span class="lb">对象</span><span class="vl">influencedBy <b class="k">UB-RENEW</b> 续约率下降</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">weightHint <b class="k">0.09</b>，低于前三 → <b>不入选</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">6</span>按权重取 Top3</div>
+      <div class="row"><span class="lb">排序</span><span class="vl">0.31（促销） &gt; 0.30（渠道） &gt; 0.18（竞品）</span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">① 促销到期 ② 营业厅渠道 ③ 竞品分流 → <span class="hit">候选根因</span></span></div></div>
+  </div>
+  <div class="pageno"><b>5</b> / 8</div>
+</section>
+
+<!-- ============ 6 场景④ 风险稽核 ============ -->
+<section class="slide">
+  <div class="sbadge g">场景 ④ · 定期</div>
+  <h2>风险稽核：存量里哪些该清理</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs><marker id="a4" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker></defs>
+      <!-- 存量池 -->
+      <rect x="30" y="140" width="200" height="150" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="130" y="170" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">存量产商品</text>
+      <text x="130" y="200" text-anchor="middle" fill="#8ea3c0" font-size="12">全量在架商品</text>
+      <text x="130" y="224" text-anchor="middle" fill="#8ea3c0" font-size="12">月费·销量·合约</text>
+      <text x="130" y="248" text-anchor="middle" fill="#8ea3c0" font-size="12">在架天数·复核态</text>
+      <line x1="230" y1="215" x2="310" y2="215" stroke="#34d399" stroke-width="2" marker-end="url(#a4)"/>
+      <!-- 判定 -->
+      <rect x="310" y="90" width="150" height="250" rx="12" fill="#16233a" stroke="#34d399" stroke-width="2"/>
+      <text x="385" y="130" text-anchor="middle" fill="#34d399" font-size="14" font-weight="800">本体稽核</text>
+      <text x="385" y="160" text-anchor="middle" fill="#8ea3c0" font-size="12">五类风险</text>
+      <text x="385" y="182" text-anchor="middle" fill="#8ea3c0" font-size="12">规则识别</text>
+      <!-- 五类风险 -->
+      <line x1="460" y1="120" x2="530" y2="80" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="460" y1="170" x2="530" y2="150" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="460" y1="215" x2="530" y2="215" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="460" y1="260" x2="530" y2="285" stroke="#34d399" stroke-width="1.5"/>
+      <line x1="460" y1="310" x2="530" y2="350" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="530" y="58" width="250" height="44" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="545" y="85" fill="#e6edf7" font-size="13">零元资费风险</text>
+      <rect x="530" y="128" width="250" height="44" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="545" y="155" fill="#e6edf7" font-size="13">异常折扣</text>
+      <rect x="530" y="193" width="250" height="44" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="545" y="220" fill="#e6edf7" font-size="13">长期零销</text>
+      <rect x="530" y="258" width="250" height="44" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="545" y="285" fill="#e6edf7" font-size="13">低效产商品</text>
+      <rect x="530" y="323" width="250" height="44" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+      <text x="545" y="350" fill="#e6edf7" font-size="13">逾期未复核</text>
+      <!-- 风险分级 输出 -->
+      <line x1="780" y1="215" x2="850" y2="215" stroke="#34d399" stroke-width="2" marker-end="url(#a4)"/>
+      <rect x="850" y="90" width="280" height="250" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="1.8"/>
+      <text x="990" y="124" text-anchor="middle" fill="#34d399" font-size="14" font-weight="800">风险品清单 + 分级</text>
+      <rect x="875" y="145" width="230" height="42" rx="8" fill="rgba(248,113,113,.14)" stroke="#f87171"/>
+      <text x="990" y="172" text-anchor="middle" fill="#f87171" font-size="13" font-weight="700">高 · 立即整改</text>
+      <rect x="875" y="197" width="230" height="42" rx="8" fill="rgba(251,191,36,.14)" stroke="#fbbf24"/>
+      <text x="990" y="224" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">中 · 限期处理</text>
+      <rect x="875" y="249" width="230" height="42" rx="8" fill="rgba(52,211,153,.14)" stroke="#34d399"/>
+      <text x="990" y="276" text-anchor="middle" fill="#34d399" font-size="13" font-weight="700">低 · 观察</text>
+    </svg>
+  </div>
+  <div class="cap">痛点：定期盘点易漏 · 产出：风险清单 + 高/中/低分级整改</div>
+  <div class="steps">
+    <div class="st"><div class="sn"><span class="no">1</span>取字段值</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>84176765</b> 校园流量包（0元）</span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">monthlyFee=<b class="k">0.0</b> · oneTimeFee=<b class="k">0.0</b> · inWhitelist=<b class="k">false</b></span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">onShelf=<b class="k">true</b> · hasContract=<b class="k">false</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">2</span>第一跳 · 零元资费风险</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-B01.zeroFee</span>：月费为0 且 一次性费用为0 且 不在白名单</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">0.0=0.0 ∧ 0.0=0.0 ∧ false=false <span class="hit">✓ 命中</span></span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">→ <span class="cls">ZeroFeeRiskOffering</span> ⊑ <span class="cls">HighRiskOffering</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">3</span>第二跳 · 在架无合约</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-B02</span>：已判零元资费风险，且在架 且 无合约</span></div>
+      <div class="row"><span class="lb">前提</span><span class="vl">上一步已成立 <span class="cls">ZeroFeeRiskOffering</span></span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">onShelf=true ∧ hasContract=false <span class="hit">✓ 命中</span></span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">→ <span class="cls">ZeroFeeNoContractOffering</span></span></div></div>
+    <div class="st"><div class="sn"><span class="no">4</span>分级输出</div>
+      <div class="row"><span class="lb">前提</span><span class="vl"><span class="cls">ZeroFeeNoContractOffering</span> ⊑ <span class="cls">ZeroFeeRiskOffering</span> ⊑ <span class="cls">HighRiskOffering</span></span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">两跳叠加仍属高风险品 → <b>高 · 立即整改</b>，<span class="hit">进风险清单</span></span></div></div>
+  </div>
+  <div class="pageno"><b>6</b> / 8</div>
+</section>
+
+<!-- ============ 7 场景⑤ 优化建议 ============ -->
+<section class="slide">
+  <div class="sbadge w">场景 ⑤ · 运营中</div>
+  <h2>优化建议：接下来该做什么</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 430" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs><marker id="a5" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6 Z" fill="#a78bfa"/></marker></defs>
+      <!-- 输入 旗标 -->
+      <rect x="30" y="130" width="200" height="170" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="130" y="160" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">下降旗标</text>
+      <text x="50" y="192" fill="#8ea3c0" font-size="12.5">· 收入下降</text>
+      <text x="50" y="216" fill="#8ea3c0" font-size="12.5">· 流失上升</text>
+      <text x="50" y="240" fill="#8ea3c0" font-size="12.5">· 绑定率下降</text>
+      <text x="50" y="264" fill="#8ea3c0" font-size="12.5">· 户均收入下降</text>
+      <text x="50" y="288" fill="#8ea3c0" font-size="12.5">· 活跃下降</text>
+      <line x1="230" y1="215" x2="300" y2="215" stroke="#a78bfa" stroke-width="2" marker-end="url(#a5)"/>
+      <!-- 规则映射 -->
+      <rect x="300" y="150" width="140" height="130" rx="12" fill="#16233a" stroke="#a78bfa" stroke-width="2"/>
+      <text x="370" y="200" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="800">本体</text>
+      <text x="370" y="220" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="800">建议规则</text>
+      <text x="370" y="248" text-anchor="middle" fill="#8ea3c0" font-size="11.5">旗标 → 建议</text>
+      <!-- 五条建议 -->
+      <line x1="440" y1="215" x2="510" y2="215" stroke="#a78bfa" stroke-width="1.6"/>
+      <g>
+        <rect x="510" y="52" width="270" height="48" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+        <text x="528" y="81" fill="#e6edf7" font-size="13" font-weight="700">渠道促销建议</text>
+        <text x="680" y="81" fill="#5f7593" font-size="11.5">← 收入下降</text>
+        <rect x="510" y="115" width="270" height="48" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+        <text x="528" y="144" fill="#e6edf7" font-size="13" font-weight="700">保有挽留建议</text>
+        <text x="680" y="144" fill="#5f7593" font-size="11.5">← 流失上升</text>
+        <rect x="510" y="178" width="270" height="48" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+        <text x="528" y="207" fill="#e6edf7" font-size="13" font-weight="700">融合搭售建议</text>
+        <text x="680" y="207" fill="#5f7593" font-size="11.5">← 绑定率降</text>
+        <rect x="510" y="241" width="270" height="48" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+        <text x="528" y="270" fill="#e6edf7" font-size="13" font-weight="700">定价优化建议</text>
+        <text x="680" y="270" fill="#5f7593" font-size="11.5">← 户均收入降</text>
+        <rect x="510" y="304" width="270" height="48" rx="9" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.4"/>
+        <text x="528" y="333" fill="#e6edf7" font-size="13" font-weight="700">活跃经营建议</text>
+        <text x="680" y="333" fill="#5f7593" font-size="11.5">← 活跃下降</text>
+      </g>
+      <line x1="780" y1="215" x2="850" y2="215" stroke="#a78bfa" stroke-width="2" marker-end="url(#a5)"/>
+      <!-- 输出 -->
+      <rect x="850" y="130" width="280" height="170" rx="12" fill="#0d1729" stroke="#a78bfa" stroke-width="1.8"/>
+      <text x="990" y="164" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="800">运营建议商品</text>
+      <text x="875" y="196" fill="#8ea3c0" font-size="12.5">可直接执行的建议动作：</text>
+      <text x="875" y="222" fill="#e6edf7" font-size="12.5">促销 · 挽留 · 搭售 · 定价 · 活跃</text>
+      <text x="875" y="256" fill="#5f7593" font-size="11.5">阈值调整不影响建议逻辑</text>
+    </svg>
+  </div>
+  <div class="cap">痛点：知道问题不知下一步 · 产出：可直接执行的具体建议</div>
+  <div class="steps">
+    <div class="st"><div class="sn"><span class="no">1</span>取下降旗标</div>
+      <div class="row"><span class="lb">实例</span><span class="vl"><b>OF-SUG-O01</b> · 收入环比 −0.12（阈值 −0.10）</span></div>
+      <div class="row"><span class="lb">字段</span><span class="vl">revenueDropFlag=<b class="k">true</b> · churnUsersRiseFlag=<b class="k">false</b></span></div>
+      <div class="row"><span class="lb">其他</span><span class="vl">attachRate / arpu / activeUsers 旗标均为 <b class="k">false</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">2</span>规则映射建议</div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-O01</span>：收入下降旗标为真 → 渠道促销建议</span></div>
+      <div class="row"><span class="lb">求值</span><span class="vl">true <span class="hit">✓ 命中</span> → <span class="cls">ChannelPromotionOffering</span></span></div>
+      <div class="row"><span class="lb">其余</span><span class="vl"><span class="rr">R-O02~R-O05</span> 前件为 false → <b>均不触发</b></span></div></div>
+    <div class="st"><div class="sn"><span class="no">3</span>类层级归集</div>
+      <div class="row"><span class="lb">前提</span><span class="vl"><span class="cls">ChannelPromotionOffering</span> ⊑ <span class="cls">SuggestionOffering</span></span></div>
+      <div class="row"><span class="lb">规则</span><span class="vl"><span class="rr">R-O00.cp</span>：渠道促销建议商品 → 运营建议商品</span></div>
+      <div class="row"><span class="lb">结论</span><span class="vl">→ <b>运营建议商品</b>，输出 <span class="hit">一条可执行动作：渠道促销</span></span></div></div>
+  </div>
+  <div class="pageno"><b>7</b> / 8</div>
+</section>
+
+<!-- ============ 8 总结 ============ -->
+<section class="slide">
+  <div class="kicker">总结</div>
+  <h2>五个场景，覆盖产商品运营全周期</h2>
+  <div class="svgwrap">
+    <svg viewBox="0 0 1160 400" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#a78bfa"/>
+        </linearGradient>
+      </defs>
+      <!-- 时间轴 -->
+      <line x1="90" y1="120" x2="1070" y2="120" stroke="#2a3d5c" stroke-width="3"/>
+      <!-- 五个节点 -->
+      <g text-anchor="middle">
+        <!-- 1 -->
+        <circle cx="170" cy="120" r="16" fill="#38bdf8"/>
+        <text x="170" y="125" fill="#0b1220" font-size="14" font-weight="800">1</text>
+        <text x="170" y="80" fill="#38bdf8" font-size="13" font-weight="800">上架前</text>
+        <rect x="80" y="160" width="180" height="90" rx="11" fill="#0d1729" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="170" y="190" fill="#e6edf7" font-size="14" font-weight="700">① 配置合规</text>
+        <text x="170" y="214" fill="#8ea3c0" font-size="11.5">拦违规 · 事前把关</text>
+        <line x1="170" y1="136" x2="170" y2="160" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- 2 -->
+        <circle cx="400" cy="120" r="16" fill="#f87171"/>
+        <text x="400" y="125" fill="#0b1220" font-size="14" font-weight="800">2</text>
+        <text x="400" y="80" fill="#f87171" font-size="13" font-weight="800">上线后</text>
+        <rect x="310" y="160" width="180" height="90" rx="11" fill="#0d1729" stroke="#f87171" stroke-width="1.5"/>
+        <text x="400" y="190" fill="#e6edf7" font-size="14" font-weight="700">② 告警分级</text>
+        <text x="400" y="214" fill="#8ea3c0" font-size="11.5">定轻重 · 自动建单</text>
+        <line x1="400" y1="136" x2="400" y2="160" stroke="#f87171" stroke-width="1.5"/>
+        <!-- 3 -->
+        <circle cx="630" cy="120" r="16" fill="#fbbf24"/>
+        <text x="630" y="125" fill="#0b1220" font-size="14" font-weight="800">3</text>
+        <text x="630" y="80" fill="#fbbf24" font-size="13" font-weight="800">运营中</text>
+        <rect x="540" y="160" width="180" height="90" rx="11" fill="#0d1729" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="630" y="190" fill="#e6edf7" font-size="14" font-weight="700">③ 异动归因</text>
+        <text x="630" y="214" fill="#8ea3c0" font-size="11.5">找主因 · 省排查</text>
+        <line x1="630" y1="136" x2="630" y2="160" stroke="#fbbf24" stroke-width="1.5"/>
+        <!-- 4 -->
+        <circle cx="860" cy="120" r="16" fill="#34d399"/>
+        <text x="860" y="125" fill="#0b1220" font-size="14" font-weight="800">4</text>
+        <text x="860" y="80" fill="#34d399" font-size="13" font-weight="800">定期</text>
+        <rect x="770" y="160" width="180" height="90" rx="11" fill="#0d1729" stroke="#34d399" stroke-width="1.5"/>
+        <text x="860" y="190" fill="#e6edf7" font-size="14" font-weight="700">④ 风险稽核</text>
+        <text x="860" y="214" fill="#8ea3c0" font-size="11.5">清存量 · 持续识别</text>
+        <line x1="860" y1="136" x2="860" y2="160" stroke="#34d399" stroke-width="1.5"/>
+        <!-- 5 -->
+        <circle cx="1030" cy="120" r="16" fill="#a78bfa"/>
+        <text x="1030" y="125" fill="#0b1220" font-size="14" font-weight="800">5</text>
+        <text x="1030" y="80" fill="#a78bfa" font-size="13" font-weight="800">运营中</text>
+        <rect x="940" y="160" width="180" height="90" rx="11" fill="#0d1729" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="1030" y="190" fill="#e6edf7" font-size="14" font-weight="700">⑤ 优化建议</text>
+        <text x="1030" y="214" fill="#8ea3c0" font-size="11.5">给动作 · 不靠人</text>
+        <line x1="1030" y1="136" x2="1030" y2="160" stroke="#a78bfa" stroke-width="1.5"/>
+      </g>
+      <!-- 底部总结条 -->
+      <rect x="120" y="300" width="920" height="64" rx="14" fill="#16233a" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="580" y="330" text-anchor="middle" fill="#e6edf7" font-size="16" font-weight="800">一套本体，覆盖上架把关 — 上线监控 — 运营归因 — 定期治理 全链路</text>
+      <text x="580" y="352" text-anchor="middle" fill="#8ea3c0" font-size="12.5">自动判定 · 自动解释 · 随时可调</text>
+    </svg>
+  </div>
+  <div class="pageno"><b>8</b> / 8</div>
+</section>
+
+</div>
+</div>
+
+<div id="ctrl">
+  <button id="prev">←</button>
+  <span class="c"><b id="cur">1</b> / <span id="tot">8</span></span>
+  <button id="next">→</button>
+  <div class="dots" id="dots"></div>
+</div>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  function fit() {
+    var s = Math.min(window.innerWidth / 1320, window.innerHeight / 780);
+    stage.style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var idx = 0;
+  var cur = document.getElementById('cur');
+  var dots = document.getElementById('dots');
+  document.getElementById('tot').textContent = slides.length;
+
+  var marks = ['封面', '全链路', '① 配置合规', '② 告警分级',
+    '③ 异动归因', '④ 风险稽核', '⑤ 优化建议', '总结'];
+
+  slides.forEach(function (s, i) {
+    var d = document.createElement('i');
+    d.title = marks[i] || ('第 ' + (i + 1) + ' 页');
+    d.addEventListener('click', function () { go(i); });
+    dots.appendChild(d);
+  });
+
+  function go(n) {
+    if (n < 0 || n >= slides.length) return;
+    slides[idx].classList.remove('active');
+    idx = n;
+    slides[idx].classList.add('active');
+    cur.textContent = idx + 1;
+    Array.prototype.forEach.call(dots.children, function (c, i) {
+      c.classList.toggle('on', i === idx);
+    });
+    document.getElementById('prev').disabled = idx === 0;
+    document.getElementById('next').disabled = idx === slides.length - 1;
+  }
+
+  document.getElementById('prev').addEventListener('click', function () { go(idx - 1); });
+  document.getElementById('next').addEventListener('click', function () { go(idx + 1); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault(); go(idx + 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault(); go(idx - 1);
+    } else if (e.key === 'Home') { go(0); }
+    else if (e.key === 'End') { go(slides.length - 1); }
+    else if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+      } else if (document.exitFullscreen) { document.exitFullscreen(); }
+    } else if (e.key === 'p' || e.key === 'P') { window.print(); }
+  });
+
+  var sx = 0, sy = 0;
+  document.addEventListener('touchstart', function (e) {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    var dx = e.changedTouches[0].clientX - sx;
+    var dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { go(dx < 0 ? idx + 1 : idx - 1); }
+  }, { passive: true });
+
+  go(0);
+})();
+</script>
+</body>
+</html>

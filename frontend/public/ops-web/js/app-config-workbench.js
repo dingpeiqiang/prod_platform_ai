@@ -614,6 +614,45 @@ watch(() => props.activeProductId, () => {
   snapshotPrevValues()
 })
 
+// 需求提报单字段（snake_case）→ 配置 schema 字段 key 的映射表：
+// 需求原文真正抽取到的字段（见后端 CODE_RENDER_REQ 的 BASE_FIELDS/FUSION_EXTRA_FIELDS），
+// 其在「配置信息」页签中对应的配置元素应标「已解析」，而非静态 AI推荐/复用。
+// 仅映射语义明确、可一一对应的字段；resources 为合并串，单独按内容匹配（见 reqSourcedKeys）。
+const REQ_FIELD_MAP = {
+  name: ['prodName', 'prodPrcName'],
+  price: ['monthlyFee', 'fixedFee'],
+  product_type: ['prodAttr'],
+  validity: ['validity', 'monthValidity'],
+  cancel_rule: ['cancelRule'],
+  change_rule: ['effRule'],
+  billing_cycle: ['displayCycle'],
+  members: ['familyTeamType', 'familyCategory', 'familyPayFlag', 'phoneMbrMin', 'phoneMbrMax', 'kdMbrMin', 'kdMbrMax', 'subCardShareRule'],
+}
+// resources 需求串 → 配置资源字段：命中"流量/语音/短信"关键词即视为该资源字段来自需求
+const REQ_RESOURCE_KEYS = { flow: ['flowAmount'], voice: ['voiceAmount'], sms: ['smsAmount'] }
+
+// 计算"来自用户需求原文"的配置字段 key 集合（独立页面非对话模式使用）：
+// 依据需求提报单(requirement_report)实际产出的字段判定；无需求提报单内容时返回空集合，
+// 保证无解析数据时完全回落到既有静态标签逻辑，不改变原行为。
+const reqSourcedSet = computed(() => {
+  const keys = new Set()
+  if (dialogueMode.value || isArchive.value) return keys
+  const nc = nodeContent()
+  const r = nc.offerOf(nc.byNode.requirement_report)
+  if (!r || typeof r !== 'object') return keys
+  const val = (k) => nc.pick(r, [k, 'fields.' + k])
+  Object.keys(REQ_FIELD_MAP).forEach((rk) => {
+    if (val(rk)) REQ_FIELD_MAP[rk].forEach((k) => keys.add(k))
+  })
+  const resources = String(val('resources') || '')
+  if (resources) {
+    if (resources.indexOf('流量') >= 0) REQ_RESOURCE_KEYS.flow.forEach((k) => keys.add(k))
+    if (resources.indexOf('语音') >= 0 || resources.indexOf('分钟') >= 0) REQ_RESOURCE_KEYS.voice.forEach((k) => keys.add(k))
+    if (resources.indexOf('短信') >= 0) REQ_RESOURCE_KEYS.sms.forEach((k) => keys.add(k))
+  }
+  return keys
+})
+
 // 字段标签：优先"用户已解析；对话式配置场景下无原套餐可复用，其余字段统一标"AI推荐"，"
 // 只读档案（存量快照）为历史归档数据，不显示 AI推荐/复用标签；否则按"AI补全/原配置标签"
 const fieldTag = (field) => {
@@ -621,6 +660,8 @@ const fieldTag = (field) => {
   if (isArchive.value) return null
   if (dialogueMode.value) return 'ai'
   if (aiFilled[field.key]) return 'ai'
+  // 独立页面（非对话模式）：字段值来自需求原文抽取的，标「已解析」
+  if (reqSourcedSet.value.has(field.key)) return 'parsed'
   return field.tag || null
 }
 

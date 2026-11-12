@@ -1,0 +1,242 @@
+# =============================================================================
+# 产商品运营本体 —— 场景④：运行告警分级与工单（product-alert.ttl）
+# -----------------------------------------------------------------------------
+# 业务叙事：D+0 实时监控。发品后按计费差错率/异常量/趋势劣化分级 P0~P2，
+#           P0/P1 强制建单并计 SLA，P2 仅观察。
+#
+# 入口端点：POST /appstore/v16/product/monitor/analyze
+#           监控快照字段 order_count / error_count / fee_error_rate /
+#                         order_trend / error_trend / fee_trend
+#           注入异常：POST /appstore/v16/product/monitor/inject（如 error_count=3）
+#           出参：alerted / level(P0|P1|P2|NONE) / needWorkOrder / slaMinutes /
+#                 fired[] / reasons[]
+#
+# 引擎：R-E01~R-E04 全部 engine=swrl（Openllet），失败回退 gradeByJava（同源阈值）。
+#       阈值单源：ops_rules.json#/alertGrading（AlertRules-v1.0）。
+#
+# 建模要点与相对既有 product.ttl 的修正：
+#   1) 原 product.ttl 只有 :AlertOffering 类、缺 R-E00 规则体，导致 AlertOffering
+#      恒为空集。本文件补 R-E00.p0/p1/p2 三条 SWRL，使
+#          P0AlertOffering ⊑ AlertOffering、P1 ⊑ Alert、P2 ⊑ Alert 闭环成立。
+#   2) 原 alertLevel / needWorkOrder 定义但从不写回。本文件保留两属性并新增
+#      :slaMinutes，规则 head 通过哈希个体无法写值，故保持为「调用方写回位」，
+#      rdfs:comment 明确标注，避免误以为 SWRL 会赋值。SLA 值仍以命名个体承载。
+#   3) 去掉空壳 :MonitorMetric / :hasMonitorMetric：监控事实直接断言在 Offering 上。
+#   4) 补 owl:disjointWith 表达 P0/P1/P2 互斥（原 TTL 仅靠 Java if-else 顺序）。
+#   5) 补 R-E04.p2 → 不建单以显式表达（可选，语义上 P2 不归入 NeedWorkOrder 即默认）。
+# =============================================================================
+
+@prefix :          <http://prodai.sitech.com/ontology/product#> .
+@prefix owl:       <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:       <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:      <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:       <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl:      <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb:     <http://www.w3.org/2003/11/swrlb#> .
+
+<http://prodai.sitech.com/ontology/product-alert> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营本体-场景④告警分级"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "R-E00 告警点火 / R-E01 P0 / R-E02 P1 / R-E03 P2 / R-E04 强制建单。"@zh ;
+    owl:imports <http://prodai.sitech.com/ontology/product-core> .
+
+
+#################################################################
+# 1. 类：告警等级（SWRL head）
+#################################################################
+
+:AlertOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "告警产商品"@zh ;
+    rdfs:comment "R-E00 点火：归入 P0/P1/P2 任一级别即视为告警。"@zh .
+
+:P0AlertOffering rdf:type owl:Class ;
+    rdfs:subClassOf :AlertOffering ;
+    rdfs:label "P0严重告警"@zh ;
+    rdfs:comment "R-E01：计费差错率>=0.05 或 异常量>=10，需立即处置。SLA=30 分钟。"@zh .
+
+:P1AlertOffering rdf:type owl:Class ;
+    rdfs:subClassOf :AlertOffering ;
+    rdfs:label "P1重要告警"@zh ;
+    rdfs:comment "R-E02：计费差错率>=0.01 或 异常量>=1，需当日处置。SLA=240 分钟。"@zh .
+
+:P2AlertOffering rdf:type owl:Class ;
+    rdfs:subClassOf :AlertOffering ;
+    rdfs:label "P2提示告警"@zh ;
+    rdfs:comment "R-E03：仅趋势劣化无实量异常，观察即可。SLA=1440 分钟。"@zh .
+
+:NeedWorkOrderOffering rdf:type owl:Class ;
+    rdfs:subClassOf :AlertOffering ;
+    rdfs:label "需建工单产商品"@zh ;
+    rdfs:comment "R-E04：P0/P1 强制建单闭环，P2 不建单（workOrderMinLevel=P1）。"@zh .
+
+# 三级告警互斥：同一快照只落最高一级（原实现靠 Java if-else 顺序，本体显式化）
+:P0AlertOffering owl:disjointWith :P1AlertOffering .
+:P1AlertOffering owl:disjointWith :P2AlertOffering .
+:P0AlertOffering owl:disjointWith :P2AlertOffering .
+
+
+#################################################################
+# 2. 数据属性：运行监控事实（运行时断言）
+#################################################################
+
+:orderCount rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "订单量"@zh ; rdfs:comment "源 order_count。"@zh .
+
+:errorCount rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "异常量"@zh ; rdfs:comment "源 error_count；>=1 触发 P1，>=10 触发 P0。"@zh .
+
+:feeErrorRate rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal ;
+    rdfs:label "计费差错率"@zh ; rdfs:comment "源 fee_error_rate；>=0.01 触发 P1，>=0.05 触发 P0。"@zh .
+
+:orderTrendDown rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "订单量下滑"@zh ; rdfs:comment "预计算布尔：order_trend=='下降'。"@zh .
+
+:errorTrendUp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "异常量上升"@zh ; rdfs:comment "预计算布尔：error_trend=='上升'。"@zh .
+
+:feeTrendUp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean ;
+    rdfs:label "计费差错率上升"@zh ; rdfs:comment "预计算布尔：fee_trend=='上升'。"@zh .
+
+
+#################################################################
+# 3. 数据属性：分级结论写回位（调用方写回，SWRL 不赋值）
+#################################################################
+
+:alertLevel rdf:type owl:DatatypeProperty ;
+    rdfs:domain :AlertOffering ; rdfs:range xsd:string ;
+    rdfs:label "告警等级"@zh ;
+    rdfs:comment "P0/P1/P2/NONE。由调用方按 getTypes() 结果写回，SWRL head 无法赋值。"@zh .
+
+:needWorkOrder rdf:type owl:DatatypeProperty ;
+    rdfs:domain :AlertOffering ; rdfs:range xsd:boolean ;
+    rdfs:label "需建工单"@zh ;
+    rdfs:comment "由调用方按是否归入 NeedWorkOrderOffering 写回。"@zh .
+
+:slaMinutes rdf:type owl:DatatypeProperty ;
+    rdfs:domain :AlertOffering ; rdfs:range xsd:integer ;
+    rdfs:label "处置时限(分钟)"@zh ;
+    rdfs:comment "P0=30 / P1=240 / P2=1440，来自 :th_RE00_sla* 命名个体。"@zh .
+
+
+#################################################################
+# 4. 命名阈值个体（运行时按 ops_rules.json#/alertGrading 覆写）
+#################################################################
+
+:th_RE01_feeErrorRateGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.05"^^xsd:decimal ; rdfs:label "R-E01.feeErrorRateGte"@en .
+:th_RE01_errorCountGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "10"^^xsd:decimal ; rdfs:label "R-E01.errorCountGte"@en .
+:th_RE02_feeErrorRateGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.01"^^xsd:decimal ; rdfs:label "R-E02.feeErrorRateGte"@en .
+:th_RE02_errorCountGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "1"^^xsd:decimal ; rdfs:label "R-E02.errorCountGte"@en .
+
+# SLA 阈值个体：本体承载，供调用方写回 slaMinutes
+:th_RE00_slaP0Minutes rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "30"^^xsd:decimal ; rdfs:label "R-E00.slaP0Minutes"@en .
+:th_RE00_slaP1Minutes rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "240"^^xsd:decimal ; rdfs:label "R-E00.slaP1Minutes"@en .
+:th_RE00_slaP2Minutes rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "1440"^^xsd:decimal ; rdfs:label "R-E00.slaP2Minutes"@en .
+
+
+#################################################################
+# 5. SWRL 变量声明
+#################################################################
+
+:v_e1fo rdf:type swrl:Variable . :v_e1ff rdf:type swrl:Variable . :v_e1ft rdf:type swrl:Variable .
+:v_e1eo rdf:type swrl:Variable . :v_e1ee rdf:type swrl:Variable . :v_e1et rdf:type swrl:Variable .
+:v_e2eo rdf:type swrl:Variable . :v_e2ee rdf:type swrl:Variable . :v_e2et rdf:type swrl:Variable .
+:v_e2fo rdf:type swrl:Variable . :v_e2ff rdf:type swrl:Variable . :v_e2ft rdf:type swrl:Variable .
+:v_e3eo rdf:type swrl:Variable . :v_e3ef rdf:type swrl:Variable .
+:v_e3fo rdf:type swrl:Variable . :v_e3ff rdf:type swrl:Variable .
+:v_e3do rdf:type swrl:Variable . :v_e3df rdf:type swrl:Variable .
+:v_e4o rdf:type swrl:Variable . :v_e4bo rdf:type swrl:Variable . :v_e4po rdf:type swrl:Variable .
+:v_e0p rdf:type swrl:Variable . :v_e0q rdf:type swrl:Variable . :v_e0r rdf:type swrl:Variable .
+
+
+#################################################################
+# 6. SWRL 规则（R-E00 ~ R-E04）
+#################################################################
+
+# R-E01.fee：计费差错率 >= 0.05 → P0
+[ rdf:type swrl:Imp ; rdfs:label "R-E01.fee"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e1fo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeErrorRate ; swrl:argument1 :v_e1fo ; swrl:argument2 :v_e1ff ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE01_feeErrorRateGte ; swrl:argument2 :v_e1ft ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_e1ff :v_e1ft ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_e1fo ] ) ] .
+
+# R-E01.err：异常量 >= 10 → P0
+[ rdf:type swrl:Imp ; rdfs:label "R-E01.err"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e1eo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorCount ; swrl:argument1 :v_e1eo ; swrl:argument2 :v_e1ee ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE01_errorCountGte ; swrl:argument2 :v_e1et ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_e1ee :v_e1et ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_e1eo ] ) ] .
+
+# R-E02.err：异常量 >= 1 → P1
+[ rdf:type swrl:Imp ; rdfs:label "R-E02.err"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e2eo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorCount ; swrl:argument1 :v_e2eo ; swrl:argument2 :v_e2ee ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE02_errorCountGte ; swrl:argument2 :v_e2et ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_e2ee :v_e2et ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_e2eo ] ) ] .
+
+# R-E02.fee：计费差错率 >= 0.01 → P1
+[ rdf:type swrl:Imp ; rdfs:label "R-E02.fee"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e2fo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeErrorRate ; swrl:argument1 :v_e2fo ; swrl:argument2 :v_e2ff ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RE02_feeErrorRateGte ; swrl:argument2 :v_e2ft ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_e2ff :v_e2ft ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_e2fo ] ) ] .
+
+# R-E03.errTrend
+[ rdf:type swrl:Imp ; rdfs:label "R-E03.errTrend"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e3eo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :errorTrendUp ; swrl:argument1 :v_e3eo ; swrl:argument2 :v_e3ef ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_e3ef "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_e3eo ] ) ] .
+
+# R-E03.feeTrend
+[ rdf:type swrl:Imp ; rdfs:label "R-E03.feeTrend"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e3fo ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :feeTrendUp ; swrl:argument1 :v_e3fo ; swrl:argument2 :v_e3ff ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_e3ff "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_e3fo ] ) ] .
+
+# R-E03.orderTrend
+[ rdf:type swrl:Imp ; rdfs:label "R-E03.orderTrend"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_e3do ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderTrendDown ; swrl:argument1 :v_e3do ; swrl:argument2 :v_e3df ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_e3df "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_e3do ] ) ] .
+
+# R-E04.p0 / R-E04.p1：P0/P1 强制建单
+[ rdf:type swrl:Imp ; rdfs:label "R-E04.p0"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_e4o ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :NeedWorkOrderOffering ; swrl:argument1 :v_e4o ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-E04.p1"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_e4bo ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :NeedWorkOrderOffering ; swrl:argument1 :v_e4bo ] ) ] .
+
+# R-E00 告警点火：原 TTL 缺失，此处补三条使 AlertOffering 不再为空集
+[ rdf:type swrl:Imp ; rdfs:label "R-E00.p0"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P0AlertOffering ; swrl:argument1 :v_e0p ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AlertOffering ; swrl:argument1 :v_e0p ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-E00.p1"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P1AlertOffering ; swrl:argument1 :v_e0q ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AlertOffering ; swrl:argument1 :v_e0q ] ) ] .
+
+[ rdf:type swrl:Imp ; rdfs:label "R-E00.p2"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :P2AlertOffering ; swrl:argument1 :v_e0r ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AlertOffering ; swrl:argument1 :v_e0r ] ) ] .

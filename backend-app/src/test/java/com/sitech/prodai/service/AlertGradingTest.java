@@ -25,7 +25,7 @@ class AlertGradingTest {
     private OpsRulesService opsRules;
 
     private OpsSwrlReasoner.SwrlAlertResult grade(Map<String, Object> facts) {
-        return reasoner.gradeAlert("OF-HF-128", facts,
+        return reasoner.gradeAlert("99898653", facts,
                 opsRules.alertRule("R-E01"), opsRules.alertRule("R-E02"),
                 opsRules.alertRule("R-E03"), opsRules.alertRule("R-E04"),
                 opsRules.alertDefaults());

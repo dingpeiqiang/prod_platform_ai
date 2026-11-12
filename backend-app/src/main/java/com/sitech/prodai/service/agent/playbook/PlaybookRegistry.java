@@ -228,6 +228,11 @@ public class PlaybookRegistry {
         // 多本命中时按"计划工具 ∩ 手册步骤工具"更长者决胜——交集规模即需求覆盖度
         String bestByToolChain = null;
         int bestChainOverlap = 0;
+        // 直接意图码命中的手册工具链交集规模：工具链交集只有严格更优（>）时才能压过
+        // 直接意图命中，并列（==）时保留直接命中——否则会按 HashMap 迭代序被浅交集手册劫持
+        // （如 intent=RD_CONFIG_CHAT 计划工具含 rd_compliance，与 doc-batch-import 交集 1，
+        //  与直命中手册同分却因遍历序靠前误劫持为本手册本该执行的文档解析链路）
+        int directHitChainOverlap = 0;
         // rd 场景意图码为工具名推导（RD_<TOOL> 大写），非手册 intents 业务码：
         // LLM 照注入的 SOP 办事但自选了手册工具链上的工具（如只选品类/抽取/生成三环），
         // 编排层升级判定需借工具链认领——计划工具与手册步骤工具求交集即可归属（意图码不可靠）
@@ -243,6 +248,7 @@ public class PlaybookRegistry {
             }
             boolean intentHit = intent != null && at.get("intents") instanceof List<?> intents
                     && intents.stream().map(this::str).anyMatch(i -> i.equalsIgnoreCase(intent));
+            boolean directHit = intentHit;
             if (!intentHit && intentIsToolCode) {
                 // 意图码是工具名推导码：按计划工具与手册步骤工具链交集判定
                 List<String> chain = stepTools(book);
@@ -264,6 +270,13 @@ public class PlaybookRegistry {
             if (firstHit == null) {
                 firstHit = e.getKey();
             }
+            if (directHit) {
+                List<String> chain = stepTools(book);
+                if (!chain.isEmpty() && toolNames != null) {
+                    int overlap = (int) toolNames.stream().filter(chain::contains).count();
+                    directHitChainOverlap = Math.max(directHitChainOverlap, overlap);
+                }
+            }
             if (intentHit && firstHit != null && question != null && !question.isBlank()
                     && at.get("intent_guide") instanceof Map<?, ?> guide && !guide.isEmpty()) {
                 int score = guideUtteranceScore(guide, question);
@@ -276,7 +289,9 @@ public class PlaybookRegistry {
         if (bestByUtterance != null) {
             return bestByUtterance;
         }
-        if (bestByToolChain != null) {
+        // 工具链交集仅在「严格更优」于直接意图命中时生效：并列（<=）保留直接命中，
+        // 防止按 HashMap 迭代序被浅交集手册劫持（直命中即 LLM 明确判定的意图归属）
+        if (bestByToolChain != null && bestChainOverlap > directHitChainOverlap) {
             return bestByToolChain;
         }
         return firstHit;

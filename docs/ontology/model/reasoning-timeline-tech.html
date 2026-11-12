@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>product.ttl · 推理时序图（培训）</title>
+<style>
+:root{
+  --bg:#0b1220;--panel:#16233a;--panel2:#1c2c47;--line:#2a3d5c;
+  --text:#e6edf7;--muted:#8ea3c0;--faint:#5f7593;
+  --accent:#38bdf8;--accent2:#22d3ee;--ok:#34d399;--warn:#fbbf24;
+  --bad:#f87171;--purple:#a78bfa;--pink:#f472b6;
+  --mono:"Cascadia Code","Consolas","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{
+  background:#05080f;color:var(--text);
+  font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  padding:0;
+}
+.slide-page{max-width:1280px;margin:0 auto 28px;border-radius:14px;
+  background:radial-gradient(1200px 700px at 12% -10%,#1b2f4d 0%,transparent 60%),
+             radial-gradient(900px 600px at 100% 110%,#1a2a45 0%,transparent 55%),var(--bg);
+  box-shadow:0 20px 60px rgba(0,0,0,.55);padding:32px 44px 26px;position:relative}
+.top-bar{max-width:1280px;margin:18px auto 24px;display:flex;align-items:center;
+  justify-content:space-between;gap:16px;padding:0 8px;flex-wrap:wrap}
+.top-bar h1{font-size:30px;font-weight:800}
+.top-bar h1 span{background:linear-gradient(100deg,#38bdf8,#22d3ee 45%,#a78bfa);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.top-bar .meta{display:flex;gap:10px;flex-wrap:wrap}
+.chip{padding:8px 15px;border-radius:999px;background:var(--panel);border:1px solid var(--line);
+  font-size:13px;color:var(--muted)}
+.chip b{color:var(--accent);font-weight:800;margin-right:4px}
+.toc{max-width:1280px;margin:0 auto 26px;display:grid;grid-template-columns:repeat(4,1fr);
+  gap:12px;padding:0 8px}
+.toc a{display:block;text-decoration:none;padding:14px 16px;border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);transition:.18s}
+.toc a:hover{border-color:var(--accent);background:var(--panel2);transform:translateY(-2px)}
+.toc .tt{font-size:12px;color:var(--faint);letter-spacing:.06em;margin-bottom:5px}
+.toc .tn{font-size:15px;color:var(--text);font-weight:700}
+.toc .td{font-size:12px;color:var(--muted);margin-top:5px}
+
+.kicker{font-size:13px;letter-spacing:.16em;color:var(--accent);font-weight:800;margin-bottom:9px}
+h2{font-size:27px;font-weight:800;margin-bottom:6px;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:800;margin:20px 0 10px}
+.sub{color:var(--muted);font-size:14.5px;line-height:1.65;margin-bottom:18px;max-width:1000px}
+.sbadge{display:inline-block;font-size:12.5px;font-weight:800;letter-spacing:.05em;
+  padding:5px 13px;border-radius:7px;margin-bottom:10px}
+.sbadge.b{background:rgba(248,113,113,.15);color:var(--bad)}
+.sbadge.a{background:rgba(56,189,248,.15);color:var(--accent)}
+.sbadge.y{background:rgba(251,191,36,.15);color:var(--warn)}
+.sbadge.g{background:rgba(52,211,153,.15);color:var(--ok)}
+.sbadge.w{background:rgba(167,139,250,.15);color:var(--purple)}
+
+.svgwrap{background:#080e1a;border:1px solid var(--line);border-radius:12px;
+  padding:14px 10px;margin-bottom:14px;overflow-x:auto}
+.svgwrap svg{display:block;width:100%;height:auto;min-width:900px}
+
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:14px}
+.fact{background:#0a1424;border:1px solid var(--line);border-left:3px solid var(--accent2);
+  border-radius:9px;padding:11px 14px}
+.fact .fn{font-size:11px;font-weight:800;letter-spacing:.07em;color:var(--accent2);margin-bottom:6px}
+.fact pre{font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--muted);white-space:pre-wrap}
+.fact pre b{color:var(--text)}
+.fact pre .k{color:var(--accent2)}
+.fact pre .v{color:var(--warn)}
+.fact pre .c{color:var(--faint)}
+
+.chain{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+.chain th{background:rgba(56,189,248,.11);color:var(--accent);font-size:12px;letter-spacing:.05em;
+  padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);font-weight:800}
+.chain td{padding:9px 12px;border-bottom:1px solid rgba(42,61,92,.55);color:var(--muted);vertical-align:top}
+.chain tr:last-child td{background:linear-gradient(160deg,rgba(52,211,153,.1),transparent);border-bottom:none}
+.chain tr:last-child td{color:var(--text)}
+.chain .rn{font-family:var(--mono);color:var(--warn);font-weight:700;white-space:nowrap}
+.chain .cl{font-family:var(--mono);color:var(--ok);font-weight:700}
+.chain .rd{font-family:var(--mono);color:var(--accent);font-weight:700;text-align:center;white-space:nowrap}
+
+.notes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.note{background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:12px 15px;
+  border-top:2px solid var(--purple)}
+.note.warn{border-top-color:var(--warn)}
+.note.bad{border-top-color:var(--bad)}
+.note.ok{border-top-color:var(--ok)}
+.note .nt{font-size:12.5px;font-weight:800;color:var(--purple);margin-bottom:7px}
+.note.warn .nt{color:var(--warn)}
+.note.bad .nt{color:var(--bad)}
+.note.ok .nt{color:var(--ok)}
+.note p{font-size:12.8px;line-height:1.68;color:var(--muted)}
+.note p+p{margin-top:6px}
+.note code{font-family:var(--mono);color:var(--accent2);font-size:12px;
+  background:rgba(34,211,238,.08);padding:1px 5px;border-radius:4px}
+
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+.pageno{position:absolute;right:44px;bottom:16px;font-family:var(--mono);font-size:12px;color:var(--faint)}
+.pageno b{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <h1>product.ttl · <span>SWRL 推理时序图</span></h1>
+  <div class="meta">
+    <div class="chip"><b>5</b> 节内容</div>
+    <div class="chip"><b>1–4</b> 跳推理链</div>
+    <div class="chip"><b>fixpoint</b> 迭代收敛</div>
+  </div>
+</div>
+
+<div class="toc">
+  <a href="#s1"><div class="tt">场景 ① 风险识别</div><div class="tn">R-B01 → B02 → HR → B05</div><div class="td">4 跳最长链</div></a>
+  <a href="#s2"><div class="tt">场景 ② 指标归因</div><div class="tn">R-A01 → A02</div><div class="td">跨实例导航</div></a>
+  <a href="#s3"><div class="tt">场景 ③ 配置合规</div><div class="tn">R-C05 → C08</div><div class="td">多条件 AND</div></a>
+  <a href="#s3b"><div class="tt">场景 ③ 补充</div><div class="tn">库表 → 映射 → 断言</div><div class="td">实例读库链路</div></a>
+  <a href="#s4"><div class="tt">场景 ④ 告警分级</div><div class="tn">R-E02 → E04</div><div class="td">分级 + 派单</div></a>
+</div>
+
+<!-- ══════════════ 场景 1 ══════════════ -->
+<section class="slide-page" id="s1">
+  <div class="sbadge g">场景 ① · 风险识别</div>
+  <h2>零元资费在架无合约 → 高风险 → 紧急复核（4 跳长链）</h2>
+  <p class="sub">全库最长推理链，跨越「事实判定 → 状态组合 → 风险升级 → 处置动作」四个语义层。规则编号与业务 SOP 一一对应。</p>
+
+  <div class="facts">
+    <div class="fact"><div class="fn">输入事实 · :probe_rb01ZeroFee</div><pre><b>a</b> <span class="k">:Offering</span> ;
+<span class="k">:monthlyFee</span>    <span class="v">0</span> ;
+<span class="k">:oneTimeFee</span>    <span class="v">0</span> ;
+<span class="k">:inWhitelist</span>   <span class="v">false</span> ;
+<span class="k">:onShelf</span>       <span class="v">true</span> ;
+<span class="k">:hasContract</span>   <span class="v">false</span> ;
+<span class="k">:shelfDays</span>     <span class="v">100</span> .  <span class="c"># 不加则 R4 断链</span></pre></div>
+    <div class="fact"><div class="fn">阈值个体（运行时可由 reasoner 覆写）</div><pre><span class="k">:th_RB05_highRiskReviewDays</span>
+  <span class="k">:thresholdValue</span> <span class="v">30</span></pre>
+      <div style="margin-top:10px;font-size:12px;color:var(--faint)">R-B01/R-B02/R-HR 为纯布尔判定，不依赖阈值个体</div></div>
+  </div>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 470" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker>
+        <marker id="ar1g" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+      </defs>
+
+      <!-- 生命线 -->
+      <g stroke="#2a3d5c" stroke-width="1.4" stroke-dasharray="5 5">
+        <line x1="110" y1="46" x2="110" y2="430"/>
+        <line x1="355" y1="46" x2="355" y2="430"/>
+        <line x1="600" y1="46" x2="600" y2="430"/>
+        <line x1="845" y1="46" x2="845" y2="430"/>
+        <line x1="1075" y1="46" x2="1075" y2="430"/>
+      </g>
+
+      <!-- 参与者头部 -->
+      <g>
+        <rect x="30" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="110" y="31" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">工作内存</text>
+        <text x="110" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Working Memory</text>
+
+        <rect x="275" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#fbbf24" stroke-width="1.6"/>
+        <text x="355" y="31" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="800">规则调度</text>
+        <text x="355" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">SWRL Engine</text>
+
+        <rect x="520" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#a78bfa" stroke-width="1.6"/>
+        <text x="600" y="31" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="800">built-in 求值</text>
+        <text x="600" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">swrlb:*</text>
+
+        <rect x="765" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#22d3ee" stroke-width="1.6"/>
+        <text x="845" y="31" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">阈值个体</text>
+        <text x="845" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">:th_RB*</text>
+
+        <rect x="995" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#34d399" stroke-width="1.6"/>
+        <text x="1075" y="31" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">推理结论</text>
+        <text x="1075" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Inferred Class</text>
+      </g>
+
+      <!-- 轮次 R1 -->
+      <text x="30" y="86" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R1</text>
+      <rect x="30" y="72" width="1130" height="72" rx="9" fill="rgba(56,189,248,.045)" stroke="#1e3a5f" stroke-width="1"/>
+      <text x="112" y="92" fill="#8ea3c0" font-size="10.5" font-family="monospace">probe_rb01ZeroFee</text>
+      <line x1="110" y1="106" x2="345" y2="106" stroke="#38bdf8" stroke-width="1.8" marker-end="url(#ar1)"/>
+      <text x="228" y="101" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-B01.zeroFee 扫描</text>
+      <line x1="355" y1="122" x2="110" y2="122" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar1)"/>
+      <text x="232" y="137" text-anchor="middle" fill="#5f7593" font-size="10.5">绑定 mf=0, ot=0, wl=false</text>
+      <text x="620" y="100" fill="#8ea3c0" font-size="11">equal(0,0)✓ equal(0,0)✓ equal(false,false)✓</text>
+      <line x1="1075" y1="92" x2="1075" y2="130" stroke="#34d399" stroke-width="1.6" marker-end="url(#ar1g)"/>
+      <text x="1068" y="146" text-anchor="end" fill="#34d399" font-size="10.5" font-family="monospace">ZeroFeeRiskOffering</text>
+
+      <!-- 轮次 R2 -->
+      <text x="30" y="172" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R2</text>
+      <rect x="30" y="158" width="1130" height="72" rx="9" fill="rgba(52,211,153,.045)" stroke="#1f4a3d" stroke-width="1"/>
+      <line x1="110" y1="192" x2="345" y2="192" stroke="#34d399" stroke-width="1.8" marker-end="url(#ar1g)"/>
+      <text x="228" y="187" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-B02 前件命中上轮结论</text>
+      <line x1="355" y1="208" x2="110" y2="208" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar1)"/>
+      <text x="232" y="223" text-anchor="middle" fill="#5f7593" font-size="10.5">onShelf=true, hasContract=false</text>
+      <text x="620" y="186" fill="#8ea3c0" font-size="11">equal(true,true)✓ equal(false,false)✓</text>
+      <line x1="1075" y1="178" x2="1075" y2="216" stroke="#34d399" stroke-width="1.6" marker-end="url(#ar1g)"/>
+      <text x="1068" y="232" text-anchor="end" fill="#34d399" font-size="10.5" font-family="monospace">ZeroFeeNoContractOffering</text>
+
+      <!-- 轮次 R3 -->
+      <text x="30" y="258" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R3</text>
+      <rect x="30" y="244" width="1130" height="72" rx="9" fill="rgba(167,139,250,.045)" stroke="#3b3560" stroke-width="1"/>
+      <line x1="110" y1="278" x2="345" y2="278" stroke="#a78bfa" stroke-width="1.8" marker-end="url(#ar1)"/>
+      <text x="228" y="273" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-HR.b02 单原子规则</text>
+      <line x1="355" y1="294" x2="110" y2="294" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar1)"/>
+      <text x="232" y="309" text-anchor="middle" fill="#5f7593" font-size="10.5">结论类即前件，无需数据属性</text>
+      <text x="620" y="272" fill="#8ea3c0" font-size="11">类包含检查（无 built-in）</text>
+      <line x1="1075" y1="264" x2="1075" y2="302" stroke="#34d399" stroke-width="1.6" marker-end="url(#ar1g)"/>
+      <text x="1068" y="318" text-anchor="end" fill="#34d399" font-size="10.5" font-family="monospace">HighRiskOffering</text>
+
+      <!-- 轮次 R4 -->
+      <text x="30" y="344" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R4</text>
+      <rect x="30" y="330" width="1130" height="72" rx="9" fill="rgba(248,113,113,.05)" stroke="#4a2731" stroke-width="1"/>
+      <line x1="110" y1="364" x2="345" y2="364" stroke="#f87171" stroke-width="1.8" marker-end="url(#ar1)"/>
+      <text x="228" y="359" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-B05 需 shelfDays</text>
+      <line x1="845" y1="364" x2="620" y2="364" stroke="#22d3ee" stroke-width="1.6" marker-end="url(#ar1)"/>
+      <text x="732" y="359" text-anchor="middle" fill="#8ea3c0" font-size="10.5">th_RB05 = 30</text>
+      <text x="620" y="386" fill="#8ea3c0" font-size="11">greaterThan(100, 30) ✓</text>
+      <line x1="1075" y1="350" x2="1075" y2="388" stroke="#f87171" stroke-width="2" marker-end="url(#ar1)"/>
+      <text x="1068" y="404" text-anchor="end" fill="#f87171" font-size="11" font-weight="800" font-family="monospace">★ UrgentReviewOffering</text>
+
+      <!-- 收敛 -->
+      <rect x="30" y="412" width="1130" height="34" rx="9" fill="rgba(52,211,153,.08)" stroke="#34d399" stroke-width="1.2"/>
+      <text x="595" y="434" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">R5 不动点检查：无新结论产生 → fixpoint 收敛，推理结束</text>
+    </svg>
+  </div>
+
+  <table class="chain">
+    <tr><th style="width:70px">轮次</th><th style="width:130px">规则</th><th>前件（AND）</th><th style="width:270px">结论</th></tr>
+    <tr><td class="rd">R1</td><td class="rn">R-B01.zeroFee</td><td>monthlyFee=0 ∧ oneTimeFee=0 ∧ inWhitelist=false</td><td class="cl">ZeroFeeRiskOffering</td></tr>
+    <tr><td class="rd">R2</td><td class="rn">R-B02</td><td>ZeroFeeRiskOffering ∧ onShelf=true ∧ hasContract=false</td><td class="cl">ZeroFeeNoContractOffering</td></tr>
+    <tr><td class="rd">R3</td><td class="rn">R-HR.b02</td><td>ZeroFeeNoContractOffering</td><td class="cl">HighRiskOffering</td></tr>
+    <tr><td class="rd">R4</td><td class="rn">R-B05</td><td>HighRiskOffering ∧ shelfDays(100) &gt; th_RB05(30)</td><td class="cl">★ UrgentReviewOffering</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="note ok"><div class="nt">链式推理必须迭代到不动点</div>
+      <p>HermiT / Pellet 会自动跑多轮；若用 OWLAPI 手写 SWRL 执行器且只跑一轮，只能得到 <code>ZeroFeeRiskOffering</code>，后续 3 跳全部丢失。</p></div>
+    <div class="note bad"><div class="nt">漏写 shelfDays 会「静默断链」</div>
+      <p>R4 前件无法绑定 <code>?v_rb5d</code>，链停在 <code>HighRiskOffering</code>，且<strong>不报任何错误</strong>——SWRL 无类型校验，这是开放世界假设的代价。</p></div>
+    <div class="note"><div class="nt">同一结论存在多条到达路径</div>
+      <p>旁支 <code>R-B01.discount</code>（折扣 100% + 可重复订购 + 空目标群）→ <code>AbnormalDiscountOffering</code> → <code>R-HR.discount</code> → <code>HighRiskOffering</code>，可与主链对比。</p></div>
+    <div class="note warn"><div class="nt">规则编号即业务 SOP</div>
+      <p>零元在架无合约 → 高风险 → 在架超 30 天 → 紧急复核，可直接对着业务流程给业务同事讲解，无需翻译。</p></div>
+  </div>
+  <div class="pageno"><b>1</b> / 6</div>
+</section>
+
+<!-- ══════════════ 场景 2 ══════════════ -->
+<section class="slide-page" id="s2">
+  <div class="sbadge y">场景 ② · 指标归因</div>
+  <h2>异常感知 → 渠道根因（跨实例导航 + 阈值外置）</h2>
+  <p class="sub">归因的本质是「先发现异常品，再定位根因来源」。R-A02 是全库唯一同时约束「对象属性跳转 + 双阈值比较」的规则，且结论主体与入口主体不同。</p>
+
+  <div class="facts">
+    <div class="fact"><div class="fn">输入事实 · 三实例结构</div><pre><span class="k">:probe_metric</span>  <b>a</b> :Metric ;
+  <span class="k">:metricDelta</span> <span class="v">-0.20</span> .
+
+<span class="k">:probe_channel</span> <b>a</b> :Channel ;
+  <span class="k">:orderDelta</span>   <span class="v">-0.30</span> ;
+  <span class="k">:contribRatio</span> <span class="v">0.50</span> .
+
+<span class="k">:probe_offering</span> <b>a</b> :Offering ;
+  <span class="k">:hasMetric</span> :probe_metric ;
+  <span class="k">:soldOn</span>    :probe_channel .</pre></div>
+    <div class="fact"><div class="fn">阈值个体（运行时由 OpsSwrlReasoner 覆写）</div><pre><span class="k">:th_RA01_metricDeltaLte</span>      <span class="v">-0.10</span>
+<span class="k">:th_RA02_orderDeltaLte</span>       <span class="v">-0.20</span>
+<span class="k">:th_RA02_contribRatioGte</span>     <span class="v">0.30</span></pre>
+      <div style="margin-top:10px;font-size:12px;color:var(--faint)">改阈值个体即可调参，规则本体（约 600 行）无需重建</div></div>
+  </div>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#fbbf24"/></marker>
+        <marker id="ar2c" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#22d3ee"/></marker>
+        <marker id="ar2g" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+      </defs>
+
+      <g stroke="#2a3d5c" stroke-width="1.4" stroke-dasharray="5 5">
+        <line x1="105" y1="46" x2="105" y2="400"/>
+        <line x1="340" y1="46" x2="340" y2="400"/>
+        <line x1="575" y1="46" x2="575" y2="400"/>
+        <line x1="810" y1="46" x2="810" y2="400"/>
+        <line x1="1060" y1="46" x2="1060" y2="400"/>
+      </g>
+
+      <g>
+        <rect x="25" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#22d3ee" stroke-width="1.6"/>
+        <text x="105" y="31" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">ABox 事实</text>
+        <text x="105" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Metric / Channel / Offering</text>
+
+        <rect x="260" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#fbbf24" stroke-width="1.6"/>
+        <text x="340" y="31" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="800">SWRL 引擎</text>
+        <text x="340" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-A01 / R-A02</text>
+
+        <rect x="495" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#a78bfa" stroke-width="1.6"/>
+        <text x="575" y="31" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="800">对象属性导航</text>
+        <text x="575" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">hasMetric / soldOn</text>
+
+        <rect x="730" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="810" y="31" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">阈值个体</text>
+        <text x="810" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">:th_RA01 / :th_RA02</text>
+
+        <rect x="980" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#34d399" stroke-width="1.6"/>
+        <text x="1060" y="31" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">推理结论</text>
+        <text x="1060" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Inferred Class</text>
+      </g>
+
+      <!-- R1 -->
+      <text x="25" y="82" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R1</text>
+      <rect x="25" y="68" width="1115" height="108" rx="9" fill="rgba(251,191,36,.045)" stroke="#4a3d1f" stroke-width="1"/>
+      <line x1="105" y1="96" x2="330" y2="96" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#ar2)"/>
+      <text x="217" y="91" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-A01.delta 匹配 Offering</text>
+      <line x1="105" y1="114" x2="565" y2="114" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="335" y="109" text-anchor="middle" fill="#8ea3c0" font-size="10.5">hasMetric → :probe_metric</text>
+      <line x1="575" y1="132" x2="105" y2="132" stroke="#22d3ee" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar2c)"/>
+      <text x="340" y="147" text-anchor="middle" fill="#5f7593" font-size="10.5">metricDelta = -0.20</text>
+      <line x1="810" y1="96" x2="575" y2="96" stroke="#38bdf8" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="692" y="91" text-anchor="middle" fill="#8ea3c0" font-size="10.5">th_RA01 = -0.10</text>
+      <text x="575" y="162" fill="#8ea3c0" font-size="11">lessThanOrEqual(-0.20, -0.10) ✓</text>
+      <line x1="1060" y1="85" x2="1060" y2="125" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#ar2)"/>
+      <text x="1052" y="145" text-anchor="end" fill="#fbbf24" font-size="11" font-weight="800" font-family="monospace">AnomalyOffering</text>
+      <text x="1052" y="164" text-anchor="end" fill="#5f7593" font-size="10.5">主观 = :probe_offering</text>
+
+      <!-- R2 -->
+      <text x="25" y="202" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R2</text>
+      <rect x="25" y="188" width="1115" height="118" rx="9" fill="rgba(167,139,250,.05)" stroke="#3b3560" stroke-width="1"/>
+      <text x="35" y="212" fill="#a78bfa" font-size="10.5" font-weight="700">主体切换：Offering → Channel</text>
+      <line x1="105" y1="230" x2="565" y2="230" stroke="#a78bfa" stroke-width="1.8" marker-end="url(#ar2)"/>
+      <text x="335" y="225" text-anchor="middle" fill="#8ea3c0" font-size="10.5">soldOn → :probe_channel</text>
+      <line x1="575" y1="248" x2="105" y2="248" stroke="#22d3ee" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar2c)"/>
+      <text x="340" y="263" text-anchor="middle" fill="#5f7593" font-size="10.5">orderDelta=-0.30, contribRatio=0.50</text>
+      <line x1="810" y1="230" x2="575" y2="230" stroke="#38bdf8" stroke-width="1.6" marker-end="url(#ar2)"/>
+      <text x="692" y="225" text-anchor="middle" fill="#8ea3c0" font-size="10.5">-0.20 / 0.30</text>
+      <text x="575" y="284" fill="#8ea3c0" font-size="11">lessThanOrEqual(-0.30,-0.20) ✓ ∧ greaterThanOrEqual(0.50,0.30) ✓</text>
+      <line x1="1060" y1="205" x2="1060" y2="258" stroke="#34d399" stroke-width="2" marker-end="url(#ar2g)"/>
+      <text x="1052" y="278" text-anchor="end" fill="#34d399" font-size="11" font-weight="800" font-family="monospace">★ ChannelRootCause</text>
+      <text x="1052" y="296" text-anchor="end" fill="#5f7593" font-size="10.5">结论主体 = :probe_channel</text>
+
+      <!-- 阈值外置 -->
+      <rect x="25" y="318" width="1115" height="42" rx="9" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="6 4"/>
+      <text x="42" y="336" fill="#38bdf8" font-size="11.5" font-weight="800">阈值外置演示</text>
+      <text x="42" y="352" fill="#8ea3c0" font-size="11">OpsSwrlReasoner 把 :th_RA02_orderDeltaLte 覆写为 -0.40 → 下一轮前件不成立，ChannelRootCause 结论消失；规则本体一字未改。</text>
+
+      <!-- 收敛 -->
+      <rect x="25" y="372" width="1115" height="34" rx="9" fill="rgba(52,211,153,.08)" stroke="#34d399" stroke-width="1.2"/>
+      <text x="582" y="394" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">R3 不动点检查：无新结论产生 → fixpoint 收敛</text>
+    </svg>
+  </div>
+
+  <table class="chain">
+    <tr><th style="width:70px">轮次</th><th style="width:130px">规则</th><th>前件（AND）</th><th style="width:270px">结论</th></tr>
+    <tr><td class="rd">R1</td><td class="rn">R-A01.delta</td><td>Offering ∧ hasMetric→Metric ∧ metricDelta(-0.20) ≤ th_RA01(-0.10)</td><td class="cl">:probe_offering ∈ AnomalyOffering</td></tr>
+    <tr><td class="rd">R2</td><td class="rn">R-A02</td><td>AnomalyOffering ∧ soldOn→Channel ∧ orderDelta ≤ -0.20 ∧ contribRatio ≥ 0.30</td><td class="cl">★ :probe_channel ∈ ChannelRootCause</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="note"><div class="nt">主体可以换：入口 Offering → 结论 Channel</div>
+      <p>R2 的入口变量 <code>?v_o3</code> 是 <code>AnomalyOffering</code>，但结论断言在 <code>?v_c3</code>（Channel）上，靠对象属性 <code>:soldOn</code> 完成导航。学员必须理解这一点才能读懂归因结果落在哪个实例上。</p></div>
+    <div class="note ok"><div class="nt">阈值个体 ≠ 变量，是命名个体</div>
+      <p><code>:th_RA02_orderDeltaLte</code> 是 <code>:ThresholdHolder</code> 实例，规则通过 <code>:thresholdValue</code> 把它的值绑到 <code>?v_tod</code>。改它只需一次断言，<strong>规则本体无需重建</strong>——这是全模型的核心设计。</p></div>
+    <div class="note warn"><div class="nt">两个阈值条件是与关系</div>
+      <p>只满足 <code>orderDelta ≤ -0.20</code> 但 <code>contribRatio &lt; 0.30</code>（渠道量小）不点火。业务语义：滑块要「跌得多」且「占比大」才算根因。</p></div>
+    <div class="note"><div class="nt">四类根因的触发指纹不同</div>
+      <p>R-A03 促销看 <code>daysToExpire + drivenOrderRatio</code>；R-A04 竞品看 <code>priceGapRatio + penetrationDeltaPp</code>；R-A05 行为看 <code>weightHint</code>。可放在一起对比训练。</p></div>
+  </div>
+  <div class="pageno"><b>2</b> / 6</div>
+</section>
+
+<!-- ══════════════ 场景 3 ══════════════ -->
+<section class="slide-page" id="s3">
+  <div class="sbadge a">场景 ③ · 配置合规</div>
+  <h2>零固费无合约：声明式映射 → 5 个与条件 → 违规族归集</h2>
+  <p class="sub">这是全链路最完整的一条：<b>库表原始字段</b>经 <code>ops_rules.json</code> 声明式映射翻译为本体属性，SWRL 按 5 个 AND 条件判定，命中后归入 <code>ConfigViolation</code> 违规族。Java 侧没有逐字段硬编码。</p>
+
+  <div class="facts">
+    <div class="fact"><div class="fn">原始事实（表字段 / 草稿 Map）</div><pre><span class="k">fixedFeeAmount</span> <span class="v">0</span>     <span class="c"># 或 monthlyFee / chargePlan.fixedFeeAmount</span>
+<span class="k">oneTimeFee</span>     <span class="v">0</span>
+<span class="k">hasContract</span>    <span class="v">false</span>
+<span class="k">bizScenario</span>    <span class="v">"普通销售"</span>   <span class="c"># 未命中权益赠送白名单</span>
+<span class="k">channelScope</span>   <span class="v">"全渠道"</span>     <span class="c"># 非「内部验证」</span></pre></div>
+    <div class="fact"><div class="fn">映射后断言的本体属性（OpsSwrlReasoner:1517）</div><pre><b>a</b> <span class="k">:Offering</span> ;
+<span class="k">:monthlyFee</span>     <span class="v">0</span>^^xsd:decimal ;
+<span class="k">:oneTimeFee</span>     <span class="v">0</span>^^xsd:decimal ;
+<span class="k">:hasContract</span>    <span class="v">false</span>^^xsd:boolean ;
+<span class="k">:exemptionFlag</span>  <span class="v">false</span>^^xsd:boolean .</pre>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">属性名、来源、类型、转换算子全部来自 <code>ops_rules.json</code> → <code>config.propertyMapping</code>（17 条）</div></div>
+  </div>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 415" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker>
+        <marker id="ar3g" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+        <marker id="ar3r" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#f87171"/></marker>
+      </defs>
+
+      <!-- 输入 -->
+      <rect x="25" y="40" width="200" height="230" rx="12" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="125" y="66" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">断言后的事实</text>
+      <g font-size="11.5" font-family="monospace" fill="#8ea3c0">
+        <text x="42" y="96">monthlyFee</text><text x="205" y="96" text-anchor="end" fill="#fbbf24">0</text>
+        <text x="42" y="122">oneTimeFee</text><text x="205" y="122" text-anchor="end" fill="#fbbf24">0</text>
+        <text x="42" y="148">hasContract</text><text x="205" y="148" text-anchor="end" fill="#fbbf24">false</text>
+        <text x="42" y="174">exemptionFlag</text><text x="205" y="174" text-anchor="end" fill="#fbbf24">false</text>
+        <text x="42" y="200">th_RC05_zeroFee</text><text x="205" y="200" text-anchor="end" fill="#22d3ee">0</text>
+      </g>
+      <line x1="42" y1="216" x2="205" y2="216" stroke="#2a3d5c" stroke-width="1"/>
+      <text x="42" y="238" font-size="11" font-family="monospace" fill="#34d399">5 个前件原子齐备</text>
+      <text x="42" y="256" font-size="11" fill="#5f7593">缺任一项 → 前件不匹配</text>
+
+      <!-- 五个与条件 -->
+      <line x1="225" y1="155" x2="295" y2="155" stroke="#38bdf8" stroke-width="2" marker-end="url(#ar3)"/>
+
+      <rect x="295" y="35" width="270" height="255" rx="12" fill="#16233a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="430" y="62" text-anchor="middle" fill="#38bdf8" font-size="13.5" font-weight="800">R-C05 · 五个 AND 条件</text>
+      <text x="430" y="80" text-anchor="middle" fill="#5f7593" font-size="10.5">全部为真才点火</text>
+      <g font-size="11.5" font-family="monospace">
+        <rect x="313" y="92" width="234" height="28" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+        <text x="323" y="111" fill="#8ea3c0">equal(?monthlyFee, 0)</text><text x="537" y="111" text-anchor="end" fill="#34d399">✓</text>
+
+        <rect x="313" y="126" width="234" height="28" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+        <text x="323" y="145" fill="#8ea3c0">equal(?oneTimeFee, 0)</text><text x="537" y="145" text-anchor="end" fill="#34d399">✓</text>
+
+        <rect x="313" y="160" width="234" height="28" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+        <text x="323" y="179" fill="#8ea3c0">equal(?hasContract, false)</text><text x="537" y="179" text-anchor="end" fill="#34d399">✓</text>
+
+        <rect x="313" y="194" width="234" height="28" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+        <text x="323" y="213" fill="#8ea3c0">equal(?exemptionFlag, false)</text><text x="537" y="213" text-anchor="end" fill="#34d399">✓</text>
+
+        <rect x="313" y="228" width="234" height="28" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+        <text x="323" y="247" fill="#8ea3c0">equal(?fee, ?th_zeroFee)</text><text x="537" y="247" text-anchor="end" fill="#34d399">✓</text>
+      </g>
+      <text x="430" y="276" text-anchor="middle" fill="#5f7593" font-size="10.5">阈值取自 :th_RC05_zeroFee，运行时可由 ops_rules 覆写</text>
+
+      <!-- 结论 -->
+      <line x1="565" y1="155" x2="640" y2="155" stroke="#34d399" stroke-width="2.4" marker-end="url(#ar3g)"/>
+      <rect x="640" y="100" width="230" height="110" rx="12" fill="#0d1729" stroke="#34d399" stroke-width="2"/>
+      <text x="755" y="128" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">5/5 通过 → 点火</text>
+      <text x="755" y="151" text-anchor="middle" fill="#e6edf7" font-size="12.5" font-family="monospace">C05HighRiskZeroFee</text>
+      <text x="755" y="172" text-anchor="middle" fill="#5f7593" font-size="10.5">+ ConfigViolation（head 显式断言）</text>
+      <text x="755" y="192" text-anchor="middle" fill="#fbbf24" font-size="10.5">缺父类断言 → 违规族查询漏判</text>
+
+      <!-- 豁免演示 -->
+      <rect x="905" y="35" width="250" height="265" rx="12" fill="#0d1729" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="1030" y="62" text-anchor="middle" fill="#f87171" font-size="13" font-weight="800">豁免演示</text>
+      <text x="1030" y="80" text-anchor="middle" fill="#5f7593" font-size="10.5">exemptionFlag 置 true 即不点火</text>
+      <g font-size="11" font-family="monospace" fill="#8ea3c0">
+        <text x="922" y="112">channelScope=内部验证</text>
+        <text x="922" y="132" fill="#34d399">→ exemptionFlag=true</text>
+        <text x="922" y="152" fill="#f87171">→ equal(true,false) ✗</text>
+      </g>
+      <line x1="922" y1="170" x2="1138" y2="170" stroke="#2a3d5c" stroke-width="1"/>
+      <g font-size="11" font-family="monospace" fill="#8ea3c0">
+        <text x="922" y="194">bizScenario∈白名单</text>
+        <text x="922" y="214" fill="#34d399">→ exemptionFlag=true</text>
+        <text x="922" y="234" fill="#f87171">→ equal(true,false) ✗</text>
+      </g>
+      <text x="922" y="262" fill="#5f7593" font-size="10">两条来源按 OR 合并</text>
+      <text x="922" y="280" fill="#5f7593" font-size="10">（propertyMapping 多分支）</text>
+
+      <!-- R-C08 对照 -->
+      <rect x="25" y="300" width="1130" height="52" rx="10" fill="rgba(251,191,36,.06)" stroke="#fbbf24" stroke-width="1.2"/>
+      <text x="42" y="320" fill="#fbbf24" font-size="11.5" font-weight="800">R-C08 合规判定：查询违规族，而非补集证明</text>
+      <text x="42" y="340" fill="#8ea3c0" font-size="11.5">OWL 开放世界下无法用 ¬ConfigViolation 证明「不存在其它违规」，故合规 = 实例未落入 ConfigViolation。该查询结果完全来自本轮 SWRL，外部不注入任何判定布尔。</text>
+
+      <!-- 收敛 -->
+      <rect x="25" y="362" width="1130" height="34" rx="9" fill="rgba(52,211,153,.08)" stroke="#34d399" stroke-width="1.2"/>
+      <text x="590" y="384" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">R2 不动点检查：R-C03~C09 均为单跳规则，一轮即收敛</text>
+    </svg>
+  </div>
+
+  <table class="chain">
+    <tr><th style="width:70px">轮次</th><th style="width:130px">规则</th><th>前件（全为 AND，缺一不可）</th><th style="width:270px">结论</th></tr>
+    <tr><td class="rd">R1</td><td class="rn">R-C05</td><td>monthlyFee=0 ∧ oneTimeFee=0 ∧ hasContract=false ∧ exemptionFlag=false ∧ monthlyFee=th_zeroFee</td><td class="cl">C05HighRiskZeroFee</td></tr>
+    <tr><td class="rd">R2</td><td class="rn">R-C08</td><td>实例不属于 ConfigViolation（查询违规族结果）</td><td class="cl">C08Compliant</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="note"><div class="nt">「与」条件的教学样本</div>
+      <p>5 个条件缺一不可。现场把 <code>hasContract</code> 改成 <code>true</code>，或把 <code>channelScope</code> 设为「内部验证」，结论立即消失——很适合演示「白名单 / 内测 / 合约任一豁免即可放行」。</p></div>
+    <div class="note bad"><div class="nt">SWRL head 必须显式断言父类</div>
+      <p>Openllet 不会因为 head 里断言了 <code>C05HighRiskZeroFee</code> 就自动补齐它的父类 <code>ConfigViolation</code>。每条违规规则的 head 都必须<b>同时</b>写两个 ClassAtom，否则违规族查询会漏掉这条规则——合法合规链路静默失效。</p></div>
+    <div class="note warn"><div class="nt">声明式映射是唯一定义点</div>
+      <p>属性名、取值来源、类型、转换算子全部来自 <code>ops_rules.json</code> → <code>config.propertyMapping</code>。Java 侧没有逐字段硬编码；同一属性多条映射按 OR 合并（如 <code>exemptionFlag</code> 的两条来源）。</p></div>
+    <div class="note ok"><div class="nt">违规命中 + 违规族查询成对出现</div>
+      <p>C05（违规命中）与 C08（合规判定）构成一对，能讲清 SWRL「只能表达存在性，不能表达不存在性」的表达力边界，是合规模块最值得讨论的点。</p></div>
+  </div>
+  <div class="pageno"><b>3</b> / 6</div>
+</section>
+
+<section class="slide-page" id="s3b">
+  <div class="sbadge a">场景 ③ · 补充 · 实例数据从哪来</div>
+  <h2>实例不存本体：库表实时读取 → 声明式映射 → OWL 断言</h2>
+  <p class="sub">本体（TBox）只描述规则与概念，<b>不含任何实例</b>。实例事实（ABox）在推理前从 <code>pd_ai_ontology_instance</code> 实时读取，由 <code>ops_rules.json</code> 声明式翻译为本体属性后断言进内存模型，推理结束即丢弃——不写回本体。</p>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 330" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar3b" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#22d3ee"/></marker>
+        <marker id="ar3bg" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+      </defs>
+
+      <!-- 存储层 -->
+      <rect x="20" y="60" width="185" height="110" rx="11" fill="#0d1729" stroke="#22d3ee" stroke-width="1.8"/>
+      <text x="112" y="86" text-anchor="middle" fill="#22d3ee" font-size="12.5" font-weight="800">MySQL / GoldenDB</text>
+      <text x="112" y="106" text-anchor="middle" fill="#8ea3c0" font-size="10.5" font-family="monospace">pd_ai_ontology_instance</text>
+      <text x="112" y="126" text-anchor="middle" fill="#5f7593" font-size="10">data_json（单 JSON 列）</text>
+      <text x="112" y="148" text-anchor="middle" fill="#5f7593" font-size="10">ontology_code=offering_config</text>
+
+      <line x1="205" y1="115" x2="248" y2="115" stroke="#22d3ee" stroke-width="2" marker-end="url(#ar3b)"/>
+
+      <!-- 读取服务 -->
+      <rect x="248" y="60" width="185" height="110" rx="11" fill="#0d1729" stroke="#2a3d5c" stroke-width="1.5"/>
+      <text x="340" y="86" text-anchor="middle" fill="#e6edf7" font-size="12" font-weight="800">FactsService</text>
+      <text x="340" y="106" text-anchor="middle" fill="#8ea3c0" font-size="10" font-family="monospace">loadConfigFacts(id)</text>
+      <text x="340" y="126" text-anchor="middle" fill="#5f7593" font-size="10">实时查询，不缓存</text>
+      <text x="340" y="148" text-anchor="middle" fill="#5f7593" font-size="10">只读，不做推理</text>
+
+      <line x1="433" y1="115" x2="476" y2="115" stroke="#22d3ee" stroke-width="2" marker-end="url(#ar3b)"/>
+
+      <!-- 声明式映射 -->
+      <rect x="476" y="45" width="215" height="140" rx="11" fill="#16233a" stroke="#fbbf24" stroke-width="2"/>
+      <text x="583" y="70" text-anchor="middle" fill="#fbbf24" font-size="12.5" font-weight="800">声明式映射</text>
+      <text x="583" y="89" text-anchor="middle" fill="#8ea3c0" font-size="10" font-family="monospace">config.propertyMapping</text>
+      <g font-size="10" font-family="monospace" fill="#8ea3c0">
+        <text x="492" y="112">fixedFeeAmount → monthlyFee</text>
+        <text x="492" y="131">oneTimeFee → oneTimeFee</text>
+        <text x="492" y="150">channelScope → exemptionFlag</text>
+      </g>
+      <text x="583" y="173" text-anchor="middle" fill="#5f7593" font-size="9.5">17 条 · 同属性 OR 合并</text>
+
+      <line x1="691" y1="115" x2="734" y2="115" stroke="#22d3ee" stroke-width="2" marker-end="url(#ar3b)"/>
+
+      <!-- 断言 -->
+      <rect x="734" y="60" width="185" height="110" rx="11" fill="#0d1729" stroke="#38bdf8" stroke-width="1.8"/>
+      <text x="826" y="86" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="800">OWL 断言</text>
+      <text x="826" y="106" text-anchor="middle" fill="#8ea3c0" font-size="10" font-family="monospace">assertMappedFacts</text>
+      <text x="826" y="126" text-anchor="middle" fill="#5f7593" font-size="10">内存模型，不落盘</text>
+      <text x="826" y="148" text-anchor="middle" fill="#5f7593" font-size="10">用完即丢</text>
+
+      <line x1="919" y1="115" x2="962" y2="115" stroke="#34d399" stroke-width="2.2" marker-end="url(#ar3bg)"/>
+
+      <!-- SWRL -->
+      <rect x="962" y="60" width="195" height="110" rx="11" fill="#0d1729" stroke="#34d399" stroke-width="2"/>
+      <text x="1059" y="86" text-anchor="middle" fill="#34d399" font-size="12" font-weight="800">SWRL 推理</text>
+      <text x="1059" y="106" text-anchor="middle" fill="#8ea3c0" font-size="10" font-family="monospace">product.ttl</text>
+      <text x="1059" y="126" text-anchor="middle" fill="#5f7593" font-size="10">R-C03 ~ R-C09</text>
+      <text x="1059" y="148" text-anchor="middle" fill="#5f7593" font-size="10">违规族归集</text>
+
+      <!-- 两条路径 -->
+      <rect x="20" y="205" width="560" height="95" rx="11" fill="rgba(52,211,153,.06)" stroke="#34d399" stroke-width="1.3"/>
+      <text x="38" y="228" fill="#34d399" font-size="12" font-weight="800">路径 A · 带 draftId（查库）</text>
+      <text x="38" y="250" fill="#8ea3c0" font-size="11">草稿已持久化 → 按 id 实时读 data_json → 以库中事实为准</text>
+      <text x="38" y="270" fill="#8ea3c0" font-size="11">避免内存副本与持久化数据不一致</text>
+      <text x="38" y="290" fill="#5f7593" font-size="10.5">ComplianceRuleEngine#mapForReasoning:325</text>
+
+      <rect x="600" y="205" width="560" height="95" rx="11" fill="rgba(56,189,248,.06)" stroke="#38bdf8" stroke-width="1.3"/>
+      <text x="618" y="228" fill="#38bdf8" font-size="12" font-weight="800">路径 B · 不带 draftId（内存）</text>
+      <text x="618" y="250" fill="#8ea3c0" font-size="11">草稿未入库 → 直接用请求体中的 draft Map</text>
+      <text x="618" y="270" fill="#8ea3c0" font-size="11">合规体检 / 上架前预检走这条</text>
+      <text x="618" y="290" fill="#5f7593" font-size="10.5">验证样例文档均走此路径</text>
+    </svg>
+  </div>
+
+  <div class="notes">
+    <div class="note ok"><div class="nt">本体与实例严格分离</div>
+      <p>TBox（<code>product.ttl</code>）只含类、属性和 SWRL 规则，<b>不含任何实例</b>。ABox 每次推理前从库表装载，推理结束即释放。这样本体文件可独立版本化与评审，不受业务数据变动影响。</p></div>
+    <div class="note"><div class="nt">职责三分</div>
+      <p><code>OntologyInstanceFactsService</code> 只负责「库 → Map 读取」；<code>OpsSwrlReasoner.assertMappedFacts</code> 只负责「Map → OWL 断言」；<code>product.ttl</code> 只负责「SWRL 规则」。三层之间无硬编码耦合。</p></div>
+    <div class="note warn"><div class="nt">映射缺失不报错，只是不触发</div>
+      <p>若某属性在 <code>propertyMapping</code> 中缺失，规则会因缺少前件原子而<b>静默不点火</b>。这是开放世界推理的正常行为，但排查时容易误以为规则失效——先核对映射表。</p></div>
+  </div>
+  <div class="pageno"><b>4</b> / 6</div>
+</section>
+
+<!-- ══════════════ 场景 4 ══════════════ -->
+<section class="slide-page" id="s4">
+  <div class="sbadge b">场景 ④ · 告警分级</div>
+  <h2>分级 → 派单（双跳闭环），及 P0/P1 级别重叠</h2>
+  <p class="sub">告警模块的完整业务动作是「定级 → 派单」。R-E02 定级、R-E04 派单构成处置闭环；同时暴露 OWL 开放世界假设与业务封闭优先级的经典冲突。</p>
+
+  <div class="facts">
+    <div class="fact"><div class="fn">正常样例 · :probe_re02P1</div><pre><b>a</b> <span class="k">:Offering</span> ;
+<span class="k">:errorCount</span> <span class="v">3</span> .
+
+<span class="c"># R-E01(≥10) ✗ / R-E02(≥1) ✓</span></pre></div>
+    <div class="fact"><div class="fn">重叠样例 · errorCount = 15</div><pre><b>a</b> <span class="k">:Offering</span> ;
+<span class="k">:errorCount</span> <span class="v">15</span> .
+
+<span class="c"># R-E01(≥10) ✓ 且 R-E02(≥1) ✓</span>
+<span class="c"># 同时属于 P0 与 P1</span></pre></div>
+    <div class="fact"><div class="fn">阈值个体</div><pre><span class="k">:th_RE01_errorCountGte</span>   <span class="v">10</span>
+<span class="k">:th_RE02_errorCountGte</span>   <span class="v">1</span>
+<span class="k">:th_RE01_feeErrorRateGte</span> <span class="v">0.05</span>
+<span class="k">:th_RE02_feeErrorRateGte</span> <span class="v">0.01</span></pre></div>
+  </div>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 455" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="ar4" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#f87171"/></marker>
+        <marker id="ar4g" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+        <marker id="ar4b" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker>
+      </defs>
+
+      <g stroke="#2a3d5c" stroke-width="1.4" stroke-dasharray="5 5">
+        <line x1="105" y1="46" x2="105" y2="418"/>
+        <line x1="330" y1="46" x2="330" y2="418"/>
+        <line x1="560" y1="46" x2="560" y2="418"/>
+        <line x1="790" y1="46" x2="790" y2="418"/>
+        <line x1="1055" y1="46" x2="1055" y2="418"/>
+      </g>
+
+      <g>
+        <rect x="25" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#22d3ee" stroke-width="1.6"/>
+        <text x="105" y="31" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">ABox 事实</text>
+        <text x="105" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">errorCount = 3</text>
+
+        <rect x="250" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#f87171" stroke-width="1.6"/>
+        <text x="330" y="31" text-anchor="middle" fill="#f87171" font-size="13" font-weight="800">分级规则</text>
+        <text x="330" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">R-E01 / R-E02 / R-E03</text>
+
+        <rect x="480" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="560" y="31" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">阈值个体</text>
+        <text x="560" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">:th_RE01 / :th_RE02</text>
+
+        <rect x="710" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#a78bfa" stroke-width="1.6"/>
+        <text x="790" y="31" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="800">级别结论</text>
+        <text x="790" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">P0 / P1 / P2</text>
+
+        <rect x="975" y="10" width="160" height="46" rx="9" fill="#16233a" stroke="#34d399" stroke-width="1.6"/>
+        <text x="1055" y="31" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">处置结论</text>
+        <text x="1055" y="47" text-anchor="middle" fill="#8ea3c0" font-size="10.5">NeedWorkOrder</text>
+      </g>
+
+      <!-- R1 分级 -->
+      <text x="25" y="82" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R1</text>
+      <rect x="25" y="68" width="1115" height="110" rx="9" fill="rgba(248,113,113,.045)" stroke="#4a2731" stroke-width="1"/>
+      <line x1="105" y1="98" x2="320" y2="98" stroke="#f87171" stroke-width="1.8" marker-end="url(#ar4)"/>
+      <text x="212" y="93" text-anchor="middle" fill="#8ea3c0" font-size="10.5">errorCount = 3</text>
+
+      <!-- par 分叉 -->
+      <rect x="340" y="78" width="200" height="34" rx="7" fill="#0a1424" stroke="#f87171" stroke-width="1.2"/>
+      <text x="440" y="99" text-anchor="middle" fill="#f87171" font-size="11" font-weight="700" font-family="monospace">par 并行求值</text>
+
+      <line x1="340" y1="88" x2="700" y2="88" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#ar4b)"/>
+      <text x="100" y="83" text-anchor="start" fill="#8ea3c0" font-size="10.5">th_RE01 = 10</text>
+      <text x="720" y="83" fill="#f87171" font-size="10.5" font-family="monospace">3 ≥ 10 ✗</text>
+      <text x="720" y="97" fill="#5f7593" font-size="10">P0 不点火</text>
+
+      <line x1="340" y1="118" x2="700" y2="118" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#ar4b)"/>
+      <text x="620" y="113" text-anchor="middle" fill="#8ea3c0" font-size="10.5">th_RE02 = 1</text>
+      <text x="720" y="113" fill="#34d399" font-size="10.5" font-family="monospace">3 ≥ 1 ✓</text>
+      <text x="720" y="127" fill="#5f7593" font-size="10">P1 点火</text>
+
+      <line x1="790" y1="105" x2="1045" y2="105" stroke="#a78bfa" stroke-width="1.6"/>
+      <text x="915" y="99" text-anchor="middle" fill="#a78bfa" font-size="10.5" font-family="monospace">P1AlertOffering</text>
+      <text x="915" y="160" text-anchor="middle" fill="#5f7593" font-size="10">R1 结束仅得 P1</text>
+
+      <!-- R2 派单 -->
+      <text x="25" y="202" fill="#5f7593" font-size="11.5" font-weight="700" font-family="monospace">R2</text>
+      <rect x="25" y="188" width="1115" height="76" rx="9" fill="rgba(52,211,153,.05)" stroke="#1f4a3d" stroke-width="1"/>
+      <line x1="790" y1="216" x2="330" y2="216" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#ar4)"/>
+      <text x="560" y="211" text-anchor="middle" fill="#8ea3c0" font-size="10.5">扫描 R-E04.p0 / R-E04.p1</text>
+      <text x="330" y="236" text-anchor="middle" fill="#5f7593" font-size="10.5">p0 前件未命中 → 跳过</text>
+      <text x="330" y="252" text-anchor="middle" fill="#34d399" font-size="10.5">p1 前件命中 → 派单</text>
+      <line x1="790" y1="240" x2="1045" y2="240" stroke="#34d399" stroke-width="2" marker-end="url(#ar4g)"/>
+      <text x="1050" y="232" fill="#34d399" font-size="11" font-weight="800" font-family="monospace">★ NeedWorkOrderOffering</text>
+
+      <!-- 重叠演示 -->
+      <rect x="25" y="278" width="1115" height="112" rx="10" fill="rgba(251,191,36,.055)" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="6 4"/>
+      <text x="42" y="300" fill="#fbbf24" font-size="12" font-weight="800">阈值重叠演示：errorCount = 15</text>
+
+      <rect x="42" y="312" width="230" height="30" rx="6" fill="#0a1424" stroke="#f87171"/>
+      <text x="157" y="332" text-anchor="middle" fill="#f87171" font-size="10.5" font-family="monospace">R-E01.err: 15 ≥ 10 ✓</text>
+
+      <rect x="42" y="350" width="230" height="30" rx="6" fill="#0a1424" stroke="#34d399"/>
+      <text x="157" y="370" text-anchor="middle" fill="#34d399" font-size="10.5" font-family="monospace">R-E02.err: 15 ≥ 1 ✓</text>
+
+      <text x="295" y="332" fill="#8ea3c0" font-size="11">→ 同一实例同时属于</text>
+      <text x="295" y="350" fill="#e6edf7" font-size="11" font-family="monospace">P0AlertOffering</text>
+      <text x="295" y="368" fill="#8ea3c0" font-size="11">与</text>
+      <text x="320" y="368" fill="#e6edf7" font-size="11" font-family="monospace">P1AlertOffering</text>
+
+      <line x1="470" y1="325" x2="470" y2="378" stroke="#2a3d5c" stroke-width="1"/>
+
+      <text x="492" y="330" fill="#f87171" font-size="11" font-weight="700">原因：P0 与 P1 之间无 owl:disjointWith 约束</text>
+      <text x="492" y="352" fill="#8ea3c0" font-size="11">派单结论会在 NeedWorkOrderOffering 去重，但级别本身不收敛</text>
+      <text x="492" y="374" fill="#8ea3c0" font-size="11">实际由 :alertLevel 数据属性写回做「取最高级」收敛</text>
+
+      <!-- 收敛 -->
+      <rect x="25" y="402" width="1115" height="34" rx="9" fill="rgba(52,211,153,.08)" stroke="#34d399" stroke-width="1.2"/>
+      <text x="582" y="424" text-anchor="middle" fill="#34d399" font-size="12" font-weight="700">R3 不动点检查：无新结论产生 → fixpoint 收敛</text>
+    </svg>
+  </div>
+
+  <table class="chain">
+    <tr><th style="width:70px">轮次</th><th style="width:150px">规则</th><th>前件（AND）</th><th style="width:270px">结论</th></tr>
+    <tr><td class="rd">R1-a</td><td class="rn">R-E01.err</td><td>errorCount(3) ≥ th_RE01(10)</td><td>✗ 不点火</td></tr>
+    <tr><td class="rd">R1-b</td><td class="rn">R-E02.err</td><td>errorCount(3) ≥ th_RE02(1)</td><td class="cl">P1AlertOffering</td></tr>
+    <tr><td class="rd">R2-a</td><td class="rn">R-E04.p0</td><td>P0AlertOffering（未命中）</td><td>—</td></tr>
+    <tr><td class="rd">R2-b</td><td class="rn">R-E04.p1</td><td>P1AlertOffering</td><td class="cl">★ NeedWorkOrderOffering</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="note ok"><div class="nt">双跳闭环：定级 → 派单</div>
+      <p>P1 定级后由 R-E04.p1 派单。结合 P2「不派单」（R-E04 只接 P0/P1），正好讲清「P2 只观察不建单」的运营规则。</p></div>
+    <div class="note warn"><div class="nt">级别重叠：OWL 开放世界 vs 业务封闭优先级</div>
+      <p><code>errorCount=15</code> 时同时命中 R-E01(P0) 与 R-E02(P1)。规则层面两者并存不矛盾——OWL 没约束 P0/P1 互斥。业务上必须靠 <code>:alertLevel</code> 写回取最高级。这是整个模型最经典的建模冲突，建议作为讨论题。</p></div>
+    <div class="note"><div class="nt">趋势类 P2 的特殊性</div>
+      <p><code>orderTrendDown</code> / <code>errorTrendUp</code> 是预计算布尔，SWRL 不算趋势，只在「趋势为真」时归 P2。与 R-C05 的预计算布尔是同一条设计原则，可串起来复习。</p></div>
+    <div class="note"><div class="nt">阈值个体成对出现</div>
+      <p>P0/P1 各自有 <code>errorCount</code> 与 <code>feeErrorRate</code> 两组阈值个体。演示覆写其中一组即可让级别流转，强化「阈值外置」记忆点。</p></div>
+  </div>
+  <div class="pageno"><b>5</b> / 6</div>
+</section>
+
+<!-- ══════════════ 总结 ══════════════ -->
+<section class="slide-page" id="s5">
+  <div class="kicker">培训总结</div>
+  <h2>四类场景的共性推理时序</h2>
+  <p class="sub">所有规则共享同一套执行模型：预计算事实进入工作内存 → 规则引擎多轮匹配 → 阈值个体提供可调参数 → 结论类进入下一轮前件 → 直到不动点。</p>
+
+  <div class="svgwrap">
+    <svg viewBox="0 0 1180 330" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'Microsoft YaHei',sans-serif">
+      <defs>
+        <marker id="arS" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#38bdf8"/></marker>
+        <marker id="arSo" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#34d399"/></marker>
+      </defs>
+
+      <!-- 数据层 -->
+      <rect x="25" y="90" width="170" height="86" rx="11" fill="#0d1729" stroke="#22d3ee" stroke-width="1.8"/>
+      <text x="110" y="117" text-anchor="middle" fill="#22d3ee" font-size="13" font-weight="800">数据层</text>
+      <text x="110" y="138" text-anchor="middle" fill="#8ea3c0" font-size="10.5">预计算事实</text>
+      <text x="110" y="157" text-anchor="middle" fill="#5f7593" font-size="10">布尔 / 数值 / 对象关系</text>
+
+      <line x1="195" y1="133" x2="240" y2="133" stroke="#38bdf8" stroke-width="2" marker-end="url(#arS)"/>
+
+      <!-- 工作内存 -->
+      <rect x="240" y="90" width="170" height="86" rx="11" fill="#0d1729" stroke="#38bdf8" stroke-width="1.8"/>
+      <text x="325" y="117" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800">工作内存</text>
+      <text x="325" y="138" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Working Memory</text>
+      <text x="325" y="157" text-anchor="middle" fill="#5f7593" font-size="10">事实 + 已推结论</text>
+
+      <line x1="410" y1="133" x2="455" y2="133" stroke="#38bdf8" stroke-width="2" marker-end="url(#arS)"/>
+
+      <!-- 引擎循环框 -->
+      <rect x="455" y="30" width="300" height="210" rx="13" fill="#16233a" stroke="#fbbf24" stroke-width="2"/>
+      <text x="605" y="56" text-anchor="middle" fill="#fbbf24" font-size="13.5" font-weight="800">SWRL 引擎循环（直至 fixpoint）</text>
+
+      <rect x="475" y="70" width="260" height="30" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+      <text x="605" y="90" text-anchor="middle" fill="#8ea3c0" font-size="11">① 读取阈值个体 thresholdValue</text>
+
+      <rect x="475" y="106" width="260" height="30" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+      <text x="605" y="126" text-anchor="middle" fill="#8ea3c0" font-size="11">② 匹配前件，绑定变量</text>
+
+      <rect x="475" y="142" width="260" height="30" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+      <text x="605" y="162" text-anchor="middle" fill="#8ea3c0" font-size="11">③ built-in 求值（AND 短路）</text>
+
+      <rect x="475" y="178" width="260" height="30" rx="6" fill="#0a1424" stroke="#2a3d5c"/>
+      <text x="605" y="198" text-anchor="middle" fill="#8ea3c0" font-size="11">④ 断言结论类</text>
+
+      <path d="M745 155 C 800 155, 800 90, 745 90" stroke="#fbbf24" stroke-width="1.5" fill="none" stroke-dasharray="5 3" marker-end="url(#arS)"/>
+      <text x="795" y="128" fill="#fbbf24" font-size="10" font-family="monospace">loop</text>
+
+      <!-- 阈值个体 -->
+      <rect x="455" y="262" width="300" height="52" rx="10" fill="#0d1729" stroke="#22d3ee" stroke-width="1.6"/>
+      <text x="605" y="283" text-anchor="middle" fill="#22d3ee" font-size="12" font-weight="800">阈值个体 :th_*（运行时覆写）</text>
+      <text x="605" y="302" text-anchor="middle" fill="#5f7593" font-size="10.5">规则本体无需重建</text>
+      <line x1="605" y1="262" x2="605" y2="240" stroke="#22d3ee" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arS)"/>
+
+      <!-- 结论 -->
+      <line x1="755" y1="133" x2="800" y2="133" stroke="#34d399" stroke-width="2.2" marker-end="url(#arSo)"/>
+      <rect x="800" y="90" width="160" height="86" rx="11" fill="#0d1729" stroke="#34d399" stroke-width="1.8"/>
+      <text x="880" y="117" text-anchor="middle" fill="#34d399" font-size="13" font-weight="800">推理结论</text>
+      <text x="880" y="138" text-anchor="middle" fill="#8ea3c0" font-size="10.5">Inferred Class</text>
+      <text x="880" y="157" text-anchor="middle" fill="#5f7593" font-size="10">回到工作内存</text>
+
+      <line x1="960" y1="133" x2="1005" y2="133" stroke="#34d399" stroke-width="2" marker-end="url(#arSo)"/>
+      <rect x="1005" y="90" width="150" height="86" rx="11" fill="#0d1729" stroke="#a78bfa" stroke-width="1.8"/>
+      <text x="1080" y="117" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="800">结果回写</text>
+      <text x="1080" y="138" text-anchor="middle" fill="#8ea3c0" font-size="10.5">OpsSwrlReasoner</text>
+      <text x="1080" y="157" text-anchor="middle" fill="#5f7593" font-size="10">alertLevel 等</text>
+    </svg>
+  </div>
+
+  <table class="chain">
+    <tr><th style="width:140px">场景</th><th style="width:80px">跳数</th><th style="width:140px">是否需迭代</th><th>关键机制</th></tr>
+    <tr><td>① 风险识别</td><td class="rd">4</td><td style="color:var(--bad);font-weight:700">必须</td><td>规则链 + fixpoint 收敛</td></tr>
+    <tr><td>② 指标归因</td><td class="rd">2</td><td style="color:var(--bad);font-weight:700">必须</td><td>跨实例对象属性导航 + 阈值个体</td></tr>
+    <tr><td>③ 配置合规</td><td class="rd">1</td><td style="color:var(--ok);font-weight:700">否</td><td>多条件 AND + 违规族归集</td></tr>
+    <tr><td>③补充 实例读库</td><td class="rd">0</td><td style="color:var(--ok);font-weight:700">否</td><td>库表 → 声明式映射 → OWL 断言（不含推理）</td></tr>
+    <tr><td>④ 告警分级</td><td class="rd">2</td><td style="color:var(--bad);font-weight:700">必须</td><td>分级 + 派单 + 级别不互斥</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="note ok"><div class="nt">建议授课顺序（由简到繁）</div>
+      <p>③ 配置合规（单规则，建立信心）→ ④ 告警分级（引入「链」与「矛盾」）→ ② 指标归因（跨实例导航）→ ① 风险识别（4 跳长链综合演练）。每级新增一个概念：AND 条件 → 链 → 跨实例 → 不动点迭代。</p></div>
+    <div class="note warn"><div class="nt">三个必讲陷阱</div>
+      <p>① 单轮推理导致链断；② <b>SWRL head 漏断言父类</b> <code>ConfigViolation</code>，违规族查询静默漏判；③ 映射表缺项时规则不点火却不报错，误判为规则失效。</p></div>
+  </div>
+  <div class="pageno"><b>6</b> / 6</div>
+</section>
+
+</body>
+</html>

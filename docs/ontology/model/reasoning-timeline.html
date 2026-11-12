@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能稽核 · 四类业务判断是怎么做出来的</title>
+<style>
+:root{
+  --bg:#0b1220;--panel:#16233a;--panel2:#1c2c47;--line:#2a3d5c;
+  --text:#e6edf7;--muted:#8ea3c0;--faint:#5f7593;
+  --accent:#38bdf8;--accent2:#22d3ee;--ok:#34d399;--warn:#fbbf24;
+  --bad:#f87171;--purple:#a78bfa;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#05080f;color:var(--text);
+  font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+
+.hero{max-width:1280px;margin:0 auto;padding:52px 44px 34px}
+.hero h1{font-size:42px;font-weight:800;line-height:1.22;letter-spacing:-.02em;margin-bottom:16px}
+.hero h1 span{background:linear-gradient(100deg,#38bdf8,#22d3ee 45%,#a78bfa);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .lead{font-size:17px;line-height:1.75;color:var(--muted);max-width:860px}
+.hero .lead b{color:var(--text)}
+
+.kpis{max-width:1280px;margin:0 auto 30px;padding:0 44px;display:grid;
+  grid-template-columns:repeat(4,1fr);gap:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 20px 18px}
+.kpi .kv{font-size:34px;font-weight:800;color:var(--accent);line-height:1;letter-spacing:-.02em}
+.kpi .kv small{font-size:15px;font-weight:700;margin-left:3px;color:var(--accent2)}
+.kpi .kl{font-size:13.5px;color:var(--text);font-weight:700;margin-top:10px}
+.kpi .kd{font-size:12.5px;color:var(--faint);margin-top:5px;line-height:1.55}
+
+.toc{max-width:1280px;margin:0 auto 30px;padding:0 44px;display:grid;
+  grid-template-columns:repeat(4,1fr);gap:12px}
+.toc a{display:block;text-decoration:none;padding:16px 18px;border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);transition:.18s}
+.toc a:hover{border-color:var(--accent);background:var(--panel2);transform:translateY(-2px)}
+.toc .tn{font-size:15px;color:var(--text);font-weight:800;margin-bottom:6px}
+.toc .td{font-size:12.5px;color:var(--faint);line-height:1.5}
+
+.page{max-width:1280px;margin:0 auto 28px;border-radius:16px;
+  background:radial-gradient(1200px 700px at 12% -10%,#1b2f4d 0%,transparent 60%),
+             radial-gradient(900px 600px at 100% 110%,#1a2a45 0%,transparent 55%),var(--bg);
+  box-shadow:0 20px 60px rgba(0,0,0,.55);padding:38px 44px 30px}
+
+.tag{display:inline-block;font-size:13px;font-weight:800;letter-spacing:.06em;
+  padding:6px 14px;border-radius:7px;margin-bottom:14px}
+.tag.g{background:rgba(52,211,153,.15);color:var(--ok)}
+.tag.y{background:rgba(251,191,36,.15);color:var(--warn)}
+.tag.a{background:rgba(56,189,248,.15);color:var(--accent)}
+.tag.b{background:rgba(248,113,113,.15);color:var(--bad)}
+
+h2{font-size:30px;font-weight:800;line-height:1.28;letter-spacing:-.015em;margin-bottom:14px}
+.story{font-size:16px;line-height:1.8;color:var(--muted);max-width:960px;margin-bottom:26px}
+.story b{color:var(--text);font-weight:700}
+
+.secttl{font-size:13px;letter-spacing:.14em;color:var(--accent);font-weight:800;
+  margin:30px 0 14px;text-transform:uppercase}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:8px}
+.steps.three{grid-template-columns:repeat(3,1fr)}
+.steps.two{grid-template-columns:repeat(2,1fr)}
+.step{position:relative;padding:0 26px 0 0}
+.step:last-child{padding-right:0}
+.step .num{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:16px;font-weight:800;margin-bottom:14px;position:relative;z-index:2}
+.step .card{background:#0d1729;border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px 18px;min-height:150px}
+.step .ct{font-size:15.5px;font-weight:800;color:var(--text);margin-bottom:9px;line-height:1.4}
+.step .cd{font-size:13.5px;line-height:1.7;color:var(--muted)}
+.step .cd b{color:var(--accent2);font-weight:700}
+.step .cd .num-hl{color:var(--warn);font-weight:800}
+.step:after{content:"";position:absolute;top:19px;left:38px;right:0;height:2px;
+  background:linear-gradient(90deg,#2a3d5c,rgba(42,61,92,.15));z-index:1}
+.step:last-child:after{display:none}
+
+.n1 .num{background:rgba(34,211,238,.15);color:var(--accent2);border:1.5px solid var(--accent2)}
+.n2 .num{background:rgba(56,189,248,.15);color:var(--accent);border:1.5px solid var(--accent)}
+.n3 .num{background:rgba(167,139,250,.15);color:var(--purple);border:1.5px solid var(--purple)}
+.n4 .num{background:rgba(248,113,113,.15);color:var(--bad);border:1.5px solid var(--bad)}
+.n5 .num{background:rgba(52,211,153,.15);color:var(--ok);border:1.5px solid var(--ok)}
+
+.result{margin-top:22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  background:linear-gradient(100deg,rgba(52,211,153,.13),rgba(52,211,153,.02));
+  border:1.5px solid rgba(52,211,153,.45);border-radius:13px;padding:18px 24px}
+.result .rl{font-size:13px;letter-spacing:.1em;color:var(--ok);font-weight:800;white-space:nowrap}
+.result .rv{font-size:20px;font-weight:800;color:var(--text)}
+.result .rd{font-size:13.5px;color:var(--muted);line-height:1.6;flex:1;min-width:260px}
+
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+.c{background:#0a1424;border:1px solid var(--line);border-radius:11px;padding:16px 19px;
+  border-top:3px solid var(--purple)}
+.c.ok{border-top-color:var(--ok)}
+.c.warn{border-top-color:var(--warn)}
+.c.bad{border-top-color:var(--bad)}
+.c .ct{font-size:14px;font-weight:800;color:var(--purple);margin-bottom:9px}
+.c.ok .ct{color:var(--ok)}.c.warn .ct{color:var(--warn)}.c.bad .ct{color:var(--bad)}
+.c p{font-size:13.5px;line-height:1.75;color:var(--muted)}
+.c p+p{margin-top:7px}
+.c b{color:var(--text)}
+
+.pageno{text-align:right;font-size:12px;color:var(--faint);margin-top:18px}
+
+.endsum{max-width:1280px;margin:0 auto 40px;padding:0 44px}
+.endsum table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+.endsum th{background:rgba(56,189,248,.1);color:var(--accent);font-size:12.5px;
+  letter-spacing:.05em;padding:12px 16px;text-align:left;border-bottom:1px solid var(--line)}
+.endsum td{padding:12px 16px;border-bottom:1px solid rgba(42,61,92,.55);
+  color:var(--muted);line-height:1.6}
+.endsum td:first-child{color:var(--text);font-weight:700}
+
+@media print{
+  body{background:#fff}
+  .page,.hero,.kpis,.toc,.endsum{box-shadow:none;page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>系统是怎么<span>自己发现问题</span>的</h1>
+  <p class="lead">过去，资费上架是否违规、销量下滑该怪谁、告警要不要半夜叫人，全靠人逐个翻表格、凭经验判断。<br>
+  现在，这些判断被写成了 <b>一套可复用的业务规则</b>，系统每天自动跑一遍，把结论直接送到对应的人手上。<br>
+  下面四页，用业务语言讲清这套判断是怎么一步步得出结果的。</p>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="kv">4<small>类</small></div><div class="kl">核心业务判断</div>
+    <div class="kd">风险识别 · 指标归因 · 配置合规 · 告警分级</div></div>
+  <div class="kpi"><div class="kv">0<small>人</small></div><div class="kl">日常人工初筛</div>
+    <div class="kd">规则 7×24 自动执行，人只看被挑出来的</div></div>
+  <div class="kpi"><div class="kv">即时<small></small></div><div class="kl">规则调整生效</div>
+    <div class="kd">改一个阈值数字即可，不用改系统</div></div>
+  <div class="kpi"><div class="kv">可追溯<small></small></div><div class="kl">每个结论都有来路</div>
+    <div class="kd">为什么判它有问题，每一步都留痕</div></div>
+</div>
+
+<div class="toc">
+  <a href="#s1"><div class="tn">① 风险识别</div><div class="td">一个漏收钱的套餐，怎么被自动揪出来</div></a>
+  <a href="#s2"><div class="tn">② 指标归因</div><div class="td">销量掉了，怎么定位到具体渠道</div></a>
+  <a href="#s3"><div class="tn">③ 配置合规</div><div class="td">上架前，怎么自动识别违规定价</div></a>
+  <a href="#s4"><div class="tn">④ 告警分级</div><div class="td">出故障了，怎么决定谁来处理、多急</div></a>
+</div>
+
+<!-- ═══════════ 场景 1 ═══════════ -->
+<div class="page" id="s1" style="background:radial-gradient(1200px 700px at 12% -10%,#16352c 0%,transparent 60%),#0b1220">
+  <div class="tag g">场景 ① · 风险识别</div>
+  <h2>一个「不收钱还挂在架子上」的套餐，是怎么被自动揪出来的</h2>
+  <p class="story">某天运营配置了一个新套餐：<b>月费 0 元、一次性费用 0 元</b>，而且直接挂上了架。<br>
+  这个套餐既不在白名单里，也<b>没有签任何合约</b>——这意味着客户可以零成本订购，公司一分钱收不到。<br>
+  更麻烦的是，它已经<b>在架上超过 30 天</b>，说明问题存在了很久却一直没人发现。</p>
+
+  <div class="secttl">系统是怎么一步步想明白的</div>
+  <div class="steps">
+    <div class="step n1"><div class="num">1</div><div class="card">
+      <div class="ct">先发现「它不收钱」</div>
+      <div class="cd">系统扫到：月费 <span class="num-hl">0 元</span>、一次性费用 <span class="num-hl">0 元</span>，并且不在白名单。<br><b>→ 判定：这是一个零元套餐</b></div></div></div>
+    <div class="step n2"><div class="num">2</div><div class="card">
+      <div class="ct">再确认「它还在卖」</div>
+      <div class="cd">接着核对：它<b>正在架上</b>，而且<b>没有合约兜底</b>。<br><b>→ 判定：这是零元套餐，且无合约保护，放任在卖</b></div></div></div>
+    <div class="step n3"><div class="num">3</div><div class="card">
+      <div class="ct">升级为「高风险」</div>
+      <div class="cd">符合公司对 <b>高风险资费</b> 的定义——零元、在架、无合约三者同时成立。<br><b>→ 判定：标记为高风险资费</b></div></div></div>
+    <div class="step n4"><div class="num">4</div><div class="card">
+      <div class="ct">最后看「晾了多久」</div>
+      <div class="cd">已在架 <span class="num-hl">100 天</span>，超过 <span class="num-hl">30 天</span> 的容忍上限。<br><b>→ 判定：必须紧急复核</b></div></div></div>
+  </div>
+
+  <div class="result">
+    <div class="rl">最终结论</div>
+    <div class="rv">紧急复核 · 最高处置等级</div>
+    <div class="rd">直接派给资费管理员，要求当天核实并下线或补签合约。整个过程<b>没有任何人工参与</b>，从配置上架到被系统挑出，不需要等任何人想起来去查。</div>
+  </div>
+
+  <div class="cards">
+    <div class="c urgent" style="border-top-color:var(--bad)"><div class="ct" style="color:var(--bad)">为什么一定要「一步步来」</div>
+      <p>这四步是有先后顺序的：<b>先知道它零元，才能判断它在卖零元；先知道它在卖零元，才能定性为高风险</b>。系统会反复扫描，直到没有新结论产生才停下。如果偷懒只跑第一遍，系统最多只能告诉你「这是个零元套餐」，后面的严重性判断全部丢失。</p></div>
+    <div class="c warn"><div class="ct">最容易被忽略的一环</div>
+      <p>第 4 步要读取「在架天数」这个数据。如果这个字段<b>没被采集</b>，系统不会报错，也不会提醒——它只是悄悄停在「高风险」，永远不会升级成「紧急复核」。<strong>这是自动化最危险的地方：它不会告诉你它漏了。</strong></p></div>
+    <div class="c"><div class="ct">同一个问题，可能有多种走法</div>
+      <p>除了「零元」这条路，系统还有另一条平行的判断路径：如果套餐<b>折扣打了 100%、还允许重复订购、又没指定目标客群</b>，同样会被认定为高风险。两条路殊途同归，避免漏网。</p></div>
+    <div class="c ok"><div class="ct">对业务的价值</div>
+      <p>这类「漏收钱」的配置，过去靠月度抽查，平均要几十天才能发现，期间每天都在流失收入。现在<b>当天就能被发现并派单</b>，相当于把稽核从「事后统计」变成了「事中拦截」。</p></div>
+  </div>
+  <div class="pageno">① / 四类业务判断</div>
+</div>
+
+<!-- ═══════════ 场景 2 ═══════════ -->
+<div class="page" id="s2" style="background:radial-gradient(1200px 700px at 12% -10%,#33290f 0%,transparent 60%),#0b1220">
+  <div class="tag y">场景 ② · 指标归因</div>
+  <h2>销量掉了，系统是怎么定位到「具体是哪个渠道」的</h2>
+  <p class="story">月底复盘，发现某款产品销量下滑。<br>
+  「下滑」本身是结果，<b>管理者真正要的是：为什么会跌，我该去找谁</b>。<br>
+  系统会自动从「哪个产品出问题了」，顺藤摸瓜找到「是哪个销售渠道拖了后腿」。</p>
+
+  <div class="secttl">两步定位法</div>
+  <div class="steps two">
+    <div class="step n1"><div class="num">1</div><div class="card">
+      <div class="ct">第一步：找出「生病的产品」</div>
+      <div class="cd">系统逐个比对每款产品的销量变化，超过预警线的就打上标记。<br>
+      本例中，这款产品销量跌了 <span class="num-hl">20%</span>，而预警线是跌 <span class="num-hl">10%</span>。<br>
+      <b>→ 判定：这是一款「异常产品」</b></div></div></div>
+    <div class="step n2"><div class="num">2</div><div class="card">
+      <div class="ct">第二步：顺藤摸瓜找「渠道」</div>
+      <div class="cd">一款产品往往在好几个渠道卖。系统沿着产品的销售渠道逐一排查，两个条件同时满足才认定是「元凶」：<br>
+      <b>跌得够狠</b>（跌 30%，超过 20% 线）<br>
+      <b>占得够大</b>（占该产品销量 50%，超过 30% 线）<br>
+      <b>→ 判定：这个渠道就是根因</b></div></div></div>
+  </div>
+
+  <div class="result">
+    <div class="rl">系统输出</div>
+    <div class="rv">根因渠道已定位，直接指向责任方</div>
+    <div class="rd">管理者拿到的不是「销量下滑 20%」这种废话结论，而是<b>「某某渠道销量跌 30%，占该产品一半，去查它」</b>——可以直接转给对应渠道负责人跟进。</div>
+  </div>
+
+  <div class="cards">
+    <div class="c warn"><div class="ct">为什么要两个条件同时满足</div>
+      <p>只看「跌得狠」会误伤：有些小渠道虽然跌了 50%，但本来就只占 3% 的量，对大盘毫无影响。只看「占比大」也不对：占比大的渠道可能压根没跌。<br><b>又跌得狠、又占得大，才是真正的元凶</b>——这是业务经验，被固化进了规则。</p></div>
+    <div class="c ok"><div class="ct">预警线可以随时调整</div>
+      <p>「跌 20%」「占 30%」这些数字都单独存放，<b>业务要收紧或放宽口径，改个数字就行，不用找技术改系统</b>。比如旺季放宽到跌 30%，淡季收紧到跌 10%，当天改当天生效。</p></div>
+    <div class="c"><div class="ct">除了渠道，还有三类常见原因</div>
+      <p>系统同时支持另外三种归因：<b>促销没做好</b>（快过期了还没卖动）、<b>被竞品抢了</b>（价格差拉大、份额下滑）、<b>用户行为变了</b>。四种原因各有各的识别条件，可并行跑。</p></div>
+    <div class="c"><div class="ct">对业务的价值</div>
+      <p>把「复盘会上互相猜、各说各话」变成<b>「系统给出证据链，大家直接谈怎么补救」</b>。归因周期从「周」压缩到「天」，且结论可复现、可追溯。</p></div>
+  </div>
+  <div class="pageno">② / 四类业务判断</div>
+</div>
+
+<!-- ═══════════ 场景 3 ═══════════ -->
+<div class="page" id="s3" style="background:radial-gradient(1200px 700px at 12% -10%,#12303f 0%,transparent 60%),#0b1220">
+  <div class="tag a">场景 ③ · 配置合规</div>
+  <h2>上架前，系统怎么自动判断「这个定价违规了」</h2>
+  <p class="story">资费上架是风险最高的环节之一：定错一次价，可能被大量用户订购，损失巨大且难以追回。<br>
+  系统会在上架流程中自动做一次合规检查，<b>把违规配置拦在门内</b>。</p>
+
+  <div class="secttl">违规的判定：五个条件必须同时成立</div>
+  <div class="steps">
+    <div class="step n1"><div class="num">✓</div><div class="card">
+      <div class="ct">① 固定费为 0</div>
+      <div class="cd">套餐的固定费用是 <span class="num-hl">0 元</span></div></div></div>
+    <div class="step n2"><div class="num">✓</div><div class="card">
+      <div class="ct">② 一次性费用为 0</div>
+      <div class="cd">开通费用也是 <span class="num-hl">0 元</span>，等于完全不收费</div></div></div>
+    <div class="step n3"><div class="num">✓</div><div class="card">
+      <div class="ct">③ 没有合约</div>
+      <div class="cd">不绑定任何合约期，随时可退</div></div></div>
+    <div class="step n4"><div class="num">✓</div><div class="card">
+      <div class="ct">④ 不在白名单</div>
+      <div class="cd">不是经过特批的特殊资费</div></div></div>
+  </div>
+  <div class="steps" style="margin-top:0;grid-template-columns:repeat(4,1fr)">
+    <div class="step n5"><div class="num">✓</div><div class="card" style="min-height:auto">
+      <div class="ct">⑤ 不是内部测试</div>
+      <div class="cd">不是研发测试用的临时配置</div></div></div>
+    <div class="step" style="grid-column:span 3;padding-right:0"><div class="card" style="min-height:auto;background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.4)">
+      <div class="ct" style="color:var(--ok)">五项全中 → 判定为「高风险零固费资费」</div>
+      <div class="cd">这是一条明确的红线：<b>既不收钱、又无合约约束、还不是特批或测试</b>，就是必须拦下的违规定价。</div></div></div>
+  </div>
+
+  <div class="result" style="border-color:rgba(52,211,153,.45)">
+    <div class="rl">拦截效果</div>
+    <div class="rv">上架即告警，配置方当场修正</div>
+    <div class="rd">不需要等财务月结、也不需要等稽核抽查，<b>在配置的那一刻就被系统指出来</b>。风险从「事后追损」变成「事前拦截」。</div>
+  </div>
+
+  <div class="cards">
+    <div class="c ok"><div class="ct">为什么要「五个条件同时」</div>
+      <p>因为每一个都对应一种<b>合理豁免</b>：白名单 = 领导特批；内部测试 = 研发用；有合约 = 有对价。只要有一条成立，就说明这个零元是<b>事出有因</b>的，不该拦。<b>五个条件全中，说明什么理由都没有。</b></p></div>
+    <div class="c bad"><div class="ct">边界一：合规结论靠「排除违规」得出</div>
+      <p>系统只能判断「<b>命中了某条违规红线</b>」，无法自动证明「<b>不存在任何违规</b>」。所以「合规」是<b>把 7 类违规逐一排除后</b>得到的结论，而不是一条独立的正向判定。这是这类推理技术的固有边界，<b>实施时须配套校验流程</b>。</p></div>
+    <div class="c warn"><div class="ct">边界二：两项豁免靠外部预判</div>
+      <p>「是否特批」和「是否内部测试」这两项，系统<b>不会自己去查系统、也不做数据清洗</b>。其中「内测」按渠道直接判定；「特批」因为技术上无法证明「<b>不存在白名单单号</b>」，只能由前置程序按「<b>查不到就当没有</b>」算好一个豁免标志传进来。<b>两条映射规则都写在配置文件里</b>，业务方可自行查看与调整，但该标志<b>不是系统推理出来的</b>——这是明确的建模妥协。</p></div>
+    <div class="c"><div class="ct">顺带拦下的其它红线</div>
+      <p>同一套机制还可以覆盖：折扣超限、赠送资源超量、价格倒挂等配置红线。只需按同样方式新增一条判断条件，<b>不需要改系统架构</b>。</p></div>
+  </div>
+  <div class="pageno">③ / 四类业务判断</div>
+</div>
+
+<!-- ═══════════ 场景 4 ═══════════ -->
+<div class="page" id="s4" style="background:radial-gradient(1200px 700px at 12% -10%,#3a1b1b 0%,transparent 60%),#0b1220">
+  <div class="tag b">场景 ④ · 告警分级</div>
+  <h2>出了故障，系统怎么决定「谁来处理、有多急」</h2>
+  <p class="story">告警最大的痛点不是「发现不了」，而是<b>「天天响、没人信、真出事了反而漏掉」</b>。<br>
+  系统把这套事分成两步：<b>先定级，再派单</b>。</p>
+
+  <div class="secttl">第一步：定级 —— 按严重程度分三档</div>
+  <div class="steps three">
+    <div class="step n4"><div class="num">P0</div><div class="card">
+      <div class="ct">错误数 ≥ 10 次</div>
+      <div class="cd">或计费错误率 ≥ 5%<br><b>→ 重大事故，最高级别</b><br><span style="color:var(--faint);font-size:12.5px">立刻响应</span></div></div></div>
+    <div class="step n3"><div class="num">P1</div><div class="card">
+      <div class="ct">错误数 ≥ 1 次</div>
+      <div class="cd">或计费错误率 ≥ 1%<br><b>→ 一般故障，需处理</b><br><span style="color:var(--faint);font-size:12.5px">当日响应</span></div></div></div>
+    <div class="step n5"><div class="num">P2</div><div class="card">
+      <div class="ct">只是趋势不好</div>
+      <div class="cd">销量在跌 / 错误在涨，但未达红线<br><b>→ 仅观察，不派单</b><br><span style="color:var(--faint);font-size:12.5px">不打扰任何人</span></div></div></div>
+  </div>
+
+  <div class="secttl">第二步：派单 —— 只有 P0、P1 才建工单</div>
+  <div class="steps two">
+    <div class="step n4"><div class="num">P0</div><div class="card">
+      <div class="ct">派「紧急工单」</div>
+      <div class="cd">按重大事故流程走，通知到值班负责人和管理层</div></div></div>
+    <div class="step n3"><div class="num">P1</div><div class="card">
+      <div class="ct">派「常规工单」</div>
+      <div class="cd">进入日常工单队列，按 SLA 时限处理</div></div></div>
+  </div>
+
+  <div class="result" style="border-color:rgba(248,113,113,.45);background:linear-gradient(100deg,rgba(248,113,113,.13),rgba(248,113,113,.02))">
+    <div class="rl" style="color:var(--bad)">举例说明</div>
+    <div class="rv">错误 3 次 → 判 P1 → 自动开工单</div>
+    <div class="rd">3 次没到 P0 的 10 次线，但已经超过 P1 的 1 次线，所以判 P1 并派常规工单。<b>不用人判断、不用人建单，判断和派发一次完成。</b></div>
+  </div>
+
+  <div class="cards">
+    <div class="c ok"><div class="ct">为什么要分三档、而不是一刀切</div>
+      <p>如果所有异常都当重大事故处理，一周就会把人拖垮，最后所有人都开始无视告警。<b>分级的意义是让「该紧张的紧张，不该打扰的不打扰」</b>，P2 只观察不派单，正是为了保住告警的可信度。</p></div>
+    <div class="c bad"><div class="ct">已知的边界：级别可能重叠</div>
+      <p>如果错误数是 15 次，它<b>同时满足 P0 和 P1 的条件</b>。系统层面这不算矛盾（两个判断都成立），但业务上必须只取一个。目前靠<b>最后按最高级收敛</b>来处理。<br><b>建议：后续在业务规则里显式声明「P0 与 P1 互斥」</b>，让结论更干净。</p></div>
+    <div class="c warn"><div class="ct">趋势判断不做预测</div>
+      <p>P2 里的「销量在跌」「错误在涨」，是前置程序算好后传进来的结论，系统<b>不负责预测趋势</b>。这和大屏上的趋势图是两回事，不要把两者混谈。</p></div>
+    <div class="c"><div class="ct">对业务的价值</div>
+      <p>值班同事从「每天翻几百条告警逐个甄别」变成<b>「只看系统派过来的工单」</b>。工单数量可能只有原来的十分之一，但真正该处理的都没有漏。</p></div>
+  </div>
+  <div class="pageno">④ / 四类业务判断</div>
+</div>
+
+<!-- ═══════════ 总结 ═══════════ -->
+<div class="endsum">
+  <h2 style="margin-bottom:16px">一页看完全部四个场景</h2>
+  <p class="story" style="margin-bottom:8px">所有判断共享同一套逻辑：<b>把数据准备好 → 按规则一步步推 → 得出可执行的结论</b>。差别只在步骤多少和判断条件的复杂程度。</p>
+
+  <table>
+    <tr><th style="width:150px">场景</th><th style="width:110px">需要几步</th><th style="width:220px">最终交付给谁</th><th>业务上解决什么问题</th></tr>
+    <tr><td>① 风险识别</td><td>4 步</td><td>资费管理员</td><td>漏收钱的在架套餐，当天被挑出并要求复核</td></tr>
+    <tr><td>② 指标归因</td><td>2 步</td><td>渠道负责人</td><td>销量下滑直接定位到责任渠道，不用开会猜</td></tr>
+    <tr><td>③ 配置合规</td><td>1 步</td><td>配置操作人</td><td>违规定价在上架那一刻被拦下</td></tr>
+    <tr><td>④ 告警分级</td><td>2 步</td><td>值班 / 管理层</td><td>该紧张的最紧张，不该打扰的不打扰</td></tr>
+  </table>
+
+  <div class="cards" style="grid-template-columns:1fr 1fr;margin-top:26px">
+    <div class="c ok"><div class="ct">三条管理层需要牢记的事</div>
+      <p><b>1. 规则是可以调的资产，不是一次性开发。</b>业务口径变了，改阈值即可，不用重新开发系统。</p>
+      <p><b>2. 自动化最怕「静默失败」。</b>数据没进来，系统不会报错，只是得不出结论。必须配套数据完整性监控。</p>
+      <p><b>3. 系统只负责「判断有没有违规」，不负责「证明不存在违规」。</b>「合规」是由排除 7 类违规反向得出的；另有「特批」「内测」两项豁免依赖外部传入的标志（已声明在配置中）。流程设计上要补齐这两环。</p></div>
+    <div class="c warn"><div class="ct">建议的推进节奏</div>
+      <p><b>先跑通一个场景</b>（建议从场景 ③ 配置合规开始，单条规则、见效快、风险低），验证「规则改写 → 数据接入 → 结论派单」整条链路。</p>
+      <p><b>再复制到其它场景</b>，此时只需要业务专家参与定义条件，技术侧几乎零开发。</p>
+      <p><b>最后评估扩展边界</b>：哪些判断适合规则化，哪些必须靠人工经验，提前划清，避免过度承诺。</p></div>
+  </div>
+
+  <p style="margin-top:26px;font-size:13px;color:var(--faint);line-height:1.7;border-top:1px solid var(--line);padding-top:16px">
+    技术实现细节（规则编号、判断逻辑的完整定义、可调参数的清单）另见专家版：《规则推理详解》。两版内容一一对应，可分别用于管理层汇报与技术交接。
+  </p>
+</div>
+
+</body>
+</html>

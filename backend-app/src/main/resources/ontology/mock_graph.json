@@ -589,7 +589,7 @@
       }
     },
     {
-      "offeringId": "OF-HF-128",
+      "offeringId": "99898653",
       "offeringName": "家庭融合畅享128",
       "state": "上架",
       "monthlyFee": 128,
@@ -633,7 +633,7 @@
       "includeBroadband": "500M"
     },
     {
-      "offeringId": "OF-RISK-001",
+      "offeringId": "84176765",
       "offeringName": "校园体验流量包0元",
       "state": "上架",
       "monthlyFee": 0,
@@ -664,7 +664,7 @@
       }
     },
     {
-      "offeringId": "OF-LOW-019",
+      "offeringId": "34538053",
       "offeringName": "旧版彩铃包-2019",
       "state": "上架",
       "monthlyFee": 9,
@@ -681,7 +681,7 @@
       "category": "low_eff"
     },
     {
-      "offeringId": "OF-GIFT-WL",
+      "offeringId": "55836485",
       "offeringName": "会员权益赠送流量包",
       "state": "上架",
       "monthlyFee": 0,
@@ -697,7 +697,7 @@
       "category": "whitelist"
     },
     {
-      "offeringId": "OF-DISC-001",
+      "offeringId": "76641092",
       "offeringName": "全额赠送可重复体验包",
       "state": "上架",
       "monthlyFee": 19,
@@ -1860,7 +1860,7 @@
       "nameHint": "体验"
     },
     {
-      "offeringId": "OF-CAMPUS-STU-29",
+      "offeringId": "59647839",
       "offeringName": "大学生专属套餐29",
       "state": "上架",
       "monthlyFee": 29,
@@ -1893,7 +1893,7 @@
       }
     },
     {
-      "offeringId": "OF-CAMPUS-STU-39",
+      "offeringId": "52025785",
       "offeringName": "大学生畅学套餐39",
       "state": "上架",
       "monthlyFee": 39,
@@ -1927,7 +1927,7 @@
       }
     },
     {
-      "offeringId": "OF-CAMPUS-STU-59",
+      "offeringId": "88169667",
       "offeringName": "校园青春大学生59",
       "state": "上架",
       "monthlyFee": 59,
@@ -1961,7 +1961,7 @@
       }
     },
     {
-      "offeringId": "OF-CAMPUS-STU-0",
+      "offeringId": "86766965",
       "offeringName": "大学生体验套餐0元",
       "state": "上架",
       "monthlyFee": 0,
@@ -1993,7 +1993,7 @@
       }
     },
     {
-      "offeringId": "OF-CAMPUS-STU-19",
+      "offeringId": "61779231",
       "offeringName": "大学生流量加餐包19",
       "state": "上架",
       "monthlyFee": 19,
@@ -2024,7 +2024,7 @@
       }
     },
     {
-      "offeringId": "OF-CAMPUS-STU-OLD-49",
+      "offeringId": "56283095",
       "offeringName": "大学生经典套餐49",
       "state": "上架",
       "monthlyFee": 49,
@@ -2274,7 +2274,7 @@
     }
   ],
   "opsGraph": {
-    "OF-HF-128": {
+    "99898653": {
       "metrics": [
         {
           "metricCode": "累计收入",
@@ -2651,7 +2651,7 @@
       "includeBroadband": null
     },
     {
-      "schemeId": "OF-HF-128",
+      "schemeId": "99898653",
       "schemeName": "家庭融合畅享128",
       "status": "已上线",
       "messageRootKey": "familyBasePrc",

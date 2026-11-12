@@ -1,0 +1,303 @@
+# =============================================================================
+# 产商品运营本体 —— 场景①：指标异动归因（product-attribution.ttl）
+# -----------------------------------------------------------------------------
+# 业务叙事：D+1 异动巡检。指标环比跌破阈值 → R-A01 点燃异动产商品，
+#           随后分别从渠道/促销/竞品/用户行为四条证据链给出根因候选。
+#
+# 入口端点：POST /api/v1/product-ontology/ops/root-cause
+#           body {"offeringId":"99898653"} 或 {"text":"家庭融合128 收入跌了"}
+#           出参：anomalies[] / channelCandidates[] / promotionCandidates[] /
+#                 competitorCandidates[] / behaviorCandidates[] / fired[]
+#
+# 引擎：R-A01~R-A05 全部 engine=swrl（Openllet），失败回退 java-rules
+#       （OPS 引擎实现 OpsSwrlReasoner.reasonRootCause）。
+#       阈值单源：ops_rules.json#/rootCause（RiskRules-v1.2）。
+#
+# 建模要点：
+#   - 归因结论类是证据实体自身的子类（ChannelRootCause ⊑ Channel），
+#     而不是 Offering 的子类：根因落在「哪条渠道/促销/竞品/行为」上。
+#   - R-A02~A05 均以 AnomalyOffering 为前提，即强依赖 R-A01 点火。
+#   - 阈值以命名个体 :th_RA* 承载，运行时覆写，规则骨架不变。
+# =============================================================================
+
+@prefix :          <http://prodai.sitech.com/ontology/product#> .
+@prefix owl:       <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:       <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:      <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:       <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl:      <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb:     <http://www.w3.org/2003/11/swrlb#> .
+
+<http://prodai.sitech.com/ontology/product-attribution> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营本体-场景①指标异动归因"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "R-A01 异动点火 + 渠道/促销/竞品/行为四类根因候选。"@zh ;
+    owl:imports <http://prodai.sitech.com/ontology/product-core> .
+
+
+#################################################################
+# 1. 类：证据实体
+#################################################################
+
+:Metric rdf:type owl:Class ;
+    rdfs:label "指标快照"@zh ;
+    rdfs:comment "单个指标的环比快照，承载异动判据。一个 Offering 可关联多个 Metric。"@zh .
+
+:Channel rdf:type owl:Class ;
+    rdfs:label "销售渠道"@zh ;
+    rdfs:comment "线上/线下/直销等可归因渠道。"@zh .
+
+:Promotion rdf:type owl:Class ;
+    rdfs:label "促销活动"@zh ;
+    rdfs:comment "限时折扣、赠品、首月优惠等可归因促销。"@zh .
+
+:Competitor rdf:type owl:Class ;
+    rdfs:label "竞品"@zh ;
+    rdfs:comment "同价位或同人群可替代的对标产品。"@zh .
+
+:UserBehavior rdf:type owl:Class ;
+    rdfs:label "用户行为"@zh ;
+    rdfs:comment "活跃、流失、转化等行为变化样本。"@zh .
+
+
+#################################################################
+# 2. 类：归因结论（SWRL head）
+#################################################################
+
+:AnomalyOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "异动产商品"@zh ;
+    rdfs:comment "R-A01 点火：指标环比越阈或上游 anomalyFlag=true。"@zh .
+
+:ChannelRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Channel ;
+    rdfs:label "渠道根因候选"@zh ;
+    rdfs:comment "R-A02：渠道订单量跌幅越阈且贡献占比越阈。"@zh .
+
+:PromotionRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Promotion ;
+    rdfs:label "促销根因候选"@zh ;
+    rdfs:comment "R-A03：促销临近到期且驱动订单占比越阈。"@zh .
+
+:CompetitorRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Competitor ;
+    rdfs:label "竞品根因候选"@zh ;
+    rdfs:comment "R-A04：价差比越阈且竞品渗透率正向变化。"@zh .
+
+:BehaviorRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :UserBehavior ;
+    rdfs:label "行为根因候选"@zh ;
+    rdfs:comment "R-A05：行为权重提示越阈。"@zh .
+
+
+#################################################################
+# 3. 对象属性：Offering 到各证据实体的归因链
+#################################################################
+
+:hasMetric rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :Metric ;
+    rdfs:label "持有指标"@zh .
+
+:soldOn rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :Channel ;
+    rdfs:label "经销于渠道"@zh .
+
+:participatesIn rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :Promotion ;
+    rdfs:label "参与促销"@zh .
+
+:competesWith rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :Competitor ;
+    rdfs:label "对标竞品"@zh .
+
+:influencedBy rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ;
+    rdfs:range :UserBehavior ;
+    rdfs:label "受用户行为影响"@zh .
+
+
+#################################################################
+# 4. 数据属性：各证据实体字段
+#################################################################
+
+:channelId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:string ;
+    rdfs:label "渠道编码"@zh .
+
+:channelName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:string ;
+    rdfs:label "渠道名称"@zh .
+
+:orderDelta rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:decimal ;
+    rdfs:label "渠道订单量环比"@zh ;
+    rdfs:comment "负值表示下降；R-A02 以 <= 阈值为命中条件。"@zh .
+
+:contribRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:decimal ;
+    rdfs:label "渠道贡献占比"@zh .
+
+:promoId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:string ;
+    rdfs:label "促销编码"@zh .
+
+:promoName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:string ;
+    rdfs:label "促销名称"@zh .
+
+:daysToExpire rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal ;
+    rdfs:label "距到期天数"@zh ;
+    rdfs:comment "缺省 999（视为远期，不命中 R-A03）。"@zh .
+
+:drivenOrderRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal ;
+    rdfs:label "促销驱动订单占比"@zh .
+
+:competitorId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:string ;
+    rdfs:label "竞品编码"@zh .
+
+:competitorName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:string ;
+    rdfs:label "竞品名称"@zh .
+
+:priceGap rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "绝对价差"@zh .
+
+:priceGapRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "价差比"@zh .
+
+:penetrationDeltaPp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal ;
+    rdfs:label "竞品渗透率变化(百分点)"@zh ;
+    rdfs:comment "R-A04 要求严格大于 0。"@zh .
+
+:behaviorId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string ;
+    rdfs:label "行为样本编码"@zh .
+
+:behaviorName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string ;
+    rdfs:label "行为名称"@zh .
+
+:weightHint rdf:type owl:DatatypeProperty ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "候选权重提示"@zh ;
+    rdfs:comment "Channel/Promotion/Competitor/UserBehavior 共用；R-A05 以 >= 阈值为命中条件。"@zh .
+
+
+#################################################################
+# 5. 命名阈值个体（运行时按 ops_rules.json#/rootCause 覆写）
+#################################################################
+
+:th_RA01_metricDeltaLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.10"^^xsd:decimal ; rdfs:label "R-A01.metricDeltaLte"@en .
+:th_RA02_orderDeltaLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "-0.20"^^xsd:decimal ; rdfs:label "R-A02.orderDeltaLte"@en .
+:th_RA02_contribRatioGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.30"^^xsd:decimal ; rdfs:label "R-A02.contribRatioGte"@en .
+:th_RA03_daysToExpireLte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "7"^^xsd:decimal ; rdfs:label "R-A03.daysToExpireLte"@en .
+:th_RA03_drivenOrderRatioGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.25"^^xsd:decimal ; rdfs:label "R-A03.drivenOrderRatioGte"@en .
+:th_RA04_priceGapRatioGte rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.15"^^xsd:decimal ; rdfs:label "R-A04.priceGapRatioGte"@en .
+:th_RA04_penetrationDeltaPpGt rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0"^^xsd:decimal ; rdfs:label "R-A04.penetrationDeltaPpGt"@en .
+:th_RA05_minWeightHint rdf:type owl:NamedIndividual , :RuleThreshold ;
+    :thresholdValue "0.08"^^xsd:decimal ; rdfs:label "R-A05.minWeightHint"@en .
+
+
+#################################################################
+# 6. SWRL 变量声明
+#################################################################
+
+:v_a1o rdf:type swrl:Variable . :v_a1m rdf:type swrl:Variable . :v_a1d rdf:type swrl:Variable . :v_a1t rdf:type swrl:Variable .
+:v_a1bo rdf:type swrl:Variable . :v_a1bm rdf:type swrl:Variable . :v_a1bf rdf:type swrl:Variable .
+:v_a2o rdf:type swrl:Variable . :v_a2c rdf:type swrl:Variable . :v_a2od rdf:type swrl:Variable . :v_a2cr rdf:type swrl:Variable .
+:v_a2tod rdf:type swrl:Variable . :v_a2tcr rdf:type swrl:Variable .
+:v_a3o rdf:type swrl:Variable . :v_a3p rdf:type swrl:Variable . :v_a3d rdf:type swrl:Variable . :v_a3r rdf:type swrl:Variable .
+:v_a3td rdf:type swrl:Variable . :v_a3tr rdf:type swrl:Variable .
+:v_a4o rdf:type swrl:Variable . :v_a4c rdf:type swrl:Variable . :v_a4g rdf:type swrl:Variable . :v_a4pp rdf:type swrl:Variable .
+:v_a4tg rdf:type swrl:Variable . :v_a4tp rdf:type swrl:Variable .
+:v_a5o rdf:type swrl:Variable . :v_a5b rdf:type swrl:Variable . :v_a5w rdf:type swrl:Variable . :v_a5tw rdf:type swrl:Variable .
+
+
+#################################################################
+# 7. SWRL 规则（R-A01 ~ R-A05）
+#################################################################
+
+# R-A01.delta：任一指标环比 <= 阈值 → 异动
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A01.delta"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_a1o ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :hasMetric ; swrl:argument1 :v_a1o ; swrl:argument2 :v_a1m ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :metricDelta ; swrl:argument1 :v_a1m ; swrl:argument2 :v_a1d ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA01_metricDeltaLte ; swrl:argument2 :v_a1t ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThanOrEqual ; swrl:arguments ( :v_a1d :v_a1t ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a1o ] ) ] .
+
+# R-A01.flag：上游已判定 anomalyFlag=true → 异动（honorAnomalyFlag）
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A01.flag"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :Offering ; swrl:argument1 :v_a1bo ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :hasMetric ; swrl:argument1 :v_a1bo ; swrl:argument2 :v_a1bm ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :anomalyFlag ; swrl:argument1 :v_a1bm ; swrl:argument2 :v_a1bf ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:equal ; swrl:arguments ( :v_a1bf "true"^^xsd:boolean ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a1bo ] ) ] .
+
+# R-A02：渠道订单跌幅越阈 且 渠道贡献占比越阈 → 渠道根因
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A02"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a2o ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :soldOn ; swrl:argument1 :v_a2o ; swrl:argument2 :v_a2c ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :orderDelta ; swrl:argument1 :v_a2c ; swrl:argument2 :v_a2od ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :contribRatio ; swrl:argument1 :v_a2c ; swrl:argument2 :v_a2cr ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA02_orderDeltaLte ; swrl:argument2 :v_a2tod ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA02_contribRatioGte ; swrl:argument2 :v_a2tcr ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThanOrEqual ; swrl:arguments ( :v_a2od :v_a2tod ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_a2cr :v_a2tcr ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :ChannelRootCause ; swrl:argument1 :v_a2c ] ) ] .
+
+# R-A03：促销临近到期 且 驱动订单占比越阈 → 促销根因
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A03"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a3o ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :participatesIn ; swrl:argument1 :v_a3o ; swrl:argument2 :v_a3p ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :daysToExpire ; swrl:argument1 :v_a3p ; swrl:argument2 :v_a3d ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :drivenOrderRatio ; swrl:argument1 :v_a3p ; swrl:argument2 :v_a3r ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA03_daysToExpireLte ; swrl:argument2 :v_a3td ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA03_drivenOrderRatioGte ; swrl:argument2 :v_a3tr ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:lessThanOrEqual ; swrl:arguments ( :v_a3d :v_a3td ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_a3r :v_a3tr ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :PromotionRootCause ; swrl:argument1 :v_a3p ] ) ] .
+
+# R-A04：价差比越阈 且 竞品渗透率严格上升 → 竞品根因
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A04"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a4o ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :competesWith ; swrl:argument1 :v_a4o ; swrl:argument2 :v_a4c ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :priceGapRatio ; swrl:argument1 :v_a4c ; swrl:argument2 :v_a4g ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :penetrationDeltaPp ; swrl:argument1 :v_a4c ; swrl:argument2 :v_a4pp ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA04_priceGapRatioGte ; swrl:argument2 :v_a4tg ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA04_penetrationDeltaPpGt ; swrl:argument2 :v_a4tp ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_a4g :v_a4tg ) ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThan ; swrl:arguments ( :v_a4pp :v_a4tp ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :CompetitorRootCause ; swrl:argument1 :v_a4c ] ) ] .
+
+# R-A05：行为权重提示越阈 → 行为根因
+[ rdf:type swrl:Imp ;
+  rdfs:label "R-A05"@en ;
+  swrl:body ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :AnomalyOffering ; swrl:argument1 :v_a5o ]
+              [ rdf:type swrl:IndividualPropertyAtom ; swrl:propertyPredicate :influencedBy ; swrl:argument1 :v_a5o ; swrl:argument2 :v_a5b ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :weightHint ; swrl:argument1 :v_a5b ; swrl:argument2 :v_a5w ]
+              [ rdf:type swrl:DatavaluedPropertyAtom ; swrl:propertyPredicate :thresholdValue ; swrl:argument1 :th_RA05_minWeightHint ; swrl:argument2 :v_a5tw ]
+              [ rdf:type swrl:BuiltinAtom ; swrl:builtin swrlb:greaterThanOrEqual ; swrl:arguments ( :v_a5w :v_a5tw ) ] ) ;
+  swrl:head ( [ rdf:type swrl:ClassAtom ; swrl:classPredicate :BehaviorRootCause ; swrl:argument1 :v_a5b ] ) ] .

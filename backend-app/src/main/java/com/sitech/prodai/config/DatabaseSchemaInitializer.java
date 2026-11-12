@@ -2,6 +2,7 @@ package com.sitech.prodai.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -18,6 +19,15 @@ import java.sql.Connection;
  *       （需 distributed by 方言，INSERT IGNORE 幂等）</li>
  *   <li>@DependsOnDatabaseInitialization 保证先于 MyBatis mapper 使用</li>
  * </ul>
+ * <p>
+ * 开关：受 spring.sql.init.mode 控制，语义与 Spring 官方一致：
+ * <ul>
+ *   <li>never：完全跳过（生产/外部库默认，结构由 DBA 脚本人工执行）</li>
+ *   <li>embedded：仅当数据源为内嵌库（H2）时执行，外部库（MySQL）跳过</li>
+ *   <li>always：总是执行</li>
+ * </ul>
+ * 之所以自建初始化器而不依赖 Spring 的 spring.sql.init，是为了按数据源方言选择
+ * H2/MySQL 脚本；但开关仍复用该配置项，避免两套口径。
  */
 @Configuration
 @DependsOnDatabaseInitialization
@@ -25,8 +35,14 @@ public class DatabaseSchemaInitializer {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaInitializer.class);
 
-    public DatabaseSchemaInitializer(DataSource dataSource) {
+    public DatabaseSchemaInitializer(DataSource dataSource,
+                                     @Value("${spring.sql.init.mode:embedded}") String mode) {
         String product = productName(dataSource);
+        if (!shouldInitialize(mode, product)) {
+            log.info("[DatabaseSchemaInitializer] spring.sql.init.mode={}，数据源 {}，跳过脚本初始化（结构由 DBA 管理）",
+                    mode, product);
+            return;
+        }
         if (product.contains("h2")) {
             init(dataSource, "sql/h2/schema-h2.sql", "sql/h2/data-h2.sql", "H2");
         } else if (product.contains("mysql")) {
@@ -34,6 +50,16 @@ public class DatabaseSchemaInitializer {
         } else {
             log.info("[DatabaseSchemaInitializer] 未识别的数据源 {}，跳过脚本初始化（结构由 DBA 管理）", product);
         }
+    }
+
+    private boolean shouldInitialize(String mode, String product) {
+        if ("never".equalsIgnoreCase(mode)) {
+            return false;
+        }
+        if ("embedded".equalsIgnoreCase(mode)) {
+            return product.contains("h2");
+        }
+        return "always".equalsIgnoreCase(mode);
     }
 
     private String productName(DataSource dataSource) {
