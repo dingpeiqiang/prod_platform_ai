@@ -123,8 +123,15 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri.startsWith("/actuator/") || uri.startsWith("/health") || uri.startsWith("/error")
-                || uri.startsWith("/swagger-ui") || uri.startsWith("/v3/api-docs");
+        if (uri.startsWith("/actuator/") || uri.startsWith("/health") || uri.startsWith("/error")
+                || uri.startsWith("/swagger-ui") || uri.startsWith("/v3/api-docs")) {
+            return true;
+        }
+        // SSE 流式响应必须直通原 response：ContentCachingResponseWrapper 会把异步 emitter
+        // 推送的数据缓存在内存中，copyBodyToResponse() 在同步阶段即执行，导致前端收到空 body。
+        // Accept 含 text/event-stream 即视为流式请求，跳过包装（不记录响应体）。
+        String accept = request.getHeader("Accept");
+        return accept != null && accept.toLowerCase().contains(CONTENT_TYPE_EVENT_STREAM);
     }
 
     private String getClientIp(HttpServletRequest request) {

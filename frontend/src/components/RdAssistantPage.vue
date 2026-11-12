@@ -1711,6 +1711,15 @@ const onSend = async (payload) => {
     'query.compare': 'query',
   }
 
+  // ── 运营子场景：归口 ops（后端手册 applies_to.scene=ops，market-insight/risk-audit 等仅在此场景命中）──
+  // 缺失该映射会导致运营诉求被当作 rd 场景处理，只能匹配 rd 手册（如误落入历史配置检索）。
+  const OPS_SCENES = new Set(['market_insight', 'online_check', 'ops_monitor', 'root_cause', 'risk_audit', 'ops_rules'])
+  const resolveBackendScene = (sceneKey) => {
+    if (querySceneMap[sceneKey]) return querySceneMap[sceneKey]
+    if (OPS_SCENES.has(sceneKey)) return 'ops'
+    return 'rd'
+  }
+
   // 附件-only（无文本）时不再注入占位语，scenario 由附件存在性直接判为 file-parse
   const scenario = resolveProductScenario(text, scene)
   // 有附件时优先走智读·文件配置
@@ -1742,7 +1751,7 @@ const onSend = async (payload) => {
     // 附件-only 时不补占位话术（如「导入文档：xxx」）：由后端识别附件-only 场景，
     // 先解析文件再以自然语言总结+追问下一步，避免占位话术抢跑手册触发词快筛
     text,
-    scene: querySceneMap[scene] || 'rd',
+    scene: resolveBackendScene(scene),
     params,
     // 附件元数据随用户消息展示（气泡附件 + 落库），跨轮引用锚可消解
     attachments: attachments.map((a) => ({

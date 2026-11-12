@@ -61,6 +61,10 @@ public class LlmService {
     /** 第一次重试的基础退避毫秒（按尝试次数线性放大） */
     private static final long TRANSIENT_403_BACKOFF_MS = 500L;
 
+    /** auth_type=custom 但未配置 auth_header 时的默认鉴权请求头（teamshub 等网关约定为 token） */
+    private static final String DEFAULT_CUSTOM_AUTH_HEADER = "token";
+
+
     /** 出站 HTTP 日志序号，用于将请求/响应两条日志配对 */
     private static final AtomicLong HTTP_SEQ = new AtomicLong();
 
@@ -370,9 +374,23 @@ public class LlmService {
                                     seq, extractModel(body), request.getURI(), body == null ? 0 : body.length, hasAuth);
                             long start = System.currentTimeMillis();
                             ClientHttpResponse resp = execution.execute(request, body);
-                            log.info("[LlmService] LLM出站响应 #{} status={} elapsed={}ms",
-                                    seq, resp.getStatusCode(), System.currentTimeMillis() - start);
-                            return resp;
+                            long elapsed = System.currentTimeMillis() - start;
+                            // 包装响应体以便记录原始返回：网关偶发 200 + 空 choices（respChars=0）
+                            // 时需看清网关到底回了什么（错误体/空 choices/finish_reason=length 等），
+                            // 而 Spring AI 解析后原始 body 已不可见。
+                            byte[] raw = readAllBytes(resp);
+                            log.info("[LlmService] LLM出站响应 #{} status={} elapsed={}ms bodyLen={}",
+                                    seq, resp.getStatusCode(), elapsed, raw.length);
+                            if (raw.length == 0) {
+                                log.warn("[LlmService] LLM出站响应体为空 #{} status={}", seq, resp.getStatusCode());
+                            } else if (raw.length <= 4096 && isLikelyEmptyChoice(raw)) {
+                                log.warn("[LlmService] LLM出站响应疑似无有效内容 #{} body={}",
+                                        seq, new String(raw, java.nio.charset.StandardCharsets.UTF_8));
+                            } else if (raw.length <= 2048) {
+                                log.debug("[LlmService] LLM出站响应体 #{} body={}",
+                                        seq, new String(raw, java.nio.charset.StandardCharsets.UTF_8));
+                            }
+                            return new BufferingClientHttpResponse(resp, raw);
                         }
                     });
 
@@ -382,10 +400,12 @@ public class LlmService {
                     .restClientBuilder(restClientBuilder);
 
             if (customAuth) {
-                // 自定义检定头：通过 RestClient 默认头发送 token 等，且不附带 Bearer。
-                if (StringUtils.hasText(authHeaderName)) {
-                    restClientBuilder.defaultHeader(authHeaderName, apiKey);
-                }
+                // 自定义鉴权头：通过 RestClient 默认头发送 token 等，且不附带 Bearer。
+                // 防呆：auth_type=custom 但未填 auth_header 时，默认用网关约定的 token 头，
+                // 否则请求不带任何鉴权 → 网关返回 HTTP 200 + resultCode=4002「授权信息不存在」，
+                // 被 Spring AI 解析为「No choices returned」而误判成模型空返回。
+                String headerName = StringUtils.hasText(authHeaderName) ? authHeaderName : DEFAULT_CUSTOM_AUTH_HEADER;
+                restClientBuilder.defaultHeader(headerName, apiKey);
                 apiBuilder.apiKey("");
             } else {
                 apiBuilder.apiKey(apiKey);
@@ -397,6 +417,72 @@ public class LlmService {
                     .build();
             return ChatClient.create(model);
         });
+    }
+
+    /** 读取响应体全部字节（供拦截器记录原始返回；读取后由 BufferingClientHttpResponse 重放给 Spring AI）。 */
+    private static byte[] readAllBytes(ClientHttpResponse response) throws java.io.IOException {
+        java.io.InputStream in = response.getBody();
+        if (in == null) {
+            return new byte[0];
+        }
+        return in.readAllBytes();
+    }
+
+    /** 判断响应体是否为「200 但无有效内容」：网关非标错误体（flag:false）、choices 为空，或 content 为空。 */
+    private static boolean isLikelyEmptyChoice(byte[] raw) {
+        String body = new String(raw, java.nio.charset.StandardCharsets.UTF_8);
+        String compact = body.replaceAll("\\s+", "");
+        // 网关非标错误体（如 resultCode=4002 授权信息不存在）：HTTP 200 但无 choices
+        if (compact.contains("\"flag\":false") && !compact.contains("\"choices\"")) {
+            return true;
+        }
+        if (compact.contains("\"choices\":[]")) {
+            return true;
+        }
+        // 有 choices 但首条 message.content 为空串（含 content:null）→ 模型无有效输出
+        if (compact.contains("\"choices\":[{")) {
+            return compact.contains("\"content\":\"\"") || compact.contains("\"content\":null");
+        }
+        return false;
+    }
+
+    /**
+     * 一次性读取并缓存的响应包装：拦截器需要记录原始响应体，但下游（Spring AI）仍需读取同一份 body。
+     * 原生 SimpleClientHttpResponse 的 body 只能读一次，故此处缓冲后重放。
+     */
+    private static final class BufferingClientHttpResponse implements ClientHttpResponse {
+        private final ClientHttpResponse delegate;
+        private final byte[] body;
+
+        BufferingClientHttpResponse(ClientHttpResponse delegate, byte[] body) {
+            this.delegate = delegate;
+            this.body = body;
+        }
+
+        @Override
+        public org.springframework.http.HttpStatusCode getStatusCode() throws java.io.IOException {
+            return delegate.getStatusCode();
+        }
+
+        @Override
+        public String getStatusText() throws java.io.IOException {
+            return delegate.getStatusText();
+        }
+
+        @Override
+        public void close() {
+            delegate.close();
+        }
+
+        @Override
+        public java.io.InputStream getBody() {
+            return new java.io.ByteArrayInputStream(body);
+        }
+
+        @Override
+        public org.springframework.http.HttpHeaders getHeaders() {
+            return delegate.getHeaders();
+        }
     }
 
     private String ensureTrailingSlash(String baseUrl) {
@@ -738,6 +824,15 @@ public class LlmService {
         boolean code4011 = t.contains("4011") && t.contains("resultcode");
         if (flagFalse && code4011) {
             return "LLM 网关认证失败（resultCode=4011）";
+        }
+        // resultCode=4002「授权信息不存在」：网关在未收到有效鉴权头（或头名不对）时返回，
+        // 且 HTTP 状态仍是 200，Spring AI 只会报 No choices returned，必须在此识别
+        boolean code4002 = t.contains("4002") && t.contains("resultcode");
+        if (flagFalse && code4002) {
+            return "LLM 网关认证失败（resultCode=4002，授权信息不存在，鉴权请求头缺失或名称不对）";
+        }
+        if (t.contains("授权信息不存在")) {
+            return "LLM 网关认证失败：授权信息不存在";
         }
         // teamshub 网关把上游认证失败包装为 HTTP 500 + resultCode=5004（aiopenMsg 内含
         // "401 Unauthorized from POST https://aiproxy..."），同样是配置类错误，需精准识别
