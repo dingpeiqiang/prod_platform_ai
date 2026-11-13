@@ -1280,6 +1280,7 @@ export function useProductConfig() {
     saveDraftLocal,
     runAudit,
     updateFormField,
+    buildProductSchema,
     buildProductFormCard,
     syncFormFromProduct,
     applyBatchFix,
