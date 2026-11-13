@@ -793,9 +793,41 @@ public class ProductOntologyController {
     @PostMapping("/ops/channel-evidence")
     public Map<String, Object> listChannelEvidence(@RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> safe = body == null ? Map.of() : body;
-        String offerId = safe.get("offer_id") != null ? String.valueOf(safe.get("offer_id")) : null;
-        Integer limit = safe.get("limit") instanceof Number n ? n.intValue() : null;
-        return channelEvidenceService.listByOfferid(offerId, limit);
+        return channelEvidenceService.listChannel(strOrNull(safe.get("offer_id")), intOrNull(safe.get("limit")));
+    }
+
+    @Operation(summary = "归因商品全量", description = "全量查询归因商品清单（attribution_offering）")
+    @PostMapping("/ops/attribution/offerings")
+    public Map<String, Object> listAttributionOfferings() {
+        return channelEvidenceService.listOfferings();
+    }
+
+    @Operation(summary = "促销归因证据", description = "按 offerid 查询促销归因证据（attribution_promotion，limit 上限 500）")
+    @PostMapping("/ops/attribution/promotion")
+    public Map<String, Object> listAttributionPromotion(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        return channelEvidenceService.listPromotion(strOrNull(safe.get("offer_id")), intOrNull(safe.get("limit")));
+    }
+
+    @Operation(summary = "竞品归因证据", description = "按 offerid 查询竞品归因证据（attribution_competitor，limit 上限 500）")
+    @PostMapping("/ops/attribution/competitor")
+    public Map<String, Object> listAttributionCompetitor(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        return channelEvidenceService.listCompetitor(strOrNull(safe.get("offer_id")), intOrNull(safe.get("limit")));
+    }
+
+    @Operation(summary = "用户行为归因证据", description = "按 offerid 查询用户行为归因证据（attribution_user_behavior，limit 上限 500）")
+    @PostMapping("/ops/attribution/user-behavior")
+    public Map<String, Object> listAttributionUserBehavior(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        return channelEvidenceService.listUserBehavior(strOrNull(safe.get("offer_id")), intOrNull(safe.get("limit")));
+    }
+
+    @Operation(summary = "指标归因证据", description = "按 offerid 查询指标快照（attribution_metric，limit 上限 500）")
+    @PostMapping("/ops/attribution/metric")
+    public Map<String, Object> listAttributionMetric(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        return channelEvidenceService.listMetric(strOrNull(safe.get("offer_id")), intOrNull(safe.get("limit")));
     }
 
     @Operation(summary = "工单列表", description = "分页查询配置工单，支持状态/会话/关键字过滤")
@@ -886,5 +918,16 @@ public class ProductOntologyController {
             if (!s.isBlank() && !"null".equals(s)) return s;
         }
         return null;
+    }
+
+    private Integer intOrNull(Object value) {
+        if (value instanceof Number n) return n.intValue();
+        if (value == null) return null;
+        try {
+            String s = String.valueOf(value).trim();
+            return s.isEmpty() ? null : Integer.valueOf(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

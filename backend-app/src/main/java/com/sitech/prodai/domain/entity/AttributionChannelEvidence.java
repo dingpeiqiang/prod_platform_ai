@@ -13,13 +13,13 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 渠道归因证据（外部库 newpmsdb.attribution_channel_evidence，本体 sc:v-CH-* 事实来源）。
+ * 渠道归因证据（pmsdb.attribution_channel，本体 sc:v-CH-* 事实来源）。
  * <p>每条为某商品某渠道的异动证据快照：仅读，供归因追溯按 offerid 查询。
  */
 @Getter
 @Setter
 @NoArgsConstructor
-@TableName("attribution_channel_evidence")
+@TableName("attribution_channel")
 public class AttributionChannelEvidence {
 
     @TableId(type = IdType.AUTO)

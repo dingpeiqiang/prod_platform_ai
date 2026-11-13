@@ -27,13 +27,13 @@ spring:
     time-zone: GMT+8
     deserialization:
       fail-on-unknown-properties: false
-  # 数据源：默认连 MySQL / GoldenDB 分布式库（10.88.154.215:8100/newpmsdb）；
+  # 数据源：默认连 MySQL / GoldenDB 分布式库（10.88.154.215:8100/pmsdb，归因证据 attribution_* 所在库）；
   # 本地离线开发可用 SPRING_DATASOURCE_URL 覆盖回 H2（jdbc:h2:file:...;MODE=MySQL）
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://10.88.154.215:8100/newpmsdb?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&zeroDateTimeBehavior=convertToNull}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://10.88.154.215:8100/pmsdb?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&zeroDateTimeBehavior=convertToNull}
     driver-class-name: ${SPRING_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
-    username: ${SPRING_DATASOURCE_USERNAME:pmsadm}
-    password: ${SPRING_DATASOURCE_PASSWORD:pmsadm@123}
+    username: ${SPRING_DATASOURCE_USERNAME:dbpmsopr}
+    password: ${SPRING_DATASOURCE_PASSWORD:Dbpmsopr12$#}
     hikari:
       # 分布式库跨机房建连较慢，放宽超时避免启动即失败
       connection-timeout: 15000
