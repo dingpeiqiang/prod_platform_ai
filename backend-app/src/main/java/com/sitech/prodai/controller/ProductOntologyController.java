@@ -7,6 +7,7 @@ import com.sitech.prodai.dto.InferRequest;
 import com.sitech.prodai.dto.RiskAuditRequest;
 import com.sitech.prodai.dto.RiskRulesRequest;
 import com.sitech.prodai.dto.RootCauseRequest;
+import com.sitech.prodai.service.AttributionChannelEvidenceService;
 import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.OntologyStore;
 import com.sitech.prodai.service.ProductConfigRegressionService;
@@ -51,6 +52,7 @@ public class ProductOntologyController {
     private final TemplateComplianceService templateComplianceService;
     private final TemplateDeriveEngine deriveEngine;
     private final QueryHeatService queryHeatService;
+    private final AttributionChannelEvidenceService channelEvidenceService;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
@@ -61,7 +63,8 @@ public class ProductOntologyController {
             ProductTemplateService templateService,
             TemplateComplianceService templateComplianceService,
             TemplateDeriveEngine deriveEngine,
-            QueryHeatService queryHeatService
+            QueryHeatService queryHeatService,
+            AttributionChannelEvidenceService channelEvidenceService
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
@@ -72,6 +75,7 @@ public class ProductOntologyController {
         this.templateComplianceService = templateComplianceService;
         this.deriveEngine = deriveEngine;
         this.queryHeatService = queryHeatService;
+        this.channelEvidenceService = channelEvidenceService;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -783,6 +787,15 @@ public class ProductOntologyController {
     @GetMapping("/ops/alerts")
     public Map<String, Object> listAlerts(@RequestParam(value = "offering_id", required = false) String offeringId) {
         return productOntologyService.listOpsAlerts(offeringId);
+    }
+
+    @Operation(summary = "渠道归因证据", description = "按 offerid 查询渠道归因证据快照（按统计日倒序，limit 上限 500）")
+    @GetMapping("/ops/channel-evidence")
+    public Map<String, Object> listChannelEvidence(
+            @RequestParam(value = "offer_id", required = false) String offerId,
+            @RequestParam(value = "limit", required = false) Integer limit
+    ) {
+        return channelEvidenceService.listByOfferid(offerId, limit);
     }
 
     @Operation(summary = "工单列表", description = "分页查询配置工单，支持状态/会话/关键字过滤")
