@@ -790,11 +790,11 @@ public class ProductOntologyController {
     }
 
     @Operation(summary = "渠道归因证据", description = "按 offerid 查询渠道归因证据快照（按统计日倒序，limit 上限 500）")
-    @GetMapping("/ops/channel-evidence")
-    public Map<String, Object> listChannelEvidence(
-            @RequestParam(value = "offer_id", required = false) String offerId,
-            @RequestParam(value = "limit", required = false) Integer limit
-    ) {
+    @PostMapping("/ops/channel-evidence")
+    public Map<String, Object> listChannelEvidence(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        String offerId = safe.get("offer_id") != null ? String.valueOf(safe.get("offer_id")) : null;
+        Integer limit = safe.get("limit") instanceof Number n ? n.intValue() : null;
         return channelEvidenceService.listByOfferid(offerId, limit);
     }
 
