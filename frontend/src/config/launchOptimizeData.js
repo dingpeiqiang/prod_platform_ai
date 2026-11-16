@@ -1,0 +1,714 @@
+/**
+ * 第6轮 - 启动产品优化
+ * AI助手确认方案A后，调用产品研发助手自动打开配置页面
+ * 预填数据基于方案A：WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)
+ *（国际漫游数据卡：Data Only、香港.台湾共用、30日不限量、30GB高速）
+ *
+ * 字段标签规则：
+ * - tag: 'ai'     → AI推荐（新增生成或基于方案修改的值，附 tagReason 说明推荐原因）
+ * - tag: null     → 无标签（常规字段）
+ */
+import { reactive } from 'vue'
+
+// ============ 方案A预填的产品配置数据 ============
+export const launchProductConfig = {
+  // 产品基本信息
+  productInfo: reactive({
+    workOrderId: 'WO20260812001',
+    prodPrcName: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)',
+    template: 'personMainPrc',
+    templateLabel: '个人主资费·数据卡',
+    status: 'draft',
+    auditStatus: 'pending',
+  }),
+
+  // 基础信息 Tab —— 字段摘自智家包"基本信息"模块，保持AI工作台排版与AI推荐标签机制
+  baseInfo: {
+    productType: {
+      value: 'main',
+      tag: 'ai',
+      tagReason: '根据用户定位判定为预付费主套餐产品（数据卡）',
+      required: true,
+      label: '产品类型',
+      options: [
+        { value: 'main', label: '主套餐' },
+        { value: 'addon', label: '附加包' },
+      ],
+    },
+    cardType: {
+      value: 'data',
+      tag: 'ai',
+      tagReason: 'WeWalk 香港.台湾共用数据卡为 Data Only（纯流量）国际漫游产品',
+      required: true,
+      label: '卡类型',
+      productTypes: ['main'],
+      options: [
+        { value: 'voice', label: '语音卡' },
+        { value: 'data', label: '数据卡' },
+      ],
+    },
+    networkType: {
+      value: '5g',
+      tag: 'ai',
+      tagReason: '预付费数据卡默认支持5G网络',
+      required: true,
+      label: '网络类型',
+      productTypes: ['main'],
+      options: [
+        { value: '4g', label: '4G' },
+        { value: '5g', label: '5G' },
+      ],
+    },
+    openTemplate: {
+      value: 'person',
+      tag: 'ai',
+      tagReason: '按业务模板默认选择个人开户模版',
+      label: '开户模版',
+      productTypes: ['main'],
+      options: [
+        { value: 'person', label: '个人开户模版' },
+        { value: 'group', label: '集团开户模版' },
+      ],
+    },
+    roamTemplate: {
+      value: 'CMCC-ROAM-HK-TW',
+      tag: 'ai',
+      tagReason: '漫游范围为香港.台湾共用数据，按漫游模版配置',
+      label: '漫游模版',
+      productTypes: ['main'],
+    },
+    prodCode: {
+      value: 'SP-HK-TW-30D',
+      tag: 'ai',
+      tagReason: '基于 WeWalk 香港.台湾共用30日产品生成产品编码',
+      label: '产品编码',
+      productTypes: ['main'],
+    },
+    prodName: {
+      value: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)',
+      tag: 'ai',
+      tagReason: '沿用 WeWalk Data Only 系列命名规范：地区+共用+有效期+高速配额',
+      required: true,
+      label: '名称',
+    },
+    description: {
+      value: 'WeWalk 香港.台湾共用30日不限量数据卡：30GB高速流量，用尽后不限量限速，开通香港.台湾共用漫游，Data Only 纯流量产品。',
+      tag: 'ai',
+      tagReason: '根据用户需求自动生成套餐描述',
+      label: '描述',
+      type: 'textarea',
+    },
+    publishTenant: {
+      value: ['租户1'],
+      type: 'dropdown-multi',
+      tag: 'ai',
+      tagReason: '面向香港.台湾客户，默认发布到租户1',
+      required: true,
+      label: '发布租户',
+      options: [
+        { value: '租户1', label: '租户1' },
+        { value: '租户2', label: '租户2' },
+      ],
+    },
+    cancelRule: {
+      value: 'immediate',
+      tag: 'ai',
+      tagReason: '默认退订立即失效',
+      required: true,
+      label: '退订规则',
+      productTypes: ['addon'],
+      options: [
+        { value: 'immediate', label: '立即失效' },
+        { value: 'monthEnd', label: '月终失效' },
+        { value: 'nextMonth', label: '次月失效' },
+      ],
+    },
+    orderAddon: {
+      value: 'flowAddon',
+      tag: 'ai',
+      tagReason: '默认可挂载订购流量加油包作为附加产品',
+      label: '订购附加产品',
+      productTypes: ['main'],
+      options: [
+        { value: '', label: '请选择' },
+        { value: 'flowAddon', label: '流量加油包' },
+        { value: 'voiceAddon', label: '语音加油包' },
+        { value: 'smsAddon', label: '短信加油包' },
+      ],
+    },
+    ownerProduct: {
+      value: '',
+      tag: 'ai',
+      tagReason: '指定该附加包挂载归属的主套餐',
+      label: '归属产品',
+      productTypes: ['addon'],
+      options: [
+        { value: '', label: '请选择' },
+        { value: 'wewalk-hk-tw-30d', label: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)' },
+        { value: 'campus', label: '校园青春卡' },
+      ],
+    },
+  },
+  attrInfo: {
+    chargeType: {
+      value: 'once',
+      tag: 'ai',
+      tagReason: 'WeWalk 30日数据卡为一次性付费产品（30天有效期）',
+      required: true,
+      label: '资费类型',
+      options: [
+        { value: 'periodic', label: '周期性' },
+        { value: 'once', label: '一次性' },
+      ],
+    },
+    validityAttr: {
+      value: 'naturalDay',
+      tag: 'ai',
+      tagReason: '附加包有效期属性默认为自然天',
+      label: '有效期属性',
+      productTypes: ['addon'],
+      options: [
+        { value: 'naturalDay', label: '自然天' },
+        { value: 'dynamicDay', label: '动态天' },
+      ],
+    },
+    resetCycle: {
+      value: 'fixedDays',
+      tag: 'ai',
+      tagReason: '一次性30日数据卡，资源按固定天数有效不重置',
+      required: true,
+      label: '资源重置周期',
+      options: [
+        { value: 'naturalMonth', label: '自然月' },
+        { value: 'fixedDays', label: '固定天数' },
+      ],
+    },
+    validity: {
+      value: '30d',
+      tag: 'ai',
+      tagReason: '产品有效期为自然天30日（香港.台湾共用不限量）',
+      required: true,
+      label: '产品有效期',
+      options: [
+        { value: 'naturalMonth', label: '自然月' },
+        { value: '1d', label: '1天' },
+        { value: '3d', label: '3天' },
+        { value: '6d', label: '6天' },
+        { value: '15d', label: '15天' },
+        { value: '30d', label: '30天' },
+      ],
+    },
+    isActive: {
+      value: 'yes',
+      tag: 'ai',
+      tagReason: '默认激活生效',
+      required: true,
+      label: '是否激活',
+      productTypes: ['addon'],
+      options: [
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    extendLifecycle: {
+      value: 'no',
+      tag: 'ai',
+      tagReason: '默认不延长生命周期',
+      required: true,
+      label: '延长生命周期',
+      productTypes: ['addon'],
+      options: [
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    repeatOrder: {
+      value: 'yes',
+      tag: 'ai',
+      tagReason: '默认允许重复订购',
+      required: true,
+      label: '重复订购',
+      productTypes: ['addon'],
+      options: [
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    wakeupActiveDays: {
+      value: '6',
+      tag: 'ai',
+      tagReason: '默认唤醒激活天数6天',
+      required: true,
+      label: '唤醒激活(天)',
+      productTypes: ['addon'],
+      options: [
+        { value: '3', label: '3' },
+        { value: '6', label: '6' },
+        { value: '10', label: '10' },
+        { value: '30', label: '30' },
+      ],
+    },
+    extendDays: {
+      value: '1',
+      tag: 'ai',
+      tagReason: '默认延长期限1天',
+      required: true,
+      label: '延长期限(天)',
+      productTypes: ['addon'],
+      unit: '天',
+    },
+  },
+  resourceSections: [
+    {
+      key: 'data-resource',
+      title: '数据资源',
+      icon: 'fa-mobile-screen',
+      fields: [
+        {
+          key: 'dataAmount',
+          label: '高速配额',
+          value: '30',
+          type: 'number',
+          unit: 'GB',
+          tag: 'ai',
+          tagReason: 'WeWalk 香港.台湾共用30日不限量：30GB总高速配额，用尽后不限量限速',
+        },
+        {
+          key: 'dataRoamArea',
+          label: '漫游地',
+          value: ['hk-tw'],
+          type: 'checkbox-group',
+          tag: 'ai',
+          tagReason: '漫游范围仅为香港.台湾共用数据',
+          options: [
+            { value: 'hk-tw', label: '香港.台湾' },
+            { value: 'domestic', label: '大陆' },
+            { value: 'asia', label: '亚洲' },
+            { value: 'europe', label: '欧洲' },
+            { value: 'global', label: '全球' },
+          ],
+        },
+        {
+          key: 'throttlePolicy',
+          label: '限速策略',
+          value: 'pcrf',
+          type: 'select',
+          tag: 'ai',
+          tagReason: 'PCRF 限速策略：30GB高速用尽后降至低速（仍不限量）',
+          options: [
+            { value: 'pcrf', label: 'PCRF' },
+            { value: 'gx', label: 'GX' },
+          ],
+        },
+        {
+          key: 'throttleTemplate',
+          label: '限速模版',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '不限量产品，高速配额用尽后按限速模版降至低速（动态行，可新增）',
+          rows: [
+            { maxRate: '1Mbps', triggerAmount: '30GB', remark: '30GB高速用尽后限速1Mbps不限量' },
+          ],
+          columns: [
+            { key: 'maxRate', label: '限速速率', type: 'text', placeholder: '如 1Mbps' },
+            { key: 'triggerAmount', label: '触发资源量', type: 'text', placeholder: '如 30GB' },
+            { key: 'remark', label: '说明', type: 'text', placeholder: '限速说明' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'voice-resource',
+      title: '语音资源',
+      icon: 'fa-phone',
+      fields: [
+        {
+          key: 'voiceResourceTable',
+          label: '语音资源',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '语音资源按行新增，漫游地/对端归属地支持多选',
+          rows: [],
+          columns: [
+            { key: 'voiceAmount', label: '资源量（分钟）', type: 'text', placeholder: '如 100' },
+            {
+              key: 'voiceRoamArea',
+              label: '漫游地',
+              type: 'multiselect',
+              options: [
+                { value: 'hk-mo-tw', label: '港澳台日' },
+                { value: 'singapore', label: '新加坡' },
+                { value: 'vietnam', label: '越南' },
+                { value: 'thailand', label: '泰国' },
+                { value: 'malaysia', label: '马来西亚' },
+                { value: 'korea', label: '韩国' },
+                { value: 'us', label: '美国' },
+                { value: 'canada', label: '加拿大' },
+                { value: 'australia', label: '澳大利亚' },
+                { value: 'asia', label: '亚洲' },
+                { value: 'europe', label: '欧洲' },
+                { value: 'global', label: '全球' },
+              ],
+            },
+            {
+              key: 'voicePeerArea',
+              label: '对端归属地',
+              type: 'multiselect',
+              options: [
+                { value: 'unlimited', label: '无限制' },
+                { value: 'domestic', label: '大陆' },
+                { value: 'hk-mo-tw', label: '港澳台' },
+                { value: 'singapore', label: '新加坡' },
+                { value: 'vietnam', label: '越南' },
+                { value: 'global', label: '全球' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'sms-resource',
+      title: '短信资源',
+      icon: 'fa-comment-dots',
+      fields: [
+        {
+          key: 'smsResourceTable',
+          label: '短信资源',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '短信资源按行新增，漫游地/对端归属地支持多选',
+          rows: [],
+          columns: [
+            { key: 'smsAmount', label: '资源量（条）', type: 'text', placeholder: '如 50' },
+            {
+              key: 'smsRoamArea',
+              label: '漫游地',
+              type: 'multiselect',
+              options: [
+                { value: 'hk-mo-tw', label: '港澳台日' },
+                { value: 'singapore', label: '新加坡' },
+                { value: 'vietnam', label: '越南' },
+                { value: 'thailand', label: '泰国' },
+                { value: 'malaysia', label: '马来西亚' },
+                { value: 'korea', label: '韩国' },
+                { value: 'us', label: '美国' },
+                { value: 'canada', label: '加拿大' },
+                { value: 'australia', label: '澳大利亚' },
+                { value: 'asia', label: '亚洲' },
+                { value: 'europe', label: '欧洲' },
+                { value: 'global', label: '全球' },
+              ],
+            },
+            {
+              key: 'smsPeerArea',
+              label: '对端归属地',
+              type: 'multiselect',
+              options: [
+                { value: 'unlimited', label: '无限制' },
+                { value: 'domestic', label: '大陆' },
+                { value: 'hk-mo-tw', label: '港澳台' },
+                { value: 'singapore', label: '新加坡' },
+                { value: 'vietnam', label: '越南' },
+                { value: 'global', label: '全球' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  optionalSections: [],
+
+  // 信息预览 Tab —— 用户受理过程相关信息 + 免填单
+  previewSections: [
+    {
+      key: 'user-facing',
+      title: '用户受理信息',
+      icon: 'fa-user',
+      description: '用户在办理过程中看到的关键信息',
+      items: [
+        { label: '产品名称', value: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)', highlight: true },
+        { label: '卡类型', value: '5G数据卡（Data Only）' },
+        { label: '资费类型', value: '一次性' },
+        { label: '高速配额', value: '30GB高速流量', highlight: true },
+        { label: '超出后', value: '不限量（降至低速）' },
+        { label: '漫游地', value: '香港.台湾 共用', highlight: true },
+        { label: '限速策略', value: 'PCRF（30GB高速用尽后限速不限量）' },
+        { label: '产品有效期', value: '30天（自然天）' },
+        { label: '生效方式', value: '激活即生效' },
+      ],
+    },
+    {
+      key: 'free-fill-preview',
+      title: '免填单',
+      icon: 'fa-file-alt',
+      description: '营业员受理时免填的自动带出信息',
+      items: [
+        { label: '资费名称', value: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)' },
+        { label: '产品类型', value: '预付费数据卡主套餐' },
+        { label: '高速配额', value: '30GB高速，用尽后不限量限速', highlight: true },
+        { label: '漫游地', value: '香港.台湾 共用' },
+        { label: '限速策略', value: 'PCRF' },
+        { label: '资费类型', value: '一次性' },
+        { label: '产品有效期', value: '30天' },
+        { label: '资源重置周期', value: '固定天数' },
+      ],
+    },
+    {
+      key: 'sms-preview',
+      title: '短信模板预览',
+      icon: 'fa-comment-sms',
+      description: '各触点下发的短信内容预览',
+      items: [
+        { label: '办理成功短信', value: '恭喜您成功办理WeWalk香港.台湾共用30日不限量数据卡，含30GB高速流量，用尽后不限量限速，感谢您的支持！' },
+        { label: '激活生效短信', value: '您的WeWalk香港.台湾共用30日不限量数据卡已激活生效，香港.台湾共用数据，有效期30天。' },
+        { label: '前台二确短信', value: '尊敬的客户，您正在办理WeWalk香港.台湾共用30日不限量数据卡（一次性资费），是否确认办理？' },
+        { label: '退订短信', value: '您好，您的WeWalk香港.台湾共用30日不限量数据卡已退订，退订后立即失效，如有疑问请致电10086。' },
+      ],
+    },
+  ],
+}
+
+// ============ 深度思考步骤 ============
+export const launchThinkingSteps = [
+  '解析用户指令：启动产品优化，确认方案A',
+  '调用产品查询助手，检索国际漫游数据卡品类与香港.台湾共用漫游资费画像…',
+  '产品查询助手返回：香港.台湾共用数据卡市场需求旺盛，30日不限量为热门档位',
+  '校验互斥规则：新产品"WeWalk-Data Only-香港.台湾共用30日不限量"与现有港澳台数据产品互斥，可并行销售 ✓',
+  '调用产品研发助手，拉取产品配置规则与资费审批模板…',
+  '产品研发助手：匹配业务模板「个人主资费」+「预付费数据卡」，加载配置字段（基础信息/属性信息/资源配置等）',
+  '根据方案A预填配置：5G数据卡、30GB高速配额（用尽后不限量限速）、漫游地香港.台湾、限速PCRF、一次性资费、有效期30天',
+  '生成工单编号：WO20260812001',
+  '测算高速配额与漫游覆盖成本，ROI达标',
+  '自动打开新套餐配置工作台',
+]
+
+// ============ 第6轮助手回复文案 ============
+export function buildLaunchSummary() {
+  return [
+    '### 已启动产品优化 · 方案A',
+    '',
+    '> 收到指令，正在执行方案A（新产品策划）。已调用产品查询助手和产品研发助手完成前期准备，配置工作台已自动打开。',
+    '',
+    '**执行摘要**',
+    '',
+    '| 步骤 | 动作 | 结果 |',
+    '| ---- | ---- | ---- |',
+    '| 1 | 调用产品查询助手 | 检索香港.台湾共用数据卡品类与漫游资费画像 ✓ |',
+    '| 2 | 校验互斥规则 | 新产品"WeWalk-Data Only-香港.台湾共用30日不限量"与现有港澳台数据产品互斥，可并行销售 ✓ |',
+    '| 3 | 调用产品研发助手 | 匹配业务模板「个人主资费」+「预付费数据卡」，加载配置字段 ✓ |',
+    '| 4 | 预填方案A配置 | 5G数据卡、30GB高速、漫游地香港.台湾、限速PCRF、一次性资费、有效期30天 ✓ |',
+    '| 5 | 生成工单 | WO20260812001，新产品名称"WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)" ✓ |',
+    '| 6 | 高速配额与漫游成本测算 | 30GB高速配额与香港.台湾漫游覆盖成本测算，ROI 达标 ✓ |',
+    '',
+    '**已预填的关键变更字段**',
+    '- 资费名称：**WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)**',
+    '- 卡类型/网络：**5G数据卡**（Data Only，主套餐）',
+    '- 高速配额：**30GB**（用尽后不限量，降至低速）',
+    '- 漫游地：**香港.台湾 共用**',
+    '- 限速策略：**PCRF**（30GB高速用尽后限速不限量）',
+    '- 资费类型：**一次性** · 产品有效期：**30天** · 资源重置周期：**固定天数**',
+    '',
+    '> 右侧工作台已打开。字段标签说明：**AI推荐**=由 AI 按业务模板与方案自动预填的值（悬浮可查看推荐原因）。',
+    '',
+    '请检查预填内容并完成配置。可点击「智能稽核」进行提交前校验。',
+  ].join('\n')
+}
+
+// ============ 测试报告数据（测试人员上传后自动解析） ============
+// 初始 uploaded=false，表示测试人员尚未上传；上传后置为 true，配置人员即可查看
+export const testReport = reactive({
+  uploaded: false,
+  uploadedAt: null,
+  reportId: 'TR20260813001',
+  workOrderId: 'WO20260812001',
+  productName: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)',
+  tester: '张明',
+  testDate: '2026-08-13',
+  status: 'passed', // passed | failed
+  testMethod: '新业务测试（含资费核查、计费核查、提醒核查、工单核查）',
+  acceptNumber: '13920260813',
+  sections: [
+    {
+      key: 'fixedFee',
+      title: '资费核查',
+      status: 'passed',
+      items: [
+        { label: '资费类型', expected: '一次性资费，产品有效期30天（自然天）', actual: '一次性资费，有效期30天', result: 'pass' },
+        { label: '高速配额', expected: '30GB高速流量，用尽后不限量限速', actual: '30GB高速配额正确，之后限速不限量', result: 'pass' },
+        { label: '限速策略', expected: 'PCRF策略，高速用尽后按限速模版限速', actual: 'PCRF限速规则正确', result: 'pass' },
+      ],
+    },
+    {
+      key: 'billing',
+      title: '计费核查',
+      status: 'passed',
+      items: [
+        { label: '高速计费', expected: '30GB高速内不限速，用尽后降至低速不限量', actual: '30GB内正常，超出后限速不限量', result: 'pass' },
+        { label: '漫游计费', expected: '香港.台湾共用漫游同价，不再另收漫游费', actual: '香港.台湾漫游计费正确，无额外收费', result: 'pass' },
+        { label: '一次性计费', expected: '一次性付费，30天内有效不重复扣费', actual: '一次性收取，无重复扣费', result: 'pass' },
+      ],
+    },
+    {
+      key: 'reminder',
+      title: '提醒核查',
+      status: 'passed',
+      items: [
+        { label: '流量使用提醒', expected: '高速用量达80%、95%时下发短信提醒', actual: '80%和95%均正常下发', result: 'pass' },
+        { label: '套餐订购提醒', expected: '订购成功后下发欢迎短信', actual: '欢迎短信正常下发', result: 'pass' },
+        { label: '漫游开通提醒', expected: '开通香港.台湾漫游后下发复盖与计费说明', actual: '漫游提醒短信正常下发', result: 'pass' },
+      ],
+    },
+    {
+      key: 'workOrder',
+      title: '工单核查',
+      status: 'passed',
+      items: [
+        { label: '订购工单', expected: '生成订购工单，状态正常流转', actual: '工单生成且状态正确', result: 'pass' },
+        { label: '变更工单', expected: '老用户变更后生成变更工单', actual: '变更工单正常', result: 'pass' },
+        { label: '退订工单', expected: '退订生成退订工单，立即失效', actual: '退订工单正确，立即失效', result: 'pass' },
+      ],
+    },
+  ],
+  conclusion: '通过',
+  conclusionDesc: '该资费方案各项核查均符合预期，测试通过，可进入备案公示环节。',
+})
+
+/**
+ * 备案公示数据
+ *
+ * started: 是否已发起备案公示（点击"发起备案公示"后为 true）
+ * submitted: 是否已提交备案（点击"提交备案"后为 true，提交后备案通过 → 可上架销售）
+ */
+export const filing = reactive({
+  started: false,
+  submitted: false,
+  approved: false,
+  approvedAt: null,
+  filingId: 'FL20260814001',
+  workOrderId: 'WO20260812001',
+  productName: 'WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)',
+  template: '个人主资费·数据卡',
+  productCode: 'SP-HK-TW-30D',
+  applicant: '产品配置专员',
+  applyDate: '2026-08-14',
+  // 备案信息
+  info: {
+    filingOrg: '产品研发中心',
+    filingOfficer: '李芳',
+    filingDate: '2026-08-14',
+    effectiveDate: '2026-09-01',
+    expireDate: '长期有效',
+  },
+  // 备案核查项
+  checks: [
+    { label: '资费合规性', status: 'passed', desc: '符合《资费管理办法》相关规定，无违规项' },
+    { label: '公示内容完整性', status: 'passed', desc: '资费名称、资费标准、生效时间等公示信息完整' },
+    { label: '测试报告核销', status: 'passed', desc: '测试报告 TR20260813001 已通过，允许备案' },
+    { label: '审批链完整性', status: 'passed', desc: '预览审批、测试审核审批链完整' },
+  ],
+  // 公示预览
+  notice: {
+    title: '关于"WeWalk-Data Only-香港.台湾共用30日不限量"资费方案备案公示',
+    target: '全体用户',
+    content: '现将"WeWalk-Data Only-香港.台湾共用30日不限量(30GB高速)"资费方案（资费代码：SP-HK-TW-30D）予以备案公示。公示期满且无异议后，该资费方案将正式上架销售。',
+    notifyChannels: '营业厅公示栏、网上营业厅、掌上营业厅',
+    startDate: '2026-08-15',
+    endDate: '2026-08-29',
+    duration: '15天',
+  },
+  // 全量视图字段（category: common=共有 / filing=备案特有 / public=公示特有）
+  sections: [
+    {
+      title: '备案基本信息',
+      previewOnly: true,
+      fields: [
+        { label: '备案公示流程', value: '先备案再公示', category: 'filing' },
+        { label: '公示系列ID', value: '资费ID', category: 'filing' },
+        { label: '公示系列名称', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '方案编号', value: 'XNBP0001', category: 'filing' },
+      ],
+    },
+    {
+      title: '套餐基本信息',
+      previewOnly: false,
+      fields: [
+        { label: 'BOSSID', value: launchProductConfig.baseInfo.prodCode.value, category: 'filing' },
+        { label: '一级分类', value: '公众', category: 'filing' },
+        { label: '二级分类', value: '套餐', category: 'filing' },
+        { label: '名称', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '资费属性', value: '省内', category: 'filing' },
+        { label: '是否自选套餐', value: '是', category: 'filing' },
+        { label: '模组分类名称', value: '无', category: 'filing' },
+        { label: '是否通信类', value: '是', category: 'filing' },
+        { label: '是否主数据', value: '否', category: 'filing' },
+        { label: '展示顺序权重', value: '100', category: 'filing' },
+        { label: '适用范围', value: '通过前项限制生成', category: 'common' },
+        { label: '购买链接', value: 'https://xxx.com/buy', category: 'filing' },
+        { label: '资费单位', value: '元/月', category: 'filing' },
+      ],
+    },
+    {
+      title: '基础信息',
+      previewOnly: false,
+      fields: [
+        { label: '资费标准', value: '一次性资费（预付费）', category: 'common' },
+        { label: '资费类型', value: '主套餐·数据卡', category: 'public' },
+        { label: '方案编号', value: 'AI203935', category: 'public' },
+        { label: '上线日期', value: '20260901', category: 'common' },
+        { label: '下线日期', value: '20991231', category: 'common' },
+        { label: '有效期限', value: '30天（自然天）', category: 'common' },
+        { label: '合约期(在网要求)', value: '无（预付费，无合约绑定）', category: 'common' },
+        { label: '适用地区', value: '香港.台湾（共用漫游）', category: 'common' },
+        { label: '销售渠道', value: '自有营业厅/网上营业厅', category: 'common' },
+        { label: '退订方式', value: '线上/线下营业厅即时退订', category: 'common' },
+        { label: '违约责任', value: '预付费套餐无违约金', category: 'common' },
+      ],
+    },
+    {
+      title: '资源信息',
+      previewOnly: false,
+      fields: [
+        { label: '高速配额', value: '30GB（香港.台湾共用）', category: 'common' },
+        { label: '用尽后', value: '不限量（降至低速）', category: 'common' },
+        { label: '漫游地', value: '香港.台湾', category: 'common' },
+        { label: '限速策略', value: 'PCRF（30GB高速用尽后限速不限量）', category: 'common' },
+        { label: '卡类型/网络', value: '5G数据卡（Data Only）', category: 'common' },
+        { label: '语音/短信', value: '无（纯数据产品）', category: 'common' },
+      ],
+    },
+    {
+      title: '说明信息',
+      previewOnly: false,
+      fields: [
+        { label: '超出资费说明', value: '不限量：30GB高速用尽后自动降至低速，不再另行收费', category: 'common' },
+        { label: '其他服务内容', value: '开通香港.台湾共用漫游，激活即生效', category: 'common' },
+        { label: '其他资费说明', value: '一次性收费，30天内有效', category: 'public' },
+        { label: '其他说明', value: '香港.台湾漫游同价，不加收漫游费', category: 'common' },
+      ],
+    },
+  ],
+})
+
+/**
+ * 销售渠道 store 数据
+ */
+export const salesChannel = reactive({
+  // 是否已进入渠道选择阶段（备案通过后为 true）
+  available: false,
+  // 渠道选择是否已提交（提交后流程进入上架销售）
+  submitted: false,
+  // 可用渠道列表
+  list: [
+    { key: 'own_offline', label: '自有营业厅', desc: '实体营业厅线下受理' },
+    { key: 'own_online', label: '网上营业厅', desc: '官方网上营业厅在线订购' },
+    { key: 'app', label: '掌上营业厅APP', desc: '手机营业厅客户端' },
+    { key: 'customer_service', label: '10086客服热线', desc: '电话客服人员受理' },
+    { key: 'channel_coop', label: '社会合作渠道', desc: '第三方合作代理商' },
+  ],
+  // 已选渠道
+  selected: [],
+  // 默认勾选（推荐）
+  defaultSelected: ['own_online', 'app'],
+})

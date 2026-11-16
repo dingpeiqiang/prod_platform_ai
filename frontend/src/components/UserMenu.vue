@@ -7,9 +7,10 @@
       @click.stop="open = !open"
     >
       <span class="user-avatar" :style="avatarStyle">
-        <span class="avatar-text">{{ avatarText }}</span>
+        <img v-if="userStore.avatar" :src="userStore.avatar" alt="" />
+        <span v-else class="avatar-text">{{ avatarText }}</span>
       </span>
-      <span class="user-name">{{ userStore.displayName || '用户' }}</span>
+      <span class="user-name">{{ userStore.displayName }}</span>
       <svg class="caret" :class="{ up: open }" width="12" height="12" viewBox="0 0 24 24"
            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 12 15 18 9" />
@@ -20,10 +21,14 @@
       <div v-if="open" class="user-dropdown" @click.stop>
         <div class="dropdown-header">
           <span class="dropdown-avatar" :style="avatarStyle">
-            <span class="avatar-text">{{ avatarText }}</span>
+            <img v-if="userStore.avatar" :src="userStore.avatar" alt="" />
+            <span v-else class="avatar-text">{{ avatarText }}</span>
           </span>
           <div class="dropdown-meta">
-            <div class="dropdown-name">{{ userStore.displayName || '用户' }}</div>
+            <div class="dropdown-name">{{ userStore.displayName }}</div>
+            <div v-if="userStore.roles?.length" class="dropdown-role">
+              {{ userStore.roles.join('、') }}
+            </div>
           </div>
         </div>
         <ul class="dropdown-list">
@@ -71,7 +76,7 @@ const avatarStyle = computed(() => {
     'linear-gradient(135deg, #0f766e, #14b8a6)',
     'linear-gradient(135deg, #7c3aed, #a855f7)',
   ]
-  const idx = (userStore.username || '').length % colors.length
+  const idx = (userStore.userName || '').length % colors.length
   return { background: colors[idx] }
 })
 
@@ -120,8 +125,8 @@ const onSelect = (item) => {
 
 const onLogout = () => {
   open.value = false
+  ElMessage({ message: '已退出登录（mock）', type: 'success', duration: 1500 })
   userStore.logout()
-  ElMessage({ message: '已退出登录', type: 'success', duration: 1500 })
 }
 </script>
 
@@ -156,6 +161,8 @@ const onLogout = () => {
 .user-avatar,
 .dropdown-avatar {
   flex-shrink: 0;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -165,6 +172,12 @@ const onLogout = () => {
 }
 .user-avatar { width: 28px; height: 28px; }
 .dropdown-avatar { width: 44px; height: 44px; }
+.user-avatar img,
+.dropdown-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .avatar-text {
   font-size: 12px;
   font-weight: 600;
@@ -213,6 +226,11 @@ const onLogout = () => {
   font-size: 14px;
   font-weight: 700;
   color: #0f172a;
+}
+.dropdown-role {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .dropdown-list {

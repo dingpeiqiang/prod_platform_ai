@@ -1,7 +1,7 @@
-﻿<template>
+<template>
   <div class="messages-container" ref="messagesEl" @scroll.passive="onScroll">
     <!-- 欢迎状态 -->
-    <WelcomeCards 
+    <WelcomeCards
       v-if="showWelcome"
       :mode="mode"
       @suggest="handleSuggest"
@@ -11,7 +11,7 @@
     <!-- 消息列表 -->
     <div v-else class="messages-list">
       <div
-        v-for="(msg, idx) in messages"
+        v-for="msg in messages"
         :key="msg.id"
         :class="['message-wrapper', msg.role]"
       >
@@ -30,38 +30,82 @@
 
           <!-- AI 消息内容 -->
           <div class="message-content">
-            <!-- 头部：AI 标识 + 时间 -->
-            <div class="message-header">
-              <span class="ai-label">AI 助手</span>
-              <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
+            <!-- 思考过程折叠模块 -->
+            <div class="thinking-block" :class="{ collapsed: isThinkingCollapsed(msg) }">
+              <button class="thinking-header" @click="toggleThinking(msg)">
+                <svg
+                  class="thinking-chevron"
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span class="thinking-icon" v-if="msg.thinkingActive">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                </span>
+                <span class="thinking-title">
+                  {{ msg.thinkingActive ? '正在思考' : '已思考' }}
+                </span>
+                <span class="thinking-duration" v-if="!msg.thinkingActive && msg.thinkingDuration">
+                  用时 {{ msg.thinkingDuration }}s
+                </span>
+              </button>
+              <transition name="thinking-slide">
+                <div class="thinking-body" v-show="!isThinkingCollapsed(msg)">
+                  <ul class="thinking-steps">
+                    <li
+                      v-for="(step, idx) in (msg.thinkingSteps || [])"
+                      :key="idx"
+                      class="thinking-step"
+                      :class="{
+                        active: msg.thinkingActive && idx === (msg.thinkingSteps || []).length - 1,
+                        done: !msg.thinkingActive || idx < (msg.thinkingSteps || []).length - 1
+                      }"
+                    >
+                      <span class="step-dot" v-if="!msg.thinkingActive || idx < (msg.thinkingSteps || []).length - 1">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </span>
+                      <span class="step-spinner" v-else></span>
+                      <span class="step-text">{{ step }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </transition>
             </div>
 
-            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览） -->
-            <ThinkingProcessPanel
-              v-if="msg.reasoning && msg.reasoning.length"
-              :steps="msg.reasoning"
-              :show="msg.showReasoning !== false"
-              :streaming="msg.loading || !msg.done"
-              :localize="localizeStepText"
-              @toggle="toggleReasoning(idx)"
-              @complete="(payload) => onThinkingComplete(msg, payload)"
-            />
+            <!-- 详情卡片：查看完整分析（位于思考下方、正文上方） -->
+            <div v-if="msg.done && msg.detailCard" class="detail-card" @click="$emit('open-detail', msg.detailCard)">
+              <div class="detail-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="9" y1="13" x2="15" y2="13"/>
+                  <line x1="9" y1="17" x2="13" y2="17"/>
+                </svg>
+              </div>
+              <div class="detail-card-body">
+                <div class="detail-card-title">{{ msg.detailCard.title }}</div>
+                <div class="detail-card-desc">点击查看完整分析报告，含趋势数据、客群结构、竞品对比、根因定位</div>
+              </div>
+              <svg class="detail-card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
 
-            <!-- 查询计划卡片已移除：方案信息由思考时间线「方案规划」步骤业务化承载，
-                 避免历史回放时与思考面板重复展示同一份计划（去旧留新） -->
-
-            <!-- 正文内容：有思考过程时等思考播完再自上而下打出 -->
+            <!-- 正文内容 -->
             <div class="message-bubble ai-bubble">
-              <MessageCard
-                v-if="replyDisplayText(msg)"
-                :content="replyDisplayText(msg)"
-                :streaming="isReplyTyping(msg)"
-              />
+              <!-- 有正在流式输出的文本 -->
               <div
-                v-else-if="shouldShowReplyPlaceholder(msg)"
-                class="typing-indicator"
-                :class="{ 'after-think': msg.reasoning?.length }"
-              >
+                v-if="displayText(msg)"
+                class="markdown-body"
+                v-html="renderMarkdown(displayText(msg))"
+                @click="onMarkdownClick($event, msg)"
+              />
+              <!-- 打字指示器 -->
+              <div v-else-if="msg.loading" class="typing-indicator">
                 <span></span>
                 <span></span>
                 <span></span>
@@ -70,8 +114,8 @@
 
             <!-- 附件展示 -->
             <div v-if="msg.attachments?.length" class="attachments-container">
-              <div 
-                v-for="(attachment, aidx) in msg.attachments" 
+              <div
+                v-for="(attachment, aidx) in msg.attachments"
                 :key="aidx"
                 class="attachment-item"
               >
@@ -86,38 +130,8 @@
               </div>
             </div>
 
-            <!-- 执行态徽标 + 撤销（可逆操作，v3.2） -->
-            <div
-              v-if="msg.done && isReplySettled(msg) && (msg.undoable || msg.actionState)"
-              class="exec-bar"
-            >
-              <span
-                class="exec-badge"
-                :class="`exec-${execState(msg)}`"
-              >{{ execStateLabel(execState(msg)) }}</span>
-              <button
-                v-if="msg.undoable && msg.undoable.actionId"
-                type="button"
-                class="undo-btn"
-                @click="$emit('undo-action', { msg, actionId: msg.undoable.actionId })"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-                </svg>
-                {{ msg.undoable.undoLabel || '撤销' }}
-              </button>
-            </div>
-
-            <!-- 意图结果卡紧跟正文，避免「详见下方」与卡片被操作栏隔开 -->
-            <IntentPanel
-              v-if="msg.intentType && msg.intentData && isReplySettled(msg)"
-              :intentType="msg.intentType"
-              :msg="msg"
-              @intent-action="$emit('intent-action', $event)"
-            />
-
-            <!-- 底部工具栏：有思考过程时等正文打完再出现 -->
-            <div v-if="msg.done && isReplySettled(msg) && (msg.streamText || msg.content)" class="message-actions">
+            <!-- 底部工具栏 -->
+            <div v-if="msg.done && displayText(msg)" class="message-actions">
               <button class="action-btn" @click="handleFeedback(msg, 'like')" title="赞同">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
@@ -128,7 +142,7 @@
                   <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
                 </svg>
               </button>
-              <button class="action-btn" @click="copyText(msg.streamText || msg.content)" title="复制">
+              <button class="action-btn" @click="copyText(displayText(msg))" title="复制">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="9" y="9" width="13" height="13" rx="2"/>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -142,157 +156,35 @@
               </button>
             </div>
 
-            <!-- 表单卡片（可展开为内联编辑器）；
-                 当消息同时携带工单列表时，草稿并入工单卡（点击工单条目展开），此处不再独立渲染 -->
-            <template v-if="msg.formCard && isReplySettled(msg) && !msg.workOrders?.length">
-              <div v-if="!isActiveForm(msg.formCard)" class="form-card" @click="$emit('form-card-click', msg)">
-                <div class="form-card-header">
-                  <div class="form-card-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                  </div>
-                  <div class="form-card-info">
-                    <div class="form-card-name">{{ msg.formCard.formName }}</div>
-                    <div class="form-card-meta">
-                      <span>{{ msg.formCard.fieldCount }} 个字段</span>
-                      <span class="dot">·</span>
-                      <span>{{ formatTime(msg.formCard.createdAt) }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <InlineFormEditor
-                v-else
-                :card="activeFormCard"
-                @submit="$emit('form-submit', $event)"
-                @cancel="$emit('form-cancel')"
-                @field-change="(e) => $emit('form-field-change', e)"
-                @ai-validation="(e) => $emit('form-ai-validation', e)"
-                @confirm-submit="$emit('form-confirm-submit', $event)"
-                @close="$emit('form-close')"
-              />
-            </template>
-
-            <!-- 智读批次清单（对话内联） -->
-            <BatchInlineCard
-              v-if="msg.batch && isReplySettled(msg)"
-              :batch="msg.batch"
-              :batch-items="msg.batchItems"
-              @confirm="$emit('batch-confirm', msg)"
-              @fix="$emit('batch-fix', msg)"
-              @delete="(it) => $emit('batch-delete', { msg, item: it })"
-            />
-
-            <!-- 长对话：文件/批次引用锚（已引用文档记忆条，仅展示不响应点击；跨轮引用直接发话术即可） -->
-            <div v-if="msg.fileRef && isReplySettled(msg)" class="file-ref-anchor">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-              </svg>
-              <span class="fra-name">已引用文档：{{ msg.fileRef.fileName }}</span>
-              <span v-if="fileRefCounts(msg.fileRef)" class="fra-counts">{{ fileRefCounts(msg.fileRef) }}</span>
-            </div>
-
-            <!-- 查询结果卡片列表 -->
-            <div v-if="msg.queryResults?.length && isReplySettled(msg)" class="query-results">
+            <!-- 待办卡片列表 -->
+            <div v-if="msg.done && msg.todoItems?.length" class="todo-cards">
               <div
-                v-for="p in msg.queryResults"
-                :key="p.id"
-                class="query-result-item"
-                :class="{ 'qr-in-tray': compareTrayHas(p) }"
-                @click="$emit('query-result-click', p)"
+                v-for="item in msg.todoItems"
+                :key="item.id"
+                class="todo-card"
+                :class="`todo-${item.level}`"
               >
-                <div class="qr-header">
-                  <span class="qr-name">{{ p.name }}</span>
-                  <span v-if="p.code" class="qr-code">{{ p.code }}</span>
+                <div class="todo-card-main">
+                  <span class="todo-level">{{ item.levelLabel }}</span>
+                  <span class="todo-type">{{ item.type }}</span>
+                  <span class="todo-content">{{ item.content }}</span>
                 </div>
-                <p v-if="p.desc" class="qr-desc">{{ p.desc }}</p>
-                <div class="qr-actions">
-                  <button type="button" class="qr-copy-btn" @click.stop="$emit('query-result-click', p)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    复制配置
-                  </button>
-                  <!-- 查询→行动中间态（§6-B4）：加入对比清单，多商品凑齐后一键进比对面板 -->
+                <div class="todo-card-actions">
                   <button
+                    v-for="action in item.actions"
+                    :key="action.key"
                     type="button"
-                    class="qr-tray-btn"
-                    :class="{ 'qr-tray-btn--added': compareTrayHas(p) }"
-                    @click.stop="$emit('compare-tray-add', p)"
+                    class="todo-action-btn"
+                    @click="$emit('todo-action', { item, action })"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="12" y1="5" x2="12" y2="19"/>
-                      <line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                    {{ compareTrayHas(p) ? '已加入' : '加入对比' }}
+                    {{ action.label }}
                   </button>
                 </div>
               </div>
             </div>
-
-            <!-- S1 对话即编排：固定流程执行明细卡片（FLOW_EXEC 意图） -->
-            <div v-if="msg.flowMatched && msg.flowExecution && isReplySettled(msg)" class="flow-exec-card">
-              <div class="fe-header">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="7" height="7" rx="1"/>
-                  <rect x="14" y="14" width="7" height="7" rx="1"/>
-                  <path d="M10 6.5h6a1.5 1.5 0 0 1 1.5 1.5v6"/>
-                  <path d="M6.5 10v6a1.5 1.5 0 0 0 1.5 1.5h6"/>
-                </svg>
-                <span class="fe-name">固定流程：{{ msg.flowMatched.display_name || msg.flowMatched.workflow_code }}</span>
-                <span class="fe-status" :class="`fe-status--${msg.flowExecution.status || 'unknown'}`">
-                  {{ flowStatusLabel(msg.flowExecution.status) }}
-                </span>
-              </div>
-              <div class="fe-meta">
-                <span v-if="msg.flowExecution.execution_id" class="fe-meta-item">执行 ID：{{ msg.flowExecution.execution_id }}</span>
-                <span v-if="msg.flowExecution.workflow_version" class="fe-meta-item">v{{ msg.flowExecution.workflow_version }}</span>
-                <span v-if="flowDuration(msg.flowExecution)" class="fe-meta-item">耗时 {{ flowDuration(msg.flowExecution) }}</span>
-              </div>
-              <div v-if="flowNodeLogs(msg.flowExecution).length" class="fe-nodes">
-                <div v-for="n in flowNodeLogs(msg.flowExecution)" :key="n.id" class="fe-node">
-                  <span class="fe-node-dot" :class="`fe-node-dot--${n.status}`"></span>
-                  <span class="fe-node-id">{{ n.name || n.id }}</span>
-                  <span class="fe-node-raw-id" v-if="n.name && n.name !== n.id">{{ n.id }}</span>
-                  <span v-if="n.status" class="fe-node-status">{{ flowStatusLabel(n.status) }}</span>
-                </div>
-              </div>
-              <div v-if="msg.flowExecution.error_message" class="fe-error">{{ msg.flowExecution.error_message }}</div>
-            </div>
-
-            <!-- 配置审计追溯锚（携带 traceId 的消息可一键拉起追溯） -->
-            <div
-              v-if="msg.done && msg.traceId && isReplySettled(msg)"
-              class="trace-anchor"
-              @click="$emit('trace-click', { msg, traceId: msg.traceId })"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 11l3 3L22 4"/>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-              </svg>
-              <span class="ta-name">查看审计追溯</span>
-              <span class="ta-id">{{ msg.traceId }}</span>
-            </div>
-
-            <!-- 会话内商品配置工单列表（内联展示；点击条目/操作在右侧抽屉打开草稿） -->
-            <SessionWorkOrderCard
-              v-if="msg.workOrders?.length && isReplySettled(msg)"
-              :work-orders="msg.workOrders"
-              :form-card="msg.formCard"
-              :highlight-id="msg.workOrders.find((w) => w.workOrderId === msg.lastActedWoId) ? msg.lastActedWoId : ''"
-              @query-offering="(wo) => $emit('session-workorder-select', wo)"
-              @preview-product="(wo) => $emit('workorder-preview', { msg, wo })"
-              @edit-product="(wo) => $emit('workorder-edit', { msg, wo })"
-              @submit-product="(wo) => $emit('workorder-submit', { msg, wo })"
-              @copy-product="(wo) => $emit('workorder-copy', { msg, wo })"
-              @delete-product="(wo) => $emit('workorder-delete', { msg, wo })"
-            />
 
             <!-- 下一步体验引导 -->
-            <div v-if="msg.done && msg.nextSteps?.length && isReplySettled(msg)" class="next-steps">
+            <div v-if="msg.done && msg.nextSteps?.length" class="next-steps">
               <span class="next-label">下一步可以：</span>
               <button
                 v-for="step in msg.nextSteps"
@@ -305,62 +197,17 @@
               </button>
             </div>
 
-            <!-- 需求歧义确认（U2）：候选解读渲染为可点卡片，点击即以该话术重发；与 CLARIFY 互斥渲染 -->
-            <div v-if="msg.done && msg.confirm?.candidates?.length && !msg.clarify?.length && isReplySettled(msg)" class="clarify-area confirm-area">
-              <div class="clarify-title">您的需求可能有以下几种理解，请选择：</div>
-              <div class="confirm-candidates">
-                <button
-                  v-for="(c, cidx) in msg.confirm.candidates"
-                  :key="cidx"
-                  type="button"
-                  class="confirm-candidate"
-                  @click="$emit('suggest', c)"
-                >
-                  {{ c }}
-                </button>
-              </div>
-            </div>
-
-            <!-- 澄清补参：后端判定必填参数缺失时，内联表单让用户补充后结构化回传 -->
-            <div v-if="msg.done && msg.clarify?.length && isReplySettled(msg)" class="clarify-area">
-              <div class="clarify-title">请补充以下信息：</div>
-              <div v-for="(p, pidx) in msg.clarify" :key="p" class="clarify-field">
-                <span class="clarify-label">{{ clarifyParamLabel(p, msg) }}</span>
-                <!-- U1 选择题化：契约带 options 时渲染可点 chip，点击即回填 -->
-                <div v-if="clarifyOptions(p, msg).length" class="clarify-chips">
-                  <button
-                    v-for="opt in clarifyOptions(p, msg)"
-                    :key="opt"
-                    type="button"
-                    class="clarify-chip"
-                    :class="{ active: (clarifyDrafts[`${msg.id}:${p}`] || '') === opt }"
-                    @click="selectClarifyOption(msg, p, opt)"
-                  >
-                    {{ opt }}
-                  </button>
-                </div>
-                <input
-                  v-else
-                  v-model="clarifyDrafts[`${msg.id}:${p}`]"
-                  class="clarify-input"
-                  :placeholder="`请输入${clarifyParamLabel(p, msg)}`"
-                  @keyup.enter="submitClarify(msg)"
-                />
-              </div>
-              <div class="clarify-actions">
-                <button type="button" class="clarify-submit" @click="submitClarify(msg)">继续</button>
-                <button type="button" class="clarify-skip" @click="dismissClarify(msg)">跳过</button>
-              </div>
-            </div>
-
-            <!-- 翻译层异常提示：执行阶段失败时的可见反馈（非空白） -->
-            <div v-if="msg.done && msg.agentError && isReplySettled(msg)" class="agent-error-hint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              <span>{{ msg.agentError }}</span>
+            <!-- 动作分流按钮：track 类直接触发，其余回显到输入框 -->
+            <div v-if="msg.done && msg.followUpActions?.length" class="follow-up-actions">
+              <button
+                v-for="action in msg.followUpActions"
+                :key="action.key"
+                type="button"
+                class="follow-up-btn"
+                @click="onFollowUpAction(action, msg)"
+              >
+                {{ action.label }}
+              </button>
             </div>
           </div>
         </template>
@@ -370,8 +217,8 @@
           <div class="message-content user-content">
             <div class="message-bubble user-bubble">
               <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
-              
-              <!-- 用户附件（fileId 存在时可下载原件） -->
+
+              <!-- 用户附件 -->
               <div v-if="msg.attachments?.length" class="user-attachments">
                 <div
                   v-for="(attachment, aidx) in msg.attachments"
@@ -385,31 +232,17 @@
                     </svg>
                     <span>{{ attachment.duration || '00:00' }}</span>
                   </div>
-                  <div v-else class="file-preview" :class="{ 'has-download': attachment.fileId }">
+                  <div v-else class="file-preview">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                      <polyline points="14 2 14 8 20 8"/>
                     </svg>
                     <span>{{ attachment.name }}</span>
-                    <button
-                      v-if="attachment.fileId"
-                      type="button"
-                      class="ua-download"
-                      title="下载原文件"
-                      @click.stop="downloadAttachment(attachment)"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                    </button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          
+
           <!-- 用户头像 -->
           <div class="avatar user-avatar">
             <div class="avatar-inner">
@@ -426,138 +259,18 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { marked } from 'marked'
 import WelcomeCards from './WelcomeCards.vue'
-import SessionWorkOrderCard from './SessionWorkOrderCard.vue'
-import IntentPanel from './intent-panels/IntentPanel.vue'
-import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
-import MessageCard from './MessageCard.vue'
-import InlineFormEditor from './InlineFormEditor.vue'
-import BatchInlineCard from './BatchInlineCard.vue'
-import { useCompareTray } from '../composables/useCompareTray.js'
 
 const props = defineProps({
   messages: { type: Array, required: true },
   showWelcome: { type: Boolean, default: false },
-  mode: { type: String, default: 'rd' },
-  /** 当前激活的内联表单（RD 页面注入，用于在本消息内展开编辑器） */
-  activeFormCard: { type: Object, default: null },
+  mode: { type: String, default: 'rd' }
 })
 
-const emit = defineEmits([
-  'form-card-click',
-  'form-submit',
-  'form-field-change',
-  'form-confirm-submit',
-  'form-ai-validation',
-  'form-close',
-  'form-cancel',
-  'batch-confirm',
-  'batch-fix',
-  'batch-delete',
-  'intent-action',
-  'undo-action',
-  'regenerate',
-  'suggest',
-  'query-result-click',
-  'compare-tray-add',
-  'clarify-submit',
-  'trace-click',
-  'session-workorder-select',
-  'workorder-preview',
-  'workorder-edit',
-  'workorder-submit',
-  'workorder-copy',
-  'workorder-delete',
-  'open-ops',
-])
-
-const isActiveForm = (formCard) => {
-  return !!props.activeFormCard && !!formCard && props.activeFormCard.formId === formCard.formId
-}
-
-/** 查询→行动中间态（§6-B4）：结果卡片是否已在对比清单（模块级共享清单） */
-const { has: compareTrayHas } = useCompareTray()
-
-/** 引用锚计数摘要（通过/待修/可入库） */
-const fileRefCounts = (fileRef) => {
-  if (!fileRef?.counts) return ''
-  const c = fileRef.counts
-  const parts = []
-  if (c.passed != null) parts.push(`通过 ${c.passed}`)
-  if (c.pending != null) parts.push(`待修 ${c.pending}`)
-  if (c.confirmable != null) parts.push(`可入库 ${c.confirmable}`)
-  return parts.length ? parts.join(' · ') : ''
-}
-
-/** 附件下载：走智读暂存端点按 fileId 取原件（带原文件名落盘） */
-function downloadAttachment(attachment) {
-  const fileId = attachment?.fileId
-  if (!fileId) return
-  const name = attachment?.fileName || attachment?.name || fileId
-  const url = `/api/v1/product-ontology/config/files/${encodeURIComponent(fileId)}?fileName=${encodeURIComponent(name)}`
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-}
-
-/** CLARIFY 澄清补参：msg.id -> { [paramKey]: 用户输入 } */
-const clarifyDrafts = reactive({})
-
-/** 参数键 → 业务中文标签（优先契约 label，回退本地词典） */
-function clarifyParamLabel(key, msg) {
-  const contract = msg?.clarifyContracts?.[key]
-  if (contract?.label) return contract.label
-  const map = {
-    offering: '商品/套餐',
-    ruleId: '规则编号',
-    concept: '业务概念',
-    question: '查询内容',
-  }
-  return map[key] || key
-}
-
-/** 契约候选选项（U1 选择题化）：无契约或无 options 时为空数组（保留文本框） */
-function clarifyOptions(key, msg) {
-  const options = msg?.clarifyContracts?.[key]?.options
-  return Array.isArray(options) ? options : []
-}
-
-/** 点击候选 chip：回填草稿值（再点「继续」结构化回传） */
-function selectClarifyOption(msg, key, opt) {
-  clarifyDrafts[`${msg.id}:${key}`] = opt
-}
-
-/** 收集非空补参并结构化回传（复用 session history 让 LLM 理解原意图） */
-function submitClarify(msg) {
-  if (!msg?.clarify?.length) return
-  const params = {}
-  for (const key of msg.clarify) {
-    const val = (clarifyDrafts[`${msg.id}:${key}`] || '').trim()
-    if (val) params[key] = val
-  }
-  if (!Object.keys(params).length) {
-    ElMessage.warning('请至少补充一项信息')
-    return
-  }
-  emit('clarify-submit', { msg, params })
-  for (const key of msg.clarify) {
-    delete clarifyDrafts[`${msg.id}:${key}`]
-  }
-}
-
-/** 跳过澄清：按缺省继续（复用追问建议通道） */
-function dismissClarify(msg) {
-  if (!msg?.clarify?.length) return
-  for (const key of msg.clarify) {
-    delete clarifyDrafts[`${msg.id}:${key}`]
-  }
-  emit('suggest', '忽略补充，按缺省继续')
-}
+const emit = defineEmits(['regenerate', 'suggest', 'todo-action', 'open-detail', 'fill-input', 'action', 'open-ops'])
 
 const BOTTOM_THRESHOLD = 140
 
@@ -568,206 +281,60 @@ let scheduleRaf = 0
 let smoothTimer = 0
 let prevMessageCount = 0
 let programmaticScroll = false
-/** 流式跟滚期间忽略 scroll 事件，避免未贴底时被误判为用户上翻 */
 let followLockUntil = 0
 
-/**
- * 有思考过程的消息：等思考播完再打出正文
- * id -> { unlocked, instant, shown, typing, token }
- */
-const replyGate = reactive({})
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-const fullReply = (msg) => msg?.streamText || msg?.content || ''
-
-const needsReplyGate = (msg) => !!(msg?.reasoning && msg.reasoning.length)
-
-const ensureGate = (id) => {
-  if (!replyGate[id]) {
-    replyGate[id] = {
-      unlocked: false,
-      instant: false,
-      shown: '',
-      typing: false,
-      token: 0,
-    }
-  }
-  return replyGate[id]
-}
-
-const replyDisplayText = (msg) => {
-  if (!msg) return ''
-  if (!needsReplyGate(msg)) return fullReply(msg)
-  const g = replyGate[msg.id]
-  if (!g?.unlocked) return ''
-  return g.shown || ''
-}
-
-const isReplyTyping = (msg) => {
-  if (!needsReplyGate(msg)) return !!(msg.loading || !msg.done)
-  return !!replyGate[msg.id]?.typing
-}
-
-/** 思考播完且正文打完（或无正文）后再展示附属结果 */
-const isReplySettled = (msg) => {
-  if (!needsReplyGate(msg)) return true
-  const g = replyGate[msg.id]
-  if (!g?.unlocked || g.typing) return false
-  if (fullReply(msg) && !g.shown) return false
-  return true
-}
-
-/** S1 流程执行卡片：状态中文标签 */
-const flowStatusLabel = (status) => ({
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-  waiting_human: '待人工处理',
-  running: '执行中',
-  unknown: '未知',
-}[status] || status || '未知')
-
-/** S1 流程执行卡片：start/end 时间差 → 可读耗时 */
-const flowDuration = (exec) => {
-  if (!exec?.start_time || !exec?.end_time) return ''
-  const ms = new Date(exec.end_time).getTime() - new Date(exec.start_time).getTime()
-  if (Number.isNaN(ms) || ms < 0) return ''
-  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
-}
-
-/**
- * S1 流程执行卡片：从 output_data/context_data 提取节点留痕
- * （引擎 output_data 形如 { <nodeId>: { output: {...} } }，start/end 节点留空或透传）
- * 节点名映射：先用本条消息思考时间线里的引擎业务名（node_name），兜底通用中文标签
- */
-const flowNodeLogs = (exec) => {
-  const data = exec?.output_data || exec?.context_data
-  if (!data || typeof data !== 'object') return []
-  return Object.entries(data)
-    .filter(([id, v]) => id && v && typeof v === 'object' && 'output' in v)
-    .map(([id, v]) => ({
-      id,
-      name: flowNodeName(id),
-      status: v?.output && typeof v.output === 'object' && Object.keys(v.output).length
-        ? 'completed' : 'completed',
-    }))
-}
-
-/** 节点 ID → 业务名：优先取当前消息思考时间线中引擎直出的 node_name，兜底静态映射 */
-const flowNodeName = (nodeId) => {
-  for (const m of props.messages) {
-    for (const step of m.reasoning || []) {
-      if (step?.id === `flow_${nodeId}` && step.title && step.title !== nodeId) return step.title
-    }
-  }
-  return FLOW_NODE_LABELS[nodeId] || nodeId
-}
-
-const FLOW_NODE_LABELS = {
-  start: '开始',
-  discover: '历史配置探查',
-  'reuse-check': '复用判断',
-  'draft-stage': '草稿生成与合规校验',
-  'create-draft': '草稿落库开单',
-  'confirm-gate': '落库确认',
-  'confirm-check': '确认判定',
-  persist: '修改草稿',
-  order: '提交工单',
-  'end-main': '流程完成',
-  'end-reuse': '命中历史复用',
-  'end-cancelled': '用户取消',
-  'draft-llm': 'LLM 起草套餐',
-  compliance: '合规校验',
-  'pass-check': '合规判定',
-  'fix-redraft': '补齐重拟',
-  'compliance-recheck': '合规复核',
-}
-
-const shouldShowReplyPlaceholder = (msg) => {
-  if (replyDisplayText(msg)) return false
-  if (!needsReplyGate(msg)) {
-    return !!(msg.loading && !fullReply(msg))
-  }
-  // 思考进行中，或思考已完但正文还在路上 / 正在准备打字
-  const g = replyGate[msg.id]
-  if (!g?.unlocked) return true
-  return !!(msg.loading || !fullReply(msg) || g.typing)
-}
-
-const typeReply = async (msgId, text, instant) => {
-  const g = ensureGate(msgId)
-  const token = ++g.token
-  if (instant || !text) {
-    g.shown = text || ''
-    g.typing = false
-    return
-  }
-  // 已显示到同等长度则跳过
-  if (g.shown === text) {
-    g.typing = false
-    return
-  }
-  g.typing = true
-  // 思考播完后稍顿一下，再接正文，形成连续自上而下节奏
-  if (!g.shown) {
-    await sleep(220)
-    if (replyGate[msgId]?.token !== token) return
-  }
-  // 若已有前缀，从现有长度续打；否则从头
-  let start = 0
-  if (g.shown && text.startsWith(g.shown)) {
-    start = g.shown.length
-  } else {
-    g.shown = ''
-  }
-  // 动态节奏：块大跑得快、块小跑得慢，收尾平滑不突兀
-  const remaining = text.length - start
-  const chunk = remaining > 1200 ? 24 : remaining > 400 ? 12 : 6
-  const delay = remaining > 1200 ? 8 : 16
-  for (let i = start; i < text.length; i += chunk) {
-    if (replyGate[msgId]?.token !== token) return
-    g.shown = text.slice(0, Math.min(i + chunk, text.length))
-    await sleep(delay)
-  }
-  if (replyGate[msgId]?.token !== token) return
-  g.shown = text
-  g.typing = false
-}
-
-const revealReplyFor = (msg, instant = false) => {
-  if (!msg?.id || !needsReplyGate(msg)) return
-  const g = ensureGate(msg.id)
-  if (!g.unlocked) return
-  const text = fullReply(msg)
-  if (!text) return
-  typeReply(msg.id, text, instant || g.instant)
-}
-
-const onThinkingComplete = (msg, payload = {}) => {
-  if (!msg?.id) return
-  const g = ensureGate(msg.id)
-  g.unlocked = true
-  g.instant = !!payload.instant
-  revealReplyFor(msg, g.instant)
-}
-
-/** 正文在思考完成后才到达时，继续打出 */
-watch(
-  () => props.messages.map((m) => `${m.id}:${fullReply(m).length}:${m.done}:${m.loading}`).join('|'),
-  () => {
-    for (const msg of props.messages) {
-      if (msg.role !== 'assistant') continue
-      if (!needsReplyGate(msg)) continue
-      const g = replyGate[msg.id]
-      if (g?.unlocked) {
-        revealReplyFor(msg, g.instant)
-      }
-    }
-  },
-)
-
 const showWelcome = computed(() => props.showWelcome || props.messages.length === 0)
+
+const displayText = (msg) => msg?.streamText || msg?.content || ''
+
+// 直接执行类动作（如 track 查看审批进度、audit 智能稽核并提交、open-query-archive/open-draft-archive 调阅产品档案）直接 emit action；其余回填输入框
+const DIRECT_ACTIONS = ['track', 'audit', 'open-ops-view', 'open-traffic-view']
+const onFollowUpAction = (action, msg) => {
+  if (action.key && (DIRECT_ACTIONS.includes(action.key) || action.key.startsWith('view-stock-detail-') || action.key.startsWith('open-query-archive-') || action.key.startsWith('open-draft-archive-') || action.key.startsWith('compare-remove-'))) {
+    emit('action', { action, msg })
+  } else {
+    emit('fill-input', action.text)
+  }
+}
+
+// 点击 markdown 表格/正文里的「查看详情」，把存量产品检索结果里的行映射为"查看详情"动作
+const onMarkdownClick = (e, msg) => {
+  const anchor = e.target && e.target.closest ? e.target.closest('a') : null
+  if (!anchor) return
+  const href = anchor.getAttribute('href') || ''
+  const m = href.match(/^#view-(\d+)$/)
+  const results = msg?.stockResults
+  if (m && Array.isArray(results)) {
+    const p = results[Number(m[1])]
+    if (p) {
+      e.preventDefault()
+      onFollowUpAction(
+        { key: `view-stock-detail-${p.code}`, label: `查看详情 · ${p.name}`, productCode: p.code, text: `查看 ${p.name}（${p.code}）的配置详情` },
+        msg
+      )
+    }
+  }
+}
+
+const thinkingCollapsed = ref({})
+
+const isThinkingCollapsed = (msg) => {
+  const key = msg?.id
+  if (key == null) return false
+  if (key in thinkingCollapsed.value) return thinkingCollapsed.value[key]
+  return false
+}
+
+const toggleThinking = (msg) => {
+  const key = msg?.id
+  if (key == null) return
+  thinkingCollapsed.value[key] = !isThinkingCollapsed(msg)
+}
+
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  return marked.parse(text, { breaks: true })
+}
 
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
@@ -800,7 +367,6 @@ const jumpToBottom = () => {
   stickToBottom.value = true
 }
 
-/** 粘底滚动：流式增高时瞬时贴底，保证研发助手思考面板/本体图不掉队 */
 const scrollToBottom = (smooth = false, force = false) => {
   if (force) stickToBottom.value = true
   if (!force && !stickToBottom.value) return
@@ -823,7 +389,6 @@ const scrollToBottom = (smooth = false, force = false) => {
     }
 
     jumpToBottom()
-    // 布局/图谱异步撑高后再贴一次
     requestAnimationFrame(() => {
       if (stickToBottom.value) jumpToBottom()
     })
@@ -841,58 +406,6 @@ const scheduleScrollToBottom = (force = false) => {
   })
 }
 
-const toggleReasoning = (idx) => {
-  const msg = props.messages[idx]
-  if (!msg) return
-  msg.showReasoning = msg.showReasoning === false
-}
-
-/** 思考步骤文案转业务可读（兼容历史会话里的技术措辞） */
-const localizeStepText = (text) => {
-  if (!text) return ''
-  return String(text)
-    .replace(/已加载\s*\d+\s*个本体，构建意图识别\s*Prompt\.\.\./g, '正在匹配业务知识与规则库...')
-    .replace(/正在分析用户输入\.\.\./g, '正在理解您的需求...')
-    .replace(/正在调用大模型识别意图\.\.\./g, '正在识别业务意图...')
-    .replace(/意图识别仍在进行/g, '业务意图识别进行中')
-    .replace(/意图识别完成：([^(（]+)（来源\s*[^，,）)]+(?:[，,]\s*置信度\s*[\d.]+%)?）/g, '已确认业务意图：$1')
-    .replace(/意图识别完成：/g, '已确认业务意图：')
-    .replace(/正在分发到「([^」]+)」处理器执行\.\.\./g, '开始执行「$1」...')
-    .replace(/正在基于图谱事实追溯异动根因\.\.\./g, '正在分析异动原因...')
-    .replace(/根因分析完成，正在组织答复\.\.\./g, '异动原因分析完成，正在整理结论...')
-    .replace(/产商品解析或事实检索未通过/g, '未能完成异动原因分析')
-    .replace(/命中短指令白名单，跳过意图\s*LLM\.\.\./g, '已识别为常用业务指令，开始处理...')
-    .replace(/意图\s*LLM\s*无有效结果，已关键词降级\.\.\./g, '已按关键词确认业务意图...')
-    .replace(/正在调用规则引擎进行政策评估\.\.\./g, '正在评估业务规则与政策要求...')
-    .replace(/正在构建方案对比快照并评估规则\.\.\./g, '正在对比方案并评估合规与收益...')
-    .replace(/风险稽核完成，正在组织答复\.\.\./g, '风险排查完成，正在整理结论...')
-    .replace(/（来源\s*llm[^）]*）/gi, '')
-    .replace(/（来源\s*[^）]+）/g, '')
-    .replace(/置信度/g, '把握度')
-    .replace(/本体/g, '业务知识')
-    .replace(/调用工具/g, '业务处理')
-    .replace(/大模型/g, 'AI')
-    .replace(/SPARQL|SWRL|Prompt|Token|LLM|RDF/gi, '')
-    .replace(/includeVoice/g, '语音')
-    .replace(/includeData/g, '流量')
-    .replace(/includeBroadband/g, '宽带')
-    .replace(/offeringName/g, '商品名称')
-    .replace(/monthlyFee/g, '月费')
-    .replace(/bizScenario/g, '业务场景')
-    .replace(/targetUser/g, '目标用户')
-    .replace(/channelScope/g, '销售渠道')
-    .replace(/mutexGroup/g, '互斥组')
-    .replace(/bindExistingMainPkg/g, '绑定在架主套餐')
-    .replace(/basedOnTemplate/g, '配置模板')
-    .replace(/scenario_default/g, '场景缺省')
-    .replace(/user_said/g, '用户表述')
-    .replace(/create_offering_config/g, '创建商品配置')
-    .replace(/OfferingConfig/g, '商品配置草稿')
-    .replace(/BizScenario/g, '业务场景')
-    .replace(/MAIN_PKG/g, '主套餐互斥组')
-    .replace(/compliancePass/g, '合规通过')
-}
-
 const copyText = async (text) => {
   try {
     await navigator.clipboard.writeText(text.replace(/<[^>]*>/g, ''))
@@ -906,48 +419,14 @@ const handleFeedback = (msg, type) => {
   ElMessage({ message: type === 'like' ? '感谢反馈' : '我们会继续改进', type: 'success', duration: 1500 })
 }
 
-/** 执行态中文标签（v3.2） */
-function execStateLabel(state) {
-  const map = {
-    suggested: '建议',
-    executing: '执行中',
-    executed: '已执行',
-    failed: '失败',
-    reverted: '已撤销',
-  }
-  return map[state] || '已执行'
-}
-
-/** 统一的动作执行态来源：优先消息级 undoable.state，否则 actionState（v3.2） */
-function execState(msg) {
-  return msg?.undoable?.state || msg?.actionState || 'executed'
-}
-
-// 消息数量 / 流式内容 / 思考步骤变化时粘底滚动
 watch(
-  () => {
-    const last = props.messages[props.messages.length - 1]
-    const reasoning = last?.reasoning || []
-    // 研发助手会原地刷新等待文案 / 本体链揭示，需纳入依赖
-    const reasoningSig = reasoning
-      .map((s) => `${s?.content?.length || 0}:${s?.chainRevealCount || 0}`)
-      .join('|')
-    return [
-      props.messages.length,
-      last?.id,
-      last?.streamText?.length ?? 0,
-      last?.content?.length ?? 0,
-      reasoning.length,
-      reasoningSig,
-      last?.loading,
-      last?.done,
-      last?.showReasoning,
-      !!last?.formCard,
-      last?.queryResults?.length ?? 0,
-      replyGate[last?.id]?.shown?.length ?? 0,
-      replyGate[last?.id]?.unlocked ? 1 : 0,
-    ]
-  },
+  () => [
+    props.messages.length,
+    props.messages[props.messages.length - 1]?.streamText?.length ?? 0,
+    props.messages[props.messages.length - 1]?.content?.length ?? 0,
+    props.messages[props.messages.length - 1]?.loading,
+    props.messages[props.messages.length - 1]?.done,
+  ],
   () => {
     const count = props.messages.length
     const force = count > prevMessageCount
@@ -995,7 +474,7 @@ defineExpose({ scrollToBottom })
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 0 24px;
+  padding: 12px 0 24px;
   min-height: 0;
 }
 
@@ -1081,23 +560,132 @@ defineExpose({ scrollToBottom })
   max-width: min(70%, 560px);
 }
 
-/* 消息头部 */
-.message-header {
+/* 思考过程折叠模块 */
+.thinking-block {
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.thinking-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px;
-}
-
-.ai-label {
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
-.message-time {
+.thinking-chevron {
+  transition: transform 0.2s ease;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.thinking-block.collapsed .thinking-chevron {
+  transform: rotate(-90deg);
+}
+
+.thinking-icon {
+  display: flex;
+  align-items: center;
+  color: #6366f1;
+}
+
+.thinking-icon svg {
+  animation: thinking-spin 1s linear infinite;
+}
+
+@keyframes thinking-spin {
+  to { transform: rotate(360deg); }
+}
+
+.thinking-title {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.thinking-block:not(.collapsed) .thinking-title,
+.thinking-block .thinking-title {
+  font-weight: 500;
+}
+
+.thinking-duration {
   font-size: 12px;
   color: var(--text-tertiary);
+  margin-left: 4px;
+}
+
+.thinking-body {
+  padding: 0 12px 10px 34px;
+}
+
+.thinking-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.thinking-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.thinking-step.done {
+  color: var(--text-tertiary);
+}
+
+.thinking-step.done .step-dot {
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+}
+
+.thinking-step.active .step-text {
+  color: #6366f1;
+}
+
+.step-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #e0e7ff;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: thinking-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.step-text {
+  flex: 1;
+}
+
+/* 折叠动画 */
+.thinking-slide-enter-active,
+.thinking-slide-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.thinking-slide-enter-from,
+.thinking-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.thinking-slide-enter-to,
+.thinking-slide-leave-from {
+  opacity: 1;
+  max-height: 400px;
 }
 
 /* 消息气泡 */
@@ -1134,169 +722,66 @@ defineExpose({ scrollToBottom })
   white-space: pre-wrap;
 }
 
-/* 推理面板 */
-.reasoning-panel {
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.reasoning-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #3b82f6;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-  transition: background 0.2s;
-}
-
-.reasoning-toggle:hover {
-  background: rgba(59, 130, 246, 0.05);
-}
-
-.toggle-icon {
-  transition: transform 0.2s;
-}
-
-.toggle-icon.expanded {
-  transform: rotate(90deg);
-}
-
-.reasoning-title {
-  flex: 1;
-}
-
-.reasoning-count {
-  color: #93c5fd;
-  font-size: 12px;
-}
-
-.reasoning-live {
-  font-size: 11px;
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.12);
-  padding: 1px 8px;
-  border-radius: 999px;
-  animation: pulse-live 1.2s ease-in-out infinite;
-}
-
-@keyframes pulse-live {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-.reasoning-panel.streaming {
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08);
-}
-
-.reasoning-body {
-  padding: 0 14px 12px;
-}
-
-.reasoning-onto-tag {
-  font-size: 11px;
-  color: #1d4ed8;
-  background: #dbeafe;
-  padding: 1px 8px;
-  border-radius: 999px;
-}
-
-.reasoning-step.is-ontology {
-  background: rgba(37, 99, 235, 0.04);
-  border-radius: 10px;
-  padding: 8px 8px 10px;
-  margin: 4px 0;
-}
-
-.step-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 6px 8px;
-}
-
-.step-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 999px;
-  line-height: 1.6;
-}
-
-.step-badge.llm {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.step-badge.ontology {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.step-body .onto-chain {
-  margin-top: 8px;
-}
-
-.reasoning-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.reasoning-step.latest .step-text {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.reasoning-step:not(:last-child) {
-  border-bottom: 1px dashed rgba(59, 130, 246, 0.1);
-}
-
-.step-number {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: white;
-  font-size: 11px;
+/* markdown 渲染样式 */
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 12px 0 8px;
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  line-height: 1.4;
 }
-
-.step-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.markdown-body :deep(h1) { font-size: 20px; }
+.markdown-body :deep(h2) { font-size: 18px; }
+.markdown-body :deep(h3) { font-size: 16px; }
+.markdown-body :deep(h4) { font-size: 15px; }
+.markdown-body :deep(p) { margin: 8px 0; }
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) { margin: 8px 0; padding-left: 24px; }
+.markdown-body :deep(li) { margin: 4px 0; }
+.markdown-body :deep(code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
 }
-
-.step-text {
-  flex: 1;
-  line-height: 1.5;
+.markdown-body :deep(pre) {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 10px 0;
 }
-
-.step-detail {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  line-height: 1.45;
-  white-space: pre-wrap;
+.markdown-body :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 13px;
+}
+.markdown-body :deep(blockquote) {
+  border-left: 3px solid #3b82f6;
+  margin: 8px 0;
+  padding: 4px 12px;
+  color: var(--text-secondary);
+  background: rgba(59, 130, 246, 0.04);
+}
+.markdown-body :deep(table) {
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
+  font-size: 13px;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid var(--border-default);
+  padding: 6px 10px;
+  text-align: left;
+}
+.markdown-body :deep(th) {
+  background: var(--bg-tertiary);
+  font-weight: 600;
 }
 
 /* 打字指示器 */
@@ -1305,11 +790,6 @@ defineExpose({ scrollToBottom })
   gap: 5px;
   padding: 6px 0;
   align-items: center;
-}
-
-.typing-indicator.after-think {
-  margin-top: 2px;
-  opacity: 0.85;
 }
 
 .typing-indicator span {
@@ -1395,30 +875,6 @@ defineExpose({ scrollToBottom })
   gap: 6px;
 }
 
-/* 用户附件下载：默认隐藏，悬停附件条时浮现纯图标 */
-.ua-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: inherit;
-  opacity: 0;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.ua-download:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
-.user-attachment-item:hover .ua-download {
-  opacity: 0.75;
-}
-.ua-download:hover {
-  opacity: 1 !important;
-}
-
 .user-attachment-item img {
   max-width: 180px;
   max-height: 120px;
@@ -1463,325 +919,6 @@ defineExpose({ scrollToBottom })
   color: var(--text-secondary);
 }
 
-/* 执行态徽标 + 撤销（可逆操作 v3.2） */
-.exec-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-.exec-badge {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-}
-.exec-badge.exec-suggested { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-.exec-badge.exec-executing { background: #fefce8; color: #a16207; border-color: #fde68a; }
-.exec-badge.exec-executed { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-.exec-badge.exec-failed { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
-.exec-badge.exec-reverted { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
-.undo-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  color: #475569;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.undo-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
-
-/* 表单卡片 */
-.form-card {
-  margin-top: 12px;
-  padding: 16px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.form-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.1);
-}
-
-.form-card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.form-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #3b82f6;
-}
-
-.form-card-info {
-  flex: 1;
-}
-
-.form-card-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.form-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-tertiary);
-}
-
-.form-card-meta .dot {
-  color: var(--border-default);
-}
-
-/* 查询结果卡片列表 */
-.query-results {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.query-result-item {
-  padding: 12px 14px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.query-result-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
-  background: rgba(59, 130, 246, 0.03);
-}
-
-.qr-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.qr-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.qr-code {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #f1f5f9;
-  color: #64748b;
-  border-radius: 4px;
-  font-family: ui-monospace, monospace;
-}
-
-.qr-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 0 0 8px;
-  line-height: 1.45;
-}
-
-.qr-copy-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #dbeafe;
-  color: #3b82f6;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.qr-copy-btn:hover {
-  background: #3b82f6;
-  color: white;
-}
-
-/* 查询→行动中间态（§6-B4）：卡片动作区与「加入对比」按钮 */
-.qr-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.qr-tray-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: #d1fae5;
-  color: #059669;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.qr-tray-btn:hover {
-  background: #059669;
-  color: white;
-}
-
-.qr-tray-btn--added {
-  background: transparent;
-  color: #94a3b8;
-  cursor: default;
-}
-
-.query-result-item.qr-in-tray {
-  border-color: #a7f3d0;
-}
-
-/* S1 对话即编排：固定流程执行明细卡片 */
-.flow-exec-card {
-  margin-top: 12px;
-  padding: 12px 14px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-}
-
-.fe-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-}
-
-.fe-name {
-  font-size: 14px;
-  font-weight: 600;
-  flex: 1;
-}
-
-.fe-status {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-weight: 500;
-}
-
-.fe-status--completed {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.fe-status--failed,
-.fe-status--cancelled {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.fe-status--waiting_human {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.fe-status--running,
-.fe-status--unknown {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.fe-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.fe-nodes {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border-default);
-}
-
-.fe-node {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.fe-node-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #16a34a;
-  flex-shrink: 0;
-}
-
-.fe-node-dot--failed,
-.fe-node-dot--cancelled {
-  background: #dc2626;
-}
-
-.fe-node-dot--waiting_human {
-  background: #d97706;
-}
-
-.fe-node-id {
-  font-family: ui-monospace, monospace;
-  color: var(--text-primary);
-}
-
-.fe-node-raw-id {
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--text-tertiary, #999);
-}
-
-.fe-node-status {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.fe-error {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #dc2626;
-  background: #fee2e2;
-  border-radius: 6px;
-  padding: 6px 10px;
-}
-
 .next-steps {
   display: flex;
   flex-wrap: wrap;
@@ -1812,226 +949,171 @@ defineExpose({ scrollToBottom })
   border-color: #93c5fd;
 }
 
-/* 澄清追问提示（CLARIFY 分支） */
-.clarify-hint {
+/* 待办卡片 */
+.todo-cards {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 10px;
-  padding: 8px 12px;
-  border: 1px dashed #fcd34d;
-  background: #fffbeb;
-  border-radius: 10px;
-  color: #b45309;
-  font-size: 12px;
 }
 
-/* 澄清补参内联表单 */
-.clarify-area {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid #fde68a;
-  background: #fffbeb;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.clarify-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #b45309;
-}
-
-.clarify-field {
+.todo-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.clarify-label {
-  flex-shrink: 0;
-  width: 84px;
-  font-size: 12px;
-  color: #92400e;
-  text-align: right;
-}
-
-/* U1 选择题化：候选选项 chip */
-.clarify-chips {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.clarify-chip {
-  padding: 6px 14px;
-  border: 1px solid #fcd34d;
-  border-radius: 999px;
-  background: #fff;
-  color: #92400e;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.clarify-chip:hover {
-  border-color: #f59e0b;
-  background: #fef3c7;
-}
-
-.clarify-chip.active {
-  border-color: #f59e0b;
-  background: #f59e0b;
-  color: #fff;
-  font-weight: 600;
-}
-
-/* U2 需求歧义确认：候选解读卡片（复用 clarify-area 边框基调） */
-.confirm-area {
-  border-color: #c7d2fe;
-  background: #eef2ff;
-}
-
-.confirm-area .clarify-title {
-  color: #4338ca;
-}
-
-.confirm-candidates {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.confirm-candidate {
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 14px;
-  border: 1px solid #c7d2fe;
   border-radius: 10px;
+  border: 1px solid var(--border-light);
   background: #fff;
-  color: #1e293b;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.15s;
 }
 
-.confirm-candidate:hover {
-  border-color: #6366f1;
-  background: #eef2ff;
-  color: #4338ca;
-}
+.todo-urgent { border-left: 3px solid #ef4444; background: #fef2f2; }
+.todo-important { border-left: 3px solid #f59e0b; background: #fffbeb; }
+.todo-reminder { border-left: 3px solid #10b981; background: #f0fdf4; }
 
-.clarify-input {
+.todo-card-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
   min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid #fcd34d;
-  border-radius: 8px;
-  background: #fff;
+  flex-wrap: wrap;
+}
+
+.todo-level {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.todo-type {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: rgba(0,0,0,0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.todo-content {
   font-size: 13px;
   color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.clarify-input:focus {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
-}
-
-.clarify-actions {
+.todo-card-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.todo-action-btn {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 6px;
+  padding: 4px 12px;
+  min-width: 80px;
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.todo-action-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+/* 详情卡片 */
+.detail-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.detail-card:hover {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.detail-card-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.detail-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detail-card-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
   margin-top: 2px;
 }
 
-.clarify-submit {
-  padding: 7px 18px;
-  border: none;
+.detail-card-arrow {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.detail-card:hover .detail-card-arrow {
+  transform: translateX(3px);
+  color: #2563eb;
+}
+
+/* 动作分流按钮 */
+.follow-up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 2px;
+}
+
+.follow-up-btn {
+  border: 1px solid #c7d2fe;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  color: #4338ca;
   border-radius: 8px;
-  background: #f59e0b;
-  color: #fff;
+  padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.18s ease;
+  white-space: nowrap;
 }
 
-.clarify-submit:hover {
-  background: #d97706;
-}
-
-.clarify-skip {
-  padding: 7px 14px;
-  border: 1px solid #fcd34d;
-  border-radius: 8px;
-  background: transparent;
-  color: #b45309;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.clarify-skip:hover {
-  background: #fef3c7;
-}
-
-/* 长对话文件引用锚（仅展示：不可点击、无 hover 反馈） */
-.file-ref-anchor {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 6px 12px;
-  border: 1px dashed #c7d2fe;
-  background: #eef2ff;
-  color: #4338ca;
-  border-radius: 999px;
-  font-size: 12px;
-  width: fit-content;
-}
-.fra-name { font-weight: 600; }
-.fra-counts { color: #818cf8; }
-
-/* 配置审计追溯锚 */
-.trace-anchor {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 6px 12px;
-  border: 1px dashed #99f6e4;
-  background: #f0fdfa;
-  color: #0f766e;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  width: fit-content;
-  transition: all 0.15s;
-}
-.trace-anchor:hover {
-  border-color: #14b8a6;
-  background: #ccfbf1;
-}
-.ta-name { font-weight: 600; }
-.ta-id { color: #5eead4; font-family: monospace; }
-
-/* 翻译层执行异常提示 */
-.agent-error-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border: 1px solid #fecaca;
-  background: #fef2f2;
-  border-radius: 10px;
-  color: #dc2626;
-  font-size: 12px;
+.follow-up-btn:hover {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border-color: #a5b4fc;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+  transform: translateY(-1px);
 }
 
 /* 深色模式适配 */
@@ -2111,31 +1193,6 @@ defineExpose({ scrollToBottom })
     border-bottom-right-radius: 3px;
   }
 
-  .reasoning-panel {
-    border-radius: 10px;
-  }
-
-  .reasoning-toggle {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-
-  .reasoning-body {
-    padding: 0 12px 10px;
-  }
-
-  .reasoning-step {
-    padding: 6px 0;
-    font-size: 12px;
-    gap: 8px;
-  }
-
-  .step-number {
-    width: 16px;
-    height: 16px;
-    font-size: 10px;
-  }
-
   .message-actions {
     opacity: 1;
     padding: 2px;
@@ -2144,24 +1201,6 @@ defineExpose({ scrollToBottom })
   .action-btn {
     width: 26px;
     height: 26px;
-  }
-
-  .form-card {
-    padding: 12px;
-    border-radius: 10px;
-  }
-
-  .form-card-icon {
-    width: 36px;
-    height: 36px;
-  }
-
-  .form-card-name {
-    font-size: 14px;
-  }
-
-  .form-card-meta {
-    font-size: 12px;
   }
 
   .attachment-item {
@@ -2208,14 +1247,6 @@ defineExpose({ scrollToBottom })
     border-radius: 12px;
   }
 
-  .reasoning-toggle {
-    padding: 6px 10px;
-  }
-
-  .reasoning-body {
-    padding: 0 10px 8px;
-  }
-
   .attachment-item {
     max-width: 120px;
   }
@@ -2236,24 +1267,9 @@ defineExpose({ scrollToBottom })
     min-width: 32px;
     min-height: 32px;
   }
-
-  .form-card {
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .reasoning-toggle {
-    min-height: 40px;
-  }
 }
 
-/* 平板横屏优化 */
-@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
-  .message-content {
-    max-width: 75%;
-  }
-}
-
-/* 大屏幕优化 - 限制最大宽度保证阅读体验 */
+/* 大屏幕优化 */
 @media (min-width: 1400px) {
   .message-content {
     max-width: 65%;

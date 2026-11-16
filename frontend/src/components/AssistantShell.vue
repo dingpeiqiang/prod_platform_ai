@@ -1,315 +1,242 @@
 <template>
-  <div class="assistant-page assistant-workbench" :class="{ 'keyboard-open': keyboardOpen }">
-    <AssistantNavBar :mode="mode" :title="config.navTitle">
+  <div class="assistant-page assistant-workbench">
+    <AssistantNavBar :title="navTitle" :open-draft-signal="openDraftSignal" @open-approval="$emit('open-approval', $event)" @open-product-metrics="$emit('open-product-metrics', $event)" @open-draft="$emit('open-draft', $event)">
       <template v-if="$slots['nav-actions']" #actions>
         <slot name="nav-actions" />
       </template>
     </AssistantNavBar>
 
     <div class="workbench-body">
-    <!-- 左侧栏：桌面常驻（可折叠），移动端为抽屉（overlay 版式见下） -->
-    <aside class="workbench-side" :class="{ open: sideOpen, collapsed: sideCollapsed }">
-      <div class="side-drawer-head">
-        <span class="side-title">菜单</span>
-        <button class="side-close-btn" type="button" @click="sideOpen = false" title="关闭">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-      <div class="side-scroll">
-        <div class="side-section side-session">
-          <button class="new-session-btn" @click="closeDrawers(); $emit('new-session')" :disabled="streaming">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            新建会话
-          </button>
-        </div>
-
-        <div class="side-section side-history">
-          <div class="side-title history-title">
-            <span>历史对话</span>
-            <div class="history-title-actions">
-              <button
-                class="refresh-btn"
-                :class="{ active: searchOpen }"
-                @click="toggleSearch"
-                title="检索会话"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-              </button>
-              <button class="refresh-btn" @click="$emit('refresh-sessions')" :disabled="sessionsLoading" title="刷新">
-                <svg :class="{ spin: sessionsLoading }" width="12" height="12" viewBox="0 0 24 24"
-                     fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <transition name="search-slide">
-            <div v-if="searchOpen" class="history-search">
-              <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24"
-                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      <aside class="workbench-side" :class="{ collapsed: sideCollapsed }">
+        <div class="side-inner">
+          <div class="side-section side-session">
+            <button class="new-session-btn" @click="$emit('new-session')" :disabled="streaming">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              <input
-                ref="searchInputEl"
-                v-model="searchKeyword"
-                class="search-input"
-                type="text"
-                placeholder="搜索会话标题"
-              />
-              <button v-if="searchKeyword" class="search-clear" @click="searchKeyword = ''" title="清空">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-          </transition>
-
-          <div class="history-list">
-            <div v-if="sessionsLoading" class="history-empty">加载中...</div>
-            <div v-else-if="searchOpen && searchKeyword && !displayedSessions.length" class="history-empty">
-              未匹配到会话
-            </div>
-            <div v-else-if="!sessions.length" class="history-empty">暂无历史对话</div>
-            <template v-else>
-              <div
-                v-for="s in displayedSessions"
-                :key="s.session_id"
-                class="history-item"
-              >
-                <button
-                  class="side-btn history-btn"
-                  @click="closeDrawers(); onPickSession(s)"
-                >
-                  <span class="btn-label history-label">{{ s.title || '新对话' }}</span>
-                  <span class="btn-scene">
-                    <span v-if="s.matchReason" class="match-reason" v-html="s.matchReason"></span>
-                    <template v-else>{{ formatSessionTime(s.updated_at) }}</template>
-                  </span>
-                </button>
-                <button
-                  class="history-del-btn"
-                  :title="'删除会话：' + (s.title || '新对话')"
-                  @click.stop="$emit('delete-session', s.session_id)"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
-              </div>
-            </template>
+              新建会话
+            </button>
           </div>
-        </div>
 
-        <div class="side-section">
-          <div class="side-title">快捷场景</div>
-          <!-- 场景分组（研发/运营/查询并入统一入口）：有 sceneGroups 时按组渲染 -->
-          <template v-if="sceneGroups.length">
-            <div v-for="g in sceneGroups" :key="g.group" class="scene-group">
-              <div class="scene-group-title">{{ g.group }}</div>
-              <button
-                v-for="item in groupScenes(g)"
-                :key="g.group + '-' + item.scene"
-                class="side-btn"
-                @click="closeDrawers(); $emit('shortcut', item)"
-              >
-                <span class="btn-label">{{ item.label }}</span>
-                <span class="btn-scene">{{ item.desc || item.scene }}</span>
-              </button>
-            </div>
-          </template>
-          <template v-else>
+          <!-- 快捷场景：仅在选中助手时显示 -->
+          <div v-if="hasAssistant && sideSceneShortcuts.length" class="side-section">
+            <div class="side-title">快捷场景</div>
             <button
-              v-for="item in config.sceneShortcuts"
+              v-for="item in sideSceneShortcuts"
               :key="item.label"
               class="side-btn"
-              @click="closeDrawers(); $emit('shortcut', item)"
+              @click="$emit('shortcut', item)"
             >
               <span class="btn-label">{{ item.label }}</span>
               <span class="btn-scene">{{ item.desc || item.scene }}</span>
             </button>
-          </template>
-        </div>
-
-        <div class="side-section side-tips">
-          <div class="side-title tips-title">
-            <span>使用提示</span>
-            <button
-              class="tips-toggle"
-              :class="{ active: tipsOpen }"
-              :aria-expanded="tipsOpen"
-              :title="tipsOpen ? '收起提示' : '展开提示'"
-              @click="tipsOpen = !tipsOpen"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
           </div>
-          <transition name="tips-collapse">
-            <div v-show="tipsOpen" class="tips-body">
-              <p v-for="(tip, i) in config.tips" :key="i" class="tip-text">{{ tip }}</p>
+
+          <div class="side-section side-history">
+            <div class="side-title history-title">
+              <span>历史对话</span>
+              <div class="history-title-actions">
+                <button
+                  class="refresh-btn"
+                  :class="{ active: searchOpen }"
+                  @click="toggleSearch"
+                  title="检索会话"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                </button>
+                <button class="refresh-btn" @click="$emit('refresh-sessions')" :disabled="sessionsLoading" title="刷新">
+                  <svg :class="{ spin: sessionsLoading }" width="12" height="12" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-          </transition>
+
+            <transition name="search-slide">
+              <div v-if="searchOpen" class="history-search">
+                <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  ref="searchInputEl"
+                  v-model="searchKeyword"
+                  class="search-input"
+                  type="text"
+                  placeholder="搜索会话标题/内容/工单号"
+                />
+                <button v-if="searchKeyword" class="search-clear" @click="searchKeyword = ''" title="清空">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            </transition>
+
+            <div class="history-list">
+              <div v-if="sessionsLoading" class="history-empty">加载中...</div>
+              <div v-else-if="searchOpen && searchKeyword && !searchResults.length" class="history-empty">
+                未匹配到会话
+              </div>
+              <div v-else-if="!sessions.length" class="history-empty">
+                {{ hasAssistant ? '暂无历史对话' : '选择助手后开始对话' }}
+              </div>
+              <template v-else>
+                <div
+                  v-for="s in displayedSessions"
+                  :key="s.session_id || s.id"
+                  class="history-item"
+                  :class="{ 'cross-assistant': searchOpen && searchKeyword && s.assistantKey && s.assistantKey !== activeAssistant }"
+                >
+                  <button
+                    class="side-btn history-btn"
+                    @click="onPickSession(s)"
+                  >
+                    <span class="btn-label history-label">{{ s.title || '新对话' }}</span>
+                    <span class="btn-scene">
+                      <span v-if="s.matchReason" class="match-reason" v-html="s.matchReason"></span>
+                      <template v-else>{{ formatSessionTime(s.updated_at) }}</template>
+                    </span>
+                  </button>
+                  <button
+                    class="history-del-btn"
+                    :title="'删除会话：' + (s.title || '新对话')"
+                    @click.stop="onDeleteSession(s)"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="side-section side-tips">
+            <div class="side-title tips-title">
+              <span>使用提示</span>
+              <button
+                class="tips-toggle"
+                :class="{ active: tipsOpen }"
+                :aria-expanded="tipsOpen"
+                :title="tipsOpen ? '收起提示' : '展开提示'"
+                @click="tipsOpen = !tipsOpen"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </button>
+            </div>
+            <transition name="tips-collapse">
+              <div v-show="tipsOpen" class="tips-body">
+                <p v-for="(tip, i) in tips" :key="i" class="tip-text">{{ tip }}</p>
+              </div>
+            </transition>
+          </div>
         </div>
-      </div>
 
-      <!-- 桌面折叠按钮（贴侧边栏右缘） -->
-      <button
-        class="side-collapse-btn"
-        :class="{ collapsed: sideCollapsed }"
-        :title="sideCollapsed ? '展开侧边栏' : '收起侧边栏'"
-        :aria-expanded="!sideCollapsed"
-        @click="sideCollapsed = !sideCollapsed"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
-    </aside>
-    <div v-if="sideOpen" class="drawer-backdrop" @click="sideOpen = false"></div>
-
-    <main class="workbench-main">
-      <!-- 移动端左侧栏入口（触控热区） -->
-      <div class="mobile-toolbar">
-        <button type="button" class="mobile-tb-btn" @click="sideOpen = true" title="菜单">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        <button
+          class="side-collapse-btn"
+          :class="{ collapsed: sideCollapsed }"
+          :title="sideCollapsed ? '展开侧边栏' : '收起侧边栏'"
+          :aria-expanded="!sideCollapsed"
+          @click="sideCollapsed = !sideCollapsed"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <span class="mobile-tb-title">{{ config.navTitle }}</span>
-      </div>
+      </aside>
 
-      <div class="workbench-chat">
+      <main class="workbench-main">
+        <OpsPerspectiveSwitch v-if="mode === 'ops'" />
         <slot />
-      </div>
 
-      <div class="workbench-input">
-        <slot name="restore-bar" />
-        <ChatInput
-          :modelValue="inputText"
-          :disabled="streaming"
-          :placeholder="config.inputPlaceholder"
-          :assistantMode="mode"
-          :context="context"
-          @update:modelValue="$emit('update:inputText', $event)"
-          @send="closeDrawers(); $emit('send', $event)"
-          @stop="$emit('stop')"
-          @quick-action="$emit('quick-action', $event)"
-          @open-model-config="$emit('open-model-config', $event)"
-          @context-remove="$emit('context-remove', $event)"
-          @context-clear="$emit('context-clear')"
-        />
-      </div>
-    </main>
-
-    <!-- 右侧工作台面板：对话驱动的配置工作台/看板/比对面板挂载区 -->
-    <template v-if="$slots.panel">
-      <div v-show="panelOpen" class="workbench-panel" :style="{ width: panelWidth + 'px' }">
-        <div
-          class="panel-resizer"
-          title="拖拽调整宽度"
-          @mousedown="startPanelResize"
-          @touchstart.prevent="startPanelResize"
-        ></div>
-        <div class="panel-body">
-          <slot name="panel" />
+        <div class="workbench-input">
+          <slot name="input-bar" />
+          <ChatInput
+            :modelValue="inputText"
+            :disabled="streaming"
+            :placeholder="inputPlaceholder"
+            :assistantMode="mode"
+            :activeScene="activeScene"
+            :skillSignal="skillSignal"
+            @update:modelValue="$emit('update:inputText', $event)"
+            @send="$emit('send', $event)"
+            @stop="$emit('stop')"
+            @quick-action="$emit('quick-action', $event)"
+          />
         </div>
-      </div>
-    </template>
-    </div><!-- /workbench-body -->
+      </main>
+
+      <aside v-if="$slots.right" class="workbench-right">
+        <slot name="right" />
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import AssistantNavBar from './AssistantNavBar.vue'
 import ChatInput from './ChatInput.vue'
-import { assistantModes } from '../config/assistantModes.js'
-import { searchHistoryMessages } from '../services/chatApi.js'
+import OpsPerspectiveSwitch from './OpsPerspectiveSwitch.vue'
+import { assistantModes, workbench } from '../config/assistantModes.js'
+import { useWorkbenchStore } from '../stores/workbench.js'
+import { storeToRefs } from 'pinia'
 
 const props = defineProps({
-  mode:      { type: String, required: true },
   streaming: { type: Boolean, default: false },
-  inputText: { type: String, default: '' },
-  sessions:  { type: Array,   default: () => [] },
+  inputText:  { type: String, default: '' },
+  sessions:   { type: Array,  default: () => [] },
   sessionsLoading: { type: Boolean, default: false },
-  /** 会话上下文标签（当前分析对象/业务意图），透传给 ChatInput 的 ContextBar */
-  context:   { type: Array,   default: () => [] },
-  /** 右侧工作台面板是否展开 */
-  panelOpen: { type: Boolean, default: false },
-  /** 右侧工作台面板宽度（px，含拖宽同步） */
-  panelWidth: { type: Number, default: 480 },
+  activeScene: { type: String, default: '' },
+  openDraftSignal: { type: Number, default: 0 },
+  // 技能自动勾选信号（资费配置快捷回复联动）：透传给 ChatInput
+  skillSignal: { type: Object, default: null },
 })
 
-const emit = defineEmits([
-  'new-session', 'refresh-sessions', 'switch-session', 'delete-session', 'shortcut',
-  'quick-action', 'send', 'stop', 'open-model-config',
-  'context-remove', 'context-clear', 'update:inputText',
-  'update:panelWidth', 'update:panelOpen',
-])
+const workbenchStore = useWorkbenchStore()
+const { activeAssistant, sessions: allSessions } = storeToRefs(workbenchStore)
 
-const MIN_PANEL_W = 400
-const MAX_PANEL_W = 900
+const hasAssistant = computed(() => !!activeAssistant.value)
+const mode = computed(() => activeAssistant.value || 'rd')
+const config = computed(() => assistantModes[activeAssistant.value] || assistantModes.rd)
 
-/** 拖拽调宽（mouse + touch）；拖拽结束后持久化宽度由父级负责 */
-function startPanelResize(e) {
-  e.preventDefault()
-  const startX = e.touches ? e.touches[0].clientX : e.clientX
-  const startW = props.panelWidth
-  const onMove = (ev) => {
-    const x = ev.touches ? ev.touches[0].clientX : ev.clientX
-    const next = Math.min(MAX_PANEL_W, Math.max(MIN_PANEL_W, startW - (x - startX)))
-    emit('update:panelWidth', next)
-  }
-  const onUp = () => {
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onUp)
-    document.removeEventListener('touchmove', onMove)
-    document.removeEventListener('touchend', onUp)
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-  }
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onUp)
-  document.addEventListener('touchmove', onMove)
-  document.addEventListener('touchend', onUp)
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-}
+// 侧边栏快捷场景：隐藏「套餐优化建议」
+const sideSceneShortcuts = computed(() =>
+  (config.value.sceneShortcuts || []).filter((s) => s.scene !== 'ops.scene3')
+)
 
-const config = computed(() => assistantModes[props.mode] || assistantModes.rd)
+const navTitle = computed(() => workbench.navTitle)
 
-/** 场景分组（统一入口：研发/运营/查询三组）；无分组配置时回退平铺 */
-const sceneGroups = computed(() => config.value.sceneGroups || [])
-const groupScenes = (g) =>
-  (g.scenes || [])
-    .map((scene) => (config.value.sceneShortcuts || []).find((s) => s.scene === scene))
-    .filter(Boolean)
+const inputPlaceholder = computed(() => {
+  if (!activeAssistant.value) return workbench.inputPlaceholder
+  return config.value.inputPlaceholder
+})
 
-/** 抽屉开关（仅移动端/平板生效，桌面由 CSS 直接常驻展示） */
-const sideOpen = ref(false)
-const keyboardOpen = ref(false)
-/** 桌面侧边栏折叠态（仅 ≥1024px 生效，移动端折叠类不作用） */
+const tips = computed(() => {
+  if (!activeAssistant.value) return workbench.tips
+  return config.value.tips
+})
+
+const tipsOpen = ref(false)
 const sideCollapsed = ref(false)
 
-/** 会话检索 */
+// ============ 历史会话检索 ============
 const searchOpen = ref(false)
 const searchKeyword = ref('')
 const searchInputEl = ref(null)
@@ -323,36 +250,11 @@ const toggleSearch = () => {
   }
 }
 
-const displayedSessions = computed(() => {
-  const kw = searchKeyword.value.trim().toLowerCase()
-  if (searchOpen.value && kw) {
-    // 跨内容检索：标题本地匹配 + 后端消息内容匹配（对齐原型 searchResults：标题/内容/工单号 + 高亮）
-    const titleHits = props.sessions.filter((s) => (s.title || '').toLowerCase().includes(kw))
-    const hitMap = new Map(titleHits.map((s) => [s.session_id, { ...s, matchReason: highlight('标题：' + (s.title || ''), searchKeyword.value.trim()) }]))
-    for (const hit of contentSearchResults.value) {
-      if (!hitMap.has(hit.sessionId)) {
-        hitMap.set(hit.sessionId, {
-          session_id: hit.sessionId,
-          title: hit.sessionTitle || '新对话',
-          updated_at: hit.createdAt,
-          matchReason: highlight(hit.matchedText || (hit.role === 'user' ? '用户：' : '助手：') + snippet(hit.content, kw), searchKeyword.value.trim()),
-        })
-      }
-    }
-    return Array.from(hitMap.values())
-      .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
-      .slice(0, 12)
-  }
-  return props.sessions.slice(0, 8)
-})
+const escapeHtml = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]))
 
-/** HTML 转义 + 关键词 <mark> 高亮（对齐原型 highlight()） */
-function escapeHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]))
-}
-function highlight(text, kw) {
+const highlight = (text, kw) => {
   if (!text || !kw) return escapeHtml(text)
   const safe = escapeHtml(text)
   const kwSafe = escapeHtml(kw)
@@ -360,59 +262,87 @@ function highlight(text, kw) {
   if (idx === -1) return safe
   return safe.slice(0, idx) + '<mark>' + safe.slice(idx, idx + kwSafe.length) + '</mark>' + safe.slice(idx + kwSafe.length)
 }
-/** 关键词上下文片段（前后各 ~16 字符） */
-function snippet(content, kw) {
-  const text = String(content || '')
-  const idx = text.toLowerCase().indexOf(kw)
-  if (idx < 0) return text.slice(0, 32)
-  const start = Math.max(0, idx - 16)
-  const end = Math.min(text.length, idx + kw.length + 20)
-  return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
-}
 
-/** 后端跨会话消息搜索（防抖 300ms，标题无命中时兜底展示内容命中） */
-const contentSearchResults = ref([])
-let searchTimer = null
-watch(searchKeyword, (kw) => {
-  clearTimeout(searchTimer)
-  const trimmed = kw.trim()
-  if (!trimmed) {
-    contentSearchResults.value = []
-    return
-  }
-  searchTimer = setTimeout(async () => {
-    try {
-      const msgs = await searchHistoryMessages(trimmed, 20)
-      contentSearchResults.value = msgs.map((m) => ({
-        sessionId: m.sessionId,
-        sessionTitle: m.sessionTitle || '',
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-      }))
-    } catch {
-      contentSearchResults.value = []
+// 搜索结果：跨所有助手会话，匹配标题/消息内容/工单号
+const searchResults = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return []
+  const results = []
+  for (const s of allSessions.value) {
+    const titleMatch = (s.title || '').toLowerCase().includes(kw)
+    let contentMatch = false
+    let workOrderMatch = false
+    let matchedText = ''
+    for (const m of (s.messages || [])) {
+      const content = (m.content || '').toLowerCase()
+      if (content.includes(kw)) {
+        contentMatch = true
+        const idx = content.indexOf(kw)
+        const start = Math.max(0, idx - 12)
+        const end = Math.min(content.length, idx + kw.length + 20)
+        matchedText = (start > 0 ? '…' : '') + (m.content || '').slice(start, end) + (end < content.length ? '…' : '')
+        break
+      }
+      const woid = m.workOrderId
+      if (woid && woid.toLowerCase().includes(kw)) {
+        workOrderMatch = true
+        matchedText = '工单 ' + woid
+        break
+      }
     }
-  }, 300)
+    if (titleMatch || contentMatch || workOrderMatch) {
+      const reason = workOrderMatch
+        ? '工单 ' + highlight(matchedText.split('工单 ')[1], kw)
+        : contentMatch
+          ? highlight(matchedText, kw)
+          : '标题：' + highlight(s.title, kw)
+      results.push({
+        session_id: s.id,
+        id: s.id,
+        title: s.title || '新对话',
+        updated_at: s.updated_at,
+        assistantKey: s.assistantKey,
+        matchReason: reason,
+      })
+    }
+  }
+  return results.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0)).slice(0, 12)
 })
 
+const displayedSessions = computed(() => {
+  if (searchOpen.value && searchKeyword.value.trim()) {
+    return searchResults.value
+  }
+  return props.sessions.slice(0, 8)
+})
+
+const emit = defineEmits([
+  'update:inputText',
+  'send',
+  'stop',
+  'new-session',
+  'refresh-sessions',
+  'switch-session',
+  'delete-session',
+  'shortcut',
+  'quick-action',
+  'open-approval',
+  'open-product-metrics',
+  'open-draft',
+])
+
 const onPickSession = (s) => {
+  const sid = s.session_id || s.id
   if (searchOpen.value && searchKeyword.value) {
     searchOpen.value = false
     searchKeyword.value = ''
   }
-  emit('switch-session', s.session_id)
+  emit('switch-session', sid)
 }
 
-const closeDrawers = () => {
-  sideOpen.value = false
-}
-
-/** 触屏软键盘：视觉视口升高时顶起输入区，避免被键盘遮挡 */
-function onVisualViewport() {
-  const vv = window.visualViewport
-  if (!vv) return
-  keyboardOpen.value = vv.height < window.innerHeight - 60
+const onDeleteSession = (s) => {
+  const sid = s.session_id || s.id
+  emit('delete-session', sid)
 }
 
 const formatSessionTime = (t) => {
@@ -424,55 +354,35 @@ const formatSessionTime = (t) => {
   }
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
-
-onMounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', onVisualViewport)
-    window.visualViewport.addEventListener('scroll', onVisualViewport)
-  }
-})
-
-onUnmounted(() => {
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', onVisualViewport)
-    window.visualViewport.removeEventListener('scroll', onVisualViewport)
-  }
-})
 </script>
 
 <style scoped>
 .assistant-workbench { display: flex; flex-direction: column; height: 100%; }
 .workbench-body { display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative; }
-/* 左侧栏：移动端为全屏抽屉，桌面常驻可折叠 */
 .workbench-side {
   position: relative;
-  width: 240px;
-  flex-shrink: 0;
+  width: 240px; flex-shrink: 0;
   border-right: 1px solid #e5e7eb;
   background: #fafafa;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
   transition: width 0.24s ease;
 }
 .workbench-side.collapsed { width: 0; border-right-color: transparent; }
-.side-scroll { display: flex; flex-direction: column; gap: 20px; padding: 16px; overflow-y: auto; flex: 1; transition: opacity 0.18s ease; }
-.workbench-side.collapsed .side-scroll { opacity: 0; pointer-events: none; }
-.side-drawer-head { display: none; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; background: #fff; }
-.side-close-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; background: transparent; color: #64748b; cursor: pointer; border-radius: 8px; }
-.side-close-btn:hover { background: #f1f5f9; color: #0f172a; }
+.side-inner {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 20px;
+  transition: opacity 0.18s ease;
+}
+.workbench-side.collapsed .side-inner { opacity: 0; pointer-events: none; }
 
-/* 桌面折叠按钮 */
 .side-collapse-btn {
   position: absolute;
   top: 20px;
   right: -12px;
   z-index: 20;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid #e2e8f0;
   border-radius: 50%;
   background: #fff;
@@ -489,37 +399,30 @@ onUnmounted(() => {
 .side-collapse-btn.collapsed svg { transform: rotate(180deg); }
 .side-collapse-btn svg { transition: transform 0.24s ease; }
 
+.workbench-right { flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; height: 100%; }
+.workbench-right > :deep(.config-panel) { flex: 1; min-height: 0; }
+.workbench-right :deep(.form-panel),
+.workbench-right :deep(.ops-panel) { height: 100%; }
 .side-section { display: flex; flex-direction: column; gap: 10px; }
-.scene-group { display: flex; flex-direction: column; gap: 8px; }
-.scene-group-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding-left: 2px;
-}
 .side-session { flex-shrink: 0; }
 .side-history { flex: 1; min-height: 0; }
 .side-title { font-weight: 700; color: #334155; font-size: 13px; }
 .history-title { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.history-title-actions { display: flex; align-items: center; gap: 2px; }
 .side-btn { border: 1px solid #e2e8f0; background: #fff; padding: 10px 12px; border-radius: 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 0.15s; }
 .side-btn:hover { border-color: #93c5fd; background: #f0f9ff; }
 .new-session-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #93c5fd; background: #eff6ff; color: #2563eb; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .new-session-btn:hover { background: #dbeafe; border-color: #60a5fa; }
 .new-session-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.history-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.history-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
 .history-list::-webkit-scrollbar { width: 6px; }
 .history-list::-webkit-scrollbar-track { background: transparent; }
 .history-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .history-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.history-list { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 .side-btn.history-btn { padding: 8px 10px; }
 .btn-label { font-weight: 600; color: #0f172a; font-size: 13px; }
 .btn-label.history-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
 .btn-scene { font-size: 11px; color: #64748b; line-height: 1.4; }
-
-/* 历史条目：hover 显示删除 */
 .history-item { position: relative; display: flex; align-items: stretch; }
 .history-item .history-btn { flex: 1; min-width: 0; }
 .history-del-btn {
@@ -542,10 +445,40 @@ onUnmounted(() => {
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 .history-item:hover .history-del-btn,
-.history-del-btn:focus-visible { opacity: 1; }
-.history-del-btn:hover { background: #fee2e2; color: #dc2626; }
+.history-del-btn:focus-visible {
+  opacity: 1;
+}
+.history-del-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.side-tips { border-top: 1px solid #e5e7eb; padding-top: 14px; margin-top: auto; }
+.tips-title { display: flex; align-items: center; justify-content: space-between; }
+.tips-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid #e2e8f0; border-radius: 50%;
+  background: #fff; color: #94a3b8; cursor: pointer;
+  transition: all 0.15s;
+}
+.tips-toggle:hover { border-color: #93c5fd; color: #2563eb; background: #f0f9ff; }
+.tips-toggle.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+.tips-body { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.tip-text { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+.tips-collapse-enter-active, .tips-collapse-leave-active {
+  transition: opacity 0.18s ease, max-height 0.22s ease;
+  max-height: 240px;
+}
+.tips-collapse-enter-from, .tips-collapse-leave-to {
+  opacity: 0; max-height: 0;
+}
+.refresh-btn { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center; }
+.refresh-btn:hover { background: #e2e8f0; color: #475569; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-btn.active { background: #2563eb; color: #fff; }
+.history-title-actions { display: flex; align-items: center; gap: 2px; }
+.history-empty { font-size: 12px; color: #94a3b8; text-align: center; padding: 8px 0; }
 
-/* 会话检索框 */
 .history-search {
   display: flex; align-items: center; gap: 6px;
   padding: 6px 8px;
@@ -571,6 +504,20 @@ onUnmounted(() => {
   display: flex; align-items: center;
 }
 .search-clear:hover { background: #e2e8f0; color: #475569; }
+
+.side-btn.history-btn.cross-assistant {
+  border-color: #c7d7fe;
+  background: linear-gradient(135deg, #fff, #f8faff);
+}
+.match-reason { color: #475569; }
+.match-reason :deep(mark) {
+  background: #fef08a;
+  color: #713f12;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
 .search-slide-enter-active, .search-slide-leave-active {
   transition: opacity 0.18s ease, max-height 0.2s ease, margin 0.18s ease;
   max-height: 40px;
@@ -579,209 +526,8 @@ onUnmounted(() => {
 .search-slide-enter-from, .search-slide-leave-to {
   opacity: 0; max-height: 0; margin-top: -4px;
 }
-
-/* 使用提示折叠 */
-.side-tips { border-top: 1px solid #e5e7eb; padding-top: 14px; margin-top: auto; }
-.tips-title { display: flex; align-items: center; justify-content: space-between; }
-.tips-toggle {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0;
-  border: 1px solid #e2e8f0; border-radius: 50%;
-  background: #fff; color: #94a3b8; cursor: pointer;
-  transition: all 0.15s;
-}
-.tips-toggle:hover { border-color: #93c5fd; color: #2563eb; background: #f0f9ff; }
-.tips-toggle.active { background: #2563eb; border-color: #2563eb; color: #fff; }
-.tips-body { display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-.tip-text { font-size: 12px; color: #94a3b8; line-height: 1.6; }
-.tips-collapse-enter-active, .tips-collapse-leave-active {
-  transition: opacity 0.18s ease, max-height 0.22s ease;
-  max-height: 240px;
-}
-.tips-collapse-enter-from, .tips-collapse-leave-to {
-  opacity: 0; max-height: 0;
-}
-
-.refresh-btn { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center; }
-.refresh-btn:hover { background: #e2e8f0; color: #475569; }
-.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.refresh-btn.active { background: #2563eb; color: #fff; }
-.history-empty { font-size: 12px; color: #94a3b8; text-align: center; padding: 8px 0; }
-.match-reason { color: #64748b; }
-.match-reason :deep(mark) { background: #fef08a; color: #854d0e; border-radius: 2px; padding: 0 1px; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
-
-.workbench-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.workbench-chat { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.workbench-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; position: relative; }
 .workbench-input { padding: 16px; border-top: 1px solid #e5e7eb; background: #fff; flex-shrink: 0; }
-.assistant-workbench.keyboard-open .workbench-input { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
-
-/* 还原条（restore bar）：面板关闭后保留上下文，一键恢复 */
-.restore-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-}
-.restore-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: #2563eb;
-  background: #dbeafe;
-  padding: 2px 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-.restore-name {
-  flex: 1;
-  font-size: 12px;
-  color: #334155;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.restore-btn {
-  border: none;
-  background: #2563eb;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.restore-btn:hover { background: #1d4ed8; }
-.restore-close {
-  border: none;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 4px;
-  flex-shrink: 0;
-}
-.restore-close:hover { color: #0f172a; }
-.restore-slide-enter-active, .restore-slide-leave-active { transition: all 0.24s ease; }
-.restore-slide-enter-from, .restore-slide-leave-to { opacity: 0; transform: translateY(8px); }
-
-/* 右侧工作台面板：resizer 贴左缘、面板占满高度 */
-.workbench-panel {
-  flex-shrink: 0;
-  position: relative;
-  min-width: 0;
-  border-left: 1px solid #e5e7eb;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  height: 100%;
-}
-.panel-resizer {
-  position: absolute;
-  left: -3px;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  z-index: 5;
-}
-.panel-resizer:hover { background: rgba(37, 99, 235, 0.15); }
-/* 对标原型 .detail-panel-body：面板体为唯一纵向滚动容器 */
-.panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
-.panel-body::-webkit-scrollbar { width: 6px; }
-.panel-body::-webkit-scrollbar-track { background: transparent; }
-.panel-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-.panel-body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-@media (max-width: 1023px) {
-  .workbench-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 45;
-    width: min(92vw, 480px) !important;
-    box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
-  }
-}
-
-/* 移动端顶部工具栏（<1024px 显示） */
-.mobile-toolbar { display: none; }
-
-.drawer-backdrop { display: none; }
-
-/* 移动优先 + 断点降级：<768 单列全屏；768–1023 左侧抽屉；≥1024 双区常驻 */
-@media (max-width: 1023px) {
-  .mobile-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-bottom: 1px solid #e5e7eb;
-    background: #fff;
-    flex-shrink: 0;
-  }
-  .mobile-tb-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    color: #334155;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-  .mobile-tb-title { flex: 1; text-align: center; font-weight: 700; color: #0f172a; font-size: 14px; }
-
-  /* 左侧栏 → 全屏抽屉 */
-  .workbench-side {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 40;
-    width: min(84vw, 320px);
-    transform: translateX(-100%);
-    transition: transform 0.24s ease;
-    box-shadow: 8px 0 24px rgba(15,23,42,0.12);
-  }
-  .workbench-side.open { transform: translateX(0); }
-  .workbench-side.collapsed { width: min(84vw, 320px); }
-  .side-drawer-head { display: flex; }
-  /* 折叠按钮仅桌面展示 */
-  .side-collapse-btn { display: none; }
-
-  .drawer-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 35;
-    background: rgba(15,23,42,0.35);
-  }
-}
-
-@media (min-width: 1024px) {
-  .drawer-backdrop { display: none !important; }
-  .workbench-side { transform: none; position: static; box-shadow: none; }
-  .side-drawer-head { display: none; }
-}
-
-/* 触控优化：热区 ≥44px；表/清单横向可滚由子组件承载 */
-@media (pointer: coarse) {
-  .mobile-tb-btn, .side-close-btn { min-width: 44px; min-height: 44px; }
-  .side-btn, .new-session-btn { min-height: 44px; }
-}
-
-/* 安全区：底部输入与抽屉底部留白 */
-@media (max-width: 767px) {
-  .workbench-side { padding-bottom: env(safe-area-inset-bottom); }
-}
 </style>

@@ -1,50 +1,71 @@
 <template>
   <header class="assistant-nav">
     <div class="nav-brand">
-      <div class="brand">AI 原生产商品助手</div>
+      <div class="brand">PRODUCT WORKBENCH</div>
       <div class="title">{{ title }}</div>
     </div>
 
-    <!-- 统一入口：研发/运营/查询合并为单助手（assistants 仅剩 rd 一项，切换器仅保留入口与后台管理） -->
     <div class="assistant-switcher">
-      <RouterLink
+      <button
+        class="switch-item"
+        :class="{ active: !activeAssistant }"
+        @click="onSwitch(null)"
+      >
+        工作台
+      </button>
+      <span class="switch-sep" />
+      <button
         v-for="a in assistants"
         :key="a.key"
-        :to="a.route"
         class="switch-item"
-        :class="{ active: mode === a.key }"
-        :style="mode === a.key ? { '--sw-accent': a.color, '--sw-bg': a.bg } : null"
+        :class="{ active: activeAssistant === a.key }"
+        :style="activeAssistant === a.key ? { '--sw-accent': a.color, '--sw-bg': a.bg } : null"
+        @click="onSwitch(a.key)"
       >
         {{ a.name }}
-      </RouterLink>
-      <span class="switch-sep" />
-      <RouterLink to="/admin" class="switch-item admin-item" title="工作流管理、模型管理等后台配置入口">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-        后台管理中心
-      </RouterLink>
+      </button>
     </div>
 
     <div class="nav-right">
       <div v-if="$slots.actions" class="nav-actions">
         <slot name="actions" />
       </div>
-      <UserMenu />
+      <template v-else>
+        <MyDrafts :open-signal="openDraftSignal" @open-draft="$emit('open-draft', $event)" />
+        <WorkOrderCenter @open-product-metrics="$emit('open-product-metrics', $event)" />
+        <NotificationButton @open-approval="$emit('open-approval', $event)" />
+        <UserMenu />
+      </template>
     </div>
   </header>
 </template>
 
 <script setup>
-import { RouterLink } from 'vue-router'
 import UserMenu from './UserMenu.vue'
+import NotificationButton from './NotificationButton.vue'
+import WorkOrderCenter from './WorkOrderCenter.vue'
+import MyDrafts from './MyDrafts.vue'
 import { assistants } from '../config/assistantModes.js'
+import { useWorkbenchStore } from '../stores/workbench.js'
+import { storeToRefs } from 'pinia'
 
 defineProps({
-  mode: { type: String, default: 'rd' },
   title: { type: String, default: '' },
+  openDraftSignal: { type: Number, default: 0 },
 })
+
+defineEmits(['open-approval', 'open-product-metrics', 'open-draft'])
+
+const workbenchStore = useWorkbenchStore()
+const { activeAssistant } = storeToRefs(workbenchStore)
+
+function onSwitch(key) {
+  if (key === null) {
+    workbenchStore.clearAssistant()
+  } else {
+    workbenchStore.selectAssistant(key)
+  }
+}
 </script>
 
 <style scoped>
@@ -81,9 +102,6 @@ defineProps({
   border-radius: 12px;
 }
 .switch-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   border: none;
   background: transparent;
   color: #64748b;
@@ -92,28 +110,14 @@ defineProps({
   padding: 6px 14px;
   border-radius: 9px;
   cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
 }
 .switch-item:hover { color: #0f172a; }
 .switch-item.active {
   background: var(--sw-bg, #ffffff);
   color: var(--sw-accent, #0f172a);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
-}
-.switch-item.workflow-item {
-  color: #15803d;
-}
-.switch-item.workflow-item:hover {
-  background: #f0fdf4;
-}
-.switch-item.admin-item {
-  color: #475569;
-}
-.switch-item.admin-item:hover {
-  background: #f1f5f9;
-  color: #0f172a;
 }
 .switch-sep {
   width: 1px;

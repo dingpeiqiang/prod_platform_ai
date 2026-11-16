@@ -1,0 +1,678 @@
+/**
+ * Global Styles - 全局样式
+ * 包含基础重置、全局样式、可访问性增强
+ * 
+ * @requires variables.css
+ */
+
+/* ══════════════════════════════════════════════════════════════
+ * Chat 组件专用变量 - Chat Component Variables
+ * 来自 prodai-cfg-demo 整合
+ * ══════════════════════════════════════════════════════════════ */
+:root {
+  /* Chat 主题色 */
+  --primary-color: #25b2fe;
+  --primary-dark: #1e8fd6;
+  --primary-light: #e6f4ff;
+  --ai-bg: #e6f4ff;
+  
+  /* Chat 通用变量别名 */
+  --primary: var(--primary-color);
+  --primary-hover: var(--primary-dark);
+  --primary-muted: var(--primary-light);
+  --primary-glow: rgba(37, 178, 254, 0.2);
+  --surface: #ffffff;
+  --surface-elevated: #fafafa;
+  --surface-muted: #f5f7fa;
+  --border: #e5e5e5;
+  --border-color: #e5e5e5;
+  --text: #333333;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --success: #52c41a;
+  --warning: #faad14;
+  --error: #ff4d4f;
+  --success-bg: #f6ffed;
+  --warning-bg: #fffbe6;
+  --error-bg: #fff1f0;
+  --ai-bubble: var(--ai-bg);
+  --header-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: -4px 0 20px rgba(0, 0, 0, 0.1);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --transition: all 0.2s;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 基础重置 - CSS Reset
+ * ══════════════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  
+  /* 平滑滚动 */
+  scroll-behavior: smooth;
+  
+  /* 触摸操作优化 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 全局元素样式
+ * ══════════════════════════════════════════════════════════════ */
+a {
+  color: var(--color-primary-600);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-primary-700);
+}
+
+/* 图片 */
+img, svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 列表 */
+ul, ol {
+  list-style: none;
+}
+
+/* 按钮 */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* 输入框 */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * Element Plus 组件通用样式修复
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 参数表格内表单元素左对齐 */
+.param-table th {
+  text-align: left !important;
+  padding: 12px 12px !important;
+}
+
+.param-table td {
+  text-align: left !important;
+  padding: 12px 12px !important;
+}
+
+.param-table td .el-input,
+.param-table td .el-select {
+  width: 100% !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+.param-table td .el-input__wrapper,
+.param-table td .el-select__wrapper {
+  margin: 0 !important;
+  padding: 0 !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  display: flex !important;
+}
+
+.param-table td .el-input__inner,
+.param-table td .el-select__placeholder,
+.param-table td .el-select__value {
+  text-align: left !important;
+}
+
+.param-table td .el-switch {
+  margin: 0 !important;
+  justify-self: flex-start !important;
+}
+
+.param-table td .el-button {
+  margin: 0 !important;
+}
+
+/* 输入框组件边框优化 */
+.el-input__wrapper {
+  box-shadow: none !important;
+  border: 1px solid var(--border-default) !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px rgba(99,102,241,.1) !important;
+  border-color: var(--color-primary-400) !important;
+}
+
+.el-textarea__inner {
+  box-shadow: none !important;
+  border: 1px solid var(--border-default) !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  color: var(--text-primary) !important;
+}
+
+.el-textarea__inner:focus {
+  border-color: var(--color-primary-400) !important;
+}
+
+/* 输入框文字颜色 */
+.el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+/* 输入框占位符颜色 */
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 可访问性增强 - Accessibility
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 焦点可见性 - Focus Visibility */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* 确保交互元素有焦点状态（排除 Element Plus 内部元素，EP 自带焦点样式） */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-primary-100);
+}
+
+/* 跳过链接 - Skip Link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-toast);
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+}
+
+/* 屏幕阅读器专用 - Screen Reader Only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 减少动画偏好 - Reduced Motion
+ * ══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 选中文本样式 - Text Selection
+ * ══════════════════════════════════════════════════════════════ */
+::selection {
+  background-color: var(--color-primary-200);
+  color: var(--color-primary-900);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 滚动条样式 - Custom Scrollbar
+ * ══════════════════════════════════════════════════════════════ */
+
+/* WebKit 浏览器 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 通用动画类 - Animation Utilities
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 淡入 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 淡入上浮 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 缩放入场 */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 脉冲 */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 旋转 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Chat 组件专用动画 */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bounce-dot {
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-normal) ease forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp var(--transition-normal) var(--ease-out-expo) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--transition-normal) var(--ease-out-expo) forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.animate-bounce-dot {
+  animation: bounce-dot 1.4s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 布局工具类 - Layout Utilities
+ * ══════════════════════════════════════════════════════════════ */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+.gap-6 { gap: var(--space-6); }
+
+/* 文本溢出省略 */
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 暗色主题额外样式
+ * ══════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  /* 滚动条暗色主题 */
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+  }
+  
+  /* 选中文字 */
+  ::selection {
+    background-color: var(--color-primary-800);
+    color: var(--text-inverse);
+  }
+  
+  /* 处理步骤面板暗色样式 */
+  .reasoning-wrap {
+    border-color: rgba(91, 124, 250, 0.15);
+  }
+  
+  /* Element Plus 暗色覆盖 */
+  --el-bg-color: var(--bg-primary);
+  --el-bg-color-overlay: var(--bg-elevated);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-placeholder: var(--text-tertiary);
+  --el-border-color: var(--border-default);
+  --el-border-color-light: var(--border-light);
+  --el-input-text-color: var(--text-primary);
+  --el-textarea-text-color: var(--text-primary);
+  --el-input-bg-color: var(--bg-elevated);
+  --el-textarea-bg-color: var(--bg-elevated);
+  /* 下拉选择器变量 */
+  --el-select-dropdown-bg-color: var(--bg-secondary);
+  --el-select-dropdown-text-color: var(--text-primary);
+  --el-select-dropdown-item-hover-bg-color: var(--bg-tertiary);
+  --el-select-dropdown-item-selected-bg-color: rgba(91, 124, 250, 0.1);
+  --el-select-dropdown-item-selected-text-color: var(--color-primary-400);
+  /* 弹出层变量 */
+  --el-popper-bg-color: var(--bg-secondary);
+  --el-popper-border-color: var(--border-default);
+  /* 填充色变量 - 修复 select 背景色问题 */
+  --el-fill-color: var(--bg-elevated);
+  --el-fill-color-light: var(--bg-tertiary);
+  --el-fill-color-blank: var(--bg-elevated);
+  
+  /* 输入框外层 wrapper 暗色样式 - 修复两头白边问题 */
+  .el-input__wrapper,
+  .el-input-number__wrapper {
+    background-color: var(--bg-elevated) !important;
+  }
+  
+  /* 输入框暗色样式增强 */
+  .el-input__inner,
+  .el-textarea__inner {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* 数字输入框暗色样式 */
+  .el-input-number__decrease,
+  .el-input-number__increase {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  /* 日期选择器输入框暗色样式 */
+  .el-date-editor .el-input__inner {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* 下拉选择器暗色样式 */
+  .el-select .el-input__wrapper,
+  .el-select.is-focus .el-input__wrapper,
+  .el-select:hover .el-input__wrapper {
+    background-color: var(--bg-elevated) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  .el-select .el-input__inner {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .el-select__caret {
+    color: var(--text-secondary) !important;
+  }
+  
+  /* 下拉选择器弹出层暗色样式 */
+  .el-select-dropdown {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  .el-select-dropdown__list {
+    background-color: var(--bg-secondary) !important;
+  }
+  
+  .el-select-dropdown__item {
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
+  }
+  
+  .el-select-dropdown__item:hover {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  .el-select-dropdown__item.selected {
+    color: var(--color-primary-400) !important;
+    background-color: rgba(91, 124, 250, 0.1) !important;
+  }
+  
+  .el-select-dropdown__empty {
+    color: var(--text-secondary) !important;
+  }
+  
+  .el-select__caret {
+    color: var(--text-secondary) !important;
+  }
+  
+  .el-popper.is-light {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  .el-popper__arrow::before {
+    border-color: transparent transparent var(--border-default) transparent !important;
+  }
+  
+  .el-popper.is-light .el-popper__arrow::before {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  /* 针对 el-select-dropdown 的额外覆盖 */
+  .el-select.is-multiple .el-select-dropdown__item.selected {
+    background-color: rgba(91, 124, 250, 0.15) !important;
+  }
+  
+  .el-select-dropdown.is-multiple .el-select-dropdown__item.selected {
+    background-color: rgba(91, 124, 250, 0.15) !important;
+  }
+  
+  /* 确保滚动条也是暗色 */
+  .el-select-dropdown::-webkit-scrollbar-thumb {
+    background-color: var(--border-default) !important;
+  }
+  
+  .el-select-dropdown::-webkit-scrollbar-track {
+    background-color: var(--bg-secondary) !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 全局暗色主题覆盖 - 针对挂载在 body 上的弹出层
+ * ══════════════════════════════════════════════════════════════ */
+body[data-theme="dark"] .el-select-dropdown {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+}
+
+body[data-theme="dark"] .el-select-dropdown__list {
+  background-color: #1a1a1a !important;
+}
+
+body[data-theme="dark"] .el-select-dropdown__item {
+  color: #e8e8e8 !important;
+  background-color: transparent !important;
+}
+
+body[data-theme="dark"] .el-select-dropdown__item:hover {
+  background-color: #2a2a2a !important;
+  color: #e8e8e8 !important;
+}
+
+body[data-theme="dark"] .el-select-dropdown__item.selected {
+  color: #7b93fa !important;
+  background-color: rgba(91, 124, 250, 0.1) !important;
+}
+
+body[data-theme="dark"] .el-select-dropdown__empty {
+  color: #6a6a6a !important;
+}
+
+body[data-theme="dark"] .el-popper.is-light {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+}
+
+body[data-theme="dark"] .el-popper__arrow::before {
+  border-color: transparent transparent #3a3a3a transparent !important;
+}
+
+body[data-theme="dark"] .el-select .el-input__wrapper,
+body[data-theme="dark"] .el-select.is-focus .el-input__wrapper,
+body[data-theme="dark"] .el-select:hover .el-input__wrapper {
+  background-color: #2a2a2a !important;
+  border-color: #3a3a3a !important;
+  box-shadow: none !important;
+}
+
+body[data-theme="dark"] .el-select .el-input__inner {
+  background-color: #2a2a2a !important;
+  color: #e8e8e8 !important;
+}
+
+body[data-theme="dark"] .el-select__caret {
+  color: #a8a8a8 !important;
+}
+
+body[data-theme="dark"] .el-select.is-focus .el-select__caret {
+  color: #7b93fa !important;
+}

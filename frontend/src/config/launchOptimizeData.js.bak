@@ -1,0 +1,920 @@
+/**
+ * 第6輪 - 啓動產品優化
+ * AI助手確認方案A後，調用產品研發助手自動打開配置頁面
+ * 預填數據基於方案A：暢享59元青春版（原暢享59元套餐優化升級）
+ *
+ * 字段標籤規則：
+ * - tag: 'ai'     → AI推薦（新增生成或基於方案修改的值，附 tagReason 説明推薦原因）
+ * - tag: 'reuse'  → 複用（從原套餐繼承，未做變更的值）
+ * - tag: null     → 無標籤（常規字段）
+ */
+import { reactive } from 'vue'
+
+// ============ 方案A預填的產品配置數據 ============
+export const launchProductConfig = {
+  // 产品基本信息
+  productInfo: reactive({
+    workOrderId: 'WO20260812001',
+    prodPrcName: '暢享59元青春版',
+    template: 'personMainPrc',
+    templateLabel: '個人主資費',
+    status: 'draft',
+    auditStatus: 'pending',
+  }),
+
+  // 基礎信息 Tab —— 字段摘自智家包"基本信息"模塊，保持AI工作台排版與AI推薦/複用標籤機制
+  baseInfo: {
+    prodAttr: {
+      value: 'personMainPrc',
+      tag: 'ai',
+      tagReason: '方案A定位個人主資費，沿用原套餐产品屬性分類',
+      required: true,
+      label: '产品屬性',
+      options: [
+        { value: 'personMainPrc', label: '個人主資費' },
+        { value: 'personOptionalPrc', label: '個人可選包' },
+        { value: 'familyMainPrc', label: '家庭主資費' },
+        { value: 'enterprisePrc', label: '政企資費' },
+      ],
+    },
+    prodCode: {
+      value: 'SP20240590Q',
+      tag: 'ai',
+      tagReason: '基於原产品SP-2024-0590關聯生成新产品編碼',
+      label: '产品編碼',
+    },
+    prodName: {
+      value: '暢享59元青春版',
+      tag: 'ai',
+      tagReason: '基於方案A命名策略：保留"暢享59元"品牌延續性，"青春版"定位年輕客羣，配合雙視頻權益+大流量策略',
+      required: true,
+      label: '产品名稱',
+    },
+    onlineDate: {
+      value: '20260901000000',
+      tag: 'ai',
+      tagReason: '方案A計劃9月1日上線，避開暑期促銷高峯，配合秋季開學季獲客',
+      required: true,
+      label: '上線日期',
+    },
+    offlineDate: {
+      value: '20991231235959',
+      tag: 'reuse',
+      tagReason: '複用原套餐長期銷售策略',
+      required: true,
+      label: '下線日期',
+    },
+    effRule: {
+      value: 'immediate',
+      tag: 'reuse',
+      tagReason: '複用原套餐生效規則：新入網立即生效',
+      required: true,
+      label: '生效規則',
+      options: [
+        { value: 'immediate', label: '新入網立即/變更次月/續約指定日期' },
+        { value: 'nextMonth', label: '次月生效' },
+        { value: 'appoint', label: '預約指定日期生效' },
+      ],
+    },
+    validity: {
+      value: 'longTerm',
+      tag: 'reuse',
+      tagReason: '複用原套餐長期有效策略',
+      required: true,
+      label: '产品有效期',
+      options: [
+        { value: 'longTerm', label: '長期有效' },
+        { value: '12m', label: '12個月' },
+        { value: '24m', label: '24個月' },
+        { value: '36m', label: '36個月' },
+      ],
+    },
+    displayCycle: {
+      value: '3',
+      tag: 'reuse',
+      tagReason: '複用原套餐展示週期3年',
+      required: true,
+      label: '展示週期',
+      unit: '年',
+    },
+    cancelRule: {
+      value: 'immediate',
+      tag: 'reuse',
+      tagReason: '複用原套餐退訂生效規則',
+      required: true,
+      label: '退訂生效規則',
+      options: [
+        { value: 'immediate', label: '立即失效' },
+        { value: 'monthEnd', label: '月終失效' },
+        { value: 'nextMonth', label: '次月失效' },
+      ],
+    },
+    refProduct: {
+      value: 'SP-2024-0590',
+      tag: 'reuse',
+      tagReason: '參考原暢享59元套餐，便於對比與繼承配置',
+      label: '參考产品',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'SP-2024-0590', label: '暢享59元套餐 (SP-2024-0590)' },
+      ],
+    },
+    orderTimes: {
+      value: '1',
+      tag: 'reuse',
+      tagReason: '複用原套餐同時訂購次數限制',
+      required: true,
+      label: '同時訂購次數',
+    },
+    totalOrderTimes: {
+      value: '',
+      tag: 'reuse',
+      tagReason: '複用原套餐累計訂購次數策略',
+      label: '累計訂購次數',
+      unit: '個月內限訂1次',
+    },
+    uploadYijing: {
+      value: 'no',
+      tag: 'reuse',
+      tagReason: '複用原套餐是否上傳一經策略',
+      label: '是否上傳一經',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    l1ProdCode: {
+      value: 'APAP00590',
+      tag: 'ai',
+      tagReason: '從產品庫查到的可用一級產品編碼，基於原产品關聯生成',
+      label: '一級產品編碼',
+    },
+    isComm: {
+      value: 'yes',
+      tag: 'reuse',
+      tagReason: '複用原套餐通信類屬性',
+      required: true,
+      label: '是否通信類',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    applyBasis: {
+      value: '省公司2026年第089號文',
+      tag: 'ai',
+      tagReason: '方案A申報依據：省公司關於青春版套餐上線的批覆文件',
+      label: '申請依據',
+    },
+    allowChannel: {
+      value: 'yes',
+      tag: 'reuse',
+      tagReason: '複用原套餐允許渠道受理策略',
+      required: true,
+      label: '是否允許受理渠道',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+  },
+
+  // 資源配置 Tab —— 流量/語音/短信資源配置（從原可選配置遷入）
+  resourceSections: [
+    {
+      key: 'flow-resource',
+      title: '流量資源配置',
+      icon: 'fa-mobile-screen',
+      fields: [
+        {
+          key: 'flowType',
+          label: '流量類型',
+          value: 'general',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐通用流量類型',
+          options: [
+            { value: 'general', label: '通用流量' },
+            { value: '定向', label: '定向流量' },
+            { value: '專屬', label: '專屬流量' },
+          ],
+        },
+        {
+          key: 'flowAmount',
+          label: '資源量',
+          value: '40',
+          type: 'number',
+          highlight: true,
+          tag: 'ai',
+          tagReason: '方案A核心變更：30GB→40GB，追平競品A（動感青春版40GB），消除流量額度劣勢（根因貢獻度50%）',
+        },
+        {
+          key: 'flowUnit',
+          label: '流量單位',
+          value: 'GB',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐流量單位',
+          options: [
+            { value: 'GB', label: 'GB' },
+            { value: 'MB', label: 'MB' },
+          ],
+        },
+        {
+          key: 'flowOvercharge',
+          label: '套外計費標準',
+          value: '0.29元/MB',
+          type: 'text',
+          tag: 'reuse',
+          tagReason: '複用原套餐套外計費標準',
+        },
+        {
+          key: 'flowCarryover',
+          label: '是否結轉到次月',
+          value: 'yes',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐流量結轉策略',
+          options: [
+            { value: 'yes', label: '是' },
+            { value: 'no', label: '否' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'voice-resource',
+      title: '語音資源配置',
+      icon: 'fa-phone',
+      fields: [
+        {
+          key: 'voiceType',
+          label: '資源類型',
+          value: 'local',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐本地語音類型',
+          options: [
+            { value: 'local', label: '本地語音' },
+            { value: 'longdistance', label: '長途語音' },
+          ],
+        },
+        {
+          key: 'voiceAmount',
+          label: '資源量',
+          value: '100',
+          type: 'number',
+          unit: '分鐘',
+          tag: 'reuse',
+          tagReason: '複用原套餐100分鐘語音配置，非本次優化重點',
+        },
+        {
+          key: 'voiceOvercharge',
+          label: '套外計費費率',
+          value: '0.15元/分鐘',
+          type: 'text',
+          tag: 'reuse',
+          tagReason: '複用原套餐語音套外費率',
+        },
+      ],
+    },
+    {
+      key: 'sms-resource',
+      title: '短信資源配置',
+      icon: 'fa-comment-dots',
+      fields: [
+        {
+          key: 'smsAmount',
+          label: '資源量',
+          value: '100',
+          type: 'number',
+          unit: '條',
+          tag: 'reuse',
+          tagReason: '複用原套餐100條短信配置',
+        },
+        {
+          key: 'smsOvercharge',
+          label: '套外計費費率',
+          value: '0.1元/條',
+          type: 'text',
+          tag: 'reuse',
+          tagReason: '複用原套餐短信套外費率',
+        },
+      ],
+    },
+    {
+      key: 'rights-resource',
+      title: '權益資源配置',
+      icon: 'fa-gift',
+      fields: [
+        {
+          key: 'rightsTable',
+          label: '權益列表',
+          type: 'table',
+          tag: 'reuse',
+          tagReason: '權益按模板默認配置，領取方式可手動調整',
+          columns: [
+            {
+              key: 'rightName',
+              label: '權益名稱',
+              type: 'text',
+              placeholder: '請輸入權益名稱',
+            },
+            {
+              key: 'obtainType',
+              label: '領取方式',
+              type: 'select',
+              options: [
+                { value: 'manual', label: '手動領取' },
+                { value: 'auto', label: '自動發放' },
+              ],
+            },
+          ],
+          rows: [
+            { rightName: '視頻會員月卡', obtainType: 'auto' },
+            { rightName: '定向免流權益包', obtainType: 'manual' },
+            { rightName: '彩鈴功能', obtainType: 'auto' },
+          ],
+        },
+      ],
+    },
+  ],
+
+  // 營銷資源 Tab —— 只保留月租、賬務優惠、保底
+  marketingSections: [
+    {
+      key: 'monthly',
+      title: '月租',
+      icon: 'fa-yen-sign',
+      fields: [
+        {
+          key: 'chargeType',
+          label: '收費方式',
+          value: 'monthly',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐月付方式',
+          options: [
+            { value: 'monthly', label: '月付' },
+            { value: 'quarterly', label: '季付' },
+            { value: 'yearly', label: '年付' },
+          ],
+        },
+        { key: 'monthlyFee', label: '套餐固定費', value: '59.00', type: 'number', unit: '元', tag: 'reuse', tagReason: '方案A保持月費59元不變' },
+        {
+          key: 'feeSubject',
+          label: '收費科目',
+          value: '001',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐通訊費科目',
+          options: [
+            { value: '001', label: '通訊費' },
+            { value: '002', label: '增值業務費' },
+            { value: '003', label: '代收費' },
+          ],
+        },
+        { key: 'taxRate', label: '税率', value: '6', type: 'number', unit: '%', tag: 'reuse', tagReason: '複用原套餐税率' },
+      ],
+    },
+    {
+      key: 'discount',
+      title: '賬務優惠',
+      icon: 'fa-tags',
+      fields: [
+        {
+          key: 'discountCondition',
+          label: '優惠條件',
+          value: '新用户首月半價',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '新增優惠策略：首月半價對沖競品促銷，針對年輕新客降低嚐鮮門檻',
+        },
+        {
+          key: 'discountType',
+          label: '優惠類型',
+          value: 'cash',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '選擇現金直減，用户感知最直接，轉化效果優於優惠券',
+          options: [
+            { value: 'cash', label: '現金直減' },
+            { value: 'coupon', label: '優惠券' },
+            { value: 'gift', label: '贈品' },
+          ],
+        },
+        { key: 'discountAmount', label: '優惠費用', value: '29.50', type: 'number', unit: '元', tag: 'ai', tagReason: '首月半價=59/2=29.50元' },
+      ],
+    },
+    {
+      key: 'min-consume',
+      title: '保底',
+      icon: 'fa-arrow-down-wide-short',
+      fields: [
+        {
+          key: 'minConsumeType',
+          label: '保底方式',
+          value: 'none',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐無保底策略',
+          options: [
+            { value: 'none', label: '無保底' },
+            { value: 'monthly', label: '月保底' },
+            { value: 'total', label: '總額保底' },
+          ],
+        },
+      ],
+    },
+  ],
+
+   // 銷售規則 Tab —— 摘自智家包：銷售規則、前項限制、後項限制
+  salesSections: [
+    {
+      key: 'sales-rule',
+      title: '銷售規則',
+      icon: 'fa-shield-halved',
+      fields: [
+        {
+          key: 'channelType',
+          label: '渠道類型',
+          value: 'offline',
+          type: 'checkbox-group',
+          tag: 'reuse',
+          tagReason: '複用原套餐線下營業廳主渠道策略',
+          options: [
+            { value: 'offline', label: '線下營業廳' },
+            { value: 'online', label: '中國移動在線渠道' },
+            { value: 'local-online', label: '省移動線上渠道' },
+            { value: 'cmcc-online', label: '中國移動線上渠道' },
+            { value: 'tv', label: '電視營業廳' },
+            { value: 'accelerator', label: '加速平台' },
+            { value: 'points', label: '積分商城' },
+            { value: 'meter', label: '一級電錶' },
+          ],
+        },
+        {
+          key: 'applicableArea',
+          label: '適用地區',
+          value: 'sc',
+          type: 'checkbox-group',
+          tag: 'reuse',
+          tagReason: '複用原套餐四川省適用範圍',
+          options: [
+            { value: 'sc', label: '四川全省' },
+            { value: 'cd', label: '成都' },
+            { value: 'my', label: '綿陽' },
+            { value: 'dy', label: '德陽' },
+            { value: 'nc', label: '南充' },
+            { value: 'yb', label: '宜賓' },
+            { value: 'lz', label: '瀘州' },
+            { value: 'ls', label: '樂山' },
+          ],
+        },
+        {
+          key: 'otherFee',
+          label: '其他費用',
+          value: '0',
+          type: 'text',
+          tag: 'reuse',
+          tagReason: '複用原套餐無其他費用',
+        },
+        {
+          key: 'breachLiability',
+          label: '違約責任',
+          value: 'none',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐無違約責任約束',
+          options: [
+            { value: 'none', label: '無' },
+            { value: 'compensate', label: '按約定補償金' },
+          ],
+        },
+        {
+          key: 'renewMethod',
+          label: '續訂方式',
+          value: 'auto',
+          type: 'select',
+          tag: 'reuse',
+          tagReason: '複用原套餐自動續訂策略',
+          options: [
+            { value: 'auto', label: '自動續訂' },
+            { value: 'manual', label: '手動續訂' },
+            { value: 'no', label: '不續訂' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'pre-limit',
+      title: '前項限制',
+      icon: 'fa-circle-arrow-left',
+      fields: [
+        {
+          key: 'preLimitRelation',
+          label: '限制間關係',
+          value: 'and',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '方案A：與前項产品"且"關係互斥，確保新客未訂購其他青春版套餐',
+          options: [
+            { value: 'and', label: '且（全部滿足）' },
+            { value: 'or', label: '或（任一滿足）' },
+          ],
+        },
+        {
+          key: 'preLimitTable',
+          label: '限制列表',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '新增前項限制：限制年齡/全球通等級/基礎套餐月費條件，確保目標客羣精準',
+          columns: [
+            { key: 'label', label: '標籤', type: 'select', options: [
+              { value: 'age', label: '年齡' },
+              { value: 'globalLevel', label: '全球通等級' },
+              { value: 'baseMonthlyFee', label: '基礎套餐月費' },
+              { value: 'targetGroup', label: '目標客羣' },
+              { value: 'studentOnly', label: '面向在校大學生' },
+              { value: 'studentCert', label: '需上傳學生證認證' },
+              { value: 'realName', label: '僅限本人實名辦理' },
+              { value: 'limitToSelf', label: '僅限本人辦理' },
+            ] },
+            { key: 'ruleType', label: '規則類型', type: 'select', options: [
+              { value: 'gt', label: '＞' },
+              { value: 'lt', label: '＜' },
+              { value: 'ge', label: '≥' },
+              { value: 'le', label: '≤' },
+              { value: 'eq', label: '＝' },
+            ] },
+            { key: 'limitValue', label: '限定值', type: 'text', placeholder: '請輸入限定值' },
+            { key: 'limitType', label: '限定類型', type: 'select', options: [
+              { value: 'allow', label: '允許辦理' },
+              { value: 'disallow', label: '不允許辦理' },
+            ] },
+            { key: 'tipMsg', label: '提示語', type: 'auto', placeholder: '根據條件自動生成' },
+          ],
+          rows: [
+            { label: 'age', ruleType: 'lt', limitValue: '16', limitType: 'disallow', tipMsg: '年齡＜16歲的不允許辦理本套餐' },
+            { label: 'baseMonthlyFee', ruleType: 'ge', limitValue: '59', limitType: 'allow', tipMsg: '基礎套餐月費≥59元的允許辦理本套餐' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'post-limit',
+      title: '後項限制',
+      icon: 'fa-circle-arrow-right',
+      fields: [
+        {
+          key: 'postLimitTable',
+          label: '後項限制',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '新增後項限制：訂購本套餐後限制降檔/退訂/停機保號/銷户/攜號轉網/過户等操作',
+          columns: [
+            { key: 'ruleType', label: '規則類型', type: 'select', options: [
+              { value: 'product', label: '产品限制' },
+              { value: 'business', label: '業務限制' },
+            ] },
+            { key: 'bizName', label: '業務名稱', type: 'select', dynamicOptions: true, options: {
+              product: [
+                { value: 'downgrade', label: '降檔' },
+                { value: 'unsubscribe', label: '退訂' },
+              ],
+              business: [
+                { value: 'suspend', label: '停機保號' },
+                { value: 'cancel', label: '銷户' },
+                { value: 'mnp', label: '攜號轉網' },
+                { value: 'transfer', label: '過户' },
+              ],
+            } },
+            { key: 'limitType', label: '限制類型', type: 'select', options: [
+              { value: 'disallow', label: '不允許' },
+              { value: 'allow', label: '允許' },
+            ] },
+            { key: 'limitTime', label: '限制時間', type: 'select', options: [
+              { value: '12', label: '12個月' },
+              { value: '24', label: '24個月' },
+              { value: '36', label: '36個月' },
+              { value: '48', label: '48個月' },
+            ] },
+          ],
+          rows: [
+            { ruleType: 'product', bizName: 'downgrade', limitType: 'disallow', limitTime: '12' },
+            { ruleType: 'business', bizName: 'cancel', limitType: 'disallow', limitTime: '24' },
+          ],
+        },
+      ],
+    },
+  ],
+
+  // 可選配置 Tab —— 兼容舊引用，已拆分到resourceSections/marketingSections/salesSections
+  optionalSections: [],
+
+  // 信息預覽 Tab —— 用户受理過程相關信息 + 免填單
+  previewSections: [
+    {
+      key: 'user-facing',
+      title: '用户受理信息',
+      icon: 'fa-user',
+      description: '用户在辦理過程中看到的關鍵信息',
+      items: [
+        { label: '产品名稱', value: '暢享59元青春版', highlight: true },
+        { label: '月費', value: '59元/月' },
+        { label: '包含流量', value: '40GB通用流量（可結轉次月）', highlight: true },
+        { label: '包含語音', value: '100分鐘本地語音' },
+        { label: '視頻權益', value: '騰訊視頻月卡 + 愛奇藝月卡', highlight: true },
+        { label: '其他權益', value: '生日特權、流量結轉' },
+        { label: '套外流量費', value: '0.29元/MB' },
+        { label: '套外語音費', value: '0.15元/分鐘' },
+        { label: '新用户優惠', value: '首月半價（僅需29.50元）', highlight: true },
+        { label: '生效方式', value: '立即生效' },
+        { label: '退訂方式', value: '立即失效' },
+        { label: '使用範圍', value: '四川省範圍內' },
+      ],
+    },
+    {
+      key: 'free-fill-preview',
+      title: '免填單',
+      icon: 'fa-file-alt',
+      description: '營業員受理時免填的自動帶出信息',
+      items: [
+        { label: '資費名稱', value: '暢享59元青春版' },
+        { label: '套餐月費', value: '59元/月' },
+        { label: '包含資源', value: '40G流量+100分鐘語音+騰訊視頻+愛奇藝', highlight: true },
+        { label: '超套收費標準', value: '0.29元/MB' },
+        { label: '限定條件', value: '四川省範圍內使用，新老产品互斥' },
+        { label: '其他權益', value: '生日特權、流量結轉、騰訊視頻月卡、愛奇藝月卡', highlight: true },
+        { label: '收費方式', value: '月付' },
+        { label: '套餐固定費', value: '59.00元' },
+        { label: '税率', value: '6%' },
+        { label: '優惠條件', value: '新用户首月半價' },
+        { label: '優惠類型', value: '現金直減' },
+        { label: '優惠費用', value: '29.50元' },
+      ],
+    },
+    {
+      key: 'sms-preview',
+      title: '短信模板預覽',
+      icon: 'fa-comment-sms',
+      description: '各觸點下發的短信內容預覽',
+      items: [
+        { label: '辦理成功短信', value: '恭喜您成功辦理暢享59元青春版，月費59元，含40G流量和100分鐘語音，含騰訊視頻+愛奇藝雙權益，感謝您的支持！' },
+        { label: '預約生效短信', value: '您的暢享59元青春版已生效，月費59元，生效當月起享受套餐權益。' },
+        { label: '前台二確短信', value: '尊敬的客户，您正在辦理暢享59元青春版，月費59元，是否確認辦理？' },
+        { label: '退訂短信', value: '您好，您的暢享59元青春版已退訂，如有疑問請致電10086。' },
+      ],
+    },
+  ],
+}
+
+// ============ 深度思考步驟 ============
+export const launchThinkingSteps = [
+  '解析用户指令：啓動產品優化，確認方案A',
+  '調用產品查詢助手，檢索暢享59元套餐（SP-2024-0590）全量畫像…',
+  '產品查詢助手返回：在網86萬用户、月收入5,046萬、合約用户31.2萬',
+  '校驗互斥規則：新产品"暢享59元青春版"與現有产品SP-2024-0590互斥，可並行銷售 ✓',
+  '調用產品研發助手，拉取产品配置規則與資費審批模板…',
+  '產品研發助手：匹配業務模板「個人主資費」，加載配置字段（5個Tab、10個section）',
+  '根據方案A預填配置：流量30GB→40GB、視頻權益1→2（騰訊+愛奇藝），未變字段標記"複用"',
+  '生成工單編號：WO20260812001',
+  '測算權益成本：3.0元→5.8元/户/月，ROI=5.75（達標）',
+  '自動打開新套餐配置工作台',
+]
+
+// ============ 第6輪助手回覆文案 ============
+export function buildLaunchSummary() {
+  return [
+    '### 已啓動產品優化 · 方案A',
+    '',
+    '> 收到指令，正在執行方案A（新产品策劃）。已調用產品查詢助手和產品研發助手完成前期準備，配置工作台已自動打開。',
+    '',
+    '**執行摘要**',
+    '',
+    '| 步驟 | 動作 | 結果 |',
+    '| ---- | ---- | ---- |',
+    '| 1 | 調用產品查詢助手 | 檢索暢享59元套餐全量畫像：在網86萬用户、月收入5,046萬、合約用户31.2萬 ✓ |',
+    '| 2 | 校驗互斥規則 | 新产品"暢享59元青春版"與SP-2024-0590互斥，可並行銷售，存量用户不受影響 ✓ |',
+    '| 3 | 調用產品研發助手 | 匹配業務模板「個人主資費」，加載5個Tab、10個section配置字段 ✓ |',
+    '| 4 | 預填方案A配置 | 流量30GB→**40GB**、視頻權益1→**2**（騰訊+愛奇藝）、月費59元不變 ✓ |',
+    '| 5 | 生成工單 | WO20260812001，新产品名稱"暢享59元青春版" ✓ |',
+    '| 6 | 權益成本測算 | 3.0元→5.8元/户/月，ROI=5.75（>3.0門檻，達標）✓ |',
+    '',
+    '**已預填的關鍵變更字段**',
+    '- 資費名稱：暢享59元套餐 → **暢享59元青春版**',
+    '- 流量資源：30GB → **40GB**（通用流量，可結轉次月）',
+    '- 包含資源：30G流量+100分鐘語音+騰訊視頻 → **40G流量+100分鐘語音+騰訊視頻+愛奇藝**',
+    '- 其他權益：生日特權、流量結轉、騰訊視頻月卡 → **+愛奇藝月卡**',
+    '- 月租固定費：59.00元（不變）',
+    '- 優惠策略：新用户首月半價（29.50元）',
+    '',
+    '> 右側工作台已打開。字段標籤説明：**AI推薦**=基於方案新增或修改的值（懸浮可查看推薦原因），**複用**=從原套餐繼承未變更的值。',
+    '',
+    '請檢查預填內容並完成配置。可點擊「智能稽核」進行提交前校驗。',
+  ].join('\n')
+}
+
+// ============ 測試報告數據（測試人員上傳後自動解析） ============
+// 初始 uploaded=false，表示測試人員尚未上傳；上傳後置為 true，配置人員即可查看
+export const testReport = reactive({
+  uploaded: false,
+  uploadedAt: null,
+  reportId: 'TR20260813001',
+  workOrderId: 'WO20260812001',
+  productName: '暢享59元青春版',
+  tester: '張明',
+  testDate: '2026-08-13',
+  status: 'passed', // passed | failed
+  testMethod: '新業務測試（含固費核查、計費核查、提醒核查、工單核查）',
+  acceptNumber: '13920260813',
+  sections: [
+    {
+      key: 'fixedFee',
+      title: '固費核查',
+      status: 'passed',
+      items: [
+        { label: '月租固定費', expected: '59.00元', actual: '59.00元', result: 'pass' },
+        { label: '首月優惠費', expected: '29.50元（新用户首月半價）', actual: '29.50元', result: 'pass' },
+        { label: '固定費生效時間', expected: '訂購次月1日生效', actual: '次月1日生效', result: 'pass' },
+      ],
+    },
+    {
+      key: 'billing',
+      title: '計費核查',
+      status: 'passed',
+      items: [
+        { label: '流量計費', expected: '40GB內不額外計費，超出後1元/GB自動疊加', actual: '40GB內正常，超出按1元/GB疊加', result: 'pass' },
+        { label: '語音計費', expected: '100分鐘內免費，超出0.15元/分鐘', actual: '100分鐘內免費，超出0.15元/分鐘', result: 'pass' },
+        { label: '權益計費', expected: '騰訊視頻+愛奇藝月卡，不額外扣費', actual: '權益正常下發，無額外扣費', result: 'pass' },
+        { label: '流量結轉', expected: '當月剩餘流量結轉至次月，次月底清零', actual: '結轉規則正確', result: 'pass' },
+      ],
+    },
+    {
+      key: 'reminder',
+      title: '提醒核查',
+      status: 'passed',
+      items: [
+        { label: '流量使用提醒', expected: '使用達80%、95%時下發短信提醒', actual: '80%和95%均正常下發', result: 'pass' },
+        { label: '套餐訂購提醒', expected: '訂購成功後下發歡迎短信', actual: '歡迎短信正常下發', result: 'pass' },
+        { label: '權益領取提醒', expected: '權益到賬後下發領取通知', actual: '通知正常下發', result: 'pass' },
+      ],
+    },
+    {
+      key: 'workOrder',
+      title: '工單核查',
+      status: 'passed',
+      items: [
+        { label: '訂購工單', expected: '生成訂購工單，狀態正常流轉', actual: '工單生成且狀態正確', result: 'pass' },
+        { label: '變更工單', expected: '老用户變更後生成變更工單', actual: '變更工單正常', result: 'pass' },
+        { label: '退訂工單', expected: '退訂生成退訂工單，次月生效', actual: '退訂工單正確，次月生效', result: 'pass' },
+      ],
+    },
+  ],
+  conclusion: '通過',
+  conclusionDesc: '該資費方案各項核查均符合預期，測試通過，可進入備案公示環節。',
+})
+
+/**
+ * 備案公示數據
+ *
+ * started: 是否已發起備案公示（點擊"發起備案公示"後為 true）
+ * submitted: 是否已提交備案（點擊"提交備案"後為 true，提交後備案通過 → 可上架銷售）
+ */
+export const filing = reactive({
+  started: false,
+  submitted: false,
+  approved: false,
+  approvedAt: null,
+  filingId: 'FL20260814001',
+  workOrderId: 'WO20260812001',
+  productName: '暢享59元青春版',
+  template: '個人主資費',
+  productCode: 'SP20240590Q',
+  applicant: '產品配置專員',
+  applyDate: '2026-08-14',
+  // 備案信息
+  info: {
+    filingOrg: '產品研發中心',
+    filingOfficer: '李芳',
+    filingDate: '2026-08-14',
+    effectiveDate: '2026-09-01',
+    expireDate: '長期有效',
+  },
+  // 備案核查項
+  checks: [
+    { label: '資費合規性', status: 'passed', desc: '符合《資費管理辦法》相關規定，無違規項' },
+    { label: '公示內容完整性', status: 'passed', desc: '資費名稱、資費標準、生效時間等公示信息完整' },
+    { label: '測試報告核銷', status: 'passed', desc: '測試報告 TR20260813001 已通過，允許備案' },
+    { label: '審批鏈完整性', status: 'passed', desc: '預覽審批、測試審核審批鏈完整' },
+  ],
+  // 公示預覽
+  notice: {
+    title: '關於"暢享59元青春版"資費方案備案公示',
+    target: '全體用户',
+    content: '現將"暢享59元青春版"資費方案（資費代碼：SP20240590Q）予以備案公示。公示期滿且無異議後，該資費方案將正式上架銷售。',
+    notifyChannels: '營業廳公示欄、網上營業廳、掌上營業廳',
+    startDate: '2026-08-15',
+    endDate: '2026-08-29',
+    duration: '15天',
+  },
+  // 全量視圖字段（category: common=共有 / filing=備案特有 / public=公示特有）
+  sections: [
+    {
+      title: '備案基本信息',
+      previewOnly: true,
+      fields: [
+        { label: '備案公示流程', value: '先備案再公示', category: 'filing' },
+        { label: '公示系列ID', value: '資費ID', category: 'filing' },
+        { label: '公示系列名稱', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '方案編號', value: 'XNBP0001', category: 'filing' },
+      ],
+    },
+    {
+      title: '套餐基本信息',
+      previewOnly: false,
+      fields: [
+        { label: 'BOSSID', value: launchProductConfig.baseInfo.prodCode.value, category: 'filing' },
+        { label: '一級分類', value: '公眾', category: 'filing' },
+        { label: '二級分類', value: '套餐', category: 'filing' },
+        { label: '名稱', value: launchProductConfig.baseInfo.prodName.value, category: 'filing' },
+        { label: '資費屬性', value: '省內', category: 'filing' },
+        { label: '是否自選套餐', value: '是', category: 'filing' },
+        { label: '模組分類名稱', value: '無', category: 'filing' },
+        { label: '是否通信類', value: launchProductConfig.baseInfo.isComm.value === 'yes' ? '是' : '否', category: 'filing' },
+        { label: '是否主數據', value: '否', category: 'filing' },
+        { label: '展示順序權重', value: '100', category: 'filing' },
+        { label: '適用範圍', value: '通過前項限制生成', category: 'common' },
+        { label: '購買鏈接', value: 'https://xxx.com/buy', category: 'filing' },
+        { label: '資費單位', value: '元/月', category: 'filing' },
+      ],
+    },
+    {
+      title: '基礎信息',
+      previewOnly: false,
+      fields: [
+        { label: '資費標準', value: '59元/月', category: 'common' },
+        { label: '資費類型', value: '套餐', category: 'public' },
+        { label: '方案編號', value: 'AI203935', category: 'public' },
+        { label: '上線日期', value: '20260901', category: 'common' },
+        { label: '下線日期', value: '20991231', category: 'common' },
+        { label: '有效期限', value: '36個月', category: 'common' },
+        { label: '合約期(在網要求)', value: '12個月', category: 'common' },
+        { label: '適用地區', value: '全省（安徽）', category: 'common' },
+        { label: '銷售渠道', value: '自有營業廳/網上營業廳', category: 'common' },
+        { label: '退訂方式', value: '線下營業廳', category: 'common' },
+        { label: '違約責任', value: '合約期內退訂需繳納違約金', category: 'common' },
+      ],
+    },
+    {
+      title: '資源信息',
+      previewOnly: false,
+      fields: [
+        { label: '國內通話', value: '100分鐘', category: 'common' },
+        { label: '國內通用流量', value: '40GB', category: 'common' },
+        { label: '定向流量', value: '100GB', category: 'common' },
+        { label: '短信', value: '100條', category: 'common' },
+        { label: '國際通話(國際長途通話量)', value: '0分鐘', category: 'common' },
+        { label: '港澳台流量', value: '0GB', category: 'filing' },
+        { label: 'IPTV(移動高清)', value: '無', category: 'common' },
+        { label: '寬帶', value: '無', category: 'common' },
+        { label: '權益', value: '騰訊視頻+愛奇藝月卡', category: 'common' },
+      ],
+    },
+    {
+      title: '説明信息',
+      previewOnly: false,
+      fields: [
+        { label: '超出資費説明', value: '國內通話超出後0.15元/分鐘，流量按0.29元/MB', category: 'common' },
+        { label: '其他服務內容', value: '含來電顯示、彩鈴等基礎服務', category: 'common' },
+        { label: '其他資費説明', value: '無', category: 'public' },
+        { label: '其他説明', value: '無', category: 'common' },
+      ],
+    },
+  ],
+})
+
+/**
+ * 銷售渠道 store 數據
+ */
+export const salesChannel = reactive({
+  // 是否已進入渠道選擇階段（備案通過後為 true）
+  available: false,
+  // 渠道選擇是否已提交（提交後流程進入上架銷售）
+  submitted: false,
+  // 可用渠道列表
+  list: [
+    { key: 'own_offline', label: '自有營業廳', desc: '實體營業廳線下受理' },
+    { key: 'own_online', label: '網上營業廳', desc: '官方網上營業廳在線訂購' },
+    { key: 'app', label: '掌上營業廳APP', desc: '手機營業廳客户端' },
+    { key: 'customer_service', label: '10086客服熱線', desc: '電話客服人員受理' },
+    { key: 'channel_coop', label: '社會合作渠道', desc: '第三方合作代理商' },
+  ],
+  // 已選渠道
+  selected: [],
+  // 默認勾選（推薦）
+  defaultSelected: ['own_online', 'app'],
+})

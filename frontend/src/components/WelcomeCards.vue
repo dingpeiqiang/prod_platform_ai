@@ -2,15 +2,52 @@
   <div class="welcome-container" :class="modeClass">
     <div class="welcome-content">
       <header class="brand-section">
-        <h1 class="brand-title">{{ greeting }}</h1>
+        <div class="brand-title-row">
+          <h1 class="brand-title">{{ greeting }}</h1>
+        </div>
         <p class="brand-subtitle">{{ meta.subtitle }}</p>
         <ul v-if="meta.tags.length" class="capability-tags" aria-label="核心能力">
           <li v-for="tag in meta.tags" :key="tag">{{ tag }}</li>
         </ul>
       </header>
 
-      <!-- 统一入口：产品运营视图快捷入口（原 ops 欢迎页，并入 rd 欢迎页） -->
-      <section class="ops-entry-section" aria-label="产品运营视图入口">
+      <!-- 工作台总览：三个助手入口 -->
+      <section v-if="!hasAssistant" class="scenarios-section" aria-labelledby="welcome-scenarios-title">
+        <div class="section-head">
+          <h2 id="welcome-scenarios-title" class="section-title">选择一个助手开始</h2>
+          <p class="section-hint">点击下方任一助手，进入对应场景；也可直接在下方输入框提问</p>
+        </div>
+        <div class="assistant-cards">
+          <button
+            v-for="a in assistants"
+            :key="a.key"
+            type="button"
+            class="assistant-card"
+            :style="{ '--ac-color': a.color, '--ac-bg': a.bg }"
+            @click="onPickAssistant(a.key)"
+          >
+            <div class="card-icon" :style="{ background: a.bg, color: a.color }" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path v-if="a.icon === 'flask'" d="M9 3h6M10 3v6L5 19a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-10V3"/>
+                <path v-else-if="a.icon === 'chart'" d="M3 3v18h18M7 14l4-4 3 3 5-6"/>
+                <g v-else><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></g>
+              </svg>
+            </div>
+            <div class="card-content">
+              <div class="card-title">{{ a.name }}</div>
+              <div class="card-desc">{{ a.desc }}</div>
+            </div>
+            <div class="card-arrow" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      <!-- 运营助手：快捷入口（产品运营视图 → 右侧详情面板） -->
+      <section v-if="showOpsEntry" class="ops-entry-section" aria-label="产品运营视图入口">
         <button type="button" class="ops-entry-card" @click="emit('open-ops')">
           <div class="ops-entry-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -28,6 +65,7 @@
         </button>
       </section>
 
+      <!-- 选中助手后：场景卡片 -->
       <section class="scenarios-section" aria-labelledby="welcome-scenarios-title">
         <div class="section-head">
           <h2 id="welcome-scenarios-title" class="section-title">从这里开始</h2>
@@ -42,40 +80,8 @@
             @click="emit('suggest', { ...card, autoSend: true })"
           >
             <div class="card-icon" :style="{ background: card.bg, color: card.color }" aria-hidden="true">
-              <svg v-if="card.icon === 'chat'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <svg v-else-if="card.icon === 'file'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <line x1="9" y1="15" x2="15" y2="15"/>
-              </svg>
-              <svg v-else-if="card.icon === 'search'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <svg v-else-if="card.icon === 'chart'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 3v18h18"/>
-                <path d="M18 17V9"/>
-                <path d="M13 17V5"/>
-                <path d="M8 17v-3"/>
-              </svg>
-              <svg v-else-if="card.icon === 'check'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 11l3 3L22 4"/>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-              </svg>
-              <svg v-else-if="card.icon === 'trace'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="18" cy="5" r="3"/>
-                <circle cx="6" cy="12" r="3"/>
-                <circle cx="18" cy="19" r="3"/>
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-              </svg>
-              <svg v-else width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
             </div>
             <div class="card-content">
@@ -87,27 +93,38 @@
         </div>
       </section>
 
-      <p class="footer-note">{{ meta.footer }}</p>
+      <p v-if="meta.footer" class="footer-note">{{ meta.footer }}</p>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
-import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
+import { assistantModes, assistants, buildSceneWelcome } from '../config/assistantModes.js'
 import { useUserStore } from '../stores/user.js'
-
-const props = defineProps({
-  mode: { type: String, default: 'rd' },
-})
+import { useWorkbenchStore } from '../stores/workbench.js'
+import { usePerspectiveStore } from '../stores/perspective.js'
+import { storeToRefs } from 'pinia'
 
 const emit = defineEmits(['suggest', 'open-ops'])
 
 const userStore = useUserStore()
+const workbenchStore = useWorkbenchStore()
+const perspectiveStore = usePerspectiveStore()
+const { activeAssistant } = storeToRefs(workbenchStore)
+const { opsPerspective } = storeToRefs(perspectiveStore)
 
-const modeClass = computed(() => 'mode-rd')
+const hasAssistant = computed(() => !!activeAssistant.value)
+const mode = computed(() => activeAssistant.value || 'rd')
 
-/** 问候语：按时段 + 展示名，每分钟刷新 */
+// 运营助手欢迎页：显示"产品运营视图"快捷入口（点击后右侧详情面板展示）
+const showOpsEntry = computed(() => activeAssistant.value === 'ops')
+
+const modeClass = computed(() => {
+  const map = { rd: 'mode-rd', ops: 'mode-ops', query: 'mode-query' }
+  return map[activeAssistant.value] || 'mode-workbench'
+})
+
 function buildGreeting() {
   const h = new Date().getHours()
   let period = '你好'
@@ -117,8 +134,7 @@ function buildGreeting() {
   else if (h < 14) period = '中午好'
   else if (h < 18) period = '下午好'
   else period = '晚上好'
-  const name = userStore.displayName
-  return name ? `${period}，${name}` : `${period}`
+  return `${period}，${userStore.displayName}`
 }
 
 const greeting = ref(buildGreeting())
@@ -127,66 +143,77 @@ function refreshGreeting() { greeting.value = buildGreeting() }
 onMounted(() => { greetingTimer = setInterval(refreshGreeting, 60 * 1000) })
 onBeforeUnmount(() => { if (greetingTimer) clearInterval(greetingTimer) })
 
-const rdMeta = {
-  subtitle: '智聊对话配置、智读文件配置、智查历史复用、运营洞察与产品查询一体完成，让商品全生命周期更快、更准、更合规。',
-  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用', '运营洞察', '产品查询'],
-  footer: '本体负责填字段、拦冲突、推理与追溯，大模型负责理解业务表达。',
+// 工作台总览的 meta
+const workbenchMeta = {
+  subtitle: 'AI原生产品工作台覆盖产品研发、运营、查询全生命周期。选择一个助手，进入对应场景开始对话。',
+  tags: ['研发', '运营', '查询'],
+  footer: '顶部或下方任一入口均可切换助手；切换时当前对话会自动归档到历史对话。',
 }
 
-/** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致（统一入口：rd/ops/query 场景并入） */
-const cards = computed(() => {
-  const shortcuts = assistantModes.rd?.sceneShortcuts || []
-  const iconByScene = {
-    'rd.chat': 'chat',
-    'rd.import': 'file',
-    'rd.query': 'search',
-    'rd.compare': 'chart',
-    market_insight: 'chart',
-    online_check: 'check',
-    root_cause: 'trace',
-    risk_audit: 'warn',
-    ops_monitor: 'chart',
-    ops_rules: 'check',
-    'query.ask': 'chat',
-    'query.archive': 'search',
-    'query.compare': 'chart',
-  }
-  const styleByScene = {
-    'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
-    'rd.import': { bg: '#ecfdf5', color: '#059669' },
-    'rd.query': { bg: '#f0f9ff', color: '#0284c7' },
-    'rd.compare': { bg: '#f5f3ff', color: '#6d28d9' },
-    market_insight: { bg: '#ecfeff', color: '#0e7490' },
-    online_check: { bg: '#fefce8', color: '#a16207' },
-    root_cause: { bg: '#f0fdf4', color: '#15803d' },
-    risk_audit: { bg: '#fff1f2', color: '#be123c' },
-    ops_monitor: { bg: '#eff6ff', color: '#2563eb' },
-    ops_rules: { bg: '#f8fafc', color: '#475569' },
-    'query.ask': { bg: '#eff6ff', color: '#2563eb' },
-    'query.archive': { bg: '#f0f9ff', color: '#0284c7' },
-    'query.compare': { bg: '#f5f3ff', color: '#6d28d9' },
-  }
-  // 欢迎页核心入口卡：研发三场景 + 运营核心 + 查询三场景（对比/规则等仍可从侧边栏进入）
-  const welcomeScenes = ['rd.chat', 'rd.import', 'rd.query', 'root_cause', 'risk_audit', 'query.ask', 'query.archive', 'query.compare']
+const assistantMetaMap = {
+  rd: {
+    subtitle: '围绕产品研发环节，提供营销活动管理、资费配置、业务规则管理等场景的支持。',
+    tags: ['营销活动管理', '资费配置', '业务规则管理'],
+  },
+  ops: {
+    subtitle: '围绕产品上线后的运营环节，提供数据分析、异动归因、优化方案等支持。',
+    tags: ['数据分析', '异动归因', '优化方案'],
+  },
+  query: {
+    subtitle: '快速查询产品信息、配置、版本、归属等资料。',
+    tags: ['产品资料', '版本与归属'],
+  },
+}
 
-  return shortcuts
-    .filter((s) => welcomeScenes.includes(s.scene))
-    .map((s) => {
-      const welcome = buildSceneWelcome(s)
-      const style = styleByScene[s.scene] || { bg: '#f8fafc', color: '#475569' }
-      return {
-        ...s,
-        icon: iconByScene[s.scene] || 'chat',
-        bg: style.bg,
-        color: style.color,
-        example: s.example || (s.nextSteps && s.nextSteps[0]) || s.text || '',
-        welcome: welcome.content,
-        nextSteps: welcome.nextSteps,
-      }
-    })
+const meta = computed(() => {
+  if (!activeAssistant.value) return workbenchMeta
+  const base = assistantMetaMap[activeAssistant.value] || workbenchMeta
+  // 运营助手：平台视角去掉「优化方案」能力标签，代理商视角保留
+  if (activeAssistant.value === 'ops' && opsPerspective.value === 'platform') {
+    return { ...base, tags: (base.tags || []).filter((t) => t !== '优化方案') }
+  }
+  return base
 })
 
-const meta = computed(() => rdMeta)
+const cards = computed(() => {
+  if (!activeAssistant.value) return []
+  const cfg = assistantModes[activeAssistant.value]
+  // 运营助手：按当前视角（平台 / 代理商）渲染同一套 3 个场景卡的不同口径文案
+  let shortcuts =
+    activeAssistant.value === 'ops' && cfg?.sceneByPerspective
+      ? cfg.sceneByPerspective[opsPerspective.value] || cfg.sceneShortcuts || []
+      : cfg?.sceneShortcuts || []
+  // 运营助手：平台视角隐藏「套餐优化建议」场景卡，代理商视角保留
+  if (activeAssistant.value === 'ops' && opsPerspective.value === 'platform') {
+    shortcuts = shortcuts.filter((s) => s.scene !== 'ops.scene3')
+  }
+  const styleByScene = {
+    'rd.scene1': { bg: '#eff6ff', color: '#2563eb' },
+    'rd.scene2': { bg: '#ecfdf5', color: '#059669' },
+    'rd.scene3': { bg: '#f5f3ff', color: '#6d28d9' },
+    'ops.scene1': { bg: '#ecfdf5', color: '#059669' },
+    'ops.scene2': { bg: '#fff7ed', color: '#ea580c' },
+    'ops.scene3': { bg: '#eff6ff', color: '#2563eb' },
+    'query.scene1': { bg: '#f5f3ff', color: '#6d28d9' },
+    'query.scene2': { bg: '#eff6ff', color: '#2563eb' },
+  }
+  return shortcuts.map((s) => {
+    const welcome = buildSceneWelcome(s)
+    const style = styleByScene[s.scene] || { bg: '#f8fafc', color: '#475569' }
+    return {
+      ...s,
+      bg: style.bg,
+      color: style.color,
+      example: s.example || (s.nextSteps && s.nextSteps[0]) || s.text || '',
+      welcome: welcome.content,
+      nextSteps: welcome.nextSteps,
+    }
+  })
+})
+
+function onPickAssistant(key) {
+  workbenchStore.selectAssistant(key)
+}
 </script>
 
 <style scoped>
@@ -195,12 +222,19 @@ const meta = computed(() => rdMeta)
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 0 24px 28px;
+  padding: 12px 24px 28px;
   min-height: 0;
   overflow: visible;
   background:
     radial-gradient(ellipse 80% 50% at 50% -20%, var(--welcome-glow), transparent),
     linear-gradient(180deg, #f8fafc 0%, #ffffff 48%);
+}
+.mode-workbench {
+  --welcome-accent: #0f766e;
+  --welcome-accent-soft: #ccfbf1;
+  --welcome-glow: rgba(15, 118, 110, 0.12);
+  --welcome-card-hover: #5eead4;
+  --welcome-shadow: rgba(15, 118, 110, 0.12);
 }
 .mode-rd {
   --welcome-accent: #2563eb;
@@ -208,17 +242,32 @@ const meta = computed(() => rdMeta)
   --welcome-glow: rgba(37, 99, 235, 0.12);
   --welcome-card-hover: #93c5fd;
   --welcome-shadow: rgba(37, 99, 235, 0.12);
-  --welcome-top-offset: 10vh;
+}
+.mode-ops {
+  --welcome-accent: #0f766e;
+  --welcome-accent-soft: #ccfbf1;
+  --welcome-glow: rgba(15, 118, 110, 0.12);
+  --welcome-card-hover: #5eead4;
+  --welcome-shadow: rgba(15, 118, 110, 0.12);
+}
+.mode-query {
+  --welcome-accent: #6d28d9;
+  --welcome-accent-soft: #ede9fe;
+  --welcome-glow: rgba(109, 40, 217, 0.12);
+  --welcome-card-hover: #c4b5fd;
+  --welcome-shadow: rgba(109, 40, 217, 0.12);
 }
 
 .welcome-content {
   width: 100%;
   max-width: 880px;
   text-align: center;
-  padding-top: var(--welcome-top-offset, 10vh);
+  margin-block: auto;
 }
 
 .brand-section { margin-bottom: 24px; }
+
+.brand-title-row { margin: 0 0 8px; }
 .brand-title {
   font-size: 26px;
   font-weight: 700;
@@ -253,53 +302,6 @@ const meta = computed(() => rdMeta)
 }
 
 .scenarios-section { margin-bottom: 16px; }
-
-/* 运营助手：产品运营视图入口卡 */
-.ops-entry-section { margin-bottom: 16px; }
-.ops-entry-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 14px 16px;
-  background: #fff;
-  border: 1px solid #ccfbf1;
-  border-radius: 14px;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-.ops-entry-card:hover {
-  border-color: #5eead4;
-  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.12);
-  transform: translateY(-2px);
-}
-.ops-entry-card:focus-visible {
-  outline: 2px solid #0f766e;
-  outline-offset: 2px;
-}
-.ops-entry-icon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ccfbf1;
-  color: #0f766e;
-}
-.ops-entry-body { flex: 1; min-width: 0; }
-.ops-entry-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 2px;
-}
-.ops-entry-desc { font-size: 12px; color: #64748b; }
-.ops-entry-arrow { flex-shrink: 0; color: #0f766e; opacity: 0.6; }
 .section-head { margin-bottom: 12px; }
 .section-title {
   margin: 0 0 4px;
@@ -311,6 +313,45 @@ const meta = computed(() => rdMeta)
   margin: 0;
   font-size: 12px;
   color: #94a3b8;
+}
+
+/* 助手入口卡片（总览） */
+.assistant-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  text-align: left;
+}
+.assistant-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  position: relative;
+}
+.assistant-card:hover {
+  border-color: var(--ac-color, #93c5fd);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+}
+.assistant-card:focus-visible {
+  outline: 2px solid var(--ac-color, #2563eb);
+  outline-offset: 2px;
+}
+.assistant-card .card-arrow {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  color: var(--ac-color, #94a3b8);
+  opacity: 0.6;
 }
 
 /* 场景卡片 */
@@ -343,6 +384,7 @@ const meta = computed(() => rdMeta)
   outline: 2px solid var(--welcome-accent);
   outline-offset: 2px;
 }
+
 .card-icon {
   flex-shrink: 0;
   width: 40px;
@@ -382,14 +424,61 @@ const meta = computed(() => rdMeta)
 }
 
 @media (max-width: 768px) {
-  .welcome-container { padding: 0 16px 24px; }
+  .welcome-container { padding: 8px 16px 24px; }
   .brand-title { font-size: 22px; }
+  .assistant-cards { grid-template-columns: 1fr; }
   .suggestion-cards { grid-template-columns: 1fr; }
   .card-example { white-space: normal; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .suggestion-card { transition: none; }
-  .suggestion-card:hover { transform: none; }
+  .suggestion-card, .assistant-card { transition: none; }
+  .suggestion-card:hover, .assistant-card:hover { transform: none; }
 }
+
+/* 运营助手：产品运营视图入口 */
+.ops-entry-section {
+  width: 100%;
+  max-width: 1000px;
+  margin-bottom: 12px;
+}
+.ops-entry-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #e6effb 0%, #f0f9ff 60%, #ffffff 100%);
+  border: 1px solid #dbe7f6;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.ops-entry-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+}
+.ops-entry-card:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.ops-entry-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #dbeafe;
+  color: #2563eb;
+}
+.ops-entry-body { flex: 1; min-width: 0; }
+.ops-entry-title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+.ops-entry-desc { font-size: 12px; color: #64748b; }
+.ops-entry-arrow { flex-shrink: 0; color: #2563eb; }
 </style>

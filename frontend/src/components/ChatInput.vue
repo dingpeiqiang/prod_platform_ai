@@ -1,13 +1,5 @@
 <template>
   <div class="chat-input-shell">
-    <!-- 会话上下文标签（多轮对话中的分析对象 / 意图等） -->
-    <ContextBar
-      v-if="contextItems.length"
-      :items="contextItems"
-      :clearable="true"
-      @remove="onRemoveContext"
-      @clear="onClearContext"
-    />
     <div class="chat-input-container">
       <div class="quick-actions-bar">
         <button
@@ -20,6 +12,34 @@
           <span class="chip-icon" :style="{ color: action.color }">+</span>
           <span class="chip-text">{{ action.label }}</span>
         </button>
+      </div>
+
+      <!-- 资费配置：三种配置方式技能（可多选，点 × 取消，选中不触发AI消息） -->
+      <div v-if="showTariffSkills" class="tariff-skill-bar">
+        <span class="tariff-skill-label">选择配置方式</span>
+        <div
+          v-for="skill in tariffSkills"
+          :key="skill.key"
+          class="tariff-skill-chip"
+          :class="{ selected: selectedTariffSkill === skill.key }"
+          role="button"
+          tabindex="0"
+          @click="toggleTariffSkill(skill.key)"
+          @keydown.enter.prevent="toggleTariffSkill(skill.key)"
+          @keydown.space.prevent="toggleTariffSkill(skill.key)"
+        >
+          <span class="chip-icon">+</span>
+          <span class="chip-text">{{ skill.label }}</span>
+          <button
+            v-if="selectedTariffSkill === skill.key"
+            type="button"
+            class="chip-close"
+            title="取消选中"
+            @click.stop="toggleTariffSkill(skill.key)"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div
@@ -54,20 +74,10 @@
               </span>
             </span>
             <button
-              v-if="att.uploadStatus === 'error'"
-              type="button"
-              class="att-retry"
-              title="重试上传"
-              :disabled="disabled"
-              @click="retryUpload(idx)"
-            >
-              重试
-            </button>
-            <button
               type="button"
               class="att-remove"
               title="移除"
-              :disabled="disabled || att.uploadStatus === 'uploading'"
+              :disabled="disabled"
               @click="removeAttachment(idx)"
             >
               ×
@@ -75,20 +85,23 @@
           </div>
         </div>
 
-        <p v-if="uploadBlockHint" class="paste-hint upload-block-hint">{{ uploadBlockHint }}</p>
         <p v-if="pasteHint" class="paste-hint">{{ pasteHint }}</p>
 
-        <textarea
-          ref="inputEl"
-          v-model="inputText"
-          class="message-input"
+        <!-- 产品查询 · 富文本模板槽位导引 -->
+        <div v-if="showCopySearch" class="copy-slot-guide">
+          套餐类型为下拉框，套餐名称/套餐编码可直接输入，退格可删除槽位
+        </div>
+
+        <SlotTextInput
+          ref="slotInputEl"
+          :model-value="slotSegments"
+          :template="querySlotTemplate"
+          :slot-options="querySlotOptions"
           :placeholder="placeholder"
-          rows="1"
-          @focus="isFocused = true"
-          @blur="isFocused = false"
-          @keydown="handleKeydown"
-          @input="handleInput"
           :disabled="disabled || isRecording"
+          @update:model-value="onSlotSegments"
+          @input-state="onSlotInputState"
+          @submit="handleSend"
         />
 
         <div v-if="isDragOver" class="drop-hint">松开以添加文件</div>
@@ -178,20 +191,10 @@
                       <span class="model-menu-item-name">{{ model.name }}</span>
                       <span class="model-menu-item-provider">{{ model.providerName || model.provider || '' }}</span>
                     </button>
-                    <div class="model-menu-divider"></div>
                   </template>
-                  <div v-else class="model-menu-empty">暂无可用模型，先去管理模型里配置一个连接</div>
-                  <button
-                    type="button"
-                    class="model-menu-item manage"
-                    @click.stop="openModelManager"
-                  >
-                    <span class="model-menu-item-name">管理模型</span>
-                    <span class="model-menu-item-provider">配置连接与参数</span>
-                  </button>
+                  <div v-else class="model-menu-empty">暂无可用模型</div>
                 </div>
               </div>
-              <span v-if="modelLoadingError" class="model-error" title="加载模型列表失败">!</span>
             </div>
 
             <button
@@ -227,7 +230,7 @@
       </div>
 
       <div class="footer-hint-row">
-        <span class="footer-hint">选择文件后自动上传；全部上传成功后才可发送。Enter 发送，Shift + Enter 换行</span>
+        <span class="footer-hint">Enter 发送，Shift + Enter 换行</span>
       </div>
 
       <input ref="fileInput" type="file" class="hidden-input" accept="*" @change="handleFileSelect" multiple />
@@ -237,11 +240,11 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, markRaw, toRaw } from 'vue'
-import { ElMessageBox } from 'element-plus'
-import { useModelsStore } from '@/stores/models.js'
-import { uploadConfigFile } from '../services/productOntologyApi.js'
-import ContextBar from './ContextBar.vue'
+import { ref, nextTick, watch, computed, reactive, onMounted, onBeforeUnmount, markRaw } from 'vue'
+import { assistantModes } from '../config/assistantModes.js'
+import { usePerspectiveStore } from '../stores/perspective.js'
+import { storeToRefs } from 'pinia'
+import SlotTextInput from './SlotTextInput.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -249,8 +252,9 @@ const props = defineProps({
   placeholder: { type: String, default: '描述你想做的事...' },
   currentSkill: { type: String, default: '' },
   assistantMode: { type: String, default: '' },
-  /** 会话上下文标签：多轮对话中的分析对象 / 业务意图等（展示为 ContextBar） */
-  context: { type: Array, default: () => [] }
+  activeScene: { type: String, default: '' },
+  // 外部触发的技能选中信号：{ key, seq }，seq 递增以支持重复选中同一技能
+  skillSignal: { type: Object, default: null }
 })
 
 const emit = defineEmits([
@@ -259,32 +263,21 @@ const emit = defineEmits([
   'stop',
   'quick-action',
   'file-upload',
-  'file-uploaded',
   'image-upload',
   'voice-record',
   'remove-skill',
-  'skill-select',
-  'open-model-config',
-  'context-remove',
-  'context-clear'
+  'skill-select'
 ])
 
-/** 上下文标签条目（透传自父组件） */
-const contextItems = computed(() => props.context || [])
-
-const onRemoveContext = (idx) => {
-  emit('context-remove', idx)
-}
-
-const onClearContext = () => {
-  emit('context-clear')
-}
+const perspectiveStore = usePerspectiveStore()
+const { opsPerspective } = storeToRefs(perspectiveStore)
 
 const skillConfig = {
-  query: { icon: 'fa-magnifying-glass', label: '智查·历史复用' },
-  file: { icon: 'fa-file-import', label: '智读·文件配置' },
-  chat: { icon: 'fa-comments', label: '智聊·对话配置' },
-  ops: { icon: 'fa-chart-line', label: '运营助手' }
+  query: { label: '智查·历史复用' },
+  file: { label: '智读·文件配置' },
+  chat: { label: '智聊·对话配置' },
+  compliance: { label: '智检·合规校验' },
+  ops: { label: '运营助手' }
 }
 
 const skillTag = computed(() =>
@@ -302,13 +295,16 @@ const skillIconPaths = {
   ops: ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']
 }
 
-const modelsStore = useModelsStore()
-const availableModels = computed(() => modelsStore.models)
-const selectedModelId = ref('')
-const modelLoadingError = computed(() => !!modelsStore.loadError && modelsStore.models.length === 0)
+// ── Mock 模型列表 ──
+// 后续接入真实模型管理时，替换为从 store/API 加载
+const availableModels = ref([
+  { id: 'mock-gpt', name: 'GPT-4o (mock)', provider: 'OpenAI', providerName: 'OpenAI', isDefault: true },
+  { id: 'mock-claude', name: 'Claude 3.5 (mock)', provider: 'Anthropic', providerName: 'Anthropic' },
+  { id: 'mock-local', name: '本地模型 (mock)', provider: 'Local', providerName: '本地' },
+])
+const selectedModelId = ref('mock-gpt')
 const showModelMenu = ref(false)
 const modelMenuWrap = ref(null)
-const MODEL_ID_KEY = 'chat_selected_model_id'
 
 const currentModelLabel = computed(() => {
   const m = availableModels.value.find(x => x.id === selectedModelId.value)
@@ -320,49 +316,6 @@ const currentModelShortLabel = computed(() => {
   return m ? m.name : ''
 })
 
-const loadAvailableModels = async (force = false) => {
-  await modelsStore.loadModels(force)
-  const list = modelsStore.models
-  if (list.length > 0) {
-    const savedId = localStorage.getItem(MODEL_ID_KEY)
-    if (savedId && list.some(m => m.id === savedId)) {
-      selectedModelId.value = savedId
-    } else {
-      const def = list.find(m => m.isDefault) || list[0]
-      selectedModelId.value = def?.id || ''
-    }
-  }
-}
-
-watch(showModelMenu, (visible) => {
-  if (visible) {
-    nextTick(() => {
-      document.addEventListener('click', handleDocumentClick)
-    })
-  } else {
-    document.removeEventListener('click', handleDocumentClick)
-  }
-})
-
-watch(selectedModelId, (id) => {
-  if (id) localStorage.setItem(MODEL_ID_KEY, id)
-})
-
-watch(availableModels, (newModels) => {
-  if (newModels.length === 0) return
-  const savedId = localStorage.getItem(MODEL_ID_KEY)
-  if (savedId && newModels.some(m => m.id === savedId)) {
-    selectedModelId.value = savedId
-  } else {
-    const def = newModels.find(m => m.isDefault) || newModels[0]
-    selectedModelId.value = def?.id || ''
-  }
-}, { deep: true })
-
-const closeModelMenu = () => {
-  showModelMenu.value = false
-}
-
 const toggleModelMenu = () => {
   if (props.disabled) return
   showModelMenu.value = !showModelMenu.value
@@ -370,55 +323,26 @@ const toggleModelMenu = () => {
 
 const selectModel = (id) => {
   selectedModelId.value = id
-  closeModelMenu()
-}
-
-const openModelManager = () => {
-  emit('open-model-config', {
-    source: 'ChatInput',
-    timestamp: Date.now(),
-  })
-  closeModelMenu()
+  showModelMenu.value = false
 }
 
 const handleDocumentClick = (event) => {
   if (!showModelMenu.value) return
   const wrap = modelMenuWrap.value
-  const inside = !!wrap?.contains(event.target)
-  if (wrap && !inside) {
-    closeModelMenu('outside-document-click')
+  if (wrap && !wrap.contains(event.target)) {
+    showModelMenu.value = false
   }
 }
 
-const buildModelConfig = () => {
-  const m = availableModels.value.find(x => x.id === selectedModelId.value)
-  if (!m) return null
-  let fullConfig = null
-  try {
-    const raw = localStorage.getItem('chat_model_config')
-    if (raw) {
-      const cfg = JSON.parse(raw)
-      const localId = (cfg.provider || 'custom') + '-' + cfg.model
-      if (localId === m.id) fullConfig = { ...cfg }
-    }
-  } catch {}
-
-  if (fullConfig) {
-    return {
-      provider: fullConfig.provider || m.provider,
-      model: fullConfig.model || m.name,
-      api_key: fullConfig.api_key || fullConfig.apiKey || undefined,
-      base_url: fullConfig.base_url || fullConfig.baseUrl || undefined,
-      temperature: fullConfig.temperature ?? 0.3,
-      max_tokens: fullConfig.max_tokens || fullConfig.maxTokens || 2048,
-      thinking: fullConfig.thinking ?? false
-    }
+watch(showModelMenu, (visible) => {
+  if (visible) {
+    nextTick(() => document.addEventListener('click', handleDocumentClick))
+  } else {
+    document.removeEventListener('click', handleDocumentClick)
   }
+})
 
-  return { provider: m.provider, model: m.name }
-}
-
-const inputEl = ref(null)
+// ── 输入框 & 附件 ──
 const fileInput = ref(null)
 const imageInput = ref(null)
 const isFocused = ref(false)
@@ -435,42 +359,98 @@ let recordingTimer = null
 let mediaRecorder = null
 let audioChunks = []
 
+// ── Mock 快捷动作 ──
+// 各助手输入框上方的三个场景（quick-action 芯片），点击后填入对应提示语。
+// 产品运营助手已替换为真实运营场景；研发/查询助手暂保留通用占位。
 const allQuickActions = [
-  { key: 'chat', label: '智聊·对话配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
-  { key: 'file', label: '智读·文件配置', content: '', color: '#10b981', modes: ['rd'] },
-  { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
-  { key: 'ops', label: '指标异动根因', content: '分析在售主力套餐本月收入下滑原因', color: '#0ea5e9', modes: ['rd'] },
-  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['rd'] },
-  { key: 'query', label: '智能问答', content: '智享99元5G套餐包含多少流量？', color: '#2563eb', modes: ['rd'], scene: 'query.ask' },
-  { key: 'query', label: '档案调阅', content: '查一下近30天大学生套餐配置', color: '#0284c7', modes: ['rd'], scene: 'query.archive' },
-  { key: 'query', label: '比对分析', content: '对比畅享59元套餐和智享99元5G套餐', color: '#6d28d9', modes: ['rd'], scene: 'query.compare' },
+  // 产品运营助手：三个真实运营场景（scene 与 assistantModes 中的 ops sceneShortcuts 对应）
+  { key: 'data', label: '运营数据分析', scene: 'ops.scene1', content: '帮我看下本周活跃用户的涨跌原因', color: '#8b5cf6', modes: ['ops'] },
+  { key: 'analyze', label: '异动归因分析', scene: 'ops.scene2', content: '帮我分析一下WeWalk-Data Only-澳门.香港.台湾共用30日不限量(30GB高速)数据卡的新增异动', color: '#10b981', modes: ['ops'] },
+  { key: 'optimize', label: '套餐优化建议', scene: 'ops.scene3', content: '针对WeWalk-Data Only-澳门.香港.台湾共用30日不限量(30GB高速)数据卡的亚健康情况给出优化方案', color: '#f59e0b', modes: ['ops'] },
+  // 产品查询助手：三个真实查询场景（scene 与 assistantModes 中的 query sceneShortcuts 对应）
+  { key: 'query_chat', label: '智能问答', scene: 'query.scene1', content: 'WeWalk-Data Only-澳门.香港.台湾共用30日不限量(30GB高速)包含多少高速流量？', color: '#8b5cf6', modes: ['query'] },
+  { key: 'query_query', label: '比对分析', scene: 'query.scene3', content: '对比WeWalk香港.台湾30日不限量和WeWalk15日不限量数据卡', color: '#f59e0b', modes: ['query'] },
 ]
 
 const quickActions = computed(() => {
   const mode = props.assistantMode
   if (!mode) return allQuickActions
-  return allQuickActions.filter((a) => a.modes.includes(mode))
+  let list = allQuickActions.filter((a) => a.modes.includes(mode))
+  // 运营助手：平台视角不显示「套餐优化建议」，代理商视角显示
+  if (mode === 'ops' && opsPerspective.value === 'platform') {
+    list = list.filter((a) => a.key !== 'optimize')
+  }
+  return list
 })
 
-const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)
-const hasUploading = computed(() =>
-  attachments.value.some((a) => a.uploadStatus === 'uploading' || a.uploadStatus === 'pending'),
-)
-const hasUploadError = computed(() => attachments.value.some((a) => a.uploadStatus === 'error'))
-const attachmentsReady = computed(() =>
-  attachments.value.every((a) => a.uploadStatus === 'success'),
-)
-const canSend = computed(() => {
-  if (!hasContent.value || props.disabled) return false
-  if (!attachments.value.length) return true
-  return attachmentsReady.value && !hasUploading.value && !hasUploadError.value
-})
-const uploadBlockHint = computed(() => {
-  if (!attachments.value.length) return ''
-  if (hasUploading.value) return '文件上传中，请等待全部上传完成后再发送'
-  if (hasUploadError.value) return '有文件上传失败，请重试或移除后再发送'
-  return ''
-})
+const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0 || slotHasContent.value)
+const canSend = computed(() => (hasContent.value || slotHasContent.value) && !props.disabled)
+
+// ── 产品查询：富文本模板 + 【】槽位（可下拉/可输入/可删除）──
+const slotInputEl = ref(null)
+const slotSegments = ref([])
+const slotState = reactive({ hasText: false, hasSlot: false })
+const slotHasContent = computed(() => slotState.hasText || slotState.hasSlot)
+const showCopySearch = computed(() => selectedTariffSkill.value === 'copy')
+
+// 产品查询槽位模板：一句带【】槽位的提示词
+const querySlotTemplate = [
+  { type: 'text', text: '我想要查' },
+  { type: 'slot', label: '套餐类型', value: '预付费主套餐' },
+  { type: 'text', text: '的' },
+  { type: 'slot', label: '套餐名称', value: '' },
+  { type: 'text', text: '套餐，套餐编码为' },
+  { type: 'slot', label: '套餐编码', value: '' },
+  { type: 'text', text: '。' },
+]
+
+// 产品查询槽位的静态可选项
+const querySlotOptions = {
+  '套餐类型': ['预付费主套餐', '附加包'],
+  '套餐名称': [],
+  '套餐编码': [],
+}
+
+function onSlotSegments(segs) {
+  slotSegments.value = segs
+}
+
+function onSlotInputState(state) {
+  slotState.hasText = !!state?.hasText
+  slotState.hasSlot = !!state?.hasSlot
+}
+
+// 从槽位段中提取指定 label 的值（用于组装 copySearch）
+function slotValueByLabel(label) {
+  const seg = (slotSegments.value || []).find((s) => s.type === 'slot' && s.label === label)
+  return (seg?.value || '').trim()
+}
+
+// 套用产品查询模板（重置输入框为模板内容）
+function applyQueryTemplate() {
+  slotSegments.value = []
+  slotState.hasText = false
+  slotState.hasSlot = false
+  nextTick(() => {
+    slotInputEl.value?.setTemplate()
+    slotInputEl.value?.focus()
+  })
+}
+
+// 套用产品查询模板（重置输入框为模板内容，可选预填套餐名称）
+function applyCopyTemplate(name) {
+  slotSegments.value = []
+  slotState.hasText = false
+  slotState.hasSlot = false
+  nextTick(() => {
+    if (name) {
+      slotInputEl.value?.renderTemplateWith({ label: '套餐名称', value: name })
+    } else {
+      slotInputEl.value?.setTemplate()
+    }
+    slotInputEl.value?.focus()
+  })
+}
 
 function formatFileSize(size) {
   const n = Number(size) || 0
@@ -481,13 +461,8 @@ function formatFileSize(size) {
 
 function uploadStatusLabel(att) {
   switch (att?.uploadStatus) {
-    case 'uploading':
-    case 'pending':
-      return '上传中…'
     case 'success':
-      return '已上传'
-    case 'error':
-      return att.uploadError ? `失败：${att.uploadError}` : '上传失败'
+      return '已添加'
     default:
       return ''
   }
@@ -499,66 +474,12 @@ function attachmentTitle(att) {
 }
 
 function removeAttachment(idx) {
-  const att = attachments.value[idx]
-  if (att?.uploadStatus === 'uploading') return
   attachments.value.splice(idx, 1)
 }
 
 function genAttachmentId() {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
-
-/** 必须改 attachments 里的响应式项，直接改 push 前的普通对象不会触发 computed */
-function patchAttachment(id, patch) {
-  const idx = attachments.value.findIndex((a) => a.id === id)
-  if (idx < 0) return null
-  const current = attachments.value[idx]
-  Object.assign(current, patch)
-  return current
-}
-
-async function startUpload(attachment) {
-  const id = attachment?.id
-  const rawFile = toRaw(attachment?.file)
-  if (!(rawFile instanceof Blob) || rawFile.size <= 0) {
-    patchAttachment(id, { uploadStatus: 'error', uploadError: '无本地文件或文件为空' })
-    return
-  }
-  patchAttachment(id, { uploadStatus: 'uploading', uploadError: null })
-  try {
-    const res = await uploadConfigFile(rawFile)
-    if (res?.success === false) {
-      throw new Error(res.message || '上传失败')
-    }
-    const fileId = res?.file_id || res?.fileId
-    if (!fileId) {
-      throw new Error('未返回 file_id')
-    }
-    const updated = patchAttachment(id, {
-      fileId,
-      url: res.url || null,
-      fileName: res.fileName || res.filename || attachment.name,
-      uploadStatus: 'success',
-      uploadError: null,
-    })
-    if (!updated) return
-    emit('file-uploaded', { ...updated })
-  } catch (e) {
-    patchAttachment(id, {
-      uploadStatus: 'error',
-      uploadError: e?.message || '上传失败',
-    })
-  }
-}
-
-async function retryUpload(idx) {
-  const att = attachments.value[idx]
-  if (!att || props.disabled) return
-  await startUpload(att)
-}
-
-const FILE_PATH_RE = /^(?:[a-zA-Z]:\\|\\\\)[^\n\r*]+\.[A-Za-z0-9]{1,8}$/
-const DOC_EXT_RE = /\.(md|txt|json|csv|docx?|xlsx?|pdf|ya?ml|xml|log)$/i
 
 function showPasteHint(msg) {
   pasteHint.value = msg
@@ -568,78 +489,7 @@ function showPasteHint(msg) {
   }, 4000)
 }
 
-function extractFilesFromClipboardData(cd) {
-  if (!cd) return []
-  const found = []
-  const seen = new Set()
-
-  const pushFile = (file) => {
-    if (!file) return
-    const key = `${file.name}|${file.size}|${file.type}|${file.lastModified || 0}`
-    if (seen.has(key)) return
-    seen.add(key)
-    found.push(file)
-  }
-
-  // 1) DataTransfer.files（部分浏览器在 textarea 上为空）
-  if (cd.files?.length) {
-    Array.from(cd.files).forEach(pushFile)
-  }
-
-  // 2) items：必须始终遍历，不能放在 files 的 else 里
-  if (cd.items?.length) {
-    for (const item of cd.items) {
-      if (item.kind === 'file') {
-        pushFile(item.getAsFile())
-      }
-    }
-  }
-
-  return found
-}
-
-async function extractFilesFromClipboardApi() {
-  if (!navigator.clipboard?.read) return []
-  try {
-    const items = await navigator.clipboard.read()
-    const files = []
-    let idx = 0
-    for (const item of items) {
-      for (const type of item.types) {
-        if (type === 'text/plain' || type === 'text/html' || type === 'text/uri-list') continue
-        try {
-          const blob = await item.getType(type)
-          if (!blob || blob.size === 0) continue
-          const ext =
-            type === 'image/png' ? '.png'
-              : type === 'image/jpeg' ? '.jpg'
-                : type === 'image/webp' ? '.webp'
-                  : type === 'image/gif' ? '.gif'
-                    : type.includes('markdown') ? '.md'
-                      : type.includes('json') ? '.json'
-                        : type.startsWith('text/') ? '.txt'
-                          : ''
-          const name = `粘贴文件_${Date.now()}_${idx++}${ext}`
-          files.push(new File([blob], name, { type: blob.type || type }))
-        } catch {
-          // 单个 type 失败继续
-        }
-      }
-    }
-    return files
-  } catch {
-    // 无权限或非安全上下文
-    return []
-  }
-}
-
-function lookLikeLocalFilePath(text) {
-  const t = String(text || '').trim().replace(/^["']|["']$/g, '')
-  if (!t || t.includes('\n')) return false
-  return FILE_PATH_RE.test(t) && DOC_EXT_RE.test(t)
-}
-
-function addFiles(fileList, { emitUpload = true } = {}) {
+function addFiles(fileList) {
   const files = Array.from(fileList || []).filter(Boolean)
   if (!files.length) return false
 
@@ -648,24 +498,20 @@ function addFiles(fileList, { emitUpload = true } = {}) {
 
   files.forEach((file) => {
     const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || '')
-    // File/Blob 不可被 Vue 做成响应式 Proxy，否则 FormData 会传出空文件
     const rawFile = markRaw(file)
     const base = {
       id: genAttachmentId(),
-      name: file.name || `粘贴文件_${Date.now()}`,
+      name: file.name || `文件_${Date.now()}`,
       size: file.size,
       file: rawFile,
-      fileId: null,
-      url: null,
-      uploadStatus: 'pending',
-      uploadError: null,
+      uploadStatus: 'success',
     }
     if (isImage) {
       images.push(file)
       const attachment = {
         ...base,
         type: 'image',
-        name: file.name || `粘贴图片_${Date.now()}.png`,
+        name: file.name || `图片_${Date.now()}.png`,
         preview: null,
       }
       attachments.value.push(attachment)
@@ -675,53 +521,16 @@ function addFiles(fileList, { emitUpload = true } = {}) {
         if (found) found.preview = event.target?.result || null
       }
       reader.readAsDataURL(rawFile)
-      startUpload(attachment)
     } else {
       plainFiles.push(file)
-      const attachment = {
-        ...base,
-        type: 'file',
-        preview: null,
-      }
-      attachments.value.push(attachment)
-      startUpload(attachment)
+      attachments.value.push({ ...base, type: 'file' })
     }
   })
 
-  // 同名文件再次上传：询问覆盖（移除旧附件，只留本次）还是共存新增（两份都在）
-  const addedNames = files.map((f) => f.name).filter(Boolean)
-  const dupNames = addedNames.filter((n) =>
-    attachments.value.some((a) => a.name === n && !addedNames.includes(a.name)),
-  )
-  if (dupNames.length) {
-    askDuplicatePolicy(dupNames, addedNames)
-  }
-
-  if (emitUpload) {
-    if (plainFiles.length) emit('file-upload', plainFiles)
-    if (images.length) emit('image-upload', images)
-  }
+  if (plainFiles.length) emit('file-upload', plainFiles)
+  if (images.length) emit('image-upload', images)
   pasteHint.value = ''
   return true
-}
-
-/** 同名文件策略：覆盖 = 移除旧附件只留本次；共存 = 保留两份（后端解析为新草稿，不互相覆盖） */
-function askDuplicatePolicy(dupNames, addedNames) {
-  const label = dupNames.length === 1 ? `「${dupNames[0]}」` : `${dupNames.length} 个同名文件`
-  ElMessageBox.confirm(
-    `${label}已在本次会话上传过。选择「覆盖」将替换旧附件（仅保留本次上传），选择「新增」则两份共存。`,
-    '文件重复上传',
-    { confirmButtonText: '覆盖', cancelButtonText: '新增', distinguishCancelAndClose: false, type: 'question' },
-  ).then(() => {
-    // 覆盖：本次之前上传的同名附件移除（本次条目在列表尾部）
-    const seen = new Set()
-    attachments.value = attachments.value.filter((a) => {
-      if (!addedNames.includes(a.name)) return true
-      if (seen.has(a.name)) return false
-      seen.add(a.name)
-      return true
-    })
-  }).catch(() => { /* 新增：不做处理 */ })
 }
 
 const handlePaste = (e) => {
@@ -729,7 +538,20 @@ const handlePaste = (e) => {
 
   const cd = e.clipboardData
   const types = Array.from(cd?.types || [])
-  const files = extractFilesFromClipboardData(cd)
+
+  // 尝试从 clipboardData 提取文件
+  const files = []
+  if (cd?.files?.length) {
+    Array.from(cd.files).forEach((f) => files.push(f))
+  }
+  if (cd?.items?.length) {
+    for (const item of cd.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+  }
 
   if (files.length) {
     e.preventDefault()
@@ -738,45 +560,27 @@ const handlePaste = (e) => {
     return
   }
 
-  // types 声明有 Files，但 FileList 为空：常见于 Windows 资源管理器 → textarea
   if (types.includes('Files')) {
     e.preventDefault()
     e.stopPropagation()
-    extractFilesFromClipboardApi().then((apiFiles) => {
-      if (apiFiles.length) {
-        addFiles(apiFiles)
-        return
-      }
-      showPasteHint('当前浏览器限制：复制的本地文件无法直接粘贴，请拖拽到输入框，或在弹出的窗口中选择该文件')
-      nextTick(() => fileInput.value?.click())
-    })
+    showPasteHint('当前浏览器限制：复制的本地文件无法直接粘贴，请拖拽到输入框或点击上传按钮')
     return
-  }
-
-  // 截图等：仅有 image/* 类型时再尝试 Clipboard API
-  if (types.some((t) => t.startsWith('image/'))) {
-    e.preventDefault()
-    e.stopPropagation()
-    extractFilesFromClipboardApi().then((apiFiles) => {
-      if (apiFiles.length) addFiles(apiFiles)
-    })
-    return
-  }
-
-  const plain = cd?.getData?.('text/plain') || ''
-  if (lookLikeLocalFilePath(plain)) {
-    e.preventDefault()
-    e.stopPropagation()
-    showPasteHint('粘贴的是本地路径，浏览器无法直接读取。请拖拽文件，或点击上传选择该文件')
-    nextTick(() => fileInput.value?.click())
   }
 }
 
-/** 输入框聚焦时，在 document 捕获阶段再拦一次，避免 textarea 吃掉 Files */
 const onDocumentPasteCapture = (e) => {
   if (props.disabled || !isFocused.value) return
-  // 与面板 handlePaste 共用提取逻辑；此处只处理已能拿到 File 的情况
-  const files = extractFilesFromClipboardData(e.clipboardData)
+  const files = []
+  const cd = e.clipboardData
+  if (cd?.files?.length) Array.from(cd.files).forEach((f) => files.push(f))
+  if (cd?.items?.length) {
+    for (const item of cd.items) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+  }
   if (!files.length) return
   e.preventDefault()
   e.stopPropagation()
@@ -784,7 +588,6 @@ const onDocumentPasteCapture = (e) => {
 }
 
 onMounted(() => {
-  loadAvailableModels()
   document.addEventListener('paste', onDocumentPasteCapture, true)
 })
 
@@ -822,30 +625,25 @@ const onDrop = (e) => {
 watch(() => props.modelValue, (val) => {
   if (val !== inputText.value) {
     inputText.value = val
-    nextTick(autoResize)
+    // 外部设置纯文本时，写入内联输入框
+    if (val) slotInputEl.value?.insertText(val)
   }
 })
-
-const autoResize = () => {
-  const el = inputEl.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-}
-
-const handleInput = () => {
-  autoResize()
-  emit('update:modelValue', inputText.value)
-}
 
 const resetInput = () => {
   inputText.value = ''
   attachments.value = []
+  slotSegments.value = []
+  slotState.hasText = false
+  slotState.hasSlot = false
   emit('update:modelValue', '')
   nextTick(() => {
-    if (inputEl.value) {
-      inputEl.value.style.height = 'auto'
-      inputEl.value.focus()
+    if (showCopySearch.value) {
+      // 产品查询模板交互：发送后恢复默认模板，方便连续查询
+      applyQueryTemplate()
+    } else {
+      slotInputEl.value?.clearContent()
+      slotInputEl.value?.focus()
     }
   })
 }
@@ -858,34 +656,115 @@ const handleKeydown = (e) => {
 }
 
 const handleSend = () => {
-  const text = inputText.value.trim()
+  const rawText = inputText.value.trim()
+  const hasSlot = slotState.hasSlot
+  // 从产品查询槽位取值：套餐类型 / 套餐名称 / 套餐编码
+  const category = slotValueByLabel('套餐类型')
+  const nameValue = slotValueByLabel('套餐名称')
+  const codeValue = slotValueByLabel('套餐编码')
+  const value = nameValue
+  // 把输入框内的文字与槽位按序拼装为一段纯文本描述
+  const mixedText = (slotSegments.value || [])
+    .map((s) => (s.type === 'slot' ? `【${s.label}：${s.value || '未填'}】` : s.text))
+    .join('')
+    .replace(/\u200b/g, '')
+    .trim()
+  const text =
+    rawText ||
+    mixedText ||
+    (hasSlot
+      ? `查询${category || '个人主资费'}的套餐（名称：${nameValue}，编码：${codeValue}）`
+      : '')
   if (!text && attachments.value.length === 0) return
   if (props.disabled) return
-  if (!canSend.value) {
-    if (hasUploading.value) showPasteHint('请等待文件上传完成后再发送')
-    else if (hasUploadError.value) showPasteHint('有文件上传失败，请重试或移除后再发送')
-    return
-  }
-  const modelConfig = buildModelConfig()
-  // 发送时只带已上传成功的元数据；保留本地 file 作兼容回退
+  if (!canSend.value) return
+
   const payloadAttachments = attachments.value.map((a) => ({
     id: a.id,
     type: a.type || 'file',
     name: a.name,
     size: a.size,
     preview: a.preview || null,
-    fileId: a.fileId,
-    url: a.url || null,
-    fileName: a.fileName || a.name,
-    uploadStatus: a.uploadStatus,
     file: a.file || null,
   }))
-  emit('send', { text, attachments: payloadAttachments, modelConfig })
+  emit('send', {
+    text,
+    attachments: payloadAttachments,
+    modelConfig: { model: selectedModelId.value },
+    tariffSkill: selectedTariffSkill.value,
+    slots: (slotSegments.value || []).filter((s) => s.type === 'slot'),
+    copySearch: selectedTariffSkill.value === 'copy' || hasSlot
+      ? {
+          category,
+          value,
+          type: category,
+          // 兼容下游 streamStockCopyReply(search.code / search.name)
+          code: codeValue,
+          name: nameValue,
+        }
+      : null,
+  })
   resetInput()
 }
 
 const handleQuickAction = (action) => emit('quick-action', action)
-const focus = () => nextTick(() => inputEl.value?.focus())
+
+// ── 资费配置：三种配置方式技能（仅研发助手·资费配置场景显示）──
+const tariffSkills = [
+  { key: 'dialog', label: '对话式配置' },
+  { key: 'batch', label: '文件导入批量配置' },
+  { key: 'copy', label: '存量产品复制配置' },
+]
+
+const showTariffSkills = computed(
+  () => props.assistantMode === 'rd' && props.activeScene === 'rd.scene2'
+)
+
+const selectedTariffSkill = ref('')
+
+const toggleTariffSkill = (key) => {
+  selectedTariffSkill.value = selectedTariffSkill.value === key ? '' : key
+}
+
+// 供父组件通过 ref 调用：外部（快捷回复/欢迎卡片）点击时直接勾选对应技能
+const selectTariffSkill = (key) => {
+  if (!tariffSkills.some((s) => s.key === key)) return
+  selectedTariffSkill.value = key
+}
+
+// 监听外部选中信号（快捷回复点击 → 自动勾选对应技能）
+const pendingCopyName = ref('')
+watch(() => props.skillSignal, (sig) => {
+  if (sig?.key === 'copy' && sig.name) {
+    const wasActive = showCopySearch.value
+    selectTariffSkill(sig.key)
+    if (wasActive) {
+      // 原本已在 copy 模式：showCopySearch watch 不会再触发，直接预填
+      applyCopyTemplate(sig.name)
+    } else {
+      // 刚进入 copy 模式：交由下方 showCopySearch watch 预填，避免双重渲染
+      pendingCopyName.value = sig.name
+    }
+  } else {
+    if (sig?.key) selectTariffSkill(sig.key)
+    pendingCopyName.value = ''
+  }
+})
+
+// 进入产品查询模式 → 套用模板；退出 → 清空输入框
+watch(showCopySearch, (active) => {
+  if (active) {
+    const name = pendingCopyName.value
+    pendingCopyName.value = ''
+    applyCopyTemplate(name)
+  } else {
+    slotInputEl.value?.clearContent()
+    slotState.hasText = false
+    slotState.hasSlot = false
+  }
+})
+
+const focus = () => nextTick(() => slotInputEl.value?.focus())
 const triggerFileUpload = () => fileInput.value?.click()
 const triggerImageUpload = () => imageInput.value?.click()
 
@@ -945,13 +824,10 @@ const stopRecording = () => {
         blob: markRaw(blob),
         url: URL.createObjectURL(blob),
         duration: recordingTime.value,
-        fileId: null,
-        uploadStatus: 'pending',
-        uploadError: null,
+        uploadStatus: 'success',
       }
       attachments.value.push(attachment)
       emit('voice-record', attachment)
-      startUpload(attachment)
       mediaRecorder = null
       audioChunks = []
     }
@@ -959,7 +835,7 @@ const stopRecording = () => {
   }
 }
 
-defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) })
+defineExpose({ focus, resetInput, selectTariffSkill })
 </script>
 
 <style scoped>
@@ -1009,6 +885,83 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
 .quick-action-chip:disabled { opacity: 0.45; cursor: not-allowed; }
 .chip-icon { font-weight: 500; font-size: 13px; }
 
+/* 资费配置技能选择条 */
+.tariff-skill-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tariff-skill-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-right: 2px;
+}
+
+.tariff-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.tariff-skill-chip:hover {
+  background: var(--bg-tertiary);
+  border-color: rgba(91, 124, 250, 0.35);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.tariff-skill-chip.selected {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.16);
+}
+
+.tariff-skill-chip.selected .chip-icon {
+  color: #3b82f6;
+}
+
+.chip-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 -4px 0 2px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chip-close:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #1e40af;
+}
+
+.copy-slot-guide {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  margin: 0 2px 6px;
+}
+
 .composer-panel {
   position: relative;
   border: 1px solid var(--border-light);
@@ -1050,19 +1003,8 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   border: 1px solid var(--border-light);
 }
 
-.attachment-chip.status-uploading,
-.attachment-chip.status-pending {
-  border-color: rgba(59, 130, 246, 0.35);
-  background: rgba(239, 246, 255, 0.85);
-}
-
 .attachment-chip.status-success {
   border-color: rgba(16, 185, 129, 0.35);
-}
-
-.attachment-chip.status-error {
-  border-color: rgba(239, 68, 68, 0.4);
-  background: rgba(254, 242, 242, 0.9);
 }
 
 .att-thumb {
@@ -1113,36 +1055,8 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   text-overflow: ellipsis;
 }
 
-.attachment-chip.status-uploading .att-status,
-.attachment-chip.status-pending .att-status {
-  color: #2563eb;
-}
-
 .attachment-chip.status-success .att-status {
   color: #059669;
-}
-
-.attachment-chip.status-error .att-status {
-  color: #dc2626;
-}
-
-.att-retry {
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  cursor: pointer;
-  font-size: 11px;
-  padding: 0 2px;
-  flex-shrink: 0;
-}
-
-.att-retry:hover:not(:disabled) {
-  text-decoration: underline;
-}
-
-.att-retry:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .att-remove {
@@ -1167,12 +1081,6 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   color: #c2410c;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.upload-block-hint {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
 }
 
 .drop-hint {
@@ -1203,8 +1111,6 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   max-height: 180px;
   padding: 2px 2px 8px;
 }
-
-.message-input::placeholder { color: var(--text-tertiary); }
 
 .composer-footer {
   display: flex;
@@ -1361,14 +1267,6 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   color: var(--color-primary-700);
 }
 
-.model-menu-item.manage {
-  background: rgba(91, 124, 250, 0.08);
-}
-
-.model-menu-item.manage:hover {
-  background: rgba(91, 124, 250, 0.12);
-}
-
 .model-menu-item-name {
   flex: 1;
   min-width: 0;
@@ -1382,26 +1280,6 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.4;
-}
-
-.model-menu-divider {
-  height: 1px;
-  margin: 6px 4px;
-  background: var(--border-light);
-}
-
-.model-error {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-error-500);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: help;
 }
 
 .model-menu-empty {

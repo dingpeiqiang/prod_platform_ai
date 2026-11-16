@@ -1,0 +1,673 @@
+/**
+ * campusDraftData - 校園青春卡 · 對話式配置數據
+ *
+ * 場景：新建一檔全新套餐「校園青春卡」，**無任何原套餐可參考**。
+ * 因此本場景所有字段的 AI 推薦理由均基於「用户需求 + 業務模板」生成，
+ * 刻意規避"沿用原套餐产品屬性分類 / 複用原套餐XX"等表述 —— 這類表述只有在
+ * 「存量产品複製配置 / 啓動產品優化」這類確有原套餐參考的場景才合適。
+ *
+ * 字段標籤規則（與 launchOptimizeData.js 一致）：
+ * - tag: 'ai'     → AI推薦（依據用户需求或業務模板生成，附 tagReason 説明推薦原因）
+ * - tag: 'reuse'  → 建議由 AI 按業務模板直接補全（對話式/批量場景下渲染為"AI推薦"，不顯示"複用"）
+ * - tag: null     → 無標籤（常規字段）
+ *
+ * 結構對齊 launchOptimizeData：productInfo / baseInfo / resourceSections /
+ * marketingSections / salesSections / previewSections。
+ */
+import { reactive } from 'vue'
+
+// ============ 校園青春卡 · 對話式配置的產品配置數據 ============
+export const campusProductConfig = {
+  // 产品基本信息
+  productInfo: reactive({
+    workOrderId: '',
+    prodPrcName: '校園青春卡',
+    template: 'personMainPrc',
+    templateLabel: '個人主資費',
+    status: 'draft',
+    auditStatus: 'pending',
+  }),
+
+  // 基礎信息 Tab
+  baseInfo: {
+    prodAttr: {
+      value: 'personMainPrc',
+      tag: 'ai',
+      tagReason: '依據產品定位判定為面向學生個人的主資費产品，選擇"個人主資費"屬性',
+      required: true,
+      label: '产品屬性',
+      options: [
+        { value: 'personMainPrc', label: '個人主資費' },
+        { value: 'personOptionalPrc', label: '個人可選包' },
+        { value: 'familyMainPrc', label: '家庭主資費' },
+        { value: 'enterprisePrc', label: '政企資費' },
+      ],
+    },
+    prodCode: {
+      value: 'SP20260828001',
+      tag: 'ai',
+      tagReason: '按产品編碼規則為新产品生成唯一編碼',
+      label: '产品編碼',
+    },
+    prodName: {
+      value: '校園青春卡',
+      tag: 'ai',
+      tagReason: '依據用户命名沿用"校園青春卡"作為产品名稱，貼合學生客羣定位',
+      required: true,
+      label: '产品名稱',
+    },
+    onlineDate: {
+      value: '20260901000000',
+      tag: 'ai',
+      tagReason: '建議9月1日開學季上線，契合在校大學生新客獲客節奏',
+      required: true,
+      label: '上線日期',
+    },
+    offlineDate: {
+      value: '20991231235959',
+      tag: 'ai',
+      tagReason: '产品長期有效，無固定下線時間',
+      required: true,
+      label: '下線日期',
+    },
+    effRule: {
+      value: 'immediate',
+      tag: 'ai',
+      tagReason: '按業務模板默認：新入網立即生效，便於學生開卡即用',
+      required: true,
+      label: '生效規則',
+      options: [
+        { value: 'immediate', label: '新入網立即/變更次月/續約指定日期' },
+        { value: 'nextMonth', label: '次月生效' },
+        { value: 'appoint', label: '預約指定日期生效' },
+      ],
+    },
+    validity: {
+      value: 'longTerm',
+      tag: 'ai',
+      tagReason: '依據用户需求"产品長期有效"，設置為長期有效',
+      required: true,
+      label: '产品有效期',
+      options: [
+        { value: 'longTerm', label: '長期有效' },
+        { value: '12m', label: '12個月' },
+        { value: '24m', label: '24個月' },
+        { value: '36m', label: '36個月' },
+      ],
+    },
+    displayCycle: {
+      value: '3',
+      tag: 'ai',
+      tagReason: '按業務模板默認展示週期3年',
+      required: true,
+      label: '展示週期',
+      unit: '年',
+    },
+    cancelRule: {
+      value: 'immediate',
+      tag: 'ai',
+      tagReason: '按業務模板默認退訂立即失效',
+      required: true,
+      label: '退訂生效規則',
+      options: [
+        { value: 'immediate', label: '立即失效' },
+        { value: 'monthEnd', label: '月終失效' },
+        { value: 'nextMonth', label: '次月失效' },
+      ],
+    },
+    refProduct: {
+      value: '',
+      tag: 'ai',
+      tagReason: '本檔為新产品，無參考产品',
+      label: '參考产品',
+      options: [
+        { value: '', label: '請選擇' },
+      ],
+    },
+    orderTimes: {
+      value: '1',
+      tag: 'ai',
+      tagReason: '依據用户需求"每位學生限辦1張"，同時訂購次數為1',
+      required: true,
+      label: '同時訂購次數',
+    },
+    totalOrderTimes: {
+      value: '',
+      tag: 'ai',
+      tagReason: '按業務模板默認不限制累計訂購次數',
+      label: '累計訂購次數',
+      unit: '個月內限訂1次',
+    },
+    uploadYijing: {
+      value: 'no',
+      tag: 'ai',
+      tagReason: '按業務模板默認不上傳一經',
+      label: '是否上傳一經',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    l1ProdCode: {
+      value: 'APAP202608',
+      tag: 'ai',
+      tagReason: '從產品庫按产品屬性匹配到可用一級產品編碼',
+      label: '一級產品編碼',
+    },
+    isComm: {
+      value: 'yes',
+      tag: 'ai',
+      tagReason: '本产品為通信類資費产品',
+      required: true,
+      label: '是否通信類',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+    applyBasis: {
+      value: '面向在校大學生的校園專享資費方案',
+      tag: 'ai',
+      tagReason: '申報依據：校園客羣專項資費方案',
+      label: '申請依據',
+    },
+    allowChannel: {
+      value: 'yes',
+      tag: 'ai',
+      tagReason: '按業務模板允許受理渠道辦理',
+      required: true,
+      label: '是否允許受理渠道',
+      options: [
+        { value: '', label: '請選擇' },
+        { value: 'yes', label: '是' },
+        { value: 'no', label: '否' },
+      ],
+    },
+  },
+
+  // 資源配置 Tab
+  resourceSections: [
+    {
+      key: 'flow-resource',
+      title: '流量資源配置',
+      icon: 'fa-mobile-screen',
+      fields: [
+        {
+          key: 'flowType',
+          label: '流量類型',
+          value: 'general',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求"通用流量30GB"，流量類型為通用流量',
+          options: [
+            { value: 'general', label: '通用流量' },
+            { value: '定向', label: '定向流量' },
+            { value: '專屬', label: '專屬流量' },
+          ],
+        },
+        {
+          key: 'flowAmount',
+          label: '資源量',
+          value: '30',
+          type: 'number',
+          highlight: true,
+          tag: 'ai',
+          tagReason: '依據用户需求：通用流量30GB',
+        },
+        {
+          key: 'flowUnit',
+          label: '流量單位',
+          value: 'GB',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求以GB為單位計費',
+          options: [
+            { value: 'GB', label: 'GB' },
+            { value: 'MB', label: 'MB' },
+          ],
+        },
+        {
+          key: 'flowOvercharge',
+          label: '套外計費標準',
+          value: '1元/GB',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '依據用户需求：超套後1元/GB按量計費',
+        },
+        {
+          key: 'flowCarryover',
+          label: '是否結轉到次月',
+          value: 'no',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '按業務模板默認當月流量不結轉',
+          options: [
+            { value: 'yes', label: '是' },
+            { value: 'no', label: '否' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'voice-resource',
+      title: '語音資源配置',
+      icon: 'fa-phone',
+      fields: [
+        {
+          key: 'voiceType',
+          label: '資源類型',
+          value: 'local',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求"本地語音100分鐘"，資源類型為本地語音',
+          options: [
+            { value: 'local', label: '本地語音' },
+            { value: 'longdistance', label: '長途語音' },
+          ],
+        },
+        {
+          key: 'voiceAmount',
+          label: '資源量',
+          value: '100',
+          type: 'number',
+          unit: '分鐘',
+          tag: 'ai',
+          tagReason: '依據用户需求：本地語音100分鐘',
+        },
+        {
+          key: 'voiceOvercharge',
+          label: '套外計費費率',
+          value: '0.15元/分鐘',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '依據用户需求：套外語音0.15元/分鐘',
+        },
+      ],
+    },
+    {
+      key: 'sms-resource',
+      title: '短信資源配置',
+      icon: 'fa-comment-dots',
+      fields: [
+        {
+          key: 'smsAmount',
+          label: '資源量',
+          value: '50',
+          type: 'number',
+          unit: '條',
+          tag: 'ai',
+          tagReason: '依據用户需求：短信50條',
+        },
+        {
+          key: 'smsOvercharge',
+          label: '套外計費費率',
+          value: '0.1元/條',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '依據用户需求：套外短信0.1元/條',
+        },
+      ],
+    },
+    {
+      key: 'rights-resource',
+      title: '權益資源配置',
+      icon: 'fa-gift',
+      fields: [
+        {
+          key: 'rightsTable',
+          label: '權益列表',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '依據用户需求含"定向免流權益：校園寬帶與騰訊系視頻App在校內免流"，自動補充默認權益',
+          columns: [
+            {
+              key: 'rightName',
+              label: '權益名稱',
+              type: 'text',
+              placeholder: '請輸入權益名稱',
+            },
+            {
+              key: 'obtainType',
+              label: '領取方式',
+              type: 'select',
+              options: [
+                { value: 'manual', label: '手動領取' },
+                { value: 'auto', label: '自動發放' },
+              ],
+            },
+          ],
+          rows: [
+            { rightName: '定向免流權益（校園寬帶+騰訊系視頻App校內免流）', obtainType: 'auto' },
+            { rightName: '視頻會員月卡', obtainType: 'auto' },
+          ],
+        },
+      ],
+    },
+  ],
+
+  // 營銷資源 Tab
+  marketingSections: [
+    {
+      key: 'monthly',
+      title: '月租',
+      icon: 'fa-yen-sign',
+      fields: [
+        {
+          key: 'chargeType',
+          label: '收費方式',
+          value: 'monthly',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求"套餐固定費29元/月"，收費方式為月付',
+          options: [
+            { value: 'monthly', label: '月付' },
+            { value: 'quarterly', label: '季付' },
+            { value: 'yearly', label: '年付' },
+          ],
+        },
+        { key: 'monthlyFee', label: '套餐固定費', value: '29.00', type: 'number', unit: '元', tag: 'ai', tagReason: '依據用户需求：套餐固定費29元/月' },
+        {
+          key: 'feeSubject',
+          label: '收費科目',
+          value: '001',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '按業務模板歸為通訊費科目',
+          options: [
+            { value: '001', label: '通訊費' },
+            { value: '002', label: '增值業務費' },
+            { value: '003', label: '代收費' },
+          ],
+        },
+        { key: 'taxRate', label: '税率', value: '6', type: 'number', unit: '%', tag: 'ai', tagReason: '按業務模板採用6%税率' },
+      ],
+    },
+    {
+      key: 'discount',
+      title: '賬務優惠',
+      icon: 'fa-tags',
+      fields: [
+        {
+          key: 'discountCondition',
+          label: '優惠條件',
+          value: '',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '按業務模板該产品暫無賬務優惠',
+        },
+        {
+          key: 'discountType',
+          label: '優惠類型',
+          value: 'cash',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '按業務模板默認無優惠類型',
+          options: [
+            { value: 'cash', label: '現金直減' },
+            { value: 'coupon', label: '優惠券' },
+            { value: 'gift', label: '贈品' },
+          ],
+        },
+        { key: 'discountAmount', label: '優惠費用', value: '', type: 'number', unit: '元', tag: 'ai', tagReason: '按業務模板暫無優惠費用' },
+      ],
+    },
+    {
+      key: 'min-consume',
+      title: '保底',
+      icon: 'fa-arrow-down-wide-short',
+      fields: [
+        {
+          key: 'minConsumeType',
+          label: '保底方式',
+          value: 'none',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '按業務模板該产品無保底',
+          options: [
+            { value: 'none', label: '無保底' },
+            { value: 'monthly', label: '月保底' },
+            { value: 'total', label: '總額保底' },
+          ],
+        },
+      ],
+    },
+  ],
+
+  // 銷售規則 Tab
+  salesSections: [
+    {
+      key: 'sales-rule',
+      title: '銷售規則',
+      icon: 'fa-shield-halved',
+      fields: [
+        {
+          key: 'channelType',
+          label: '渠道類型',
+          value: 'offline',
+          type: 'checkbox-group',
+          tag: 'ai',
+          tagReason: '依據業務模板默認含線下與線上渠道',
+          options: [
+            { value: 'offline', label: '線下營業廳' },
+            { value: 'online', label: '中國移動在線渠道' },
+            { value: 'local-online', label: '省移動線上渠道' },
+            { value: 'cmcc-online', label: '中國移動線上渠道' },
+            { value: 'tv', label: '電視營業廳' },
+            { value: 'accelerator', label: '加速平台' },
+            { value: 'points', label: '積分商城' },
+            { value: 'meter', label: '一級電錶' },
+          ],
+        },
+        {
+          key: 'applicableArea',
+          label: '適用地區',
+          value: 'sc',
+          type: 'checkbox-group',
+          tag: 'ai',
+          tagReason: '依據業務模板默認面向全省範圍',
+          options: [
+            { value: 'sc', label: '四川全省' },
+            { value: 'cd', label: '成都' },
+            { value: 'my', label: '綿陽' },
+            { value: 'dy', label: '德陽' },
+            { value: 'nc', label: '南充' },
+            { value: 'yb', label: '宜賓' },
+            { value: 'lz', label: '瀘州' },
+            { value: 'ls', label: '樂山' },
+          ],
+        },
+        {
+          key: 'otherFee',
+          label: '其他費用',
+          value: '0',
+          type: 'text',
+          tag: 'ai',
+          tagReason: '按業務模板本产品無其他費用',
+        },
+        {
+          key: 'breachLiability',
+          label: '違約責任',
+          value: 'none',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '按業務模板本产品無違約責任約束',
+          options: [
+            { value: 'none', label: '無' },
+            { value: 'compensate', label: '按約定補償金' },
+          ],
+        },
+        {
+          key: 'renewMethod',
+          label: '續訂方式',
+          value: 'auto',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求"支持月末自動續訂"，續訂方式為自動續訂',
+          options: [
+            { value: 'auto', label: '自動續訂' },
+            { value: 'manual', label: '手動續訂' },
+            { value: 'no', label: '不續訂' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'pre-limit',
+      title: '前項限制',
+      icon: 'fa-circle-arrow-left',
+      fields: [
+        {
+          key: 'preLimitRelation',
+          label: '限制間關係',
+          value: 'and',
+          type: 'select',
+          tag: 'ai',
+          tagReason: '依據用户需求多項資格條件需同時滿足，採用"且"關係',
+          options: [
+            { value: 'and', label: '且（全部滿足）' },
+            { value: 'or', label: '或（任一滿足）' },
+          ],
+        },
+        {
+          key: 'preLimitTable',
+          label: '限制列表',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '依據用户需求：只面向在校大學生、需上傳學生證認證、僅限本人實名辦理、每位學生限辦1張',
+          columns: [
+            { key: 'label', label: '標籤', type: 'select', options: [
+              { value: 'age', label: '年齡' },
+              { value: 'globalLevel', label: '全球通等級' },
+              { value: 'baseMonthlyFee', label: '基礎套餐月費' },
+              { value: 'targetGroup', label: '目標客羣' },
+              { value: 'studentOnly', label: '面向在校大學生' },
+              { value: 'studentCert', label: '需上傳學生證認證' },
+              { value: 'realName', label: '僅限本人實名辦理' },
+              { value: 'limitToSelf', label: '僅限本人辦理' },
+            ] },
+            { key: 'ruleType', label: '規則類型', type: 'select', options: [
+              { value: 'gt', label: '＞' },
+              { value: 'lt', label: '＜' },
+              { value: 'ge', label: '≥' },
+              { value: 'le', label: '≤' },
+              { value: 'eq', label: '＝' },
+            ] },
+            { key: 'limitValue', label: '限定值', type: 'text', placeholder: '請輸入限定值' },
+            { key: 'limitType', label: '限定類型', type: 'select', options: [
+              { value: 'allow', label: '允許辦理' },
+              { value: 'disallow', label: '不允許辦理' },
+            ] },
+            { key: 'tipMsg', label: '提示語', type: 'auto', placeholder: '根據條件自動生成' },
+          ],
+          rows: [
+            { label: 'targetGroup', ruleType: 'eq', limitValue: '在校大學生', limitType: 'allow', tipMsg: '目標客羣為在校大學生，允許辦理' },
+            { label: 'studentCert', ruleType: 'eq', limitValue: '需上傳學生證認證', limitType: 'allow', tipMsg: '面向在校大學生，需學生證認證後辦理' },
+            { label: 'realName', ruleType: 'eq', limitValue: '僅限本人實名', limitType: 'allow', tipMsg: '僅限本人實名辦理' },
+          ],
+        },
+      ],
+    },
+    {
+      key: 'post-limit',
+      title: '後項限制',
+      icon: 'fa-circle-arrow-right',
+      fields: [
+        {
+          key: 'postLimitTable',
+          label: '後項限制',
+          type: 'table',
+          tag: 'ai',
+          tagReason: '按業務模板為學生專享卡設置退訂與降檔限制',
+          columns: [
+            { key: 'ruleType', label: '規則類型', type: 'select', options: [
+              { value: 'product', label: '产品限制' },
+              { value: 'business', label: '業務限制' },
+            ] },
+            { key: 'bizName', label: '業務名稱', type: 'select', dynamicOptions: true, options: {
+              product: [
+                { value: 'downgrade', label: '降檔' },
+                { value: 'unsubscribe', label: '退訂' },
+              ],
+              business: [
+                { value: 'suspend', label: '停機保號' },
+                { value: 'cancel', label: '銷户' },
+                { value: 'mnp', label: '攜號轉網' },
+                { value: 'transfer', label: '過户' },
+              ],
+            } },
+            { key: 'limitType', label: '限制類型', type: 'select', options: [
+              { value: 'disallow', label: '不允許' },
+              { value: 'allow', label: '允許' },
+            ] },
+            { key: 'limitTime', label: '限制時間', type: 'select', options: [
+              { value: '12', label: '12個月' },
+              { value: '24', label: '24個月' },
+              { value: '36', label: '36個月' },
+              { value: '48', label: '48個月' },
+            ] },
+          ],
+          rows: [
+            { ruleType: 'product', bizName: 'downgrade', limitType: 'disallow', limitTime: '12' },
+            { ruleType: 'product', bizName: 'unsubscribe', limitType: 'disallow', limitTime: '12' },
+          ],
+        },
+      ],
+    },
+  ],
+
+  // 信息預覽 Tab
+  previewSections: [
+    {
+      key: 'user-facing',
+      title: '用户受理信息',
+      icon: 'fa-user',
+      description: '用户在辦理過程中看到的關鍵信息',
+      items: [
+        { label: '产品名稱', value: '校園青春卡', highlight: true },
+        { label: '月費', value: '29元/月' },
+        { label: '包含流量', value: '30GB通用流量', highlight: true },
+        { label: '包含語音', value: '100分鐘本地語音' },
+        { label: '包含短信', value: '50條' },
+        { label: '定向免流', value: '校園寬帶與騰訊系視頻App在校內免流', highlight: true },
+        { label: '套外流量費', value: '1元/GB' },
+        { label: '套外語音費', value: '0.15元/分鐘' },
+        { label: '套外短信費', value: '0.1元/條' },
+        { label: '生效方式', value: '立即生效' },
+        { label: '退訂方式', value: '立即失效' },
+        { label: '使用範圍', value: '四川省範圍內' },
+      ],
+    },
+    {
+      key: 'free-fill-preview',
+      title: '免填單',
+      icon: 'fa-file-alt',
+      description: '營業員受理時免填的自動帶出信息',
+      items: [
+        { label: '資費名稱', value: '校園青春卡' },
+        { label: '套餐月費', value: '29元/月' },
+        { label: '包含資源', value: '30G流量+100分鐘語音+50條短信+定向免流', highlight: true },
+        { label: '超套收費標準', value: '流量1元/GB、語音0.15元/分鐘、短信0.1元/條' },
+        { label: '限定條件', value: '僅限在校大學生、需學生證認證、本人實名辦理、每人限辦1張' },
+        { label: '其他權益', value: '定向免流（校園寬帶+騰訊系視頻App）、視頻會員月卡', highlight: true },
+        { label: '收費方式', value: '月付' },
+        { label: '套餐固定費', value: '29.00元' },
+        { label: '税率', value: '6%' },
+        { label: '續訂方式', value: '自動續訂' },
+      ],
+    },
+    {
+      key: 'sms-preview',
+      title: '短信模板預覽',
+      icon: 'fa-comment-sms',
+      description: '各觸點下發的短信內容預覽',
+      items: [
+        { label: '辦理成功短信', value: '恭喜您成功辦理校園青春卡，月費29元，含30G流量、100分鐘語音和50條短信，含校園定向免流權益，感謝您的支持！' },
+        { label: '預約生效短信', value: '您的校園青春卡已生效，月費29元，生效當月起享受套餐權益。' },
+        { label: '前台二確短信', value: '尊敬的客户，您正在辦理校園青春卡，月費29元，是否確認辦理？' },
+        { label: '退訂短信', value: '您好，您的校園青春卡已退訂，如有疑問請致電10086。' },
+      ],
+    },
+  ],
+}
